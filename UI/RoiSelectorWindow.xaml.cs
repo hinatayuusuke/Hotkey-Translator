@@ -1,0 +1,89 @@
+using System;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Shapes;
+using Hotkey_Translator.Services;
+
+namespace Hotkey_Translator.UI;
+
+public partial class RoiSelectorWindow : Window
+{
+    private Point? _start;
+
+    public RoiSelectorWindow()
+    {
+        InitializeComponent();
+        Loaded += OnLoaded;
+    }
+
+    public Rect? SelectedRect { get; private set; }
+
+    private void OnLoaded(object? sender, RoutedEventArgs e)
+    {
+        Left = SystemParameters.VirtualScreenLeft;
+        Top = SystemParameters.VirtualScreenTop;
+        Width = SystemParameters.VirtualScreenWidth;
+        Height = SystemParameters.VirtualScreenHeight;
+    }
+
+    private void OnMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        _start = e.GetPosition(this);
+        SelectionRect.Visibility = Visibility.Visible;
+        UpdateSelection(_start.Value, _start.Value);
+        CaptureMouse();
+    }
+
+    private void OnMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_start is null)
+        {
+            return;
+        }
+
+        UpdateSelection(_start.Value, e.GetPosition(this));
+    }
+
+    private void OnMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        if (_start is null)
+        {
+            return;
+        }
+
+        ReleaseMouseCapture();
+        var end = e.GetPosition(this);
+        var rect = NormalizeRect(_start.Value, end);
+        var deviceRect = DpiHelper.DipRectToDevice(this, rect);
+
+        SelectedRect = deviceRect.Width <= 0 || deviceRect.Height <= 0 ? null : deviceRect;
+        DialogResult = SelectedRect.HasValue;
+    }
+
+    private void OnKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            DialogResult = false;
+        }
+    }
+
+    private void UpdateSelection(Point start, Point end)
+    {
+        var rect = NormalizeRect(start, end);
+        Canvas.SetLeft(SelectionRect, rect.X);
+        Canvas.SetTop(SelectionRect, rect.Y);
+        SelectionRect.Width = rect.Width;
+        SelectionRect.Height = rect.Height;
+    }
+
+    private static Rect NormalizeRect(Point start, Point end)
+    {
+        var x = Math.Min(start.X, end.X);
+        var y = Math.Min(start.Y, end.Y);
+        var width = Math.Abs(start.X - end.X);
+        var height = Math.Abs(start.Y - end.Y);
+        return new Rect(x, y, width, height);
+    }
+}

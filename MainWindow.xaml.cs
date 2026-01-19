@@ -1,23 +1,188 @@
-﻿using System.Text;
+using System;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
+using Hotkey_Translator.UI;
+using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
 
-/// <summary>
-/// Interaction logic for MainWindow.xaml
-/// </summary>
 public partial class MainWindow : Window
 {
+    private readonly SettingsService _settingsService = new();
+    private readonly HttpClient _httpClient = new();
+    private OverlayWindow? _overlayWindow;
+    private OverlayPresenter? _overlayPresenter;
+    private CacheRepository? _cacheRepository;
+    private PipelineOrchestrator? _pipeline;
+    private HotkeyManager? _hotkeyManager;
+    private CancellationTokenSource? _runCts;
+    private AppLogger? _logger;
+
     public MainWindow()
     {
         InitializeComponent();
+        Loaded += OnLoaded;
+        Closed += OnClosed;
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        _logger = new AppLogger(AppendLog);
+        await _settingsService.LoadAsync().ConfigureAwait(true);
+        ApplySettingsToUi(_settingsService.Settings);
+
+        _overlayWindow = new OverlayWindow();
+        _overlayWindow.ApplyStyle(_settingsService.Settings);
+        _overlayPresenter = new OverlayPresenter(_overlayWindow);
+        _overlayPresenter.Show();
+
+        _cacheRepository = new CacheRepository(_settingsService.CachePath);
+        var captureManager = new CaptureManager();
+        var ocrEngine = new OcrEngine();
+        var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
+        var phashService = new PhashService();
+        var normalization = new NormalizationService();
+        var keyBuilder = new CacheKeyBuilder();
+        var geminiClient = new GeminiClient(_httpClient);
+
+        _pipeline = new PipelineOrchestrator(
+            captureManager,
+            ocrEngine,
+            ocrDiff,
+            phashService,
+            normalization,
+            _cacheRepository,
+            keyBuilder,
+            geminiClient,
+            _overlayPresenter,
+            _settingsService,
+            _logger);
+
+        _hotkeyManager = new HotkeyManager(this, Key.F8, ModifierKeys.None);
+        _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
+        _hotkeyManager.Register();
+        AppendLog("Ready. Press F8 to capture.");
+    }
+
+    private void OnClosed(object? sender, EventArgs e)
+    {
+        _runCts?.Cancel();
+        _runCts?.Dispose();
+        _hotkeyManager?.Dispose();
+        _cacheRepository?.Dispose();
+        _httpClient.Dispose();
+        _overlayWindow?.Close();
+    }
+
+    private async void OnHotkeyPressed(object? sender, EventArgs e)
+    {
+        await RunOnceAsync().ConfigureAwait(true);
+    }
+
+    private async void OnRunOnce(object sender, RoutedEventArgs e)
+    {
+        await RunOnceAsync().ConfigureAwait(true);
+    }
+
+    private async Task RunOnceAsync()
+    {
+        if (_pipeline == null)
+        {
+            return;
+        }
+
+        _runCts?.Cancel();
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        await _pipeline.RunOnceAsync(_runCts.Token).ConfigureAwait(true);
+    }
+
+    private async void OnSelectRoi(object sender, RoutedEventArgs e)
+    {
+        var selector = new RoiSelectorWindow();
+        var result = selector.ShowDialog();
+        if (result == true && selector.SelectedRect is { } rect)
+        {
+            _settingsService.Settings.Roi = SerializableRect.FromRect(rect);
+            UpdateRoiStatus(_settingsService.Settings);
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+            AppendLog("ROI updated.");
+        }
+    }
+
+    private async void OnSaveSettings(object sender, RoutedEventArgs e)
+    {
+        var settings = _settingsService.Settings;
+        settings.CaptureMode = GetCaptureMode();
+        settings.SourceLanguage = SourceLangBox.Text.Trim();
+        settings.TargetLanguage = TargetLangBox.Text.Trim();
+        settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
+        settings.ApiKey = ApiKeyBox.Password;
+
+        if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
+        {
+            settings.PhashThreshold = phashThreshold;
+        }
+
+        if (double.TryParse(IouThresholdBox.Text.Trim(), out var iouThreshold))
+        {
+            settings.OcrIouThreshold = iouThreshold;
+        }
+
+        _overlayWindow?.ApplyStyle(settings);
+        await _settingsService.SaveAsync().ConfigureAwait(true);
+        AppendLog("Settings saved.");
+    }
+
+    private void ApplySettingsToUi(AppSettings settings)
+    {
+        CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
+        SourceLangBox.Text = settings.SourceLanguage;
+        TargetLangBox.Text = settings.TargetLanguage;
+        EnableGeminiCheck.IsChecked = settings.EnableGemini;
+        ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
+        PhashThresholdBox.Text = settings.PhashThreshold.ToString();
+        IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
+        UpdateRoiStatus(settings);
+    }
+
+    private void UpdateRoiStatus(AppSettings settings)
+    {
+        if (settings.Roi is null || settings.Roi.Value.IsEmpty)
+        {
+            RoiStatusText.Text = "ROI: not set";
+            return;
+        }
+
+        var roi = settings.Roi.Value;
+        RoiStatusText.Text = $"ROI: {roi.X:0},{roi.Y:0} {roi.Width:0}x{roi.Height:0}";
+    }
+
+    private AppCaptureMode GetCaptureMode()
+    {
+        if (CaptureModeBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return tag == "Screen" ? AppCaptureMode.Screen : AppCaptureMode.ActiveWindow;
+        }
+
+        return AppCaptureMode.ActiveWindow;
+    }
+
+    private void AppendLog(string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => AppendLog(message));
+            return;
+        }
+
+        LogBox.AppendText(message + Environment.NewLine);
+        LogBox.ScrollToEnd();
     }
 }
