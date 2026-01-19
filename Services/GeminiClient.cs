@@ -46,6 +46,14 @@ public sealed class GeminiClient
                     parts = new[] { new { text = prompt } }
                 }
             },
+            // SECURITY: Safety settings are explicitly set to avoid model-side blocking that would break OCR text mapping.
+            safety_settings = new[]
+            {
+                new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold = "BLOCK_NONE" },
+                new { category = "HARM_CATEGORY_DANGEROUS_CONTENT", threshold = "BLOCK_NONE" }
+            },
             generationConfig = new
             {
                 temperature = 0.2,

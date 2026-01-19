@@ -19,7 +19,7 @@ public sealed class AppSettings
     public string StyleId { get; set; } = "default";
     public string GlossaryVersion { get; set; } = "v1";
     public bool EnableGemini { get; set; } = false;
-    public string GeminiModel { get; set; } = "gemini-3.0-flash";
+    public string GeminiModel { get; set; } = "gemini-3-flash-preview";
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public double OverlayFontSize { get; set; } = 18;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
