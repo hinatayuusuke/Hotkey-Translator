@@ -19,6 +19,7 @@ public partial class MainWindow : Window
     private OverlayWindow? _overlayWindow;
     private OverlayPresenter? _overlayPresenter;
     private CacheRepository? _cacheRepository;
+    private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
     private HotkeyManager? _hotkeyManager;
     private CancellationTokenSource? _runCts;
@@ -43,7 +44,8 @@ public partial class MainWindow : Window
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
-        var captureManager = new CaptureManager();
+        var frameGate = new FrameGate();
+        _captureManager = new CaptureManager(frameGate, _logger);
         var ocrEngine = new OcrEngine();
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
@@ -52,7 +54,7 @@ public partial class MainWindow : Window
         var geminiClient = new GeminiClient(_httpClient);
 
         _pipeline = new PipelineOrchestrator(
-            captureManager,
+            _captureManager,
             ocrEngine,
             ocrDiff,
             phashService,
@@ -105,11 +107,18 @@ public partial class MainWindow : Window
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
     {
-        var selector = new RoiSelectorWindow();
+        if (_captureManager == null)
+        {
+            return;
+        }
+
+        var bounds = _captureManager.GetCaptureBounds(_settingsService.Settings);
+        var selector = new RoiSelectorWindow(bounds);
         var result = selector.ShowDialog();
         if (result == true && selector.SelectedRect is { } rect)
         {
             _settingsService.Settings.Roi = SerializableRect.FromRect(rect);
+            _settingsService.Settings.NormalizedRoi = selector.SelectedNormalizedRect;
             UpdateRoiStatus(_settingsService.Settings);
             await _settingsService.SaveAsync().ConfigureAwait(true);
             AppendLog("ROI updated.");
@@ -154,14 +163,14 @@ public partial class MainWindow : Window
 
     private void UpdateRoiStatus(AppSettings settings)
     {
-        if (settings.Roi is null || settings.Roi.Value.IsEmpty)
+        if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
             RoiStatusText.Text = "ROI: not set";
             return;
         }
 
-        var roi = settings.Roi.Value;
-        RoiStatusText.Text = $"ROI: {roi.X:0},{roi.Y:0} {roi.Width:0}x{roi.Height:0}";
+        var roi = settings.NormalizedRoi.Value;
+        RoiStatusText.Text = $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
     }
 
     private AppCaptureMode GetCaptureMode()

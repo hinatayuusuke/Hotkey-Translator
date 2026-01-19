@@ -12,6 +12,15 @@ public sealed class AppSettings
 {
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }
+    public NormalizedRect? NormalizedRoi { get; set; }
+    public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Wgc;
+    public bool EnableWgcCapture { get; set; } = true;
+    public bool EnableDxgiCapture { get; set; } = true;
+    public int BlackFrameThreshold { get; set; } = 3;
+    public double BlackLumaThreshold { get; set; } = 16.0;
+    public double BlackVarianceThreshold { get; set; } = 8.0;
+    public int BlackSampleStride { get; set; } = 8;
+    public int ProviderCooldownSeconds { get; set; } = 3;
     public int PhashThreshold { get; set; } = 10;
     public double OcrIouThreshold { get; set; } = 0.85;
     public string SourceLanguage { get; set; } = "ja";
