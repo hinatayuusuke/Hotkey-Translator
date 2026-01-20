@@ -24,9 +24,6 @@
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
 
-    <!-- WinRT API メタデータ（Windows.Graphics.Capture 等の参照を安定化） -->
-    <PackageReference Include="Microsoft.Windows.SDK.NET" Version="10.0.18362.6-preview" />
-
     <!-- DirectX（D3D11 + DXGI Desktop Duplication） -->
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.2" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.2" />
