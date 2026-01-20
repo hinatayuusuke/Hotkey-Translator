@@ -8,10 +8,6 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
 
-    <!-- Capture/D3D系は x64 固定推奨 -->
-    <Platforms>x64</Platforms>
-    <PlatformTarget>x64</PlatformTarget>
-
     <!-- 低レベルD3D/Map等でunsafeを使う場合に備えて（不要なら false に） -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 

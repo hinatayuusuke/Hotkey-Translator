@@ -4,7 +4,7 @@ using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Hotkey_Translator.Models;
-using SharpGen.Runtime;
+using Vortice.Direct3D;
 using Vortice.Direct3D11;
 using Vortice.DXGI;
 
@@ -159,53 +159,21 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
     private static ID3D11DeviceContext CreateDeviceAndContext(out ID3D11Device device)
     {
-        IntPtr devicePtr = IntPtr.Zero;
-        IntPtr contextPtr = IntPtr.Zero;
-        device = null!;
+        var result = D3D11.D3D11CreateDevice(
+            adapter: null,
+            driverType: DriverType.Hardware,
+            flags: DeviceCreationFlags.BgraSupport,
+            featureLevels: new[] { FeatureLevel.Level_11_1, FeatureLevel.Level_11_0 },
+            out device,
+            out _,
+            out var context);
 
-        try
+        if (result.Failure || device is null || context is null)
         {
-            unsafe
-            {
-                var levels = stackalloc D3DFeatureLevel[2]
-                {
-                    D3DFeatureLevel.Level11_1,
-                    D3DFeatureLevel.Level11_0
-                };
-
-                var hr = D3D11CreateDevice(
-                    IntPtr.Zero,
-                    D3DDriverType.Hardware,
-                    IntPtr.Zero,
-                    D3D11CreateDeviceBgraSupport,
-                    levels,
-                    2,
-                    D3D11SdkVersion,
-                    out devicePtr,
-                    out _,
-                    out contextPtr);
-
-                if (hr != 0 || devicePtr == IntPtr.Zero || contextPtr == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException("Failed to create D3D11 device for DXGI duplication.");
-                }
-            }
-
-            device = ComObject.As<ID3D11Device>(devicePtr);
-            return ComObject.As<ID3D11DeviceContext>(contextPtr);
+            throw new InvalidOperationException("Failed to create D3D11 device for DXGI duplication.");
         }
-        finally
-        {
-            if (contextPtr != IntPtr.Zero)
-            {
-                Marshal.Release(contextPtr);
-            }
 
-            if (devicePtr != IntPtr.Zero)
-            {
-                Marshal.Release(devicePtr);
-            }
-        }
+        return context;
     }
 
     private static IDXGIOutputDuplication CreateDuplication(ID3D11Device device, IntPtr monitorHandle)
@@ -350,19 +318,6 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         return rect.Width > 0 && rect.Height > 0;
     }
 
-    [DllImport("d3d11.dll")]
-    private static extern unsafe int D3D11CreateDevice(
-        IntPtr adapter,
-        D3DDriverType driverType,
-        IntPtr software,
-        uint flags,
-        D3DFeatureLevel* featureLevels,
-        uint featureLevelsCount,
-        uint sdkVersion,
-        out IntPtr device,
-        out D3DFeatureLevel featureLevel,
-        out IntPtr immediateContext);
-
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, DwmWindowAttribute dwAttribute, out NativeRect pvAttribute, int cbAttribute);
 
@@ -383,19 +338,6 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
     private const int MonitorDefaultToPrimary = 1;
     private const int MonitorDefaultToNearest = 2;
-    private const uint D3D11CreateDeviceBgraSupport = 0x20;
-    private const uint D3D11SdkVersion = 7;
-
-    private enum D3DDriverType : uint
-    {
-        Hardware = 1
-    }
-
-    private enum D3DFeatureLevel : uint
-    {
-        Level11_1 = 0xB100,
-        Level11_0 = 0xB000
-    }
 
     private enum DwmWindowAttribute
     {
