@@ -104,7 +104,7 @@ public sealed class PipelineOrchestrator
                 _lastHash = null;
             }
 
-            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, cancellationToken).ConfigureAwait(false);
+            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings.SourceLanguage, cancellationToken).ConfigureAwait(false);
             var mappedLines = ocrResult.Lines
                 .Select(line => line with
                 {
