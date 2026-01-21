@@ -22,8 +22,10 @@ public partial class MainWindow : Window
     private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
     private HotkeyManager? _hotkeyManager;
+    private HotkeyManager? _overlayToggleHotkeyManager;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
+    private bool _overlayEnabled = true;
 
     public MainWindow()
     {
@@ -69,7 +71,10 @@ public partial class MainWindow : Window
         _hotkeyManager = new HotkeyManager(this, Key.F8, ModifierKeys.None);
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
         _hotkeyManager.Register();
-        AppendLog("Ready. Press F8 to capture.");
+        _overlayToggleHotkeyManager = new HotkeyManager(this, Key.F9, ModifierKeys.None, id: 2);
+        _overlayToggleHotkeyManager.HotkeyPressed += OnToggleOverlayHotkeyPressed;
+        _overlayToggleHotkeyManager.Register();
+        AppendLog("Ready. Press F8 to capture. Press F9 to toggle overlay.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -77,6 +82,7 @@ public partial class MainWindow : Window
         _runCts?.Cancel();
         _runCts?.Dispose();
         _hotkeyManager?.Dispose();
+        _overlayToggleHotkeyManager?.Dispose();
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         _overlayWindow?.Close();
@@ -85,6 +91,30 @@ public partial class MainWindow : Window
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
         await RunOnceAsync().ConfigureAwait(true);
+    }
+
+    private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_overlayPresenter == null)
+        {
+            return;
+        }
+
+        _overlayEnabled = !_overlayEnabled;
+        _overlayPresenter.SetEnabled(_overlayEnabled);
+        AppendLog(_overlayEnabled ? "Overlay shown." : "Overlay hidden.");
+    }
+
+    private void EnableOverlay()
+    {
+        if (_overlayPresenter == null || _overlayEnabled)
+        {
+            return;
+        }
+
+        _overlayEnabled = true;
+        _overlayPresenter.SetEnabled(true);
+        AppendLog("Overlay shown.");
     }
 
     private async void OnRunOnce(object sender, RoutedEventArgs e)
@@ -99,6 +129,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        EnableOverlay();
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
