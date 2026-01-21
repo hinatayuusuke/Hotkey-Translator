@@ -21,9 +21,11 @@ public sealed class OcrEngine
 {
     private readonly ConcurrentDictionary<string, Windows.Media.Ocr.OcrEngine> _engines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Windows.Media.Ocr.OcrEngine _fallbackEngine;
+    private readonly AppLogger? _logger;
 
-    public OcrEngine()
+    public OcrEngine(AppLogger? logger = null)
     {
+        _logger = logger;
         _fallbackEngine = Windows.Media.Ocr.OcrEngine.TryCreateFromUserProfileLanguages()
             ?? Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(new Language("en"))
             ?? throw new InvalidOperationException("OCR engine is unavailable.");
@@ -50,12 +52,14 @@ public sealed class OcrEngine
     {
         if (string.IsNullOrWhiteSpace(languageTag))
         {
+            _logger?.Info($"OCR language not specified. Using fallback '{_fallbackEngine.RecognizerLanguage.LanguageTag}'.");
             return _fallbackEngine;
         }
 
         var normalized = languageTag.Trim().Replace('_', '-');
         if (normalized.Length == 0)
         {
+            _logger?.Info($"OCR language tag is empty. Using fallback '{_fallbackEngine.RecognizerLanguage.LanguageTag}'.");
             return _fallbackEngine;
         }
 
@@ -70,15 +74,18 @@ public sealed class OcrEngine
             var engine = Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(language);
             if (engine is null)
             {
+                _logger?.Info($"OCR language '{normalized}' unavailable. Using fallback '{_fallbackEngine.RecognizerLanguage.LanguageTag}'.");
                 // NOTE: Fall back when the requested OCR language is not installed or unsupported.
                 return _fallbackEngine;
             }
 
             _engines.TryAdd(normalized, engine);
+            _logger?.Info($"OCR language resolved: requested '{normalized}', using '{engine.RecognizerLanguage.LanguageTag}'.");
             return engine;
         }
         catch
         {
+            _logger?.Info($"OCR language '{normalized}' invalid. Using fallback '{_fallbackEngine.RecognizerLanguage.LanguageTag}'.");
             return _fallbackEngine;
         }
     }

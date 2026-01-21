@@ -46,7 +46,7 @@ public partial class MainWindow : Window
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
         _captureManager = new CaptureManager(frameGate, _logger);
-        var ocrEngine = new OcrEngine();
+        var ocrEngine = new OcrEngine(_logger);
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
         var normalization = new NormalizationService();
