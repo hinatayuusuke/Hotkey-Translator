@@ -23,8 +23,13 @@ public sealed class AppSettings
     public int ProviderCooldownSeconds { get; set; } = 3;
     public int PhashThreshold { get; set; } = 10;
     public double OcrIouThreshold { get; set; } = 0.85;
-    public string SourceLanguage { get; set; } = "ja";
-    public string TargetLanguage { get; set; } = "en";
+    public bool EnableLineMerge { get; set; } = true;
+    public double MergeOverlapRatioThreshold { get; set; } = 0.1;
+    public double MergeVerticalWeight { get; set; } = 0.5;
+    public double MergeThresholdRatio { get; set; } = 1.0;
+    public int MergeNeighborCount { get; set; } = 12;
+    public string SourceLanguage { get; set; } = "en";
+    public string TargetLanguage { get; set; } = "ja";
     public string StyleId { get; set; } = "default";
     public string GlossaryVersion { get; set; } = "v1";
     public bool EnableGemini { get; set; } = false;

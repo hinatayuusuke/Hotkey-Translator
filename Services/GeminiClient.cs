@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -18,10 +19,12 @@ public sealed class GeminiClient
     };
 
     private readonly HttpClient _httpClient;
+    private readonly AppLogger? _logger;
 
-    public GeminiClient(HttpClient httpClient)
+    public GeminiClient(HttpClient httpClient, AppLogger? logger = null)
     {
         _httpClient = httpClient;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyDictionary<string, string>> TranslateAsync(
@@ -29,8 +32,21 @@ public sealed class GeminiClient
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        if (!settings.EnableGemini || string.IsNullOrWhiteSpace(settings.ApiKey) || texts.Count == 0)
+        if (!settings.EnableGemini)
         {
+            _logger?.Info("Gemini skipped: disabled.");
+            return new Dictionary<string, string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        {
+            _logger?.Info("Gemini skipped: API key missing.");
+            return new Dictionary<string, string>();
+        }
+
+        if (texts.Count == 0)
+        {
+            _logger?.Info("Gemini skipped: no texts to translate.");
             return new Dictionary<string, string>();
         }
 
@@ -47,7 +63,7 @@ public sealed class GeminiClient
                 }
             },
             // SECURITY: Safety settings are explicitly set to avoid model-side blocking that would break OCR text mapping.
-            safety_settings = new[]
+            safetySettings = new[]
             {
                 new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
                 new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
@@ -57,8 +73,10 @@ public sealed class GeminiClient
             generationConfig = new
             {
                 temperature = 0.2,
-                response_mime_type = "application/json",
-                response_schema = new
+                // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
+                maxOutputTokens = 2048,
+                responseMimeType = "application/json",
+                responseSchema = new
                 {
                     type = "object",
                     properties = new
@@ -78,26 +96,50 @@ public sealed class GeminiClient
                             }
                         }
                     }
+                },
+                thinkingConfig = new
+                {
+                    includeThoughts = false,
+                    thinkingBudget = 0
                 }
             }
         };
 
         var payload = JsonSerializer.Serialize(requestBody, JsonOptions);
+        _logger?.Info($"Gemini request prepared: {texts.Count} items, {payload.Length} chars.");
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var requestStopwatch = Stopwatch.StartNew();
         using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
+        requestStopwatch.Stop();
+        _logger?.Info($"Gemini HTTP {(int)response.StatusCode} {response.ReasonPhrase} in {requestStopwatch.ElapsedMilliseconds} ms.");
         if (!response.IsSuccessStatusCode)
         {
             return new Dictionary<string, string>();
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        _logger?.Info($"Gemini response body length: {body.Length} chars.");
         var jsonText = ExtractJsonText(body);
         if (string.IsNullOrWhiteSpace(jsonText))
         {
+            _logger?.Info("Gemini response missing JSON text.");
             return new Dictionary<string, string>();
         }
 
-        return ParseTranslations(jsonText);
+        _logger?.Info($"Gemini response JSON text length: {jsonText.Length} chars.");
+        var translations = ParseTranslations(jsonText);
+        _logger?.Info($"Gemini translations parsed: {translations.Count}.");
+        if (translations.Count > 0)
+        {
+            for (var i = 0; i < texts.Count; i++)
+            {
+                if (translations.TryGetValue(texts[i], out var translated))
+                {
+                    _logger?.Info($"Gemini translation length[{i}]: {translated.Length} chars.");
+                }
+            }
+        }
+        return translations;
     }
 
     private static string BuildEndpoint(AppSettings settings)
@@ -119,9 +161,23 @@ public sealed class GeminiClient
         {
             using var doc = JsonDocument.Parse(rawResponse);
             var candidate = doc.RootElement.GetProperty("candidates")[0];
-            var content = candidate.GetProperty("content");
-            var part = content.GetProperty("parts")[0];
-            return part.GetProperty("text").GetString();
+            var parts = candidate.GetProperty("content").GetProperty("parts");
+            foreach (var part in parts.EnumerateArray())
+            {
+                if (!part.TryGetProperty("text", out var textElement))
+                {
+                    continue;
+                }
+
+                // WHY: Gemini may emit "thought" parts before the final JSON response.
+                var isThought = part.TryGetProperty("thought", out var thoughtElement) && thoughtElement.GetBoolean();
+                if (!isThought)
+                {
+                    return textElement.GetString();
+                }
+            }
+
+            return parts[0].GetProperty("text").GetString();
         }
         catch
         {

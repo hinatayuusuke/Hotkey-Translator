@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly NormalizationService _normalizationService;
+    private readonly OcrLineGrouper _lineGrouper;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
     private readonly GeminiClient _geminiClient;
@@ -32,6 +34,7 @@ public sealed class PipelineOrchestrator
         OcrDiffService ocrDiffService,
         PhashService phashService,
         NormalizationService normalizationService,
+        OcrLineGrouper lineGrouper,
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         GeminiClient geminiClient,
@@ -44,6 +47,7 @@ public sealed class PipelineOrchestrator
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _normalizationService = normalizationService;
+        _lineGrouper = lineGrouper;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
         _geminiClient = geminiClient;
@@ -104,7 +108,10 @@ public sealed class PipelineOrchestrator
                 _lastHash = null;
             }
 
+            var ocrStopwatch = Stopwatch.StartNew();
             var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings.SourceLanguage, cancellationToken).ConfigureAwait(false);
+            ocrStopwatch.Stop();
+            _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
             var mappedLines = ocrResult.Lines
                 .Select(line => line with
                 {
@@ -116,17 +123,22 @@ public sealed class PipelineOrchestrator
                 })
                 .ToList();
 
-            if (mappedLines.Count == 0)
+            var groupStopwatch = Stopwatch.StartNew();
+            var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+            groupStopwatch.Stop();
+            _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
+            if (groupedLines.Count == 0)
             {
                 _logger.Info("OCR returned no lines.");
                 _overlayPresenter.ShowLast();
                 return;
             }
 
-            var changedLines = _ocrDiffService.FilterChangedLines(mappedLines);
-            var translations = await ResolveTranslationsAsync(mappedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
+            var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
+            _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
+            var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
 
-            var overlayItems = mappedLines
+            var overlayItems = groupedLines
                 .Select(line => new OverlayItem(GetOverlayText(line.Text, translations), line.Rect))
                 .ToList();
 
@@ -227,9 +239,11 @@ public sealed class PipelineOrchestrator
 
         if (pending.Count == 0)
         {
+            _logger.Info($"Gemini skipped: no pending translations (changed {changedLines.Count}, total {lines.Count}).");
             return translations;
         }
 
+        _logger.Info($"Gemini pending: {pending.Count} items.");
         var pendingTexts = pending.Select(item => item.SourceText).ToList();
         var results = await _geminiClient.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
         foreach (var item in pending)
