@@ -63,7 +63,7 @@ public sealed class GeminiClient
                 }
             },
             // SECURITY: Safety settings are explicitly set to avoid model-side blocking that would break OCR text mapping.
-            safety_settings = new[]
+            safetySettings = new[]
             {
                 new { category = "HARM_CATEGORY_HARASSMENT", threshold = "BLOCK_NONE" },
                 new { category = "HARM_CATEGORY_HATE_SPEECH", threshold = "BLOCK_NONE" },
@@ -74,7 +74,7 @@ public sealed class GeminiClient
             {
                 temperature = 0.2,
                 // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
-                maxOutputTokens = 5000,
+                maxOutputTokens = 2048,
                 responseMimeType = "application/json",
                 responseSchema = new
                 {
@@ -96,6 +96,11 @@ public sealed class GeminiClient
                             }
                         }
                     }
+                },
+                thinkingConfig = new
+                {
+                    includeThoughts = false,
+                    thinkingBudget = 0
                 }
             }
         };
@@ -156,9 +161,23 @@ public sealed class GeminiClient
         {
             using var doc = JsonDocument.Parse(rawResponse);
             var candidate = doc.RootElement.GetProperty("candidates")[0];
-            var content = candidate.GetProperty("content");
-            var part = content.GetProperty("parts")[0];
-            return part.GetProperty("text").GetString();
+            var parts = candidate.GetProperty("content").GetProperty("parts");
+            foreach (var part in parts.EnumerateArray())
+            {
+                if (!part.TryGetProperty("text", out var textElement))
+                {
+                    continue;
+                }
+
+                // WHY: Gemini may emit "thought" parts before the final JSON response.
+                var isThought = part.TryGetProperty("thought", out var thoughtElement) && thoughtElement.GetBoolean();
+                if (!isThought)
+                {
+                    return textElement.GetString();
+                }
+            }
+
+            return parts[0].GetProperty("text").GetString();
         }
         catch
         {
