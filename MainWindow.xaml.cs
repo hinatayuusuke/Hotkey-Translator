@@ -54,7 +54,7 @@ public partial class MainWindow : Window
         var normalization = new NormalizationService();
         var lineGrouper = new OcrLineGrouper();
         var keyBuilder = new CacheKeyBuilder();
-        var geminiClient = new GeminiClient(_httpClient);
+        var geminiClient = new GeminiClient(_httpClient, _logger);
 
         _pipeline = new PipelineOrchestrator(
             _captureManager,

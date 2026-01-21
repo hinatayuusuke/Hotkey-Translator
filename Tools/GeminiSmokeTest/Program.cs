@@ -31,9 +31,7 @@ var settings = new AppSettings
 
 var texts = new[]
 {
-    "Elf Skeleton. You're meant to use this as a clue to figure out the three passwords. LUX used for the Spectres, SHESTNI lets you skip combat with patrols before you encounter Ferran, and SAMOSUD is used on patrols after you mean him. You do not need to check the skeleton to learn the passwords, you just have to type them when prompted.",
-    "Beginning of the patrol area. Skeletons and Zombies are encountered in this open courtyard. Use one of the two passwords above to avoid combat",
-    "Insects attack you here. Looking at the files, it looks like they have an advantage for getting surprise on you. Because they have poison that can kill in one shot if you're unlucky, it's not recommended to fight them. There are no items of value in this area. Encounter: HUGE SCORPION x 2"
+    "This will most likely be the biggest fight you have faced in the game so far, it's one of the biggest fights in the game. It's not as bad as the Troll & Ogre fight, but without area effect spells, this combat can take a while. It's generally recommended to enter this room from the north, through the armory where you get the hammer. Otherwise you have a bit of a nasty gap below you that can have foes sneak into. Sleep spells are very useful here, as are hold spells and stinking clouds. If you can keep the foes next to you helpless, you can pick off the archers to help limit damage. Note that the archers have a very limited number of arrows, and should run out in about 4 turns. Encounter: Orc x 31, Hobgoblin x 15, Orc Leader x 4. Treasure: All non-magical items."
 };
 
 try

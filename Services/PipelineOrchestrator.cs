@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -107,7 +108,10 @@ public sealed class PipelineOrchestrator
                 _lastHash = null;
             }
 
+            var ocrStopwatch = Stopwatch.StartNew();
             var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings.SourceLanguage, cancellationToken).ConfigureAwait(false);
+            ocrStopwatch.Stop();
+            _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
             var mappedLines = ocrResult.Lines
                 .Select(line => line with
                 {
@@ -119,7 +123,10 @@ public sealed class PipelineOrchestrator
                 })
                 .ToList();
 
+            var groupStopwatch = Stopwatch.StartNew();
             var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+            groupStopwatch.Stop();
+            _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
             if (groupedLines.Count == 0)
             {
                 _logger.Info("OCR returned no lines.");
@@ -128,6 +135,7 @@ public sealed class PipelineOrchestrator
             }
 
             var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
+            _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
             var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
 
             var overlayItems = groupedLines
@@ -231,9 +239,11 @@ public sealed class PipelineOrchestrator
 
         if (pending.Count == 0)
         {
+            _logger.Info($"Gemini skipped: no pending translations (changed {changedLines.Count}, total {lines.Count}).");
             return translations;
         }
 
+        _logger.Info($"Gemini pending: {pending.Count} items.");
         var pendingTexts = pending.Select(item => item.SourceText).ToList();
         var results = await _geminiClient.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
         foreach (var item in pending)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -18,10 +19,12 @@ public sealed class GeminiClient
     };
 
     private readonly HttpClient _httpClient;
+    private readonly AppLogger? _logger;
 
-    public GeminiClient(HttpClient httpClient)
+    public GeminiClient(HttpClient httpClient, AppLogger? logger = null)
     {
         _httpClient = httpClient;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyDictionary<string, string>> TranslateAsync(
@@ -29,8 +32,21 @@ public sealed class GeminiClient
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        if (!settings.EnableGemini || string.IsNullOrWhiteSpace(settings.ApiKey) || texts.Count == 0)
+        if (!settings.EnableGemini)
         {
+            _logger?.Info("Gemini skipped: disabled.");
+            return new Dictionary<string, string>();
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        {
+            _logger?.Info("Gemini skipped: API key missing.");
+            return new Dictionary<string, string>();
+        }
+
+        if (texts.Count == 0)
+        {
+            _logger?.Info("Gemini skipped: no texts to translate.");
             return new Dictionary<string, string>();
         }
 
@@ -57,8 +73,10 @@ public sealed class GeminiClient
             generationConfig = new
             {
                 temperature = 0.2,
-                response_mime_type = "application/json",
-                response_schema = new
+                // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
+                maxOutputTokens = 5000,
+                responseMimeType = "application/json",
+                responseSchema = new
                 {
                     type = "object",
                     properties = new
@@ -83,21 +101,40 @@ public sealed class GeminiClient
         };
 
         var payload = JsonSerializer.Serialize(requestBody, JsonOptions);
+        _logger?.Info($"Gemini request prepared: {texts.Count} items, {payload.Length} chars.");
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
+        var requestStopwatch = Stopwatch.StartNew();
         using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
+        requestStopwatch.Stop();
+        _logger?.Info($"Gemini HTTP {(int)response.StatusCode} {response.ReasonPhrase} in {requestStopwatch.ElapsedMilliseconds} ms.");
         if (!response.IsSuccessStatusCode)
         {
             return new Dictionary<string, string>();
         }
 
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        _logger?.Info($"Gemini response body length: {body.Length} chars.");
         var jsonText = ExtractJsonText(body);
         if (string.IsNullOrWhiteSpace(jsonText))
         {
+            _logger?.Info("Gemini response missing JSON text.");
             return new Dictionary<string, string>();
         }
 
-        return ParseTranslations(jsonText);
+        _logger?.Info($"Gemini response JSON text length: {jsonText.Length} chars.");
+        var translations = ParseTranslations(jsonText);
+        _logger?.Info($"Gemini translations parsed: {translations.Count}.");
+        if (translations.Count > 0)
+        {
+            for (var i = 0; i < texts.Count; i++)
+            {
+                if (translations.TryGetValue(texts[i], out var translated))
+                {
+                    _logger?.Info($"Gemini translation length[{i}]: {translated.Length} chars.");
+                }
+            }
+        }
+        return translations;
     }
 
     private static string BuildEndpoint(AppSettings settings)
