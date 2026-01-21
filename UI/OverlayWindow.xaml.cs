@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -14,6 +15,11 @@ public partial class OverlayWindow : Window
     private Brush _foreground = Brushes.White;
     private Brush _background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
     private double _fontSize = 18;
+    private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
+    private const double LineHeightScale = 0.9;
+    private const double MinFontSize = 8;
+    private const double MaxFontSize = 256;
+    private const int FitIterations = 7;
 
     public OverlayWindow()
     {
@@ -33,11 +39,18 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Children.Clear();
         foreach (var item in items)
         {
+            var availableWidth = item.Rect.Width > 0
+                ? Math.Max(0, item.Rect.Width - OverlayPadding.Left - OverlayPadding.Right)
+                : double.PositiveInfinity;
+            var availableHeight = item.Rect.Height > 0
+                ? Math.Max(0, item.Rect.Height - OverlayPadding.Top - OverlayPadding.Bottom)
+                : double.PositiveInfinity;
+            var fontSize = ResolveFontSize(item, availableWidth, availableHeight);
             var textBlock = new TextBlock
             {
                 Text = item.Text,
                 Foreground = _foreground,
-                FontSize = _fontSize,
+                FontSize = fontSize,
                 TextWrapping = TextWrapping.Wrap
             };
 
@@ -45,10 +58,23 @@ public partial class OverlayWindow : Window
             {
                 Background = _background,
                 CornerRadius = new CornerRadius(2),
-                Padding = new Thickness(4, 2, 4, 2),
+                Padding = OverlayPadding,
                 Child = textBlock,
-                MaxWidth = item.Rect.Width > 0 ? item.Rect.Width : double.PositiveInfinity
+                MaxWidth = item.Rect.Width > 0 ? item.Rect.Width : double.PositiveInfinity,
+                MaxHeight = item.Rect.Height > 0 ? item.Rect.Height : double.PositiveInfinity
             };
+
+            if (item.Rect.Width > 0)
+            {
+                container.Width = item.Rect.Width;
+                textBlock.MaxWidth = availableWidth;
+            }
+
+            if (item.Rect.Height > 0)
+            {
+                container.Height = item.Rect.Height;
+                textBlock.MaxHeight = availableHeight;
+            }
 
             Canvas.SetLeft(container, item.Rect.X);
             Canvas.SetTop(container, item.Rect.Y);
@@ -76,6 +102,84 @@ public partial class OverlayWindow : Window
         Top = SystemParameters.VirtualScreenTop;
         Width = SystemParameters.VirtualScreenWidth;
         Height = SystemParameters.VirtualScreenHeight;
+    }
+
+    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight)
+    {
+        var baseSize = GetBaseFontSize(item);
+        if (string.IsNullOrWhiteSpace(item.Text))
+        {
+            return baseSize;
+        }
+
+        if (availableWidth <= 0 || availableHeight <= 0 || double.IsInfinity(availableWidth) || double.IsInfinity(availableHeight))
+        {
+            return baseSize;
+        }
+
+        if (Fits(item.Text, baseSize, availableWidth, availableHeight))
+        {
+            return baseSize;
+        }
+
+        var low = MinFontSize;
+        var high = baseSize;
+        for (var i = 0; i < FitIterations; i++)
+        {
+            var mid = (low + high) / 2.0;
+            if (Fits(item.Text, mid, availableWidth, availableHeight))
+            {
+                low = mid;
+            }
+            else
+            {
+                high = mid;
+            }
+        }
+
+        return low;
+    }
+
+    private double GetBaseFontSize(OverlayItem item)
+    {
+        var lineHeight = item.LineHeight;
+        if (lineHeight <= 0 && item.LineCount > 0 && item.Rect.Height > 0)
+        {
+            lineHeight = item.Rect.Height / item.LineCount;
+        }
+
+        var baseSize = lineHeight > 0 ? lineHeight * LineHeightScale : _fontSize;
+        if (double.IsNaN(baseSize) || double.IsInfinity(baseSize) || baseSize <= 0)
+        {
+            return _fontSize;
+        }
+
+        return Math.Clamp(baseSize, MinFontSize, MaxFontSize);
+    }
+
+    private bool Fits(string text, double fontSize, double maxWidth, double maxHeight)
+    {
+        if (fontSize <= 0 || maxWidth <= 0 || maxHeight <= 0)
+        {
+            return false;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection,
+            new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+            fontSize,
+            _foreground,
+            dpi.PixelsPerDip)
+        {
+            MaxTextWidth = maxWidth,
+            MaxTextHeight = maxHeight,
+            TextAlignment = TextAlignment.Left
+        };
+
+        return formatted.Width <= maxWidth && formatted.Height <= maxHeight;
     }
 
     private static Brush ParseBrush(string value, Brush fallback)

@@ -72,8 +72,15 @@ public sealed class OcrLineGrouper
                 minConfidence = Math.Min(minConfidence, sortedGroup[i].Confidence);
             }
 
+            var lineCount = sortedGroup.Count;
+            var lineHeight = GetMedianLineHeight(sortedGroup);
+            if (lineHeight <= 0 && lineCount > 0 && unionRect.Height > 0)
+            {
+                lineHeight = unionRect.Height / lineCount;
+            }
+
             var text = string.Join(Environment.NewLine, sortedGroup.Select(line => line.Text));
-            merged.Add(new OcrLine(text, unionRect, minConfidence));
+            merged.Add(new OcrLine(text, unionRect, minConfidence, lineCount, lineHeight));
         }
 
         return merged
@@ -101,6 +108,39 @@ public sealed class OcrLineGrouper
         var cost = (settings.MergeVerticalWeight * verticalGap) + sizePenalty;
         var threshold = Math.Min(a.Height, b.Height) * settings.MergeThresholdRatio;
         return cost <= threshold;
+    }
+
+    private static double GetMedianLineHeight(IReadOnlyList<OcrLine> lines)
+    {
+        if (lines.Count == 0)
+        {
+            return 0;
+        }
+
+        var heights = new List<double>(lines.Count);
+        foreach (var line in lines)
+        {
+            var height = line.LineHeight > 0 ? line.LineHeight : line.Rect.Height;
+            if (height > 0)
+            {
+                heights.Add(height);
+            }
+        }
+
+        if (heights.Count == 0)
+        {
+            return 0;
+        }
+
+        // WHY: Median dampens outliers from tall OCR boxes.
+        heights.Sort();
+        var mid = heights.Count / 2;
+        if (heights.Count % 2 == 1)
+        {
+            return heights[mid];
+        }
+
+        return (heights[mid - 1] + heights[mid]) / 2.0;
     }
 
     private sealed class UnionFind

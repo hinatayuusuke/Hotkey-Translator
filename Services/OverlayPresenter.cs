@@ -79,7 +79,13 @@ public sealed class OverlayPresenter
         foreach (var item in items)
         {
             var rect = DpiHelper.DeviceRectToDip(_window, item.Rect);
-            converted.Add(new OverlayItem(item.Text, rect));
+            var lineHeight = item.LineHeight;
+            if (lineHeight > 0 && item.Rect.Height > 0 && rect.Height > 0)
+            {
+                lineHeight *= rect.Height / item.Rect.Height;
+            }
+
+            converted.Add(new OverlayItem(item.Text, rect, item.LineCount, lineHeight));
         }
 
         return converted;

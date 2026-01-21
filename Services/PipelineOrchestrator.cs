@@ -139,7 +139,7 @@ public sealed class PipelineOrchestrator
             var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
 
             var overlayItems = groupedLines
-                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations), line.Rect))
+                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations), line.Rect, line.LineCount, line.LineHeight))
                 .ToList();
 
             _lastOverlayItems = overlayItems;

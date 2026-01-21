@@ -42,7 +42,7 @@ public sealed class OcrEngine
         foreach (var line in result.Lines)
         {
             var rect = GetLineRect(line);
-            lines.Add(new ModelOcrLine(line.Text, rect, 1.0f));
+            lines.Add(new ModelOcrLine(line.Text, rect, 1.0f, 1, rect.Height));
         }
 
         return new OcrResultModel(lines, softwareBitmap.PixelWidth, softwareBitmap.PixelHeight);
