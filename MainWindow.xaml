@@ -19,6 +19,7 @@
                 <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
             </ComboBox>
             <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
+            <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" />
             <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
 
             <Separator Margin="0,10,0,10" />

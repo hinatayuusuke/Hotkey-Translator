@@ -13,6 +13,7 @@ public sealed class AppSettings
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }
     public NormalizedRect? NormalizedRoi { get; set; }
+    public bool EnableRoi { get; set; } = true;
     public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Wgc;
     public bool EnableWgcCapture { get; set; } = true;
     public bool EnableDxgiCapture { get; set; } = true;

@@ -164,6 +164,7 @@ public partial class MainWindow : Window
         settings.CaptureMode = GetCaptureMode();
         settings.SourceLanguage = SourceLangBox.Text.Trim();
         settings.TargetLanguage = TargetLangBox.Text.Trim();
+        settings.EnableRoi = EnableRoiCheck.IsChecked == true;
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.ApiKey = ApiKeyBox.Password;
 
@@ -178,6 +179,7 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ApplyStyle(settings);
+        UpdateRoiStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
     }
@@ -187,6 +189,7 @@ public partial class MainWindow : Window
         CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
         SourceLangBox.Text = settings.SourceLanguage;
         TargetLangBox.Text = settings.TargetLanguage;
+        EnableRoiCheck.IsChecked = settings.EnableRoi;
         EnableGeminiCheck.IsChecked = settings.EnableGemini;
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
@@ -196,6 +199,12 @@ public partial class MainWindow : Window
 
     private void UpdateRoiStatus(AppSettings settings)
     {
+        if (!settings.EnableRoi)
+        {
+            RoiStatusText.Text = "ROI: disabled";
+            return;
+        }
+
         if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
             RoiStatusText.Text = "ROI: not set";

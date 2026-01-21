@@ -164,6 +164,11 @@ public sealed class PipelineOrchestrator
 
     private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
     {
+        if (!settings.EnableRoi)
+        {
+            return frameBounds;
+        }
+
         if (settings.NormalizedRoi is { } normalized && !normalized.IsEmpty)
         {
             return normalized.ToAbsolute(frameBounds);
