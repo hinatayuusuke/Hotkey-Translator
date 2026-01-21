@@ -61,8 +61,16 @@ public sealed class PipelineOrchestrator
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
 
             _overlayPresenter.Hide();
-            using var frame = _captureManager.Capture(settings.CaptureMode);
+            using var frame = _captureManager.Capture(settings);
 
+            if (frame.IsBlack)
+            {
+                _logger.Info($"Black frame detected from {frame.ProviderKind}. Keeping last overlay.");
+                _overlayPresenter.ShowLast();
+                return;
+            }
+
+            RememberPreferredProvider(settings, frame.ProviderKind);
             var roiScreen = GetRoiBounds(settings, frame.Bounds);
             if (roiScreen.IsEmpty)
             {
@@ -96,7 +104,7 @@ public sealed class PipelineOrchestrator
                 _lastHash = null;
             }
 
-            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, cancellationToken).ConfigureAwait(false);
+            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings.SourceLanguage, cancellationToken).ConfigureAwait(false);
             var mappedLines = ocrResult.Lines
                 .Select(line => line with
                 {
@@ -142,14 +150,39 @@ public sealed class PipelineOrchestrator
         }
     }
 
-    private static Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
+    private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
     {
+        if (settings.NormalizedRoi is { } normalized && !normalized.IsEmpty)
+        {
+            return normalized.ToAbsolute(frameBounds);
+        }
+
         if (settings.Roi is null || settings.Roi.Value.IsEmpty)
         {
             return frameBounds;
         }
 
-        return Rect.Intersect(frameBounds, settings.Roi.Value.ToRect());
+        var absolute = Rect.Intersect(frameBounds, settings.Roi.Value.ToRect());
+        if (!absolute.IsEmpty)
+        {
+            settings.NormalizedRoi = NormalizedRect.FromAbsolute(absolute, frameBounds);
+            // NOTE: Fire-and-forget migration to normalized ROI for DPI-safe persistence.
+            _ = _settingsService.SaveAsync();
+        }
+
+        return absolute;
+    }
+
+    private void RememberPreferredProvider(AppSettings settings, CaptureProviderKind providerKind)
+    {
+        if (settings.PreferredCaptureProvider == providerKind)
+        {
+            return;
+        }
+
+        settings.PreferredCaptureProvider = providerKind;
+        _logger.Info($"Preferred capture provider set to {providerKind}.");
+        _ = _settingsService.SaveAsync();
     }
 
     private async Task<Dictionary<string, string>> ResolveTranslationsAsync(

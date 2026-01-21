@@ -1,7 +1,6 @@
 using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using Hotkey_Translator.Models;
 
@@ -9,107 +8,143 @@ namespace Hotkey_Translator.Services;
 
 public sealed class CaptureManager
 {
-    public CaptureFrame Capture(CaptureMode mode)
+    private readonly IReadOnlyList<ICaptureProvider> _providers;
+    private readonly Dictionary<CaptureProviderKind, ProviderState> _states = new();
+    private readonly FrameGate _frameGate;
+    private readonly AppLogger _logger;
+
+    public CaptureManager(FrameGate frameGate, AppLogger logger)
     {
-        var bounds = mode switch
+        _frameGate = frameGate;
+        _logger = logger;
+        _providers = new ICaptureProvider[]
         {
-            CaptureMode.ActiveWindow => GetActiveWindowBounds() ?? GetVirtualScreenBounds(),
-            _ => GetVirtualScreenBounds()
+            new WgcCaptureProvider(_logger),
+            new DxgiDuplicationProvider(_logger),
+            new GdiCaptureProvider()
         };
-
-        // WHY: GDI capture keeps the initial pipeline working without WinRT interop
-        // until a GraphicsCapture-based path is verified in the target environment.
-        var bitmap = new Bitmap((int)bounds.Width, (int)bounds.Height, PixelFormat.Format32bppPArgb);
-        using (var graphics = Graphics.FromImage(bitmap))
-        {
-            graphics.CopyFromScreen(
-                (int)bounds.X,
-                (int)bounds.Y,
-                0,
-                0,
-                new System.Drawing.Size((int)bounds.Width, (int)bounds.Height),
-                CopyPixelOperation.SourceCopy);
-        }
-
-        return new CaptureFrame(bitmap, bounds);
     }
 
-    private static Rect GetVirtualScreenBounds()
+    public CaptureFrame Capture(AppSettings settings)
     {
-        var left = GetSystemMetrics(SystemMetric.XVirtualScreen);
-        var top = GetSystemMetrics(SystemMetric.YVirtualScreen);
-        var width = GetSystemMetrics(SystemMetric.CxVirtualScreen);
-        var height = GetSystemMetrics(SystemMetric.CyVirtualScreen);
-        return new Rect(left, top, width, height);
+        var now = DateTimeOffset.UtcNow;
+        var order = BuildProviderOrder(settings);
+        Exception? lastError = null;
+
+        foreach (var provider in order)
+        {
+            if (!provider.IsEnabled(settings))
+            {
+                continue;
+            }
+
+            if (IsInCooldown(provider.Kind, now))
+            {
+                continue;
+            }
+
+            if (!provider.TryCapture(settings.CaptureMode, out var frame, out var error))
+            {
+                lastError = error is null ? null : new InvalidOperationException(error);
+                StartCooldown(provider.Kind, settings, now, error);
+                continue;
+            }
+
+            if (_frameGate.IsBlack(frame.Bitmap, settings, out var stats))
+            {
+                frame.IsBlack = true;
+                var state = GetState(provider.Kind);
+                state.BlackCount++;
+                _states[provider.Kind] = state;
+
+                _logger.Info($"Capture black frame via {provider.Kind} (mean {stats.Mean:0.0}, var {stats.Variance:0.0}, count {state.BlackCount}).");
+
+                if (state.BlackCount >= settings.BlackFrameThreshold)
+                {
+                    StartCooldown(provider.Kind, settings, now, "Black frame threshold exceeded.");
+                    frame.Dispose();
+                    continue;
+                }
+            }
+            else
+            {
+                ResetBlackCount(provider.Kind);
+            }
+
+            return frame;
+        }
+
+        throw new InvalidOperationException("All capture providers failed.", lastError);
     }
 
-    private static Rect? GetActiveWindowBounds()
+    public Rect GetCaptureBounds(AppSettings settings)
     {
-        var hwnd = GetForegroundWindow();
-        if (hwnd == IntPtr.Zero)
+        var order = BuildProviderOrder(settings);
+        foreach (var provider in order)
         {
-            return null;
+            if (!provider.IsEnabled(settings))
+            {
+                continue;
+            }
+
+            if (provider.TryGetBounds(settings.CaptureMode, out var bounds))
+            {
+                return bounds;
+            }
         }
 
-        if (TryGetExtendedFrameBounds(hwnd, out var rect))
-        {
-            return rect;
-        }
-
-        if (GetWindowRect(hwnd, out var fallback))
-        {
-            return fallback.ToRect();
-        }
-
-        return null;
+        return Rect.Empty;
     }
 
-    private static bool TryGetExtendedFrameBounds(IntPtr hwnd, out Rect rect)
+    private IReadOnlyList<ICaptureProvider> BuildProviderOrder(AppSettings settings)
     {
-        rect = default;
-        var size = Marshal.SizeOf<NativeRect>();
-        if (DwmGetWindowAttribute(hwnd, DwmWindowAttribute.ExtendedFrameBounds, out var nativeRect, size) != 0)
+        var preferred = _providers.FirstOrDefault(provider => provider.Kind == settings.PreferredCaptureProvider);
+        if (preferred is null)
+        {
+            return _providers.ToList();
+        }
+
+        var ordered = new List<ICaptureProvider> { preferred };
+        ordered.AddRange(_providers.Where(provider => provider.Kind != settings.PreferredCaptureProvider));
+        return ordered;
+    }
+
+    private ProviderState GetState(CaptureProviderKind kind)
+    {
+        return _states.TryGetValue(kind, out var state) ? state : default;
+    }
+
+    private bool IsInCooldown(CaptureProviderKind kind, DateTimeOffset now)
+    {
+        if (!_states.TryGetValue(kind, out var state))
         {
             return false;
         }
 
-        rect = nativeRect.ToRect();
-        return rect.Width > 0 && rect.Height > 0;
+        return state.CooldownUntil.HasValue && state.CooldownUntil.Value > now;
     }
 
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetForegroundWindow();
-
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
-
-    [DllImport("user32.dll")]
-    private static extern int GetSystemMetrics(SystemMetric smIndex);
-
-    [DllImport("dwmapi.dll")]
-    private static extern int DwmGetWindowAttribute(IntPtr hwnd, DwmWindowAttribute dwAttribute, out NativeRect pvAttribute, int cbAttribute);
-
-    private enum SystemMetric
+    private void ResetBlackCount(CaptureProviderKind kind)
     {
-        XVirtualScreen = 76,
-        YVirtualScreen = 77,
-        CxVirtualScreen = 78,
-        CyVirtualScreen = 79
+        if (_states.TryGetValue(kind, out var state))
+        {
+            state.BlackCount = 0;
+            _states[kind] = state;
+        }
     }
 
-    private enum DwmWindowAttribute
+    private void StartCooldown(CaptureProviderKind kind, AppSettings settings, DateTimeOffset now, string? reason)
     {
-        ExtendedFrameBounds = 9
+        var state = GetState(kind);
+        state.BlackCount = 0;
+        state.CooldownUntil = now.AddSeconds(Math.Max(1, settings.ProviderCooldownSeconds));
+        _states[kind] = state;
+        _logger.Info($"Capture provider {kind} cooldown until {state.CooldownUntil:HH:mm:ss}. Reason: {reason ?? "unknown"}.");
     }
 
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    private struct ProviderState
     {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-
-        public Rect ToRect() => new Rect(Left, Top, Right - Left, Bottom - Top);
+        public int BlackCount { get; set; }
+        public DateTimeOffset? CooldownUntil { get; set; }
     }
 }

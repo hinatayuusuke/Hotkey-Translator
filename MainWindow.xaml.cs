@@ -19,10 +19,13 @@ public partial class MainWindow : Window
     private OverlayWindow? _overlayWindow;
     private OverlayPresenter? _overlayPresenter;
     private CacheRepository? _cacheRepository;
+    private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
     private HotkeyManager? _hotkeyManager;
+    private HotkeyManager? _overlayToggleHotkeyManager;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
+    private bool _overlayEnabled = true;
 
     public MainWindow()
     {
@@ -43,8 +46,9 @@ public partial class MainWindow : Window
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
-        var captureManager = new CaptureManager();
-        var ocrEngine = new OcrEngine();
+        var frameGate = new FrameGate();
+        _captureManager = new CaptureManager(frameGate, _logger);
+        var ocrEngine = new OcrEngine(_logger);
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
         var normalization = new NormalizationService();
@@ -52,7 +56,7 @@ public partial class MainWindow : Window
         var geminiClient = new GeminiClient(_httpClient);
 
         _pipeline = new PipelineOrchestrator(
-            captureManager,
+            _captureManager,
             ocrEngine,
             ocrDiff,
             phashService,
@@ -67,7 +71,10 @@ public partial class MainWindow : Window
         _hotkeyManager = new HotkeyManager(this, Key.F8, ModifierKeys.None);
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
         _hotkeyManager.Register();
-        AppendLog("Ready. Press F8 to capture.");
+        _overlayToggleHotkeyManager = new HotkeyManager(this, Key.F9, ModifierKeys.None, id: 2);
+        _overlayToggleHotkeyManager.HotkeyPressed += OnToggleOverlayHotkeyPressed;
+        _overlayToggleHotkeyManager.Register();
+        AppendLog("Ready. Press F8 to capture. Press F9 to toggle overlay.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -75,6 +82,7 @@ public partial class MainWindow : Window
         _runCts?.Cancel();
         _runCts?.Dispose();
         _hotkeyManager?.Dispose();
+        _overlayToggleHotkeyManager?.Dispose();
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         _overlayWindow?.Close();
@@ -83,6 +91,30 @@ public partial class MainWindow : Window
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
         await RunOnceAsync().ConfigureAwait(true);
+    }
+
+    private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
+    {
+        if (_overlayPresenter == null)
+        {
+            return;
+        }
+
+        _overlayEnabled = !_overlayEnabled;
+        _overlayPresenter.SetEnabled(_overlayEnabled);
+        AppendLog(_overlayEnabled ? "Overlay shown." : "Overlay hidden.");
+    }
+
+    private void EnableOverlay()
+    {
+        if (_overlayPresenter == null || _overlayEnabled)
+        {
+            return;
+        }
+
+        _overlayEnabled = true;
+        _overlayPresenter.SetEnabled(true);
+        AppendLog("Overlay shown.");
     }
 
     private async void OnRunOnce(object sender, RoutedEventArgs e)
@@ -97,6 +129,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        EnableOverlay();
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
@@ -105,11 +138,18 @@ public partial class MainWindow : Window
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
     {
-        var selector = new RoiSelectorWindow();
+        if (_captureManager == null)
+        {
+            return;
+        }
+
+        var bounds = _captureManager.GetCaptureBounds(_settingsService.Settings);
+        var selector = new RoiSelectorWindow(bounds);
         var result = selector.ShowDialog();
         if (result == true && selector.SelectedRect is { } rect)
         {
             _settingsService.Settings.Roi = SerializableRect.FromRect(rect);
+            _settingsService.Settings.NormalizedRoi = selector.SelectedNormalizedRect;
             UpdateRoiStatus(_settingsService.Settings);
             await _settingsService.SaveAsync().ConfigureAwait(true);
             AppendLog("ROI updated.");
@@ -154,14 +194,14 @@ public partial class MainWindow : Window
 
     private void UpdateRoiStatus(AppSettings settings)
     {
-        if (settings.Roi is null || settings.Roi.Value.IsEmpty)
+        if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
             RoiStatusText.Text = "ROI: not set";
             return;
         }
 
-        var roi = settings.Roi.Value;
-        RoiStatusText.Text = $"ROI: {roi.X:0},{roi.Y:0} {roi.Width:0}x{roi.Height:0}";
+        var roi = settings.NormalizedRoi.Value;
+        RoiStatusText.Text = $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
     }
 
     private AppCaptureMode GetCaptureMode()

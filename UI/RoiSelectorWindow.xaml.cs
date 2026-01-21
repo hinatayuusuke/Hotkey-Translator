@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Shapes;
+using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.UI;
@@ -10,14 +11,17 @@ namespace Hotkey_Translator.UI;
 public partial class RoiSelectorWindow : Window
 {
     private Point? _start;
+    private readonly Rect _frameBounds;
 
-    public RoiSelectorWindow()
+    public RoiSelectorWindow(Rect frameBounds)
     {
+        _frameBounds = frameBounds;
         InitializeComponent();
         Loaded += OnLoaded;
     }
 
     public Rect? SelectedRect { get; private set; }
+    public NormalizedRect? SelectedNormalizedRect { get; private set; }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
@@ -58,6 +62,10 @@ public partial class RoiSelectorWindow : Window
         var deviceRect = DpiHelper.DipRectToDevice(this, rect);
 
         SelectedRect = deviceRect.Width <= 0 || deviceRect.Height <= 0 ? null : deviceRect;
+        if (SelectedRect.HasValue && _frameBounds.Width > 0 && _frameBounds.Height > 0)
+        {
+            SelectedNormalizedRect = NormalizedRect.FromAbsolute(SelectedRect.Value, _frameBounds);
+        }
         DialogResult = SelectedRect.HasValue;
     }
 

@@ -10,6 +10,7 @@ public sealed class OverlayPresenter
 {
     private readonly OverlayWindow _window;
     private IReadOnlyList<OverlayItem> _lastItems = new List<OverlayItem>();
+    private bool _isEnabled = true;
 
     public OverlayPresenter(OverlayWindow window)
     {
@@ -18,6 +19,11 @@ public sealed class OverlayPresenter
 
     public void Show()
     {
+        if (!_isEnabled)
+        {
+            return;
+        }
+
         _window.Dispatcher.Invoke(() =>
         {
             if (!_window.IsVisible)
@@ -35,6 +41,12 @@ public sealed class OverlayPresenter
     public void Update(IReadOnlyList<OverlayItem> items)
     {
         _lastItems = items.ToList();
+        // NOTE: Keep latest items while disabled so toggle can show the newest overlay.
+        if (!_isEnabled)
+        {
+            return;
+        }
+
         _window.Dispatcher.Invoke(() =>
         {
             var converted = ConvertToDip(_lastItems);
@@ -44,6 +56,11 @@ public sealed class OverlayPresenter
 
     public void ShowLast()
     {
+        if (!_isEnabled)
+        {
+            return;
+        }
+
         if (_lastItems.Count == 0)
         {
             return;
@@ -66,5 +83,17 @@ public sealed class OverlayPresenter
         }
 
         return converted;
+    }
+
+    public void SetEnabled(bool enabled)
+    {
+        _isEnabled = enabled;
+        if (_isEnabled)
+        {
+            ShowLast();
+            return;
+        }
+
+        Hide();
     }
 }
