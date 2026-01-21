@@ -15,6 +15,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly NormalizationService _normalizationService;
+    private readonly OcrLineGrouper _lineGrouper;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
     private readonly GeminiClient _geminiClient;
@@ -32,6 +33,7 @@ public sealed class PipelineOrchestrator
         OcrDiffService ocrDiffService,
         PhashService phashService,
         NormalizationService normalizationService,
+        OcrLineGrouper lineGrouper,
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         GeminiClient geminiClient,
@@ -44,6 +46,7 @@ public sealed class PipelineOrchestrator
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _normalizationService = normalizationService;
+        _lineGrouper = lineGrouper;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
         _geminiClient = geminiClient;
@@ -116,17 +119,18 @@ public sealed class PipelineOrchestrator
                 })
                 .ToList();
 
-            if (mappedLines.Count == 0)
+            var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+            if (groupedLines.Count == 0)
             {
                 _logger.Info("OCR returned no lines.");
                 _overlayPresenter.ShowLast();
                 return;
             }
 
-            var changedLines = _ocrDiffService.FilterChangedLines(mappedLines);
-            var translations = await ResolveTranslationsAsync(mappedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
+            var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
+            var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
 
-            var overlayItems = mappedLines
+            var overlayItems = groupedLines
                 .Select(line => new OverlayItem(GetOverlayText(line.Text, translations), line.Rect))
                 .ToList();
 

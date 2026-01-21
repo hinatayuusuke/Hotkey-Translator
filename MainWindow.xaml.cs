@@ -52,6 +52,7 @@ public partial class MainWindow : Window
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
         var normalization = new NormalizationService();
+        var lineGrouper = new OcrLineGrouper();
         var keyBuilder = new CacheKeyBuilder();
         var geminiClient = new GeminiClient(_httpClient);
 
@@ -61,6 +62,7 @@ public partial class MainWindow : Window
             ocrDiff,
             phashService,
             normalization,
+            lineGrouper,
             _cacheRepository,
             keyBuilder,
             geminiClient,
