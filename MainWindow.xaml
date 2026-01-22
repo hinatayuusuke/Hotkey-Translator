@@ -71,6 +71,14 @@
 
             <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
             <PasswordBox x:Name="ApiKeyBox" Margin="0,6,0,0" />
+            <TextBlock Text="Translation priority" Margin="0,10,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <ListBox x:Name="TranslationPriorityList" Width="180" Height="80" />
+                <StackPanel Margin="6,0,0,0">
+                    <Button Content="Up" Width="60" Click="OnTranslationPriorityUp" />
+                    <Button Content="Down" Width="60" Margin="0,6,0,0" Click="OnTranslationPriorityDown" />
+                </StackPanel>
+            </StackPanel>
 
             <Separator Margin="0,10,0,10" />
 

@@ -42,6 +42,7 @@ public sealed class AppSettings
     public bool EnableGemini { get; set; } = false;
     public string GeminiModel { get; set; } = "gemini-3-flash-preview";
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
+    public List<string> TranslationPriority { get; set; } = new(TranslationProviderNames.Defaults);
     public double OverlayFontSize { get; set; } = 18;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
     public string OverlayBackground { get; set; } = "#AA000000";

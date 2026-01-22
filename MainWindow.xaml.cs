@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +29,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
+    private readonly ObservableCollection<string> _translationPriority = new();
 
     public MainWindow()
     {
@@ -39,6 +43,7 @@ public partial class MainWindow : Window
         _logger = new AppLogger(AppendLog);
         await _settingsService.LoadAsync().ConfigureAwait(true);
         ApplySettingsToUi(_settingsService.Settings);
+        TranslationPriorityList.ItemsSource = _translationPriority;
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
@@ -55,6 +60,11 @@ public partial class MainWindow : Window
         var lineGrouper = new OcrLineGrouper();
         var keyBuilder = new CacheKeyBuilder();
         var geminiClient = new GeminiClient(_httpClient, _logger);
+        var translationProviders = new List<ITranslationProvider>
+        {
+            new GeminiTranslationProvider(geminiClient)
+        };
+        var translationService = new TranslationFallbackService(translationProviders, _logger);
 
         _pipeline = new PipelineOrchestrator(
             _captureManager,
@@ -65,7 +75,7 @@ public partial class MainWindow : Window
             lineGrouper,
             _cacheRepository,
             keyBuilder,
-            geminiClient,
+            translationService,
             _overlayPresenter,
             _settingsService,
             _logger);
@@ -172,6 +182,7 @@ public partial class MainWindow : Window
         settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
         settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
+        settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
@@ -203,6 +214,7 @@ public partial class MainWindow : Window
         PaddleDeviceBox.Text = settings.PaddleDevice;
         PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
         EnableGeminiCheck.IsChecked = settings.EnableGemini;
+        ApplyTranslationPriority(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
@@ -257,6 +269,88 @@ public partial class MainWindow : Window
                 return;
             }
         }
+    }
+
+    private void ApplyTranslationPriority(AppSettings settings)
+    {
+        var ordered = NormalizeTranslationPriority(settings);
+        _translationPriority.Clear();
+        foreach (var name in ordered)
+        {
+            _translationPriority.Add(name);
+        }
+
+        if (_translationPriority.Count > 0)
+        {
+            TranslationPriorityList.SelectedIndex = 0;
+        }
+    }
+
+    private List<string> GetTranslationPriority()
+    {
+        if (_translationPriority.Count == 0)
+        {
+            return new List<string>(TranslationProviderNames.Defaults);
+        }
+
+        return _translationPriority.ToList();
+    }
+
+    private static List<string> NormalizeTranslationPriority(AppSettings settings)
+    {
+        var ordered = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var current = settings.TranslationPriority ?? new List<string>();
+        foreach (var name in current)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (seen.Add(name))
+            {
+                ordered.Add(name);
+            }
+        }
+
+        foreach (var name in TranslationProviderNames.Defaults)
+        {
+            if (seen.Add(name))
+            {
+                ordered.Add(name);
+            }
+        }
+
+        return ordered;
+    }
+
+    private void OnTranslationPriorityUp(object sender, RoutedEventArgs e)
+    {
+        var index = TranslationPriorityList.SelectedIndex;
+        if (index <= 0)
+        {
+            return;
+        }
+
+        var item = _translationPriority[index];
+        _translationPriority.RemoveAt(index);
+        _translationPriority.Insert(index - 1, item);
+        TranslationPriorityList.SelectedIndex = index - 1;
+    }
+
+    private void OnTranslationPriorityDown(object sender, RoutedEventArgs e)
+    {
+        var index = TranslationPriorityList.SelectedIndex;
+        if (index < 0 || index >= _translationPriority.Count - 1)
+        {
+            return;
+        }
+
+        var item = _translationPriority[index];
+        _translationPriority.RemoveAt(index);
+        _translationPriority.Insert(index + 1, item);
+        TranslationPriorityList.SelectedIndex = index + 1;
     }
 
     private void AppendLog(string message)

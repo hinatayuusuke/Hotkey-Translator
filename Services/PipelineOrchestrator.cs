@@ -19,7 +19,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrLineGrouper _lineGrouper;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
-    private readonly GeminiClient _geminiClient;
+    private readonly TranslationFallbackService _translationService;
     private readonly OverlayPresenter _overlayPresenter;
     private readonly SettingsService _settingsService;
     private readonly AppLogger _logger;
@@ -37,7 +37,7 @@ public sealed class PipelineOrchestrator
         OcrLineGrouper lineGrouper,
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
-        GeminiClient geminiClient,
+        TranslationFallbackService translationService,
         OverlayPresenter overlayPresenter,
         SettingsService settingsService,
         AppLogger logger)
@@ -50,7 +50,7 @@ public sealed class PipelineOrchestrator
         _lineGrouper = lineGrouper;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
-        _geminiClient = geminiClient;
+        _translationService = translationService;
         _overlayPresenter = overlayPresenter;
         _settingsService = settingsService;
         _logger = logger;
@@ -244,13 +244,13 @@ public sealed class PipelineOrchestrator
 
         if (pending.Count == 0)
         {
-            _logger.Info($"Gemini skipped: no pending translations (changed {changedLines.Count}, total {lines.Count}).");
+            _logger.Info($"Translation skipped: no pending items (changed {changedLines.Count}, total {lines.Count}).");
             return translations;
         }
 
-        _logger.Info($"Gemini pending: {pending.Count} items.");
+        _logger.Info($"Translation pending: {pending.Count} items.");
         var pendingTexts = pending.Select(item => item.SourceText).ToList();
-        var results = await _geminiClient.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
+        var results = await _translationService.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
         foreach (var item in pending)
         {
             if (!results.TryGetValue(item.SourceText, out var translated) || string.IsNullOrWhiteSpace(translated))
