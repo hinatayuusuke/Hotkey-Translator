@@ -201,6 +201,7 @@ public partial class MainWindow : Window
 
         _overlayWindow?.ApplyStyle(settings);
         UpdateRoiStatus(settings);
+        UpdateTranslationStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
     }
@@ -222,6 +223,7 @@ public partial class MainWindow : Window
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
         EnableGeminiCheck.IsChecked = settings.EnableGemini;
         ApplyTranslationPriority(settings);
+        UpdateTranslationStatus(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
@@ -244,6 +246,17 @@ public partial class MainWindow : Window
 
         var roi = settings.NormalizedRoi.Value;
         RoiStatusText.Text = $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
+    }
+
+    private void UpdateTranslationStatus(AppSettings settings)
+    {
+        var geminiStatus = settings.EnableGemini
+            ? (string.IsNullOrWhiteSpace(settings.ApiKey) ? "Gemini: key missing" : "Gemini: enabled")
+            : "Gemini: disabled";
+        var deepLStatus = settings.EnableDeepL
+            ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
+            : "DeepL: disabled";
+        TranslationStatusText.Text = $"Translation status: {geminiStatus} | {deepLStatus}";
     }
 
     private AppCaptureMode GetCaptureMode()

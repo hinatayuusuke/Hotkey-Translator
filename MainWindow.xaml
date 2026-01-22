@@ -12,86 +12,114 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-            <TextBlock Text="Capture" FontWeight="SemiBold" />
-            <ComboBox x:Name="CaptureModeBox" Margin="0,6,0,0">
-                <ComboBoxItem Content="Screen" Tag="Screen" />
-                <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
-            </ComboBox>
-            <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
-            <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" />
-            <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
+        <ScrollViewer Grid.Column="0" Margin="0,0,12,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <Expander Header="Capture" IsExpanded="True">
+                    <StackPanel Margin="0,6,0,0">
+                        <ComboBox x:Name="CaptureModeBox">
+                            <ComboBoxItem Content="Screen" Tag="Screen" />
+                            <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
+                        </ComboBox>
+                        <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
+                        <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" />
+                        <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
+                    </StackPanel>
+                </Expander>
 
-            <Separator Margin="0,10,0,10" />
+                <Expander Header="OCR" IsExpanded="True" Margin="0,10,0,0">
+                    <StackPanel Margin="0,6,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="OCR engine" Width="150" VerticalAlignment="Center" />
+                            <ComboBox x:Name="OcrEngineBox" Width="160">
+                                <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
+                                <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                            </ComboBox>
+                        </StackPanel>
 
-            <TextBlock Text="Cache / OCR" FontWeight="SemiBold" />
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="PhashThresholdBox" Width="80" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="IouThresholdBox" Width="80" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="OCR engine" Width="150" VerticalAlignment="Center" />
-                <ComboBox x:Name="OcrEngineBox" Width="160">
-                    <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
-                    <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
-                </ComboBox>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="Paddle project" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="PaddleProjectDirBox" Width="180" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="Paddle lang" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="PaddleLanguageBox" Width="80" />
-                <TextBlock Text="Device" Width="50" Margin="8,0,0,0" VerticalAlignment="Center" />
-                <TextBox x:Name="PaddleDeviceBox" Width="60" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="uv path" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="PaddleUvPathBox" Width="180" />
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="Model dir" Width="150" VerticalAlignment="Center" />
-                <TextBox x:Name="PaddleModelDirBox" Width="180" />
-            </StackPanel>
+                        <Expander Header="Paddle settings" IsExpanded="False" Margin="0,6,0,0">
+                            <StackPanel Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Project" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PaddleProjectDirBox" Width="180" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Language" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PaddleLanguageBox" Width="80" />
+                                    <TextBlock Text="Device" Width="50" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PaddleDeviceBox" Width="60" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="uv path" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PaddleUvPathBox" Width="180" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Model dir" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PaddleModelDirBox" Width="180" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
 
-            <Separator Margin="0,10,0,10" />
+                        <Expander Header="Advanced" IsExpanded="False" Margin="0,6,0,0">
+                            <StackPanel Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PhashThresholdBox" Width="80" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="IouThresholdBox" Width="80" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Expander>
 
-            <TextBlock Text="Translation" FontWeight="SemiBold" />
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
-                <TextBox x:Name="SourceLangBox" Width="80" />
-                <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
-                <TextBox x:Name="TargetLangBox" Width="80" />
+                <Expander Header="Translation" IsExpanded="True" Margin="0,10,0,0">
+                    <StackPanel Margin="0,6,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
+                            <TextBox x:Name="SourceLangBox" Width="80" />
+                            <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="TargetLangBox" Width="80" />
+                        </StackPanel>
+
+                        <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
+                        <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
+                        <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,4,0,0" />
+
+                        <Expander Header="Advanced" IsExpanded="False" Margin="0,6,0,0">
+                            <StackPanel Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
+                                    <PasswordBox x:Name="DeepLApiKeyBox" Width="200" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
+                                    <TextBox x:Name="DeepLEndpointBox" Width="200" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Gemini API key" Width="120" VerticalAlignment="Center" />
+                                    <PasswordBox x:Name="ApiKeyBox" Width="200" />
+                                </StackPanel>
+                                <TextBlock Text="Translation priority" Margin="0,10,0,0" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <ListBox x:Name="TranslationPriorityList" Width="180" Height="80" />
+                                    <StackPanel Margin="6,0,0,0">
+                                        <Button Content="Up" Width="60" Click="OnTranslationPriorityUp" />
+                                        <Button Content="Down" Width="60" Margin="0,6,0,0" Click="OnTranslationPriorityDown" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Expander>
+
+                <Separator Margin="0,10,0,10" />
+
+                <Button x:Name="SaveSettingsButton" Content="Save Settings" Click="OnSaveSettings" />
+                <Button x:Name="RunOnceButton" Content="Run Once (F8)" Margin="0,6,0,0" Click="OnRunOnce" />
             </StackPanel>
-
-            <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
-            <PasswordBox x:Name="DeepLApiKeyBox" Margin="0,6,0,0" />
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
-                <TextBox x:Name="DeepLEndpointBox" Width="200" />
-            </StackPanel>
-
-            <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
-            <PasswordBox x:Name="ApiKeyBox" Margin="0,6,0,0" />
-            <TextBlock Text="Translation priority" Margin="0,10,0,0" />
-            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                <ListBox x:Name="TranslationPriorityList" Width="180" Height="80" />
-                <StackPanel Margin="6,0,0,0">
-                    <Button Content="Up" Width="60" Click="OnTranslationPriorityUp" />
-                    <Button Content="Down" Width="60" Margin="0,6,0,0" Click="OnTranslationPriorityDown" />
-                </StackPanel>
-            </StackPanel>
-
-            <Separator Margin="0,10,0,10" />
-
-            <Button x:Name="SaveSettingsButton" Content="Save Settings" Click="OnSaveSettings" />
-            <Button x:Name="RunOnceButton" Content="Run Once (F8)" Margin="0,6,0,0" Click="OnRunOnce" />
-        </StackPanel>
+        </ScrollViewer>
 
         <TextBox x:Name="LogBox" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
     </Grid>
