@@ -42,6 +42,11 @@ public sealed class SettingsService
             loaded.ApiKey = Unprotect(loaded.ApiKeyProtected);
         }
 
+        if (!string.IsNullOrWhiteSpace(loaded.DeepLApiKeyProtected))
+        {
+            loaded.DeepLApiKey = Unprotect(loaded.DeepLApiKeyProtected);
+        }
+
         Settings = loaded;
     }
 
@@ -61,6 +66,16 @@ public sealed class SettingsService
         else
         {
             Settings.ApiKeyProtected = null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(Settings.DeepLApiKey))
+        {
+            // SECURITY: DeepL key is protected with DPAPI for the current user profile.
+            Settings.DeepLApiKeyProtected = Protect(Settings.DeepLApiKey);
+        }
+        else
+        {
+            Settings.DeepLApiKeyProtected = null;
         }
 
         var json = JsonSerializer.Serialize(Settings, JsonOptions);

@@ -42,6 +42,8 @@ public sealed class AppSettings
     public bool EnableGemini { get; set; } = false;
     public string GeminiModel { get; set; } = "gemini-3-flash-preview";
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
+    public bool EnableDeepL { get; set; } = false;
+    public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";
     public List<string> TranslationPriority { get; set; } = new(TranslationProviderNames.Defaults);
     public double OverlayFontSize { get; set; } = 18;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
@@ -51,4 +53,9 @@ public sealed class AppSettings
     public string? ApiKey { get; set; }
 
     public string? ApiKeyProtected { get; set; }
+
+    [JsonIgnore]
+    public string? DeepLApiKey { get; set; }
+
+    public string? DeepLApiKeyProtected { get; set; }
 }

@@ -62,6 +62,7 @@ public partial class MainWindow : Window
         var geminiClient = new GeminiClient(_httpClient, _logger);
         var translationProviders = new List<ITranslationProvider>
         {
+            new DeepLTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
         };
         var translationService = new TranslationFallbackService(translationProviders, _logger);
@@ -181,6 +182,9 @@ public partial class MainWindow : Window
         settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
         settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
         settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
+        settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
+        settings.DeepLApiKey = DeepLApiKeyBox.Password;
+        settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
@@ -213,6 +217,9 @@ public partial class MainWindow : Window
         PaddleLanguageBox.Text = settings.PaddleLanguage;
         PaddleDeviceBox.Text = settings.PaddleDevice;
         PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
+        EnableDeepLCheck.IsChecked = settings.EnableDeepL;
+        DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
+        DeepLEndpointBox.Text = settings.DeepLEndpoint;
         EnableGeminiCheck.IsChecked = settings.EnableGemini;
         ApplyTranslationPriority(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;

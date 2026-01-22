@@ -69,6 +69,13 @@
                 <TextBox x:Name="TargetLangBox" Width="80" />
             </StackPanel>
 
+            <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
+            <PasswordBox x:Name="DeepLApiKeyBox" Margin="0,6,0,0" />
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
+                <TextBox x:Name="DeepLEndpointBox" Width="200" />
+            </StackPanel>
+
             <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
             <PasswordBox x:Name="ApiKeyBox" Margin="0,6,0,0" />
             <TextBlock Text="Translation priority" Margin="0,10,0,0" />
