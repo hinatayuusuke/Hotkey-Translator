@@ -8,8 +8,9 @@
         Title="Hotkey Translator" Height="640" Width="920">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="360" MinWidth="320" />
+            <ColumnDefinition Width="6" />
+            <ColumnDefinition Width="*" MinWidth="260" />
         </Grid.ColumnDefinitions>
 
         <TabControl Grid.Column="0" Margin="0,0,12,0">
@@ -135,6 +136,8 @@
             </TabItem>
         </TabControl>
 
-        <TextBox x:Name="LogBox" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" />
+
+        <TextBox x:Name="LogBox" Grid.Column="2" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
     </Grid>
 </Window>
