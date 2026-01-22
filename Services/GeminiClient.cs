@@ -74,7 +74,7 @@ public sealed class GeminiClient
             {
                 temperature = 0.2,
                 // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
-                maxOutputTokens = 2048,
+                maxOutputTokens = 4096,
                 responseMimeType = "application/json",
                 responseSchema = new
                 {
