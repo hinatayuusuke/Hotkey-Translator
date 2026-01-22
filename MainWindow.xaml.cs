@@ -44,6 +44,7 @@ public partial class MainWindow : Window
         await _settingsService.LoadAsync().ConfigureAwait(true);
         ApplySettingsToUi(_settingsService.Settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
+        EnsureSettingsCategorySelection();
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
@@ -383,5 +384,33 @@ public partial class MainWindow : Window
 
         LogBox.AppendText(message + Environment.NewLine);
         LogBox.ScrollToEnd();
+    }
+
+    private void EnsureSettingsCategorySelection()
+    {
+        if (SettingsCategoryList.SelectedIndex < 0)
+        {
+            SettingsCategoryList.SelectedIndex = 0;
+        }
+
+        UpdateSettingsCategoryPanels();
+    }
+
+    private void OnSettingsCategoryChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateSettingsCategoryPanels();
+    }
+
+    private void UpdateSettingsCategoryPanels()
+    {
+        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelTranslation == null)
+        {
+            return;
+        }
+
+        var index = SettingsCategoryList.SelectedIndex;
+        SettingsPanelOcr.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelPaddle.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelTranslation.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
     }
 }

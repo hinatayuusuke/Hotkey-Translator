@@ -56,10 +56,24 @@
             </TabItem>
             <TabItem Header="Settings">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="0,6,0,0">
-                        <Expander Header="OCR (Advanced)" IsExpanded="False">
-                            <StackPanel Margin="0,6,0,0">
-                                <StackPanel Orientation="Horizontal">
+                    <Grid Margin="0,6,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0">
+                            <ListBox x:Name="SettingsCategoryList" SelectionChanged="OnSettingsCategoryChanged" SelectedIndex="0">
+                                <ListBoxItem Content="OCR" />
+                                <ListBoxItem Content="Paddle OCR" />
+                                <ListBoxItem Content="Translation" />
+                            </ListBox>
+                        </Border>
+
+                        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                            <StackPanel x:Name="SettingsPanelOcr">
+                                <TextBlock Text="OCR (Advanced)" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="PhashThresholdBox" Width="80" />
                                 </StackPanel>
@@ -68,11 +82,10 @@
                                     <TextBox x:Name="IouThresholdBox" Width="80" />
                                 </StackPanel>
                             </StackPanel>
-                        </Expander>
 
-                        <Expander Header="Paddle OCR" IsExpanded="False" Margin="0,10,0,0">
-                            <StackPanel Margin="0,6,0,0">
-                                <StackPanel Orientation="Horizontal">
+                            <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,12,0,0">
+                                <TextBlock Text="Paddle OCR" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Project" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleProjectDirBox" Width="180" />
                                 </StackPanel>
@@ -91,11 +104,10 @@
                                     <TextBox x:Name="PaddleModelDirBox" Width="180" />
                                 </StackPanel>
                             </StackPanel>
-                        </Expander>
 
-                        <Expander Header="Translation (Advanced)" IsExpanded="False" Margin="0,10,0,0">
-                            <StackPanel Margin="0,6,0,0">
-                                <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,0,0,6" />
+                            <StackPanel x:Name="SettingsPanelTranslation" Visibility="Collapsed" Margin="0,12,0,0">
+                                <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
+                                <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,6,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
                                     <PasswordBox x:Name="DeepLApiKeyBox" Width="200" />
@@ -117,8 +129,8 @@
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>
-                        </Expander>
-                    </StackPanel>
+                        </StackPanel>
+                    </Grid>
                 </ScrollViewer>
             </TabItem>
         </TabControl>
