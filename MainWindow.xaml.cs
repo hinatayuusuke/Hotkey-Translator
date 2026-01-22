@@ -165,6 +165,12 @@ public partial class MainWindow : Window
         settings.SourceLanguage = SourceLangBox.Text.Trim();
         settings.TargetLanguage = TargetLangBox.Text.Trim();
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;
+        settings.OcrEngine = GetOcrEngineKind();
+        settings.PaddleProjectDir = PaddleProjectDirBox.Text.Trim();
+        settings.PaddleUvPath = PaddleUvPathBox.Text.Trim();
+        settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
+        settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
+        settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.ApiKey = ApiKeyBox.Password;
 
@@ -190,6 +196,12 @@ public partial class MainWindow : Window
         SourceLangBox.Text = settings.SourceLanguage;
         TargetLangBox.Text = settings.TargetLanguage;
         EnableRoiCheck.IsChecked = settings.EnableRoi;
+        SetComboBoxByTag(OcrEngineBox, settings.OcrEngine == OcrEngineKind.Paddle ? "Paddle" : "WinRt");
+        PaddleProjectDirBox.Text = settings.PaddleProjectDir;
+        PaddleUvPathBox.Text = settings.PaddleUvPath;
+        PaddleLanguageBox.Text = settings.PaddleLanguage;
+        PaddleDeviceBox.Text = settings.PaddleDevice;
+        PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
         EnableGeminiCheck.IsChecked = settings.EnableGemini;
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
@@ -223,6 +235,28 @@ public partial class MainWindow : Window
         }
 
         return AppCaptureMode.ActiveWindow;
+    }
+
+    private OcrEngineKind GetOcrEngineKind()
+    {
+        if (OcrEngineBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return tag == "Paddle" ? OcrEngineKind.Paddle : OcrEngineKind.WinRt;
+        }
+
+        return OcrEngineKind.WinRt;
+    }
+
+    private static void SetComboBoxByTag(ComboBox comboBox, string tag)
+    {
+        foreach (var item in comboBox.Items)
+        {
+            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag && itemTag == tag)
+            {
+                comboBox.SelectedItem = comboItem;
+                return;
+            }
+        }
     }
 
     private void AppendLog(string message)

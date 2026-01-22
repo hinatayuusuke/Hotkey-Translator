@@ -16,10 +16,10 @@ public partial class OverlayWindow : Window
     private Brush _background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
     private double _fontSize = 18;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
-    private const double LineHeightScale = 0.9;
+    private const double LineHeightScale = 0.82;
     private const double MinFontSize = 8;
-    private const double MaxFontSize = 256;
-    private const int FitIterations = 7;
+    private const double MaxFontSize = 192;
+    private const int FitIterations = 9;
 
     public OverlayWindow()
     {

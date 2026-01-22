@@ -33,6 +33,31 @@
                 <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
                 <TextBox x:Name="IouThresholdBox" Width="80" />
             </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="OCR engine" Width="150" VerticalAlignment="Center" />
+                <ComboBox x:Name="OcrEngineBox" Width="160">
+                    <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
+                    <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                </ComboBox>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="Paddle project" Width="150" VerticalAlignment="Center" />
+                <TextBox x:Name="PaddleProjectDirBox" Width="180" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="Paddle lang" Width="150" VerticalAlignment="Center" />
+                <TextBox x:Name="PaddleLanguageBox" Width="80" />
+                <TextBlock Text="Device" Width="50" Margin="8,0,0,0" VerticalAlignment="Center" />
+                <TextBox x:Name="PaddleDeviceBox" Width="60" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="uv path" Width="150" VerticalAlignment="Center" />
+                <TextBox x:Name="PaddleUvPathBox" Width="180" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                <TextBlock Text="Model dir" Width="150" VerticalAlignment="Center" />
+                <TextBox x:Name="PaddleModelDirBox" Width="180" />
+            </StackPanel>
 
             <Separator Margin="0,10,0,10" />
 

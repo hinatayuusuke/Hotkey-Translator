@@ -24,6 +24,12 @@ public sealed class AppSettings
     public int ProviderCooldownSeconds { get; set; } = 3;
     public int PhashThreshold { get; set; } = 10;
     public double OcrIouThreshold { get; set; } = 0.85;
+    public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
+    public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
+    public string PaddleUvPath { get; set; } = "uv";
+    public string PaddleLanguage { get; set; } = "japan";
+    public string PaddleDevice { get; set; } = "cpu";
+    public string? PaddleModelDir { get; set; }
     public bool EnableLineMerge { get; set; } = true;
     public double MergeOverlapRatioThreshold { get; set; } = 0.1;
     public double MergeVerticalWeight { get; set; } = 0.5;

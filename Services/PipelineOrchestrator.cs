@@ -109,7 +109,7 @@ public sealed class PipelineOrchestrator
             }
 
             var ocrStopwatch = Stopwatch.StartNew();
-            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings.SourceLanguage, cancellationToken).ConfigureAwait(false);
+            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings, cancellationToken).ConfigureAwait(false);
             ocrStopwatch.Stop();
             _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
             var mappedLines = ocrResult.Lines
