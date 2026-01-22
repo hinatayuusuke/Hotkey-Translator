@@ -12,23 +12,23 @@
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
 
-        <ScrollViewer Grid.Column="0" Margin="0,0,12,0" VerticalScrollBarVisibility="Auto">
-            <StackPanel>
-                <Expander Header="Capture" IsExpanded="True">
+        <TabControl Grid.Column="0" Margin="0,0,12,0">
+            <TabItem Header="Main">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
-                        <ComboBox x:Name="CaptureModeBox">
+                        <TextBlock Text="Capture" FontWeight="SemiBold" />
+                        <ComboBox x:Name="CaptureModeBox" Margin="0,6,0,0">
                             <ComboBoxItem Content="Screen" Tag="Screen" />
                             <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
                         </ComboBox>
                         <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
                         <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" />
                         <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
-                    </StackPanel>
-                </Expander>
 
-                <Expander Header="OCR" IsExpanded="True" Margin="0,10,0,0">
-                    <StackPanel Margin="0,6,0,0">
-                        <StackPanel Orientation="Horizontal">
+                        <Separator Margin="0,10,0,10" />
+
+                        <TextBlock Text="OCR" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBlock Text="OCR engine" Width="150" VerticalAlignment="Center" />
                             <ComboBox x:Name="OcrEngineBox" Width="160">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
@@ -36,7 +36,41 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <Expander Header="Paddle settings" IsExpanded="False" Margin="0,6,0,0">
+                        <Separator Margin="0,10,0,10" />
+
+                        <TextBlock Text="Translation" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
+                            <TextBox x:Name="SourceLangBox" Width="80" />
+                            <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
+                            <TextBox x:Name="TargetLangBox" Width="80" />
+                        </StackPanel>
+                        <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
+                        <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
+
+                        <Separator Margin="0,10,0,10" />
+
+                        <Button x:Name="SaveSettingsButton" Content="Save Settings" Click="OnSaveSettings" />
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            <TabItem Header="Settings">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="0,6,0,0">
+                        <Expander Header="OCR (Advanced)" IsExpanded="False">
+                            <StackPanel Margin="0,6,0,0">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="PhashThresholdBox" Width="80" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="IouThresholdBox" Width="80" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Expander>
+
+                        <Expander Header="Paddle OCR" IsExpanded="False" Margin="0,10,0,0">
                             <StackPanel Margin="0,6,0,0">
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Project" Width="150" VerticalAlignment="Center" />
@@ -59,36 +93,9 @@
                             </StackPanel>
                         </Expander>
 
-                        <Expander Header="Advanced" IsExpanded="False" Margin="0,6,0,0">
+                        <Expander Header="Translation (Advanced)" IsExpanded="False" Margin="0,10,0,0">
                             <StackPanel Margin="0,6,0,0">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PhashThresholdBox" Width="80" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="IouThresholdBox" Width="80" />
-                                </StackPanel>
-                            </StackPanel>
-                        </Expander>
-                    </StackPanel>
-                </Expander>
-
-                <Expander Header="Translation" IsExpanded="True" Margin="0,10,0,0">
-                    <StackPanel Margin="0,6,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
-                            <TextBox x:Name="SourceLangBox" Width="80" />
-                            <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <TextBox x:Name="TargetLangBox" Width="80" />
-                        </StackPanel>
-
-                        <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
-                        <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
-                        <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,4,0,0" />
-
-                        <Expander Header="Advanced" IsExpanded="False" Margin="0,6,0,0">
-                            <StackPanel Margin="0,6,0,0">
+                                <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,0,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
                                     <PasswordBox x:Name="DeepLApiKeyBox" Width="200" />
@@ -112,14 +119,9 @@
                             </StackPanel>
                         </Expander>
                     </StackPanel>
-                </Expander>
-
-                <Separator Margin="0,10,0,10" />
-
-                <Button x:Name="SaveSettingsButton" Content="Save Settings" Click="OnSaveSettings" />
-                <Button x:Name="RunOnceButton" Content="Run Once (F8)" Margin="0,6,0,0" Click="OnRunOnce" />
-            </StackPanel>
-        </ScrollViewer>
+                </ScrollViewer>
+            </TabItem>
+        </TabControl>
 
         <TextBox x:Name="LogBox" Grid.Column="1" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
     </Grid>
