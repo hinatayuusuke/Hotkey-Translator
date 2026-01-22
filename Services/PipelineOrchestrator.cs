@@ -139,7 +139,7 @@ public sealed class PipelineOrchestrator
             var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
 
             var overlayItems = groupedLines
-                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations), line.Rect, line.LineCount, line.LineHeight))
+                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
                 .ToList();
 
             _lastOverlayItems = overlayItems;
@@ -274,9 +274,46 @@ public sealed class PipelineOrchestrator
         return translations;
     }
 
-    private static string GetOverlayText(string sourceText, Dictionary<string, string> translations)
+    private static string GetOverlayText(string sourceText, Dictionary<string, string> translations, int lineCount)
     {
-        return translations.TryGetValue(sourceText, out var translated) ? translated : sourceText;
+        var text = translations.TryGetValue(sourceText, out var translated) ? translated : sourceText;
+        return NormalizeOverlayText(text, lineCount);
+    }
+
+    private static string NormalizeOverlayText(string text, int lineCount)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return text;
+        }
+
+        var lines = text
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n')
+            .Split('\n', StringSplitOptions.None)
+            .Select(line => line.Trim())
+            .Where(line => line.Length > 0)
+            .ToList();
+
+        if (lines.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (lineCount <= 1)
+        {
+            return string.Join(" ", lines);
+        }
+
+        if (lines.Count <= lineCount)
+        {
+            return text;
+        }
+
+        // WHY: Constrain translated line breaks to the OCR line count to reduce overflow.
+        var head = lines.Take(lineCount - 1);
+        var tail = string.Join(" ", lines.Skip(lineCount - 1));
+        return string.Join(Environment.NewLine, head.Append(tail));
     }
 
     private sealed record PendingTranslation(string SourceText, string Normalized, string CacheKey);
