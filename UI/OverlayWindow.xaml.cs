@@ -16,10 +16,13 @@ public partial class OverlayWindow : Window
     private Brush _background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
     private double _fontSize = 18;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
-    private const double LineHeightScale = 0.82;
+    private const double MinLineHeightScale = 0.75;
+    private const double MaxLineHeightScale = 0.95;
+    private const double MinOccupancyRatio = 0.05;
+    private const double MaxOccupancyRatio = 0.35;
     private const double MinFontSize = 8;
     private const double MaxFontSize = 192;
-    private const int FitIterations = 9;
+    private const int FitIterations = 7;
 
     public OverlayWindow()
     {
@@ -148,13 +151,29 @@ public partial class OverlayWindow : Window
             lineHeight = item.Rect.Height / item.LineCount;
         }
 
-        var baseSize = lineHeight > 0 ? lineHeight * LineHeightScale : _fontSize;
+        var baseScale = GetOccupancyScale(item.Rect);
+        var baseSize = lineHeight > 0 ? lineHeight * baseScale : _fontSize;
         if (double.IsNaN(baseSize) || double.IsInfinity(baseSize) || baseSize <= 0)
         {
             return _fontSize;
         }
 
         return Math.Clamp(baseSize, MinFontSize, MaxFontSize);
+    }
+
+    private double GetOccupancyScale(Rect rect)
+    {
+        var screenHeight = SystemParameters.VirtualScreenHeight;
+        if (screenHeight <= 0 || rect.Height <= 0)
+        {
+            return MinLineHeightScale;
+        }
+
+        var ratio = rect.Height / screenHeight;
+        ratio = Math.Clamp(ratio, MinOccupancyRatio, MaxOccupancyRatio);
+        var t = (ratio - MinOccupancyRatio) / (MaxOccupancyRatio - MinOccupancyRatio);
+        // WHY: Small OCR boxes get conservative sizing to reduce overflow; large boxes can be larger.
+        return MinLineHeightScale + (MaxLineHeightScale - MinLineHeightScale) * t;
     }
 
     private bool Fits(string text, double fontSize, double maxWidth, double maxHeight)
