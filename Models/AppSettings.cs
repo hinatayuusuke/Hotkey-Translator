@@ -54,7 +54,7 @@ public sealed class AppSettings
     public List<string> TranslationPriority { get; set; } = new(TranslationProviderNames.Defaults);
     public double OverlayFontSize { get; set; } = 18;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
-    public string OverlayBackground { get; set; } = "#AA000000";
+    public string OverlayBackground { get; set; } = "#88000000";
 
     [JsonIgnore]
     public string? ApiKey { get; set; }

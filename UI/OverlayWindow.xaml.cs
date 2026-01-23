@@ -13,15 +13,20 @@ namespace Hotkey_Translator.UI;
 public partial class OverlayWindow : Window
 {
     private Brush _foreground = Brushes.White;
-    private Brush _background = new SolidColorBrush(Color.FromArgb(170, 0, 0, 0));
+    private Brush _background = new SolidColorBrush(Color.FromArgb(136, 0, 0, 0));
     private double _fontSize = 18;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinLineHeightScale = 0.75;
-    private const double MaxLineHeightScale = 0.95;
+    private const double MaxLineHeightScale = 1.1;
     private const double MinOccupancyRatio = 0.05;
-    private const double MaxOccupancyRatio = 0.35;
+    private const double MaxOccupancyRatio = 0.20;
+    private const double ConservativeStartRatio = 0.18;
+    private const double ConservativeFullRatio = 0.23;
+    private const double MaxConservativePenalty = 0.6;
+    private const double TwoLinePenaltyFactor = 0.8;
+    private const double MinWidthScale = 0.3;
     private const double MinFontSize = 8;
-    private const double MaxFontSize = 192;
+    private const double MaxFontSize = 72;
     private const int FitIterations = 7;
 
     public OverlayWindow()
@@ -34,7 +39,7 @@ public partial class OverlayWindow : Window
     {
         _fontSize = settings.OverlayFontSize;
         _foreground = ParseBrush(settings.OverlayForeground, Brushes.White);
-        _background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)));
+        _background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -115,6 +120,12 @@ public partial class OverlayWindow : Window
             return baseSize;
         }
 
+        if (availableWidth > 0 && !double.IsInfinity(availableWidth))
+        {
+            baseSize *= GetWidthConservativeScale(item.Text, baseSize, availableWidth, item.LineCount);
+            baseSize = Math.Clamp(baseSize, MinFontSize, MaxFontSize);
+        }
+
         if (availableWidth <= 0 || availableHeight <= 0 || double.IsInfinity(availableWidth) || double.IsInfinity(availableHeight))
         {
             return baseSize;
@@ -153,6 +164,7 @@ public partial class OverlayWindow : Window
 
         var baseScale = GetOccupancyScale(item.Rect);
         var baseSize = lineHeight > 0 ? lineHeight * baseScale : _fontSize;
+        baseSize *= GetConservativeScale(item);
         if (double.IsNaN(baseSize) || double.IsInfinity(baseSize) || baseSize <= 0)
         {
             return _fontSize;
@@ -174,6 +186,66 @@ public partial class OverlayWindow : Window
         var t = (ratio - MinOccupancyRatio) / (MaxOccupancyRatio - MinOccupancyRatio);
         // WHY: Small OCR boxes get conservative sizing to reduce overflow; large boxes can be larger.
         return MinLineHeightScale + (MaxLineHeightScale - MinLineHeightScale) * t;
+    }
+
+    private double GetConservativeScale(OverlayItem item)
+    {
+        if (item.LineCount >= 3)
+        {
+            return 1.0;
+        }
+
+        var screenHeight = SystemParameters.VirtualScreenHeight;
+        if (screenHeight <= 0 || item.Rect.Height <= 0)
+        {
+            return 1.0;
+        }
+
+        var ratio = item.Rect.Height / screenHeight;
+        var t = (ratio - ConservativeStartRatio) / (ConservativeFullRatio - ConservativeStartRatio);
+        t = Math.Clamp(t, 0, 1);
+        if (t <= 0)
+        {
+            return 1.0;
+        }
+
+        var lineFactor = item.LineCount <= 1 ? 1.0 : TwoLinePenaltyFactor;
+        // WHY: Large boxes with few lines look oversized; shrink aggressively to avoid clipping.
+        var penalty = MaxConservativePenalty * t * lineFactor;
+        return 1.0 - penalty;
+    }
+
+    private double GetWidthConservativeScale(string text, double fontSize, double maxWidth, int expectedLines)
+    {
+        if (expectedLines <= 0 || maxWidth <= 0 || double.IsInfinity(maxWidth))
+        {
+            return 1.0;
+        }
+
+        var dpi = VisualTreeHelper.GetDpi(this);
+        var formatted = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection,
+            new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+            fontSize,
+            _foreground,
+            dpi.PixelsPerDip)
+        {
+            MaxTextWidth = maxWidth
+        };
+
+        formatted.LineHeight = Math.Max(1.0, fontSize);
+        var estimatedLines = Math.Max(1, (int)Math.Ceiling(formatted.Height / formatted.LineHeight));
+        if (estimatedLines <= expectedLines)
+        {
+            return 1.0;
+        }
+
+        // WHY: When wrapping exceeds OCR line count, shrink aggressively to avoid clipping.
+        var ratio = (double)expectedLines / estimatedLines;
+        var scale = Math.Sqrt(Math.Clamp(ratio, 0.0, 1.0));
+        return Math.Clamp(scale, MinWidthScale, 1.0);
     }
 
     private bool Fits(string text, double fontSize, double maxWidth, double maxHeight)
