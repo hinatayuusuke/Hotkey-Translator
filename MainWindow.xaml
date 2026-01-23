@@ -63,11 +63,11 @@
 
                         <Separator Margin="0,10,0,10" />
                         <TextBlock Text="Translation" FontWeight="SemiBold" />
+
                         <Grid Margin="0,6,0,0" HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="120" />
                                 <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="32" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
@@ -76,21 +76,25 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Source" VerticalAlignment="Center" />
-                            <StackPanel Grid.Row="0" Grid.Column="1" Orientation="Horizontal">
-                                <ComboBox x:Name="SourceLangCombo" Width="160" SelectionChanged="OnLanguageSelectionChanged">
-                                    <ComboBoxItem Content="English" Tag="en" />
-                                    <ComboBoxItem Content="日本語" Tag="ja" />
-                                    <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
-                                    <ComboBoxItem Content="中文(简体)" Tag="zh-Hans" />
-                                    <ComboBoxItem Content="Русский" Tag="ru" />
-                                    <ComboBoxItem Content="Custom..." Tag="custom" />
-                                </ComboBox>
-                                <TextBox x:Name="SourceLangCustom" Width="90" Margin="8,0,0,0" LostFocus="OnSettingLostFocus" Visibility="Collapsed" />
-                            </StackPanel>
-
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Target" VerticalAlignment="Center" Margin="0,6,0,0" />
-                            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,6,0,0">
-                                <ComboBox x:Name="TargetLangCombo" Width="160" SelectionChanged="OnLanguageSelectionChanged">
+
+                            <!-- 右側（Source/Target + Swap）をひとつのGridにまとめる -->
+                            <Grid Grid.Row="0" Grid.Column="1" Grid.RowSpan="2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="160" />  <!-- Combo -->
+                                    <ColumnDefinition Width="32" />   <!-- Swap -->
+                                    <ColumnDefinition Width="Auto" /> <!-- Custom -->
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Source -->
+                                <ComboBox Grid.Row="0" Grid.Column="0"
+                                        x:Name="SourceLangCombo"
+                                        Width="160"
+                                        SelectionChanged="OnLanguageSelectionChanged">
                                     <ComboBoxItem Content="English" Tag="en" />
                                     <ComboBoxItem Content="日本語" Tag="ja" />
                                     <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
@@ -98,17 +102,57 @@
                                     <ComboBoxItem Content="Русский" Tag="ru" />
                                     <ComboBoxItem Content="Custom..." Tag="custom" />
                                 </ComboBox>
-                                <TextBox x:Name="TargetLangCustom" Width="90" Margin="8,0,0,0" LostFocus="OnSettingLostFocus" Visibility="Collapsed" />
-                            </StackPanel>
-                            <Button Grid.Row="0" Grid.RowSpan="2" Grid.Column="2" x:Name="SwapLangButton" Width="28" Height="28" Margin="4,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center" Click="OnSwapLanguages" ToolTip="Swap languages">
-                                <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE117;" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Button>
+
+                                <TextBox Grid.Row="0" Grid.Column="2"
+                                        x:Name="SourceLangCustom"
+                                        Width="90"
+                                        Margin="8,0,0,0"
+                                        LostFocus="OnSettingLostFocus"
+                                        Visibility="Collapsed" />
+
+                                <!-- Target -->
+                                <ComboBox Grid.Row="1" Grid.Column="0"
+                                        x:Name="TargetLangCombo"
+                                        Width="160"
+                                        Margin="0,6,0,0"
+                                        SelectionChanged="OnLanguageSelectionChanged">
+                                    <ComboBoxItem Content="English" Tag="en" />
+                                    <ComboBoxItem Content="日本語" Tag="ja" />
+                                    <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
+                                    <ComboBoxItem Content="中文(简体)" Tag="zh-Hans" />
+                                    <ComboBoxItem Content="Русский" Tag="ru" />
+                                    <ComboBoxItem Content="Custom..." Tag="custom" />
+                                </ComboBox>
+
+                                <TextBox Grid.Row="1" Grid.Column="2"
+                                        x:Name="TargetLangCustom"
+                                        Width="90"
+                                        Margin="8,6,0,0"
+                                        LostFocus="OnSettingLostFocus"
+                                        Visibility="Collapsed" />
+
+                                <!-- Swap（常にComboのすぐ右に固定） -->
+                                <Button Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
+                                        x:Name="SwapLangButton"
+                                        Width="28" Height="28"
+                                        Margin="4,0,0,0"
+                                        HorizontalAlignment="Left"
+                                        VerticalAlignment="Center"
+                                        Click="OnSwapLanguages"
+                                        ToolTip="Swap languages">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                            Text="&#xE117;"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center" />
+                                </Button>
+                            </Grid>
 
                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
                                 <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="12,0,0,0" Click="OnSettingChanged" />
                             </StackPanel>
                         </Grid>
+
 
                         <Separator Margin="0,10,0,10" />
                     </StackPanel>
