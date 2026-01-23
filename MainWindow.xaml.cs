@@ -175,8 +175,8 @@ public partial class MainWindow : Window
     {
         _isApplyingSettings = true;
         CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
-        SourceLangBox.Text = settings.SourceLanguage;
-        TargetLangBox.Text = settings.TargetLanguage;
+        ApplyLanguageSelection(SourceLangCombo, SourceLangCustom, settings.SourceLanguage);
+        ApplyLanguageSelection(TargetLangCombo, TargetLangCustom, settings.TargetLanguage);
         EnableRoiCheck.IsChecked = settings.EnableRoi;
         SetComboBoxByTag(OcrEngineBox, settings.OcrEngine == OcrEngineKind.Paddle ? "Paddle" : "WinRt");
         PaddleProjectDirBox.Text = settings.PaddleProjectDir;
@@ -194,6 +194,7 @@ public partial class MainWindow : Window
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
         UpdateRoiStatus(settings);
+        UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
     }
 
@@ -224,6 +225,116 @@ public partial class MainWindow : Window
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
         TranslationStatusText.Text = $"Translation status: {geminiStatus} | {deepLStatus}";
+    }
+
+    private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        UpdateLanguageCustomVisibility();
+        _ = SaveSettingsAsync();
+    }
+
+    private void OnSwapLanguages(object sender, RoutedEventArgs e)
+    {
+        var sourceIsCustom = IsCustomSelected(SourceLangCombo);
+        var targetIsCustom = IsCustomSelected(TargetLangCombo);
+        var sourceTag = GetSelectedLanguageTag(SourceLangCombo);
+        var targetTag = GetSelectedLanguageTag(TargetLangCombo);
+        var sourceCustom = SourceLangCustom.Text;
+        var targetCustom = TargetLangCustom.Text;
+
+        if (targetIsCustom)
+        {
+            SelectLanguageByTag(SourceLangCombo, "custom");
+            SourceLangCustom.Text = targetCustom;
+        }
+        else
+        {
+            SelectLanguageByTag(SourceLangCombo, targetTag);
+        }
+
+        if (sourceIsCustom)
+        {
+            SelectLanguageByTag(TargetLangCombo, "custom");
+            TargetLangCustom.Text = sourceCustom;
+        }
+        else
+        {
+            SelectLanguageByTag(TargetLangCombo, sourceTag);
+        }
+
+        UpdateLanguageCustomVisibility();
+        _ = SaveSettingsAsync();
+    }
+
+    private void UpdateLanguageCustomVisibility()
+    {
+        SourceLangCustom.Visibility = IsCustomSelected(SourceLangCombo) ? Visibility.Visible : Visibility.Collapsed;
+        TargetLangCustom.Visibility = IsCustomSelected(TargetLangCombo) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private static bool IsCustomSelected(ComboBox comboBox)
+    {
+        return GetSelectedLanguageTag(comboBox) == "custom";
+    }
+
+    private static string GetSelectedLanguageTag(ComboBox comboBox)
+    {
+        if (comboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return tag;
+        }
+
+        return string.Empty;
+    }
+
+    private static void SelectLanguageByTag(ComboBox comboBox, string tag)
+    {
+        foreach (var item in comboBox.Items)
+        {
+            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag && itemTag == tag)
+            {
+                comboBox.SelectedItem = comboItem;
+                return;
+            }
+        }
+
+        if (comboBox.Items.Count > 0)
+        {
+            comboBox.SelectedIndex = 0;
+        }
+    }
+
+    private static void ApplyLanguageSelection(ComboBox comboBox, TextBox customBox, string value)
+    {
+        var normalized = value?.Trim() ?? string.Empty;
+        var matched = false;
+        foreach (var item in comboBox.Items)
+        {
+            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag &&
+                itemTag.Equals(normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = comboItem;
+                matched = true;
+                break;
+            }
+        }
+
+        if (!matched)
+        {
+            SelectLanguageByTag(comboBox, "custom");
+            customBox.Text = normalized;
+        }
+    }
+
+    private static string GetSelectedLanguage(ComboBox comboBox, TextBox customBox)
+    {
+        var tag = GetSelectedLanguageTag(comboBox);
+        if (tag == "custom")
+        {
+            return customBox.Text.Trim();
+        }
+
+        return tag;
     }
 
     private AppCaptureMode GetCaptureMode()
@@ -361,8 +472,8 @@ public partial class MainWindow : Window
 
         var settings = _settingsService.Settings;
         settings.CaptureMode = GetCaptureMode();
-        settings.SourceLanguage = SourceLangBox.Text.Trim();
-        settings.TargetLanguage = TargetLangBox.Text.Trim();
+        settings.SourceLanguage = GetSelectedLanguage(SourceLangCombo, SourceLangCustom);
+        settings.TargetLanguage = GetSelectedLanguage(TargetLangCombo, TargetLangCustom);
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;
         settings.OcrEngine = GetOcrEngineKind();
         settings.PaddleProjectDir = PaddleProjectDirBox.Text.Trim();

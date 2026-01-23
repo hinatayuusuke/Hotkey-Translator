@@ -5,10 +5,10 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Hotkey_Translator"
         mc:Ignorable="d"
-        Title="Hotkey Translator" Height="640" Width="920">
+        Title="Hotkey Translator" Height="640" Width="1080">
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="360" MinWidth="320" />
+            <ColumnDefinition Width="580" MinWidth="380" />
             <ColumnDefinition Width="6" />
             <ColumnDefinition Width="*" MinWidth="260" />
         </Grid.ColumnDefinitions>
@@ -22,7 +22,7 @@
                             <ComboBoxItem Content="Screen" Tag="Screen" />
                             <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
                         </ComboBox>
-                        <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
+                        <Button x:Name="SelectRoiButton" Content="Select ROI" Width="120" Margin="0,6,0,0" HorizontalAlignment="Left" Click="OnSelectRoi" />
                         <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" Click="OnSettingChanged" />
                         <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
 
@@ -40,11 +40,32 @@
                         <Separator Margin="0,10,0,10" />
 
                         <TextBlock Text="Translation" FontWeight="SemiBold" />
-                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                            <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
-                            <TextBox x:Name="SourceLangBox" Width="80" LostFocus="OnSettingLostFocus" />
-                            <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <TextBox x:Name="TargetLangBox" Width="80" LostFocus="OnSettingLostFocus" />
+                        <StackPanel Margin="0,6,0,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="SourceLangCombo" Width="140" SelectionChanged="OnLanguageSelectionChanged">
+                                    <ComboBoxItem Content="English" Tag="en" />
+                                    <ComboBoxItem Content="日本語" Tag="ja" />
+                                    <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
+                                    <ComboBoxItem Content="中文(简体)" Tag="zh-Hans" />
+                                    <ComboBoxItem Content="Русский" Tag="ru" />
+                                    <ComboBoxItem Content="Custom..." Tag="custom" />
+                                </ComboBox>
+                                <TextBox x:Name="SourceLangCustom" Width="80" Margin="8,0,0,0" LostFocus="OnSettingLostFocus" Visibility="Collapsed" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock Text="Target" Width="60" VerticalAlignment="Center" />
+                                <ComboBox x:Name="TargetLangCombo" Width="140" SelectionChanged="OnLanguageSelectionChanged">
+                                    <ComboBoxItem Content="English" Tag="en" />
+                                    <ComboBoxItem Content="日本語" Tag="ja" />
+                                    <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
+                                    <ComboBoxItem Content="中文(简体)" Tag="zh-Hans" />
+                                    <ComboBoxItem Content="Русский" Tag="ru" />
+                                    <ComboBoxItem Content="Custom..." Tag="custom" />
+                                </ComboBox>
+                                <TextBox x:Name="TargetLangCustom" Width="80" Margin="8,0,0,0" LostFocus="OnSettingLostFocus" Visibility="Collapsed" />
+                                <Button x:Name="SwapLangButton" Content="Swap" Margin="8,0,0,0" Click="OnSwapLanguages" />
+                            </StackPanel>
                         </StackPanel>
                         <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" Click="OnSettingChanged" />
                         <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" Click="OnSettingChanged" />
@@ -57,7 +78,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="0,6,0,0">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="140" />
+                            <ColumnDefinition Width="180" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
