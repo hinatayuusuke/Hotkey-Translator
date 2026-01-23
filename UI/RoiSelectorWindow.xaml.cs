@@ -59,7 +59,11 @@ public partial class RoiSelectorWindow : Window
         ReleaseMouseCapture();
         var end = e.GetPosition(this);
         var rect = NormalizeRect(_start.Value, end);
-        var deviceRect = DpiHelper.DipRectToDevice(this, rect);
+        // WHY: Convert window-local ROI to screen coordinates before DPI/device conversion.
+        var screenTopLeft = PointToScreen(new Point(rect.X, rect.Y));
+        var screenBottomRight = PointToScreen(new Point(rect.Right, rect.Bottom));
+        var screenRect = new Rect(screenTopLeft, screenBottomRight);
+        var deviceRect = DpiHelper.DipRectToDevice(this, screenRect);
 
         SelectedRect = deviceRect.Width <= 0 || deviceRect.Height <= 0 ? null : deviceRect;
         if (SelectedRect.HasValue && _frameBounds.Width > 0 && _frameBounds.Height > 0)
