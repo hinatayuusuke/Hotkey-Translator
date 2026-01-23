@@ -182,6 +182,7 @@ public partial class MainWindow : Window
         {
             OcrEngineKind.Paddle => "Paddle",
             OcrEngineKind.PaddleVllm => "PaddleVllm",
+            OcrEngineKind.Florence2 => "Florence2",
             _ => "WinRt"
         });
         PaddleProjectDirBox.Text = settings.PaddleProjectDir;
@@ -189,6 +190,11 @@ public partial class MainWindow : Window
         PaddleLanguageBox.Text = settings.PaddleLanguage;
         PaddleDeviceBox.Text = settings.PaddleDevice;
         PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
+        FlorenceProjectDirBox.Text = settings.FlorenceProjectDir;
+        FlorenceUvPathBox.Text = settings.FlorenceUvPath;
+        FlorenceModelNameBox.Text = settings.FlorenceModelName;
+        FlorenceDeviceBox.Text = settings.FlorenceDevice;
+        FlorenceModelDirBox.Text = settings.FlorenceModelDir ?? string.Empty;
         VllmBaseUrlBox.Text = settings.VllmBaseUrl;
         VllmModelNameBox.Text = settings.VllmModelName;
         VllmApiKeyBox.Password = settings.VllmApiKey ?? string.Empty;
@@ -364,6 +370,11 @@ public partial class MainWindow : Window
                 return OcrEngineKind.PaddleVllm;
             }
 
+            if (tag == "Florence2")
+            {
+                return OcrEngineKind.Florence2;
+            }
+
             return tag == "Paddle" ? OcrEngineKind.Paddle : OcrEngineKind.WinRt;
         }
 
@@ -494,6 +505,11 @@ public partial class MainWindow : Window
         settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
         settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
         settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
+        settings.FlorenceProjectDir = FlorenceProjectDirBox.Text.Trim();
+        settings.FlorenceUvPath = FlorenceUvPathBox.Text.Trim();
+        settings.FlorenceModelName = FlorenceModelNameBox.Text.Trim();
+        settings.FlorenceDevice = FlorenceDeviceBox.Text.Trim();
+        settings.FlorenceModelDir = string.IsNullOrWhiteSpace(FlorenceModelDirBox.Text) ? null : FlorenceModelDirBox.Text.Trim();
         settings.VllmBaseUrl = VllmBaseUrlBox.Text.Trim();
         settings.VllmModelName = VllmModelNameBox.Text.Trim();
         settings.VllmApiKey = VllmApiKeyBox.Password;
@@ -550,7 +566,7 @@ public partial class MainWindow : Window
 
     private void UpdateSettingsCategoryPanels()
     {
-        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelVllm == null || SettingsPanelTranslation == null)
+        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelFlorence == null || SettingsPanelVllm == null || SettingsPanelTranslation == null)
         {
             return;
         }
@@ -558,7 +574,8 @@ public partial class MainWindow : Window
         var index = SettingsCategoryList.SelectedIndex;
         SettingsPanelOcr.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanelPaddle.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelVllm.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelTranslation.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelFlorence.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelVllm.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelTranslation.Visibility = index == 4 ? Visibility.Visible : Visibility.Collapsed;
     }
 }

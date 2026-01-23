@@ -30,6 +30,11 @@ public sealed class AppSettings
     public string PaddleLanguage { get; set; } = "japan";
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }
+    public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
+    public string FlorenceUvPath { get; set; } = "uv";
+    public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";
+    public string FlorenceDevice { get; set; } = "cuda";
+    public string? FlorenceModelDir { get; set; }
     public string VllmBaseUrl { get; set; } = "http://localhost:8000/v1";
     public string VllmModelName { get; set; } = "PaddlePaddle/PaddleOCR-VL";
     public bool EnableLineMerge { get; set; } = true;

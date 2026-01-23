@@ -12,6 +12,7 @@ public sealed class OcrEngine
     private readonly IOcrProvider _winRtProvider;
     private readonly IOcrProvider _paddleProvider;
     private readonly IOcrProvider _paddleVllmProvider;
+    private readonly IOcrProvider _florenceProvider;
     private readonly AppLogger? _logger;
 
     public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
@@ -20,11 +21,29 @@ public sealed class OcrEngine
         _winRtProvider = new WinRtOcrProvider(logger);
         _paddleProvider = new PaddleOcrProvider(logger);
         _paddleVllmProvider = new PaddleVllmOcrProvider(httpClient, logger);
+        _florenceProvider = new FlorenceOcrProvider(logger);
     }
 
     public async Task<OcrResultModel> RecognizeAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (settings.OcrEngine == OcrEngineKind.Florence2)
+        {
+            try
+            {
+                _logger?.Info("OCR engine: Florence-2.");
+                return await _florenceProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "Florence-2 OCR failed; falling back to WinRT.");
+            }
+        }
 
         if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
         {
