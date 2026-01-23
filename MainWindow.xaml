@@ -146,23 +146,23 @@
                             <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,8,0,0">
                                 <TextBlock Text="Paddle OCR" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Project" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Project" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleProjectDirBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Language" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Language" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleLanguageBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Device" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Device" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleDeviceBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="uv path" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="uv path" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleUvPathBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Model dir" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Model dir" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleModelDirBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                             </StackPanel>
