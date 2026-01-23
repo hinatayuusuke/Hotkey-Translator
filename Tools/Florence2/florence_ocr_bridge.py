@@ -172,6 +172,8 @@ def main() -> int:
                 max_new_tokens=1024,
                 num_beams=3,
                 do_sample=False,
+                # NOTE: Disable cache to avoid None past_key_values in Florence-2 generation.
+                use_cache=False,
             )
     except Exception:
         print("[DEBUG] model.generate failed; traceback follows.", file=sys.stderr)
