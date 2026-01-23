@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+import traceback
 from typing import Any, Iterable, List, Optional
 
 from PIL import Image
@@ -136,13 +137,46 @@ def main() -> int:
 
     image = Image.open(args.image).convert("RGB")
     task_prompt = "<OCR_WITH_REGION>"
-    inputs = processor(text=task_prompt, images=image, return_tensors="pt")
-    for key, value in inputs.items():
-        if torch.is_tensor(value):
-            inputs[key] = value.to(args.device)
 
-    with torch.no_grad():
-        generated_ids = model.generate(**inputs, max_new_tokens=1024)
+    # 1) まず processor が pixel_values を作れる形で呼ぶ
+    inputs = processor(text=task_prompt, images=image, return_tensors="pt", padding=True)
+
+    # 2) まとめて device / dtype に乗せる（model card と同じ流儀）
+    inputs = inputs.to(args.device, dtype)
+
+    # 3) ここで pixel_values が None になっていないかチェック（原因切り分けが一気に楽になります）
+    if inputs.get("pixel_values", None) is None:
+        raise RuntimeError(
+            "processor returned pixel_values=None. "
+            "AutoProcessor が Florence2Processor を正しく読めていない/画像前処理が失敗している可能性があります。"
+        )
+
+    # NOTE: Debug logs to diagnose NoneType shape errors during generation.
+    print(f"[DEBUG] processor={type(processor).__name__}", file=sys.stderr)
+    print(f"[DEBUG] model={type(model).__name__}", file=sys.stderr)
+    print(f"[DEBUG] device={args.device} dtype={dtype}", file=sys.stderr)
+    print(f"[DEBUG] input keys={list(inputs.keys())}", file=sys.stderr)
+    print(f"[DEBUG] input_ids shape={tuple(inputs['input_ids'].shape)} dtype={inputs['input_ids'].dtype}", file=sys.stderr)
+    print(f"[DEBUG] attention_mask shape={tuple(inputs['attention_mask'].shape)} dtype={inputs['attention_mask'].dtype}", file=sys.stderr)
+    pixel_values = inputs.get("pixel_values")
+    print(f"[DEBUG] pixel_values type={type(pixel_values).__name__}", file=sys.stderr)
+    if pixel_values is not None:
+        print(f"[DEBUG] pixel_values shape={tuple(pixel_values.shape)} dtype={pixel_values.dtype}", file=sys.stderr)
+    print(f"[DEBUG] attn_implementation={getattr(model.config, '_attn_implementation', None)}", file=sys.stderr)
+
+    try:
+        with torch.no_grad():
+            generated_ids = model.generate(
+                input_ids=inputs["input_ids"],
+                pixel_values=inputs["pixel_values"],
+                max_new_tokens=1024,
+                num_beams=3,
+                do_sample=False,
+            )
+    except Exception:
+        print("[DEBUG] model.generate failed; traceback follows.", file=sys.stderr)
+        traceback.print_exc()
+        raise
 
     generated_text = processor.batch_decode(generated_ids, skip_special_tokens=False)[0]
     parsed = processor.post_process_generation(generated_text, task=task_prompt, image_size=image.size)
