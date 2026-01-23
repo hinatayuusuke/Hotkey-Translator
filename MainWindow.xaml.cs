@@ -55,7 +55,7 @@ public partial class MainWindow : Window
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
         _captureManager = new CaptureManager(frameGate, _logger);
-        var ocrEngine = new OcrEngine(_logger);
+        var ocrEngine = new OcrEngine(_httpClient, _logger);
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
         var normalization = new NormalizationService();
@@ -178,12 +178,20 @@ public partial class MainWindow : Window
         ApplyLanguageSelection(SourceLangCombo, SourceLangCustom, settings.SourceLanguage);
         ApplyLanguageSelection(TargetLangCombo, TargetLangCustom, settings.TargetLanguage);
         EnableRoiCheck.IsChecked = settings.EnableRoi;
-        SetComboBoxByTag(OcrEngineBox, settings.OcrEngine == OcrEngineKind.Paddle ? "Paddle" : "WinRt");
+        SetComboBoxByTag(OcrEngineBox, settings.OcrEngine switch
+        {
+            OcrEngineKind.Paddle => "Paddle",
+            OcrEngineKind.PaddleVllm => "PaddleVllm",
+            _ => "WinRt"
+        });
         PaddleProjectDirBox.Text = settings.PaddleProjectDir;
         PaddleUvPathBox.Text = settings.PaddleUvPath;
         PaddleLanguageBox.Text = settings.PaddleLanguage;
         PaddleDeviceBox.Text = settings.PaddleDevice;
         PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
+        VllmBaseUrlBox.Text = settings.VllmBaseUrl;
+        VllmModelNameBox.Text = settings.VllmModelName;
+        VllmApiKeyBox.Password = settings.VllmApiKey ?? string.Empty;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -351,6 +359,11 @@ public partial class MainWindow : Window
     {
         if (OcrEngineBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
         {
+            if (tag == "PaddleVllm")
+            {
+                return OcrEngineKind.PaddleVllm;
+            }
+
             return tag == "Paddle" ? OcrEngineKind.Paddle : OcrEngineKind.WinRt;
         }
 
@@ -481,6 +494,9 @@ public partial class MainWindow : Window
         settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
         settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
         settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
+        settings.VllmBaseUrl = VllmBaseUrlBox.Text.Trim();
+        settings.VllmModelName = VllmModelNameBox.Text.Trim();
+        settings.VllmApiKey = VllmApiKeyBox.Password;
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -534,7 +550,7 @@ public partial class MainWindow : Window
 
     private void UpdateSettingsCategoryPanels()
     {
-        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelTranslation == null)
+        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelVllm == null || SettingsPanelTranslation == null)
         {
             return;
         }
@@ -542,6 +558,7 @@ public partial class MainWindow : Window
         var index = SettingsCategoryList.SelectedIndex;
         SettingsPanelOcr.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanelPaddle.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelTranslation.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelVllm.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelTranslation.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
     }
 }

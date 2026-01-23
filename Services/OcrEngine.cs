@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
@@ -10,18 +11,37 @@ public sealed class OcrEngine
 {
     private readonly IOcrProvider _winRtProvider;
     private readonly IOcrProvider _paddleProvider;
+    private readonly IOcrProvider _paddleVllmProvider;
     private readonly AppLogger? _logger;
 
-    public OcrEngine(AppLogger? logger = null)
+    public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
     {
         _logger = logger;
         _winRtProvider = new WinRtOcrProvider(logger);
         _paddleProvider = new PaddleOcrProvider(logger);
+        _paddleVllmProvider = new PaddleVllmOcrProvider(httpClient, logger);
     }
 
     public async Task<OcrResultModel> RecognizeAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
+        {
+            try
+            {
+                _logger?.Info("OCR engine: PaddleOCR-VL (vLLM).");
+                return await _paddleVllmProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "PaddleOCR-VL (vLLM) failed; falling back to WinRT.");
+            }
+        }
 
         if (settings.OcrEngine == OcrEngineKind.Paddle)
         {

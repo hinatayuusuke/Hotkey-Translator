@@ -30,6 +30,8 @@ public sealed class AppSettings
     public string PaddleLanguage { get; set; } = "japan";
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }
+    public string VllmBaseUrl { get; set; } = "http://localhost:8000/v1";
+    public string VllmModelName { get; set; } = "PaddlePaddle/PaddleOCR-VL";
     public bool EnableLineMerge { get; set; } = true;
     public double MergeOverlapRatioThreshold { get; set; } = 0.1;
     public double MergeVerticalWeight { get; set; } = 0.5;
@@ -53,6 +55,11 @@ public sealed class AppSettings
     public string? ApiKey { get; set; }
 
     public string? ApiKeyProtected { get; set; }
+
+    [JsonIgnore]
+    public string? VllmApiKey { get; set; }
+
+    public string? VllmApiKeyProtected { get; set; }
 
     [JsonIgnore]
     public string? DeepLApiKey { get; set; }

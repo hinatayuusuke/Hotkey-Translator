@@ -58,6 +58,7 @@
                             <ComboBox Grid.Column="1" x:Name="OcrEngineBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                                <ComboBoxItem Content="PaddleOCR-VL (vLLM)" Tag="PaddleVllm" />
                             </ComboBox>
                         </Grid>
 
@@ -170,6 +171,7 @@
                             <ListBox x:Name="SettingsCategoryList" SelectionChanged="OnSettingsCategoryChanged" SelectedIndex="0">
                                 <ListBoxItem Content="OCR" />
                                 <ListBoxItem Content="Paddle OCR" />
+                                <ListBoxItem Content="PaddleOCR-VL (vLLM)" />
                                 <ListBoxItem Content="Translation" />
                             </ListBox>
                         </Border>
@@ -208,6 +210,22 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <TextBlock Text="Model dir" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleModelDirBox" Width="180" LostFocus="OnSettingLostFocus" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="SettingsPanelVllm" Visibility="Collapsed" Margin="0,8,0,0">
+                                <TextBlock Text="PaddleOCR-VL (vLLM)" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Base URL" Width="90" VerticalAlignment="Center" />
+                                    <TextBox x:Name="VllmBaseUrlBox" Width="220" LostFocus="OnSettingLostFocus" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="Model" Width="90" VerticalAlignment="Center" />
+                                    <TextBox x:Name="VllmModelNameBox" Width="220" LostFocus="OnSettingLostFocus" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                    <TextBlock Text="API key" Width="90" VerticalAlignment="Center" />
+                                    <PasswordBox x:Name="VllmApiKeyBox" Width="220" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                             </StackPanel>
 
