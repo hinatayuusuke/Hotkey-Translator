@@ -18,12 +18,12 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="Capture" FontWeight="SemiBold" />
-                        <ComboBox x:Name="CaptureModeBox" Margin="0,6,0,0">
+                        <ComboBox x:Name="CaptureModeBox" Margin="0,6,0,0" SelectionChanged="OnSettingChanged">
                             <ComboBoxItem Content="Screen" Tag="Screen" />
                             <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
                         </ComboBox>
                         <Button x:Name="SelectRoiButton" Content="Select ROI" Margin="0,6,0,0" Click="OnSelectRoi" />
-                        <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" />
+                        <CheckBox x:Name="EnableRoiCheck" Content="Enable ROI" Margin="0,6,0,0" Click="OnSettingChanged" />
                         <TextBlock x:Name="RoiStatusText" Text="ROI: not set" Margin="0,4,0,0" />
 
                         <Separator Margin="0,10,0,10" />
@@ -31,7 +31,7 @@
                         <TextBlock Text="OCR" FontWeight="SemiBold" />
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBlock Text="OCR engine" Width="150" VerticalAlignment="Center" />
-                            <ComboBox x:Name="OcrEngineBox" Width="160">
+                            <ComboBox x:Name="OcrEngineBox" Width="160" SelectionChanged="OnSettingChanged">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                             </ComboBox>
@@ -42,16 +42,14 @@
                         <TextBlock Text="Translation" FontWeight="SemiBold" />
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBlock Text="Source" Width="60" VerticalAlignment="Center" />
-                            <TextBox x:Name="SourceLangBox" Width="80" />
+                            <TextBox x:Name="SourceLangBox" Width="80" LostFocus="OnSettingLostFocus" />
                             <TextBlock Text="Target" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" />
-                            <TextBox x:Name="TargetLangBox" Width="80" />
+                            <TextBox x:Name="TargetLangBox" Width="80" LostFocus="OnSettingLostFocus" />
                         </StackPanel>
-                        <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" />
-                        <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" />
+                        <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Margin="0,6,0,0" Click="OnSettingChanged" />
+                        <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="0,6,0,0" Click="OnSettingChanged" />
 
                         <Separator Margin="0,10,0,10" />
-
-                        <Button x:Name="SaveSettingsButton" Content="Save Settings" Click="OnSaveSettings" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -76,11 +74,11 @@
                                 <TextBlock Text="OCR (Advanced)" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PhashThresholdBox" Width="80" />
+                                    <TextBox x:Name="PhashThresholdBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="IouThresholdBox" Width="80" />
+                                    <TextBox x:Name="IouThresholdBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                             </StackPanel>
 
@@ -88,21 +86,21 @@
                                 <TextBlock Text="Paddle OCR" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Project" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PaddleProjectDirBox" Width="180" />
+                                    <TextBox x:Name="PaddleProjectDirBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Language" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PaddleLanguageBox" Width="80" />
+                                    <TextBox x:Name="PaddleLanguageBox" Width="80" LostFocus="OnSettingLostFocus" />
                                     <TextBlock Text="Device" Width="50" Margin="8,0,0,0" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PaddleDeviceBox" Width="60" />
+                                    <TextBox x:Name="PaddleDeviceBox" Width="60" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="uv path" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PaddleUvPathBox" Width="180" />
+                                    <TextBox x:Name="PaddleUvPathBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Model dir" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PaddleModelDirBox" Width="180" />
+                                    <TextBox x:Name="PaddleModelDirBox" Width="180" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                             </StackPanel>
 
@@ -111,15 +109,15 @@
                                 <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,6,0,6" />
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
-                                    <PasswordBox x:Name="DeepLApiKeyBox" Width="200" />
+                                    <PasswordBox x:Name="DeepLApiKeyBox" Width="200" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
-                                    <TextBox x:Name="DeepLEndpointBox" Width="200" />
+                                    <TextBox x:Name="DeepLEndpointBox" Width="200" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Gemini API key" Width="120" VerticalAlignment="Center" />
-                                    <PasswordBox x:Name="ApiKeyBox" Width="200" />
+                                    <PasswordBox x:Name="ApiKeyBox" Width="200" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                                 <TextBlock Text="Translation priority" Margin="0,10,0,0" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">

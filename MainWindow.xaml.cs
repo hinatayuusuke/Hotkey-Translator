@@ -30,6 +30,7 @@ public partial class MainWindow : Window
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private readonly ObservableCollection<string> _translationPriority = new();
+    private bool _isApplyingSettings;
 
     public MainWindow()
     {
@@ -170,45 +171,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnSaveSettings(object sender, RoutedEventArgs e)
-    {
-        var settings = _settingsService.Settings;
-        settings.CaptureMode = GetCaptureMode();
-        settings.SourceLanguage = SourceLangBox.Text.Trim();
-        settings.TargetLanguage = TargetLangBox.Text.Trim();
-        settings.EnableRoi = EnableRoiCheck.IsChecked == true;
-        settings.OcrEngine = GetOcrEngineKind();
-        settings.PaddleProjectDir = PaddleProjectDirBox.Text.Trim();
-        settings.PaddleUvPath = PaddleUvPathBox.Text.Trim();
-        settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
-        settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
-        settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
-        settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
-        settings.DeepLApiKey = DeepLApiKeyBox.Password;
-        settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
-        settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
-        settings.TranslationPriority = GetTranslationPriority();
-        settings.ApiKey = ApiKeyBox.Password;
-
-        if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
-        {
-            settings.PhashThreshold = phashThreshold;
-        }
-
-        if (double.TryParse(IouThresholdBox.Text.Trim(), out var iouThreshold))
-        {
-            settings.OcrIouThreshold = iouThreshold;
-        }
-
-        _overlayWindow?.ApplyStyle(settings);
-        UpdateRoiStatus(settings);
-        UpdateTranslationStatus(settings);
-        await _settingsService.SaveAsync().ConfigureAwait(true);
-        AppendLog("Settings saved.");
-    }
-
     private void ApplySettingsToUi(AppSettings settings)
     {
+        _isApplyingSettings = true;
         CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
         SourceLangBox.Text = settings.SourceLanguage;
         TargetLangBox.Text = settings.TargetLanguage;
@@ -229,6 +194,7 @@ public partial class MainWindow : Window
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
         UpdateRoiStatus(settings);
+        _isApplyingSettings = false;
     }
 
     private void UpdateRoiStatus(AppSettings settings)
@@ -358,6 +324,7 @@ public partial class MainWindow : Window
         _translationPriority.RemoveAt(index);
         _translationPriority.Insert(index - 1, item);
         TranslationPriorityList.SelectedIndex = index - 1;
+        _ = SaveSettingsAsync();
     }
 
     private void OnTranslationPriorityDown(object sender, RoutedEventArgs e)
@@ -372,6 +339,59 @@ public partial class MainWindow : Window
         _translationPriority.RemoveAt(index);
         _translationPriority.Insert(index + 1, item);
         TranslationPriorityList.SelectedIndex = index + 1;
+        _ = SaveSettingsAsync();
+    }
+
+    private async void OnSettingChanged(object sender, RoutedEventArgs e)
+    {
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSettingLostFocus(object sender, RoutedEventArgs e)
+    {
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Settings;
+        settings.CaptureMode = GetCaptureMode();
+        settings.SourceLanguage = SourceLangBox.Text.Trim();
+        settings.TargetLanguage = TargetLangBox.Text.Trim();
+        settings.EnableRoi = EnableRoiCheck.IsChecked == true;
+        settings.OcrEngine = GetOcrEngineKind();
+        settings.PaddleProjectDir = PaddleProjectDirBox.Text.Trim();
+        settings.PaddleUvPath = PaddleUvPathBox.Text.Trim();
+        settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
+        settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
+        settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
+        settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
+        settings.DeepLApiKey = DeepLApiKeyBox.Password;
+        settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
+        settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
+        settings.TranslationPriority = GetTranslationPriority();
+        settings.ApiKey = ApiKeyBox.Password;
+
+        if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
+        {
+            settings.PhashThreshold = phashThreshold;
+        }
+
+        if (double.TryParse(IouThresholdBox.Text.Trim(), out var iouThreshold))
+        {
+            settings.OcrIouThreshold = iouThreshold;
+        }
+
+        _overlayWindow?.ApplyStyle(settings);
+        UpdateRoiStatus(settings);
+        UpdateTranslationStatus(settings);
+        await _settingsService.SaveAsync().ConfigureAwait(true);
+        AppendLog("Settings saved.");
     }
 
     private void AppendLog(string message)
