@@ -5,6 +5,14 @@ namespace Hotkey_Translator.Services;
 
 public static class DpiHelper
 {
+    public static Rect ScreenRectToWindowDip(Window window, Rect screenDeviceRect)
+    {
+        // WHY: OCR bounds are stored in screen device pixels; PointFromScreen converts to window DIP.
+        var topLeft = window.PointFromScreen(new Point(screenDeviceRect.X, screenDeviceRect.Y));
+        var bottomRight = window.PointFromScreen(new Point(screenDeviceRect.Right, screenDeviceRect.Bottom));
+        return new Rect(topLeft, bottomRight);
+    }
+
     public static Rect DeviceRectToDip(Visual visual, Rect deviceRect)
     {
         var source = PresentationSource.FromVisual(visual);

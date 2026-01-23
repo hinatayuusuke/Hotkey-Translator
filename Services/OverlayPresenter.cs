@@ -78,7 +78,7 @@ public sealed class OverlayPresenter
         var converted = new List<OverlayItem>(items.Count);
         foreach (var item in items)
         {
-            var rect = DpiHelper.DeviceRectToDip(_window, item.Rect);
+            var rect = DpiHelper.ScreenRectToWindowDip(_window, item.Rect);
             var lineHeight = item.LineHeight;
             if (lineHeight > 0 && item.Rect.Height > 0 && rect.Height > 0)
             {
