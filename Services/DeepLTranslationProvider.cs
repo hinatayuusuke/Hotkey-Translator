@@ -42,11 +42,20 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
             : settings.DeepLEndpoint.Trim();
         var apiKey = settings.DeepLApiKey ?? string.Empty;
 
-        using var content = BuildRequestContent(texts, settings, apiKey);
-        using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
+        {
+            Content = BuildRequestContent(texts, settings)
+        };
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("DeepL-Auth-Key", apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if ((int)response.StatusCode == 403 && body.Contains("Legacy authentication method", StringComparison.OrdinalIgnoreCase))
+            {
+                _logger?.Info("DeepL HTTP 403: header-based authentication required.");
+            }
+
             _logger?.Info($"DeepL HTTP {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
             return new Dictionary<string, string>();
         }
@@ -55,11 +64,10 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
         return ParseTranslations(json, texts);
     }
 
-    private FormUrlEncodedContent BuildRequestContent(IReadOnlyList<string> texts, AppSettings settings, string apiKey)
+    private FormUrlEncodedContent BuildRequestContent(IReadOnlyList<string> texts, AppSettings settings)
     {
         var parameters = new List<KeyValuePair<string, string>>
         {
-            new("auth_key", apiKey),
             new("target_lang", NormalizeLang(settings.TargetLanguage))
         };
 
