@@ -37,9 +37,12 @@
                             </ComboBox>
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="ROI" VerticalAlignment="Center" Margin="0,6,0,0" />
-                            <Button Grid.Row="1" Grid.Column="1" x:Name="SelectRoiButton" Content="Select ROI" Width="140" Margin="0,6,0,0" HorizontalAlignment="Left" Click="OnSelectRoi" />
-                            <CheckBox Grid.Row="1" Grid.Column="2" x:Name="EnableRoiCheck" Content="Enable" Width="80" Margin="6,6,0,0" HorizontalAlignment="Left" Click="OnSettingChanged" />
 
+                            <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button x:Name="SelectRoiButton" Content="Select ROI" Width="140" HorizontalAlignment="Left" Click="OnSelectRoi" />
+    
+                                <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
+                            </StackPanel>
                             <TextBlock Grid.Row="2" Grid.Column="1" x:Name="RoiStatusText" Text="ROI: not set" Margin="0,6,0,0" Grid.ColumnSpan="2" />
                         </Grid>
 
@@ -97,10 +100,12 @@
                                     <ComboBoxItem Content="Custom..." Tag="custom" />
                                 </ComboBox>
                                 <TextBox x:Name="TargetLangCustom" Width="90" Margin="8,0,0,0" LostFocus="OnSettingLostFocus" Visibility="Collapsed" />
+                                
+                                <Button Grid.Row="1" Grid.Column="2" x:Name="SwapLangButton" Width="28" Height="28" Margin="6,6,0,0" HorizontalAlignment="Left" Click="OnSwapLanguages" ToolTip="Swap languages">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE117;" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Button>
                             </StackPanel>
-                            <Button Grid.Row="1" Grid.Column="2" x:Name="SwapLangButton" Width="28" Height="28" Margin="6,6,0,0" HorizontalAlignment="Left" Click="OnSwapLanguages" ToolTip="Swap languages">
-                                <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16" Text="&#xE117;" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                            </Button>
+
 
                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
                                 <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Click="OnSettingChanged" />
