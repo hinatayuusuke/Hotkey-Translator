@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly NormalizationService _normalizationService;
+    private readonly OcrPreprocessService _ocrPreprocessService;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
@@ -28,12 +30,15 @@ public sealed class PipelineOrchestrator
     private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
     private ulong? _lastHash;
 
+    public event Action<Bitmap>? OcrPreprocessPreviewReady;
+
     public PipelineOrchestrator(
         CaptureManager captureManager,
         OcrEngine ocrEngine,
         OcrDiffService ocrDiffService,
         PhashService phashService,
         NormalizationService normalizationService,
+        OcrPreprocessService ocrPreprocessService,
         OcrLineGrouper lineGrouper,
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
@@ -47,6 +52,7 @@ public sealed class PipelineOrchestrator
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _normalizationService = normalizationService;
+        _ocrPreprocessService = ocrPreprocessService;
         _lineGrouper = lineGrouper;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
@@ -109,41 +115,63 @@ public sealed class PipelineOrchestrator
             }
 
             var ocrStopwatch = Stopwatch.StartNew();
-            var ocrResult = await _ocrEngine.RecognizeAsync(roiBitmap, settings, cancellationToken).ConfigureAwait(false);
-            ocrStopwatch.Stop();
-            _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
-            var mappedLines = ocrResult.Lines
-                .Select(line => line with
-                {
-                    Rect = new Rect(
-                        line.Rect.X + roiScreen.X,
-                        line.Rect.Y + roiScreen.Y,
-                        line.Rect.Width,
-                        line.Rect.Height)
-                })
-                .ToList();
-
-            var groupStopwatch = Stopwatch.StartNew();
-            var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
-            groupStopwatch.Stop();
-            _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
-            if (groupedLines.Count == 0)
+            Bitmap? ocrInput = null;
+            try
             {
-                _logger.Info("OCR returned no lines.");
-                _overlayPresenter.ShowLast();
-                return;
+                if (settings.EnableOcrBinarization)
+                {
+                    ocrInput = _ocrPreprocessService.Apply(roiBitmap, settings);
+                }
+                else
+                {
+                    ocrInput = roiBitmap;
+                }
+
+                NotifyOcrPreprocessPreview(ocrInput);
+
+                var ocrResult = await _ocrEngine.RecognizeAsync(ocrInput, settings, cancellationToken).ConfigureAwait(false);
+                ocrStopwatch.Stop();
+                _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
+                var mappedLines = ocrResult.Lines
+                    .Select(line => line with
+                    {
+                        Rect = new Rect(
+                            line.Rect.X + roiScreen.X,
+                            line.Rect.Y + roiScreen.Y,
+                            line.Rect.Width,
+                            line.Rect.Height)
+                    })
+                    .ToList();
+
+                var groupStopwatch = Stopwatch.StartNew();
+                var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+                groupStopwatch.Stop();
+                _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
+                if (groupedLines.Count == 0)
+                {
+                    _logger.Info("OCR returned no lines.");
+                    _overlayPresenter.ShowLast();
+                    return;
+                }
+
+                var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
+                _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
+                var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
+
+                var overlayItems = groupedLines
+                    .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
+                    .ToList();
+
+                _lastOverlayItems = overlayItems;
+                _overlayPresenter.Update(overlayItems);
             }
-
-            var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
-            _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
-            var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
-
-            var overlayItems = groupedLines
-                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
-                .ToList();
-
-            _lastOverlayItems = overlayItems;
-            _overlayPresenter.Update(overlayItems);
+            finally
+            {
+                if (settings.EnableOcrBinarization)
+                {
+                    ocrInput?.Dispose();
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -278,6 +306,18 @@ public sealed class PipelineOrchestrator
     {
         var text = translations.TryGetValue(sourceText, out var translated) ? translated : sourceText;
         return NormalizeOverlayText(text, lineCount);
+    }
+
+    private void NotifyOcrPreprocessPreview(Bitmap ocrInput)
+    {
+        if (OcrPreprocessPreviewReady == null)
+        {
+            return;
+        }
+
+        // WHY: Use a clone so OCR can continue using the original bitmap safely.
+        using var preview = (Bitmap)ocrInput.Clone();
+        OcrPreprocessPreviewReady.Invoke(preview);
     }
 
     private static string NormalizeOverlayText(string text, int lineCount)

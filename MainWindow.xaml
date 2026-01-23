@@ -189,6 +189,36 @@
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="IouThresholdBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
+
+                                <Separator Margin="0,10,0,8" />
+                                <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrBinarizationThresholdSlider"
+                                            Width="180"
+                                            Minimum="0"
+                                            Maximum="255"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="5"
+                                            SmallChange="1"
+                                            LargeChange="10"
+                                            ValueChanged="OnOcrBinarizationThresholdChanged" />
+                                    <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
+                                <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
+                                <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="320" Height="180">
+                                    <Grid>
+                                        <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
+                                        <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                                   Text="Run OCR to update preview."
+                                                   Foreground="DimGray"
+                                                   TextAlignment="Center"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+                                </Border>
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,8,0,0">

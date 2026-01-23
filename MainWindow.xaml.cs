@@ -1,13 +1,17 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media.Imaging;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.UI;
@@ -59,6 +63,7 @@ public partial class MainWindow : Window
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
         var phashService = new PhashService();
         var normalization = new NormalizationService();
+        var ocrPreprocess = new OcrPreprocessService();
         var lineGrouper = new OcrLineGrouper();
         var keyBuilder = new CacheKeyBuilder();
         var geminiClient = new GeminiClient(_httpClient, _logger);
@@ -75,6 +80,7 @@ public partial class MainWindow : Window
             ocrDiff,
             phashService,
             normalization,
+            ocrPreprocess,
             lineGrouper,
             _cacheRepository,
             keyBuilder,
@@ -82,6 +88,7 @@ public partial class MainWindow : Window
             _overlayPresenter,
             _settingsService,
             _logger);
+        _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
 
         _hotkeyManager = new HotkeyManager(this, Key.F8, ModifierKeys.None);
         _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
@@ -100,6 +107,10 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
+        if (_pipeline != null)
+        {
+            _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
+        }
         _overlayWindow?.Close();
     }
 
@@ -207,6 +218,10 @@ public partial class MainWindow : Window
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
+        EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
+        OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
+        UpdateOcrBinarizationThresholdValue();
+        UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
@@ -487,6 +502,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnOcrBinarizationThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateOcrBinarizationThresholdValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async Task SaveSettingsAsync()
     {
         if (_isApplyingSettings)
@@ -519,6 +545,8 @@ public partial class MainWindow : Window
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
+        settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
+        settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -531,10 +559,36 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ApplyStyle(settings);
+        UpdateOcrBinarizationThresholdValue();
+        UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
+    }
+
+    private void UpdateOcrBinarizationThresholdValue()
+    {
+        if (OcrBinarizationThresholdValue == null || OcrBinarizationThresholdSlider == null)
+        {
+            return;
+        }
+
+        OcrBinarizationThresholdValue.Text = ((int)Math.Round(OcrBinarizationThresholdSlider.Value)).ToString();
+    }
+
+    private void UpdateOcrPreprocessControls(AppSettings settings)
+    {
+        if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null)
+        {
+            return;
+        }
+
+        var enabled = settings.EnableOcrBinarization;
+        OcrBinarizationThresholdSlider.IsEnabled = enabled;
+        OcrBinarizationThresholdValue.Foreground = enabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
     }
 
     private void AppendLog(string message)
@@ -547,6 +601,50 @@ public partial class MainWindow : Window
 
         LogBox.AppendText(message + Environment.NewLine);
         LogBox.ScrollToEnd();
+    }
+
+    private void OnOcrPreprocessPreviewReady(Bitmap bitmap)
+    {
+        try
+        {
+            var source = CreateBitmapSource(bitmap);
+            Dispatcher.Invoke(() =>
+            {
+                OcrPreprocessPreviewImage.Source = source;
+                OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to update OCR preprocess preview.");
+        }
+    }
+
+    private static BitmapSource CreateBitmapSource(Bitmap bitmap)
+    {
+        var rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
+        var data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            var stride = Math.Abs(data.Stride);
+            var buffer = new byte[stride * bitmap.Height];
+            Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
+            var source = BitmapSource.Create(
+                bitmap.Width,
+                bitmap.Height,
+                bitmap.HorizontalResolution,
+                bitmap.VerticalResolution,
+                System.Windows.Media.PixelFormats.Pbgra32,
+                null,
+                buffer,
+                stride);
+            source.Freeze();
+            return source;
+        }
+        finally
+        {
+            bitmap.UnlockBits(data);
+        }
     }
 
     private void EnsureSettingsCategorySelection()
