@@ -115,9 +115,22 @@ def main() -> int:
         args.device = "cuda"
 
     # SECURITY: Florence-2 relies on remote code; use a trusted model source.
-    processor = AutoProcessor.from_pretrained(model_path, trust_remote_code=True)
     dtype = torch.float16 if args.device.startswith("cuda") else torch.float32
-    model = AutoModelForCausalLM.from_pretrained(model_path, torch_dtype=dtype, trust_remote_code=True)
+
+    processor = AutoProcessor.from_pretrained(
+        model_path,
+        trust_remote_code=True,
+        force_download=False,
+    )
+
+    model = AutoModelForCausalLM.from_pretrained(
+        model_path,
+        dtype=dtype,  # torch_dtype ではなく dtype（警告回避）
+        trust_remote_code=True,
+        force_download=False,
+        attn_implementation="eager",
+    )
+
     model.to(args.device)
     model.eval()
 
