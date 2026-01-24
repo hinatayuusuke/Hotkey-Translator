@@ -15,11 +15,10 @@ public sealed class OcrPreprocessService
             return (Bitmap)source.Clone();
         }
 
-        var threshold = Math.Clamp(settings.OcrBinarizationThreshold, 0, 255);
-        return ApplyBinarization(source, threshold);
+        return ApplyBinarization(source, settings);
     }
 
-    private static Bitmap ApplyBinarization(Bitmap source, int threshold)
+    private static Bitmap ApplyBinarization(Bitmap source, AppSettings settings)
     {
         var input = source;
         var disposeInput = false;
@@ -49,8 +48,35 @@ public sealed class OcrPreprocessService
             var outputRowBytes = Math.Abs(outputStride);
             var inputBuffer = new byte[inputRowBytes * height];
             var outputBuffer = new byte[outputRowBytes * height];
+            var histogram = new int[256];
+            long sumLuma = 0;
 
             Marshal.Copy(inputData.Scan0, inputBuffer, 0, inputBuffer.Length);
+
+            for (var y = 0; y < height; y++)
+            {
+                var inputRow = inputStride < 0 ? (height - 1 - y) * inputRowBytes : y * inputRowBytes;
+                for (var x = 0; x < width; x++)
+                {
+                    var inputIndex = inputRow + (x * 4);
+                    var b = inputBuffer[inputIndex];
+                    var g = inputBuffer[inputIndex + 1];
+                    var r = inputBuffer[inputIndex + 2];
+                    var luma = (int)((0.299 * r) + (0.587 * g) + (0.114 * b));
+                    histogram[luma]++;
+                    sumLuma += luma;
+                }
+            }
+
+            var pixelCount = width * height;
+            var threshold = Math.Clamp(settings.OcrBinarizationThreshold, 0, 255);
+            if (settings.EnableOcrAutoThreshold)
+            {
+                threshold = ComputeOtsuThreshold(histogram, pixelCount, threshold);
+            }
+
+            // WHY: Mean luminance provides a cheap signal for dark backgrounds with bright text.
+            var invert = settings.EnableOcrAutoInvert && pixelCount > 0 && (sumLuma / (double)pixelCount) < 128.0;
 
             for (var y = 0; y < height; y++)
             {
@@ -63,6 +89,10 @@ public sealed class OcrPreprocessService
                     var g = inputBuffer[inputIndex + 1];
                     var r = inputBuffer[inputIndex + 2];
                     var luma = (int)((0.299 * r) + (0.587 * g) + (0.114 * b));
+                    if (invert)
+                    {
+                        luma = 255 - luma;
+                    }
                     var v = (byte)(luma >= threshold ? 255 : 0);
 
                     var outputIndex = outputRow + (x * 4);
@@ -86,5 +116,54 @@ public sealed class OcrPreprocessService
         }
 
         return output;
+    }
+
+    private static int ComputeOtsuThreshold(int[] histogram, int pixelCount, int fallbackThreshold)
+    {
+        if (pixelCount <= 0)
+        {
+            return fallbackThreshold;
+        }
+
+        long sumAll = 0;
+        for (var i = 0; i < histogram.Length; i++)
+        {
+            sumAll += (long)i * histogram[i];
+        }
+
+        long sumBackground = 0;
+        var weightBackground = 0;
+        var weightForeground = 0;
+        var maxVariance = 0.0;
+        var threshold = fallbackThreshold;
+
+        for (var t = 0; t < histogram.Length; t++)
+        {
+            weightBackground += histogram[t];
+            if (weightBackground == 0)
+            {
+                continue;
+            }
+
+            weightForeground = pixelCount - weightBackground;
+            if (weightForeground == 0)
+            {
+                break;
+            }
+
+            sumBackground += (long)t * histogram[t];
+            var meanBackground = sumBackground / (double)weightBackground;
+            var meanForeground = (sumAll - sumBackground) / (double)weightForeground;
+            var varianceBetween = weightBackground * weightForeground * Math.Pow(meanBackground - meanForeground, 2);
+
+            if (varianceBetween > maxVariance)
+            {
+                maxVariance = varianceBetween;
+                threshold = t;
+            }
+        }
+
+        // NOTE: When the image is nearly uniform, Otsu can be unstable; fall back to the manual threshold.
+        return threshold;
     }
 }

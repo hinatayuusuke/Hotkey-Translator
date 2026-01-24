@@ -26,6 +26,8 @@ public sealed class AppSettings
     public double OcrIouThreshold { get; set; } = 0.85;
     public bool EnableOcrBinarization { get; set; } = false;
     public int OcrBinarizationThreshold { get; set; } = 160;
+    public bool EnableOcrAutoThreshold { get; set; } = false;
+    public bool EnableOcrAutoInvert { get; set; } = false;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";

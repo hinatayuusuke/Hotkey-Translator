@@ -193,6 +193,8 @@
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrBinarizationThresholdSlider"
@@ -207,7 +209,7 @@
                                     <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
                                 </StackPanel>
                                 <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
-                                <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="320" Height="180">
+                                <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="640" Height="360">
                                     <Grid>
                                         <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
                                         <TextBlock x:Name="OcrPreprocessPreviewHint"

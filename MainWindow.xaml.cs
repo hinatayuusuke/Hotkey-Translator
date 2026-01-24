@@ -219,6 +219,8 @@ public partial class MainWindow : Window
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
+        EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
+        EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
         OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrPreprocessControls(settings);
@@ -547,6 +549,8 @@ public partial class MainWindow : Window
         settings.ApiKey = ApiKeyBox.Password;
         settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
+        settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
+        settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -579,14 +583,18 @@ public partial class MainWindow : Window
 
     private void UpdateOcrPreprocessControls(AppSettings settings)
     {
-        if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null)
+        if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null ||
+            EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null)
         {
             return;
         }
 
         var enabled = settings.EnableOcrBinarization;
-        OcrBinarizationThresholdSlider.IsEnabled = enabled;
-        OcrBinarizationThresholdValue.Foreground = enabled
+        var manualThresholdEnabled = enabled && !settings.EnableOcrAutoThreshold;
+        OcrBinarizationThresholdSlider.IsEnabled = manualThresholdEnabled;
+        EnableOcrAutoThresholdCheck.IsEnabled = enabled;
+        EnableOcrAutoInvertCheck.IsEnabled = enabled;
+        OcrBinarizationThresholdValue.Foreground = manualThresholdEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
     }
