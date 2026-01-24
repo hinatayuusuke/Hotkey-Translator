@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -19,6 +20,10 @@ public readonly record struct ForceRunOptions(bool SkipPhash, bool SkipOcrDiff, 
 
 public sealed class PipelineOrchestrator
 {
+    private const double OcrCharWeight = 10.0;
+    private const double OcrLineWeight = 1.0;
+    private const double OcrSymbolPenaltyThreshold = 0.45;
+    private const double OcrSymbolPenaltyScale = 0.7;
     private readonly CaptureManager _captureManager;
     private readonly OcrEngine _ocrEngine;
     private readonly OcrDiffService _ocrDiffService;
@@ -461,27 +466,57 @@ public sealed class PipelineOrchestrator
 
         var stats = GetCandidateStats(result);
         _logger.Info($"OCR pass {label}: threshold={threshold} auto={useAutoThreshold} " +
-                     $"lines={stats.LineCount}, chars={stats.CharCount}, " +
+                     $"lines={stats.LineCount}, chars={stats.CharCount}, symbols={stats.SymbolCount}, " +
                      $"preprocess={preprocessStopwatch.ElapsedMilliseconds} ms, ocr={ocrStopwatch.ElapsedMilliseconds} ms.");
 
-        return new OcrPassResult(label, result, input, stats.LineCount, stats.CharCount);
+        return new OcrPassResult(label, result, input, stats.LineCount, stats.CharCount, stats);
     }
 
     private static bool IsBetterCandidate(OcrPassResult candidate, OcrPassResult current)
     {
-        if (candidate.LineCount != current.LineCount)
+        var candidateScore = candidate.Stats.GetScore();
+        var currentScore = current.Stats.GetScore();
+        if (Math.Abs(candidateScore - currentScore) > double.Epsilon)
         {
-            return candidate.LineCount > current.LineCount;
+            return candidateScore > currentScore;
         }
 
-        return candidate.CharCount > current.CharCount;
+        if (candidate.CharCount != current.CharCount)
+        {
+            return candidate.CharCount > current.CharCount;
+        }
+
+        return candidate.LineCount > current.LineCount;
     }
 
     private static CandidateStats GetCandidateStats(OcrResultModel result)
     {
         var lineCount = result.Lines.Count;
-        var charCount = result.Lines.Sum(line => line.Text?.Length ?? 0);
-        return new CandidateStats(lineCount, charCount);
+        var charCount = 0;
+        var symbolCount = 0;
+        foreach (var line in result.Lines)
+        {
+            if (string.IsNullOrEmpty(line.Text))
+            {
+                continue;
+            }
+
+            foreach (var ch in line.Text)
+            {
+                if (char.IsWhiteSpace(ch))
+                {
+                    continue;
+                }
+
+                charCount++;
+                if (IsSymbolOrPunctuation(ch))
+                {
+                    symbolCount++;
+                }
+            }
+        }
+
+        return new CandidateStats(lineCount, charCount, symbolCount);
     }
 
     private static OcrPassResult? FindCandidate(IEnumerable<OcrPassResult> candidates, string label)
@@ -533,9 +568,39 @@ public sealed class PipelineOrchestrator
         return string.Join(Environment.NewLine, head.Append(tail));
     }
 
-    private sealed record CandidateStats(int LineCount, int CharCount);
+    private static bool IsSymbolOrPunctuation(char ch)
+    {
+        var category = char.GetUnicodeCategory(ch);
+        return category == UnicodeCategory.MathSymbol ||
+               category == UnicodeCategory.CurrencySymbol ||
+               category == UnicodeCategory.ModifierSymbol ||
+               category == UnicodeCategory.OtherSymbol ||
+               category == UnicodeCategory.ConnectorPunctuation ||
+               category == UnicodeCategory.DashPunctuation ||
+               category == UnicodeCategory.OpenPunctuation ||
+               category == UnicodeCategory.ClosePunctuation ||
+               category == UnicodeCategory.InitialQuotePunctuation ||
+               category == UnicodeCategory.FinalQuotePunctuation ||
+               category == UnicodeCategory.OtherPunctuation;
+    }
 
-    private sealed record OcrPassResult(string Label, OcrResultModel Result, Bitmap Input, int LineCount, int CharCount);
+    private sealed record CandidateStats(int LineCount, int CharCount, int SymbolCount)
+    {
+        public double GetScore()
+        {
+            var score = (CharCount * OcrCharWeight) + (LineCount * OcrLineWeight);
+            var ratio = CharCount > 0 ? SymbolCount / (double)CharCount : 0.0;
+            if (ratio >= OcrSymbolPenaltyThreshold)
+            {
+                // WHY: Penalize symbol-heavy OCR output to avoid picking noisy candidates.
+                score *= OcrSymbolPenaltyScale;
+            }
+
+            return score;
+        }
+    }
+
+    private sealed record OcrPassResult(string Label, OcrResultModel Result, Bitmap Input, int LineCount, int CharCount, CandidateStats Stats);
 
     private sealed record PendingTranslation(string SourceText, string Normalized, string CacheKey);
 }
