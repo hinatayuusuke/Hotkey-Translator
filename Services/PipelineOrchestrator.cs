@@ -245,9 +245,7 @@ public sealed class PipelineOrchestrator
                         .ConfigureAwait(false);
                 }
 
-                var overlayItems = groupedLines
-                    .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
-                    .ToList();
+                var overlayItems = BuildOverlayItems(groupedLines, translations, roiScreen, settings);
 
                 _lastOverlayItems = overlayItems;
                 _overlayPresenter.Update(overlayItems);
@@ -408,6 +406,47 @@ public sealed class PipelineOrchestrator
     {
         var text = translations.TryGetValue(sourceText, out var translated) ? translated : sourceText;
         return NormalizeOverlayText(text, lineCount);
+    }
+
+    private static IReadOnlyList<OverlayItem> BuildOverlayItems(
+        IReadOnlyList<OcrLine> groupedLines,
+        Dictionary<string, string> translations,
+        Rect roiScreen,
+        AppSettings settings)
+    {
+        if (!settings.EnableFixedRoiOverlay)
+        {
+            return groupedLines
+                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
+                .ToList();
+        }
+
+        if (groupedLines.Count == 0)
+        {
+            return Array.Empty<OverlayItem>();
+        }
+
+        var ordered = groupedLines
+            .OrderBy(line => line.Rect.Y)
+            .ThenBy(line => line.Rect.X)
+            .ToList();
+
+        var lines = new List<string>(ordered.Count);
+        foreach (var line in ordered)
+        {
+            var text = GetOverlayText(line.Text, translations, line.LineCount);
+            if (!string.IsNullOrWhiteSpace(text))
+            {
+                lines.Add(text);
+            }
+        }
+
+        var combined = lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
+        var lineCount = Math.Max(1, ordered.Sum(line => Math.Max(1, line.LineCount)));
+        var lineHeights = ordered.Select(line => line.LineHeight).Where(height => height > 0).ToList();
+        var lineHeight = lineHeights.Count > 0 ? lineHeights.Average() : 0;
+
+        return new[] { new OverlayItem(combined, roiScreen, lineCount, lineHeight) };
     }
 
     private void NotifyOcrPreprocessPreview(Bitmap ocrInput)

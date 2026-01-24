@@ -252,6 +252,10 @@
                                 </Border>
 
                                 <Separator Margin="0,12,0,8" />
+                                <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
+
+                                <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Scene Change Auto-hide" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0" Click="OnSettingChanged" />
