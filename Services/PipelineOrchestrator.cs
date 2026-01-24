@@ -51,6 +51,18 @@ public sealed class PipelineOrchestrator
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action<double>? OverlayAutoHidden;
 
+    public bool TryGetLastRoiHash(out ulong hash)
+    {
+        if (_lastRoiSnapshot == null)
+        {
+            hash = 0;
+            return false;
+        }
+
+        hash = _phashService.ComputeHash(_lastRoiSnapshot);
+        return true;
+    }
+
     public PipelineOrchestrator(
         CaptureManager captureManager,
         OcrEngine ocrEngine,

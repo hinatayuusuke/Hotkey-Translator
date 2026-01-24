@@ -37,6 +37,7 @@ public partial class MainWindow : Window
     private DispatcherTimer? _autoHideTimer;
     private bool _autoHideTickInProgress;
     private ulong? _autoHideLastHash;
+    private DateTimeOffset _autoHideSuppressUntil = DateTimeOffset.MinValue;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
@@ -207,10 +208,16 @@ public partial class MainWindow : Window
 
         _hasRunOnce = true;
         EnableOverlay();
+        // WHY: Reset watcher baseline immediately after a user-triggered run to avoid instant auto-hide.
+        _autoHideSuppressUntil = DateTimeOffset.UtcNow.AddSeconds(1);
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
         await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+        if (_settingsService.Settings.EnableSceneChangeAutoHide && _pipeline.TryGetLastRoiHash(out var hash))
+        {
+            _autoHideLastHash = hash;
+        }
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
@@ -1072,6 +1079,11 @@ public partial class MainWindow : Window
         {
             await Task.Run(() =>
             {
+                if (DateTimeOffset.UtcNow < _autoHideSuppressUntil)
+                {
+                    return;
+                }
+
                 using var frame = _captureManager.Capture(settings);
                 if (frame.IsBlack)
                 {
@@ -1092,6 +1104,12 @@ public partial class MainWindow : Window
 
                 using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
                 var hash = _phashService.ComputeHash(roiBitmap);
+                if (DateTimeOffset.UtcNow < _autoHideSuppressUntil)
+                {
+                    _autoHideLastHash = hash;
+                    return;
+                }
+
                 if (_autoHideLastHash.HasValue)
                 {
                     var diff = _phashService.HammingDistance(hash, _autoHideLastHash.Value);
