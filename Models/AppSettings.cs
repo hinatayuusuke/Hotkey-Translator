@@ -28,6 +28,10 @@ public sealed class AppSettings
     public int OcrBinarizationThreshold { get; set; } = 160;
     public bool EnableOcrAutoThreshold { get; set; } = false;
     public bool EnableOcrAutoInvert { get; set; } = false;
+    public bool EnableOcrTwoPass { get; set; } = false;
+    public int OcrTwoPassLowThreshold { get; set; } = 120;
+    public int OcrTwoPassHighThreshold { get; set; } = 180;
+    public bool OcrTwoPassPreferAuto { get; set; } = true;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";
@@ -42,7 +46,7 @@ public sealed class AppSettings
     public string VllmBaseUrl { get; set; } = "http://localhost:8000/v1";
     public string VllmModelName { get; set; } = "PaddlePaddle/PaddleOCR-VL";
     public bool EnableLineMerge { get; set; } = true;
-    public double MergeOverlapRatioThreshold { get; set; } = 0.1;
+    public double MergeOverlapRatioThreshold { get; set; } = 0.05;
     public double MergeVerticalWeight { get; set; } = 0.5;
     public double MergeThresholdRatio { get; set; } = 1.0;
     public int MergeNeighborCount { get; set; } = 12;

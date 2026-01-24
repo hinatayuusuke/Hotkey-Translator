@@ -221,8 +221,13 @@ public partial class MainWindow : Window
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
         EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
         EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
+        EnableOcrTwoPassCheck.IsChecked = settings.EnableOcrTwoPass;
+        OcrTwoPassPreferAutoCheck.IsChecked = settings.OcrTwoPassPreferAuto;
         OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
+        OcrTwoPassLowThresholdSlider.Value = settings.OcrTwoPassLowThreshold;
+        OcrTwoPassHighThresholdSlider.Value = settings.OcrTwoPassHighThreshold;
         UpdateOcrBinarizationThresholdValue();
+        UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         UpdateLanguageCustomVisibility();
@@ -515,6 +520,28 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateOcrTwoPassThresholdValues();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
+    private async void OnOcrTwoPassHighThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateOcrTwoPassThresholdValues();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async Task SaveSettingsAsync()
     {
         if (_isApplyingSettings)
@@ -551,6 +578,10 @@ public partial class MainWindow : Window
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
         settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
         settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
+        settings.EnableOcrTwoPass = EnableOcrTwoPassCheck.IsChecked == true;
+        settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAutoCheck.IsChecked == true;
+        settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThresholdSlider.Value);
+        settings.OcrTwoPassHighThreshold = (int)Math.Round(OcrTwoPassHighThresholdSlider.Value);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -564,6 +595,7 @@ public partial class MainWindow : Window
 
         _overlayWindow?.ApplyStyle(settings);
         UpdateOcrBinarizationThresholdValue();
+        UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
@@ -581,10 +613,25 @@ public partial class MainWindow : Window
         OcrBinarizationThresholdValue.Text = ((int)Math.Round(OcrBinarizationThresholdSlider.Value)).ToString();
     }
 
+    private void UpdateOcrTwoPassThresholdValues()
+    {
+        if (OcrTwoPassLowThresholdValue == null || OcrTwoPassLowThresholdSlider == null ||
+            OcrTwoPassHighThresholdValue == null || OcrTwoPassHighThresholdSlider == null)
+        {
+            return;
+        }
+
+        OcrTwoPassLowThresholdValue.Text = ((int)Math.Round(OcrTwoPassLowThresholdSlider.Value)).ToString();
+        OcrTwoPassHighThresholdValue.Text = ((int)Math.Round(OcrTwoPassHighThresholdSlider.Value)).ToString();
+    }
+
     private void UpdateOcrPreprocessControls(AppSettings settings)
     {
         if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null ||
-            EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null)
+            EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null ||
+            EnableOcrTwoPassCheck == null || OcrTwoPassPreferAutoCheck == null ||
+            OcrTwoPassLowThresholdSlider == null || OcrTwoPassLowThresholdValue == null ||
+            OcrTwoPassHighThresholdSlider == null || OcrTwoPassHighThresholdValue == null)
         {
             return;
         }
@@ -594,6 +641,17 @@ public partial class MainWindow : Window
         OcrBinarizationThresholdSlider.IsEnabled = manualThresholdEnabled;
         EnableOcrAutoThresholdCheck.IsEnabled = enabled;
         EnableOcrAutoInvertCheck.IsEnabled = enabled;
+        EnableOcrTwoPassCheck.IsEnabled = enabled;
+        var twoPassEnabled = enabled && settings.EnableOcrTwoPass;
+        OcrTwoPassLowThresholdSlider.IsEnabled = twoPassEnabled;
+        OcrTwoPassHighThresholdSlider.IsEnabled = twoPassEnabled;
+        OcrTwoPassLowThresholdValue.Foreground = twoPassEnabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+        OcrTwoPassHighThresholdValue.Foreground = twoPassEnabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+        OcrTwoPassPreferAutoCheck.IsEnabled = twoPassEnabled && settings.EnableOcrAutoThreshold;
         OcrBinarizationThresholdValue.Foreground = manualThresholdEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;

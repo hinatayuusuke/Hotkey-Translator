@@ -115,21 +115,37 @@ public sealed class PipelineOrchestrator
             }
 
             var ocrStopwatch = Stopwatch.StartNew();
+            OcrResultModel ocrResult;
             Bitmap? ocrInput = null;
             try
             {
-                if (settings.EnableOcrBinarization)
+                if (settings.EnableOcrTwoPass && !settings.EnableOcrBinarization)
                 {
-                    ocrInput = _ocrPreprocessService.Apply(roiBitmap, settings);
+                    _logger.Info("OCR two-pass requested without binarization; falling back to single pass.");
+                }
+
+                if (settings.EnableOcrTwoPass && settings.EnableOcrBinarization)
+                {
+                    var twoPassResult = await RunTwoPassOcrAsync(roiBitmap, settings, cancellationToken).ConfigureAwait(false);
+                    ocrResult = twoPassResult.Result;
+                    ocrInput = twoPassResult.Input;
                 }
                 else
                 {
-                    ocrInput = roiBitmap;
+                    if (settings.EnableOcrBinarization)
+                    {
+                        ocrInput = _ocrPreprocessService.Apply(roiBitmap, settings, null, null);
+                    }
+                    else
+                    {
+                        ocrInput = roiBitmap;
+                    }
+
+                    ocrResult = await _ocrEngine.RecognizeAsync(ocrInput, settings, cancellationToken).ConfigureAwait(false);
                 }
 
                 NotifyOcrPreprocessPreview(ocrInput);
 
-                var ocrResult = await _ocrEngine.RecognizeAsync(ocrInput, settings, cancellationToken).ConfigureAwait(false);
                 ocrStopwatch.Stop();
                 _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
                 var mappedLines = ocrResult.Lines
@@ -167,9 +183,9 @@ public sealed class PipelineOrchestrator
             }
             finally
             {
-                if (settings.EnableOcrBinarization)
+                if (settings.EnableOcrBinarization && ocrInput != null && !ReferenceEquals(ocrInput, roiBitmap))
                 {
-                    ocrInput?.Dispose();
+                    ocrInput.Dispose();
                 }
             }
         }
@@ -320,6 +336,118 @@ public sealed class PipelineOrchestrator
         OcrPreprocessPreviewReady.Invoke(preview);
     }
 
+    private async Task<OcrPassResult> RunTwoPassOcrAsync(
+        Bitmap roiBitmap,
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        var low = Math.Min(settings.OcrTwoPassLowThreshold, settings.OcrTwoPassHighThreshold);
+        var high = Math.Max(settings.OcrTwoPassLowThreshold, settings.OcrTwoPassHighThreshold);
+        var candidates = new List<OcrPassResult>();
+
+        try
+        {
+            if (settings.EnableOcrAutoThreshold && settings.OcrTwoPassPreferAuto)
+            {
+                candidates.Add(await RunOcrPassAsync("Auto", roiBitmap, settings, settings.OcrBinarizationThreshold, true, cancellationToken).ConfigureAwait(false));
+            }
+
+            candidates.Add(await RunOcrPassAsync("Low", roiBitmap, settings, low, false, cancellationToken).ConfigureAwait(false));
+            candidates.Add(await RunOcrPassAsync("High", roiBitmap, settings, high, false, cancellationToken).ConfigureAwait(false));
+
+            var best = candidates[0];
+            foreach (var candidate in candidates.Skip(1))
+            {
+                if (IsBetterCandidate(candidate, best))
+                {
+                    best = candidate;
+                }
+            }
+
+            foreach (var candidate in candidates)
+            {
+                if (!ReferenceEquals(candidate, best))
+                {
+                    candidate.Input.Dispose();
+                }
+            }
+
+            var lowStats = FindCandidate(candidates, "Low");
+            var highStats = FindCandidate(candidates, "High");
+            if (lowStats != null && highStats != null)
+            {
+                _logger.Info($"OCR two-pass: low={low} (lines={lowStats.LineCount}, chars={lowStats.CharCount}), " +
+                             $"high={high} (lines={highStats.LineCount}, chars={highStats.CharCount}) => picked={best.Label}");
+            }
+
+            return best;
+        }
+        catch
+        {
+            foreach (var candidate in candidates)
+            {
+                candidate.Input.Dispose();
+            }
+
+            throw;
+        }
+    }
+
+    private async Task<OcrPassResult> RunOcrPassAsync(
+        string label,
+        Bitmap roiBitmap,
+        AppSettings settings,
+        int threshold,
+        bool useAutoThreshold,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var preprocessStopwatch = Stopwatch.StartNew();
+        var input = _ocrPreprocessService.Apply(roiBitmap, settings, threshold, useAutoThreshold);
+        preprocessStopwatch.Stop();
+
+        var ocrStopwatch = Stopwatch.StartNew();
+        var result = await _ocrEngine.RecognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
+        ocrStopwatch.Stop();
+
+        var stats = GetCandidateStats(result);
+        _logger.Info($"OCR pass {label}: threshold={threshold} auto={useAutoThreshold} " +
+                     $"lines={stats.LineCount}, chars={stats.CharCount}, " +
+                     $"preprocess={preprocessStopwatch.ElapsedMilliseconds} ms, ocr={ocrStopwatch.ElapsedMilliseconds} ms.");
+
+        return new OcrPassResult(label, result, input, stats.LineCount, stats.CharCount);
+    }
+
+    private static bool IsBetterCandidate(OcrPassResult candidate, OcrPassResult current)
+    {
+        if (candidate.LineCount != current.LineCount)
+        {
+            return candidate.LineCount > current.LineCount;
+        }
+
+        return candidate.CharCount > current.CharCount;
+    }
+
+    private static CandidateStats GetCandidateStats(OcrResultModel result)
+    {
+        var lineCount = result.Lines.Count;
+        var charCount = result.Lines.Sum(line => line.Text?.Length ?? 0);
+        return new CandidateStats(lineCount, charCount);
+    }
+
+    private static OcrPassResult? FindCandidate(IEnumerable<OcrPassResult> candidates, string label)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (string.Equals(candidate.Label, label, StringComparison.OrdinalIgnoreCase))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
+    }
+
     private static string NormalizeOverlayText(string text, int lineCount)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -355,6 +483,10 @@ public sealed class PipelineOrchestrator
         var tail = string.Join(" ", lines.Skip(lineCount - 1));
         return string.Join(Environment.NewLine, head.Append(tail));
     }
+
+    private sealed record CandidateStats(int LineCount, int CharCount);
+
+    private sealed record OcrPassResult(string Label, OcrResultModel Result, Bitmap Input, int LineCount, int CharCount);
 
     private sealed record PendingTranslation(string SourceText, string Normalized, string CacheKey);
 }

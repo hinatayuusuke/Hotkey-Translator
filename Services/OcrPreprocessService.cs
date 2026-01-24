@@ -10,15 +10,24 @@ public sealed class OcrPreprocessService
 {
     public Bitmap Apply(Bitmap source, AppSettings settings)
     {
+        return Apply(source, settings, null, null);
+    }
+
+    public Bitmap Apply(Bitmap source, AppSettings settings, int? thresholdOverride, bool? autoThresholdOverride)
+    {
         if (!settings.EnableOcrBinarization)
         {
             return (Bitmap)source.Clone();
         }
 
-        return ApplyBinarization(source, settings);
+        return ApplyBinarization(source, settings, thresholdOverride, autoThresholdOverride);
     }
 
-    private static Bitmap ApplyBinarization(Bitmap source, AppSettings settings)
+    private static Bitmap ApplyBinarization(
+        Bitmap source,
+        AppSettings settings,
+        int? thresholdOverride,
+        bool? autoThresholdOverride)
     {
         var input = source;
         var disposeInput = false;
@@ -33,6 +42,9 @@ public sealed class OcrPreprocessService
 
             disposeInput = true;
         }
+
+        var threshold = Math.Clamp(thresholdOverride ?? settings.OcrBinarizationThreshold, 0, 255);
+        var useAutoThreshold = autoThresholdOverride ?? settings.EnableOcrAutoThreshold;
 
         var rect = new Rectangle(0, 0, input.Width, input.Height);
         var output = new Bitmap(input.Width, input.Height, PixelFormat.Format32bppPArgb);
@@ -69,8 +81,7 @@ public sealed class OcrPreprocessService
             }
 
             var pixelCount = width * height;
-            var threshold = Math.Clamp(settings.OcrBinarizationThreshold, 0, 255);
-            if (settings.EnableOcrAutoThreshold)
+            if (useAutoThreshold)
             {
                 threshold = ComputeOtsuThreshold(histogram, pixelCount, threshold);
             }

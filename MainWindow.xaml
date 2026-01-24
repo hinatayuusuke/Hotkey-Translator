@@ -195,6 +195,34 @@
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Low threshold" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrTwoPassLowThresholdSlider"
+                                            Width="180"
+                                            Minimum="0"
+                                            Maximum="255"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="5"
+                                            SmallChange="1"
+                                            LargeChange="10"
+                                            ValueChanged="OnOcrTwoPassLowThresholdChanged" />
+                                    <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="High threshold" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrTwoPassHighThresholdSlider"
+                                            Width="180"
+                                            Minimum="0"
+                                            Maximum="255"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="5"
+                                            SmallChange="1"
+                                            LargeChange="10"
+                                            ValueChanged="OnOcrTwoPassHighThresholdChanged" />
+                                    <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrBinarizationThresholdSlider"
