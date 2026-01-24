@@ -32,6 +32,9 @@ public sealed class AppSettings
     public int OcrTwoPassLowThreshold { get; set; } = 120;
     public int OcrTwoPassHighThreshold { get; set; } = 180;
     public bool OcrTwoPassPreferAuto { get; set; } = true;
+    public bool EnableSceneChangeAutoHide { get; set; } = false;
+    public bool EnableSceneChangeTextWeighted { get; set; } = true;
+    public double SceneChangeThreshold { get; set; } = 0.5;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";

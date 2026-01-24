@@ -94,6 +94,7 @@ public partial class MainWindow : Window
             _settingsService,
             _logger);
         _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
+        _pipeline.OverlayAutoHidden += OnOverlayAutoHidden;
 
         InitializeHotkeys(_settingsService.Settings);
         AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run. F11: OCR only.");
@@ -112,6 +113,7 @@ public partial class MainWindow : Window
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
+            _pipeline.OverlayAutoHidden -= OnOverlayAutoHidden;
         }
         _overlayWindow?.Close();
     }
@@ -265,9 +267,14 @@ public partial class MainWindow : Window
         OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
         OcrTwoPassLowThresholdSlider.Value = settings.OcrTwoPassLowThreshold;
         OcrTwoPassHighThresholdSlider.Value = settings.OcrTwoPassHighThreshold;
+        EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
+        EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
+        SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
+        UpdateSceneChangeThresholdValue();
+        UpdateSceneChangeControls(settings);
         UpdateRoiStatus(settings);
         UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
@@ -664,6 +671,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateSceneChangeThresholdValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async Task SaveSettingsAsync()
     {
         if (_isApplyingSettings)
@@ -705,6 +723,9 @@ public partial class MainWindow : Window
         settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAutoCheck.IsChecked == true;
         settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThresholdSlider.Value);
         settings.OcrTwoPassHighThreshold = (int)Math.Round(OcrTwoPassHighThresholdSlider.Value);
+        settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
+        settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
+        settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -720,6 +741,8 @@ public partial class MainWindow : Window
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
+        UpdateSceneChangeThresholdValue();
+        UpdateSceneChangeControls(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
@@ -914,6 +937,32 @@ public partial class MainWindow : Window
         OcrTwoPassHighThresholdValue.Text = ((int)Math.Round(OcrTwoPassHighThresholdSlider.Value)).ToString();
     }
 
+    private void UpdateSceneChangeThresholdValue()
+    {
+        if (SceneChangeThresholdValue == null || SceneChangeThresholdSlider == null)
+        {
+            return;
+        }
+
+        SceneChangeThresholdValue.Text = SceneChangeThresholdSlider.Value.ToString("0.00");
+    }
+
+    private void UpdateSceneChangeControls(AppSettings settings)
+    {
+        if (EnableSceneChangeAutoHideCheck == null || EnableSceneChangeTextWeightedCheck == null ||
+            SceneChangeThresholdSlider == null || SceneChangeThresholdValue == null)
+        {
+            return;
+        }
+
+        var enabled = settings.EnableSceneChangeAutoHide;
+        EnableSceneChangeTextWeightedCheck.IsEnabled = enabled;
+        SceneChangeThresholdSlider.IsEnabled = enabled;
+        SceneChangeThresholdValue.Foreground = enabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+    }
+
     private void UpdateOcrPreprocessControls(AppSettings settings)
     {
         if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null ||
@@ -973,6 +1022,13 @@ public partial class MainWindow : Window
         {
             _logger?.Error(ex, "Failed to update OCR preprocess preview.");
         }
+    }
+
+    private void OnOverlayAutoHidden(double score)
+    {
+        _overlayEnabled = false;
+        _overlayPresenter?.SetEnabled(false);
+        AppendLog($"Overlay auto-hidden (scene change score {score:0.00}).");
     }
 
     private static BitmapSource CreateBitmapSource(Bitmap bitmap)

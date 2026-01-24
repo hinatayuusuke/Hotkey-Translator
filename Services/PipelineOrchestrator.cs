@@ -24,6 +24,10 @@ public sealed class PipelineOrchestrator
     private const double OcrLineWeight = 1.0;
     private const double OcrSymbolPenaltyThreshold = 0.45;
     private const double OcrSymbolPenaltyScale = 0.7;
+    private const double SceneAreaPower = 0.7;
+    private const double SceneTextPower = 0.3;
+    private const double SceneCharWeight = 10.0;
+    private const double SceneLineWeight = 1.0;
     private readonly CaptureManager _captureManager;
     private readonly OcrEngine _ocrEngine;
     private readonly OcrDiffService _ocrDiffService;
@@ -41,8 +45,11 @@ public sealed class PipelineOrchestrator
     private readonly Dictionary<string, string> _lastTranslations = new(StringComparer.Ordinal);
     private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
     private ulong? _lastHash;
+    private Bitmap? _lastRoiSnapshot;
+    private Rect? _lastRoiBounds;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
+    public event Action<double>? OverlayAutoHidden;
 
     public PipelineOrchestrator(
         CaptureManager captureManager,
@@ -82,6 +89,8 @@ public sealed class PipelineOrchestrator
     public async Task RunOnceAsync(CancellationToken cancellationToken, ForceRunOptions options)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        Bitmap? roiSnapshot = null;
+        Rect roiSnapshotBounds = default;
         try
         {
             var settings = _settingsService.Settings;
@@ -126,6 +135,21 @@ public sealed class PipelineOrchestrator
                 roiScreen.Height);
 
             using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+            roiSnapshot = (Bitmap)roiBitmap.Clone();
+            roiSnapshotBounds = roiScreen;
+
+            if (settings.EnableSceneChangeAutoHide &&
+                TryComputeSceneChangeScore(roiBitmap, roiScreen, settings, out var sceneScore))
+            {
+                var threshold = Math.Clamp(settings.SceneChangeThreshold, 0.0, 1.0);
+                _logger.Info($"Scene change score: {sceneScore:0.00} (threshold={threshold:0.00}, text-weighted={settings.EnableSceneChangeTextWeighted}).");
+                if (sceneScore >= threshold)
+                {
+                    _overlayPresenter.SetEnabled(false);
+                    OverlayAutoHidden?.Invoke(sceneScore);
+                    return;
+                }
+            }
 
             if (settings.PhashThreshold >= 0)
             {
@@ -245,6 +269,11 @@ public sealed class PipelineOrchestrator
         }
         finally
         {
+            if (roiSnapshot != null)
+            {
+                UpdateLastRoiSnapshot(roiSnapshot, roiSnapshotBounds);
+            }
+
             _overlayPresenter.Show();
             _gate.Release();
         }
@@ -388,6 +417,118 @@ public sealed class PipelineOrchestrator
         // WHY: Use a clone so OCR can continue using the original bitmap safely.
         using var preview = (Bitmap)ocrInput.Clone();
         OcrPreprocessPreviewReady.Invoke(preview);
+    }
+
+    private bool TryComputeSceneChangeScore(Bitmap currentRoi, Rect roiScreen, AppSettings settings, out double score)
+    {
+        score = 0.0;
+        if (!settings.EnableSceneChangeAutoHide || _lastRoiSnapshot == null || _lastRoiBounds == null)
+        {
+            return false;
+        }
+
+        if (_lastOverlayItems.Count == 0)
+        {
+            return false;
+        }
+
+        if (!_lastRoiBounds.Value.Equals(roiScreen))
+        {
+            return false;
+        }
+
+        var maxArea = 0.0;
+        var maxTextScore = 0.0;
+        var textScores = new double[_lastOverlayItems.Count];
+        for (var i = 0; i < _lastOverlayItems.Count; i++)
+        {
+            var item = _lastOverlayItems[i];
+            var area = Math.Max(0.0, item.Rect.Width * item.Rect.Height);
+            maxArea = Math.Max(maxArea, area);
+            var textScore = GetSceneTextScore(item);
+            textScores[i] = textScore;
+            maxTextScore = Math.Max(maxTextScore, textScore);
+        }
+
+        if (maxArea <= 0)
+        {
+            return false;
+        }
+
+        var roiLocal = new Rect(0, 0, currentRoi.Width, currentRoi.Height);
+        var weightedSum = 0.0;
+        var weightSum = 0.0;
+        for (var i = 0; i < _lastOverlayItems.Count; i++)
+        {
+            var item = _lastOverlayItems[i];
+            var localRect = new Rect(
+                item.Rect.X - roiScreen.X,
+                item.Rect.Y - roiScreen.Y,
+                item.Rect.Width,
+                item.Rect.Height);
+            var clip = Rect.Intersect(roiLocal, localRect);
+            if (clip.IsEmpty || clip.Width <= 1 || clip.Height <= 1)
+            {
+                continue;
+            }
+
+            var area = clip.Width * clip.Height;
+            var areaNorm = Math.Clamp(area / maxArea, 0.0, 1.0);
+            var weight = Math.Pow(areaNorm, SceneAreaPower);
+            if (settings.EnableSceneChangeTextWeighted)
+            {
+                var textNorm = maxTextScore > 0 ? Math.Clamp(textScores[i] / maxTextScore, 0.0, 1.0) : 0.0;
+                weight *= Math.Pow(textNorm, SceneTextPower);
+            }
+
+            if (weight <= 0)
+            {
+                continue;
+            }
+
+            using var currentCrop = BitmapHelper.Crop(currentRoi, clip);
+            using var lastCrop = BitmapHelper.Crop(_lastRoiSnapshot, clip);
+            var currentHash = _phashService.ComputeHash(currentCrop);
+            var lastHash = _phashService.ComputeHash(lastCrop);
+            var delta = _phashService.HammingDistance(currentHash, lastHash) / 64.0;
+
+            weightedSum += delta * weight;
+            weightSum += weight;
+        }
+
+        if (weightSum <= 0)
+        {
+            return false;
+        }
+
+        score = Math.Clamp(weightedSum / weightSum, 0.0, 1.0);
+        return true;
+    }
+
+    private static double GetSceneTextScore(OverlayItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Text))
+        {
+            return 0.0;
+        }
+
+        var charCount = 0;
+        foreach (var ch in item.Text)
+        {
+            if (!char.IsWhiteSpace(ch))
+            {
+                charCount++;
+            }
+        }
+
+        return (charCount * SceneCharWeight) + (item.LineCount * SceneLineWeight);
+    }
+
+    private void UpdateLastRoiSnapshot(Bitmap snapshot, Rect bounds)
+    {
+        _lastRoiSnapshot?.Dispose();
+        _lastRoiSnapshot = snapshot;
+        _lastRoiBounds = bounds;
     }
 
     private async Task<OcrPassResult> RunTwoPassOcrAsync(

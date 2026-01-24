@@ -250,6 +250,24 @@
                                                    TextWrapping="Wrap" />
                                     </Grid>
                                 </Border>
+
+                                <Separator Margin="0,12,0,8" />
+                                <TextBlock Text="Scene Change Auto-hide" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="SceneChangeThresholdSlider"
+                                            Width="180"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="0.05"
+                                            SmallChange="0.01"
+                                            LargeChange="0.1"
+                                            ValueChanged="OnSceneChangeThresholdChanged" />
+                                    <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,8,0,0">
