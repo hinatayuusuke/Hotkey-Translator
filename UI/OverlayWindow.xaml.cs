@@ -25,6 +25,8 @@ public partial class OverlayWindow : Window
     private const double MaxConservativePenalty = 0.6;
     private const double TwoLinePenaltyFactor = 0.8;
     private const double MinWidthScale = 0.3;
+    private const double WrapPenaltyStep = 0.08;
+    private const double MinWrapPenaltyScale = 0.65;
     private const double MinFontSize = 8;
     private const double MaxFontSize = 72;
     private const int FitIterations = 7;
@@ -245,6 +247,16 @@ public partial class OverlayWindow : Window
         // WHY: When wrapping exceeds OCR line count, shrink aggressively to avoid clipping.
         var ratio = (double)expectedLines / estimatedLines;
         var scale = Math.Sqrt(Math.Clamp(ratio, 0.0, 1.0));
+
+        var extraLines = estimatedLines - expectedLines;
+        if (extraLines > 0)
+        {
+            // WHY: Extra wrap lines tend to cause visual clipping; apply an additional penalty.
+            var wrapScale = 1.0 - (extraLines * WrapPenaltyStep);
+            wrapScale = Math.Clamp(wrapScale, MinWrapPenaltyScale, 1.0);
+            scale = Math.Min(scale, wrapScale);
+        }
+
         return Math.Clamp(scale, MinWidthScale, 1.0);
     }
 
