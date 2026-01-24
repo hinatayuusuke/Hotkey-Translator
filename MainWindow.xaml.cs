@@ -37,14 +37,18 @@ public partial class MainWindow : Window
     private DispatcherTimer? _autoHideTimer;
     private bool _autoHideTickInProgress;
     private ulong? _autoHideLastHash;
-    private DateTimeOffset _autoHideSuppressUntil = DateTimeOffset.MinValue;
+    private CancellationTokenSource? _autoHideBaselineCts;
+    private bool _autoHideBaselinePending;
+    private int _autoHideBaselineVersion;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
+    private bool _overlayVisible;
     private bool _hasRunOnce;
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
+    private const int OverlayBaselineDelayMs = 80;
 
     public MainWindow()
     {
@@ -65,6 +69,9 @@ public partial class MainWindow : Window
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
         _overlayPresenter = new OverlayPresenter(_overlayWindow);
+        _overlayPresenter.Shown += OnOverlayShown;
+        _overlayPresenter.Hidden += OnOverlayHidden;
+        _overlayPresenter.Updated += OnOverlayUpdated;
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
@@ -115,6 +122,8 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        _autoHideBaselineCts?.Cancel();
+        _autoHideBaselineCts?.Dispose();
         if (_autoHideTimer != null)
         {
             _autoHideTimer.Stop();
@@ -126,6 +135,12 @@ public partial class MainWindow : Window
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
             _pipeline.OverlayAutoHidden -= OnOverlayAutoHidden;
+        }
+        if (_overlayPresenter != null)
+        {
+            _overlayPresenter.Shown -= OnOverlayShown;
+            _overlayPresenter.Hidden -= OnOverlayHidden;
+            _overlayPresenter.Updated -= OnOverlayUpdated;
         }
         _overlayWindow?.Close();
     }
@@ -208,16 +223,10 @@ public partial class MainWindow : Window
 
         _hasRunOnce = true;
         EnableOverlay();
-        // WHY: Reset watcher baseline immediately after a user-triggered run to avoid instant auto-hide.
-        _autoHideSuppressUntil = DateTimeOffset.UtcNow.AddSeconds(1);
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
         await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
-        if (_settingsService.Settings.EnableSceneChangeAutoHide && _pipeline.TryGetLastRoiHash(out var hash))
-        {
-            _autoHideLastHash = hash;
-        }
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
@@ -1032,11 +1041,33 @@ public partial class MainWindow : Window
         SceneChangeWatchPhashValue.Text = ((int)Math.Round(SceneChangeWatchPhashSlider.Value)).ToString();
     }
 
+    private void OnOverlayShown()
+    {
+        _overlayVisible = true;
+        UpdateAutoHideWatcher(_settingsService.Settings);
+        ScheduleAutoHideBaselineReset();
+    }
+
+    private void OnOverlayHidden()
+    {
+        _overlayVisible = false;
+        StopAutoHideWatcher();
+    }
+
+    private void OnOverlayUpdated()
+    {
+        ScheduleAutoHideBaselineReset();
+    }
+
     private void InitializeAutoHideWatcher(AppSettings settings)
     {
         _autoHideTimer = new DispatcherTimer(DispatcherPriority.Background);
         _autoHideTimer.Tick += OnAutoHideTick;
         UpdateAutoHideWatcher(settings);
+        if (_overlayVisible)
+        {
+            ScheduleAutoHideBaselineReset();
+        }
     }
 
     private void UpdateAutoHideWatcher(AppSettings settings)
@@ -1046,10 +1077,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!settings.EnableSceneChangeAutoHide)
+        if (!settings.EnableSceneChangeAutoHide || !_overlayVisible)
         {
-            _autoHideTimer.Stop();
-            _autoHideLastHash = null;
+            StopAutoHideWatcher();
             return;
         }
 
@@ -1061,25 +1091,52 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void OnAutoHideTick(object? sender, EventArgs e)
+    private void StopAutoHideWatcher()
     {
-        if (_autoHideTickInProgress || _captureManager == null || _phashService == null)
+        if (_autoHideTimer != null && _autoHideTimer.IsEnabled)
         {
-            return;
+            _autoHideTimer.Stop();
         }
 
+        ClearAutoHideBaseline();
+    }
+
+    private void ClearAutoHideBaseline()
+    {
+        _autoHideBaselineVersion++;
+        _autoHideLastHash = null;
+        _autoHideBaselinePending = false;
+        if (_autoHideBaselineCts != null)
+        {
+            _autoHideBaselineCts.Cancel();
+            _autoHideBaselineCts.Dispose();
+            _autoHideBaselineCts = null;
+        }
+    }
+
+    private void ScheduleAutoHideBaselineReset()
+    {
         var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoHide || !_overlayEnabled)
+        if (!_overlayVisible || !settings.EnableSceneChangeAutoHide || _captureManager == null || _phashService == null)
         {
             return;
         }
 
-        _autoHideTickInProgress = true;
-        try
+        _autoHideBaselineVersion++;
+        _autoHideBaselinePending = true;
+        _autoHideLastHash = null;
+        _autoHideBaselineCts?.Cancel();
+        _autoHideBaselineCts?.Dispose();
+        _autoHideBaselineCts = new CancellationTokenSource();
+        var token = _autoHideBaselineCts.Token;
+
+        _ = Task.Run(async () =>
         {
-            await Task.Run(() =>
+            try
             {
-                if (DateTimeOffset.UtcNow < _autoHideSuppressUntil)
+                // WHY: Delay a bit so the overlay frame is fully composed before hashing.
+                await Task.Delay(OverlayBaselineDelayMs, token).ConfigureAwait(false);
+                if (token.IsCancellationRequested)
                 {
                     return;
                 }
@@ -1103,29 +1160,88 @@ public partial class MainWindow : Window
                     roiScreen.Height);
 
                 using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-                var hash = _phashService.ComputeHash(roiBitmap);
-                if (DateTimeOffset.UtcNow < _autoHideSuppressUntil)
+                _autoHideLastHash = _phashService.ComputeHash(roiBitmap);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "Auto-hide baseline reset failed.");
+            }
+            finally
+            {
+                _autoHideBaselinePending = false;
+            }
+        }, token);
+    }
+
+    private async void OnAutoHideTick(object? sender, EventArgs e)
+    {
+        if (_autoHideTickInProgress || _captureManager == null || _phashService == null)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Settings;
+        if (!settings.EnableSceneChangeAutoHide || !_overlayVisible || _autoHideBaselinePending || !_autoHideLastHash.HasValue)
+        {
+            return;
+        }
+
+        var baselineHash = _autoHideLastHash.Value;
+        var baselineVersion = _autoHideBaselineVersion;
+        _autoHideTickInProgress = true;
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var frame = _captureManager.Capture(settings);
+                if (frame.IsBlack)
                 {
-                    _autoHideLastHash = hash;
                     return;
                 }
 
-                if (_autoHideLastHash.HasValue)
+                var roiScreen = GetRoiBounds(settings, frame.Bounds);
+                if (roiScreen.IsEmpty)
                 {
-                    var diff = _phashService.HammingDistance(hash, _autoHideLastHash.Value);
-                    var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
-                    if (diff >= threshold)
-                    {
-                        Dispatcher.Invoke(() =>
-                        {
-                            _overlayEnabled = false;
-                            _overlayPresenter?.SetEnabled(false);
-                            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
-                        });
-                    }
+                    return;
                 }
 
-                _autoHideLastHash = hash;
+                var roiInFrame = new Rect(
+                    roiScreen.X - frame.Bounds.X,
+                    roiScreen.Y - frame.Bounds.Y,
+                    roiScreen.Width,
+                    roiScreen.Height);
+
+                using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+                var hash = _phashService.ComputeHash(roiBitmap);
+                if (baselineVersion != _autoHideBaselineVersion)
+                {
+                    return;
+                }
+
+                var diff = _phashService.HammingDistance(hash, baselineHash);
+                var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+                if (baselineVersion != _autoHideBaselineVersion)
+                {
+                    return;
+                }
+
+                if (diff >= threshold)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        _overlayEnabled = false;
+                        _overlayPresenter?.SetEnabled(false);
+                        AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
+                    });
+                }
+
+                if (baselineVersion == _autoHideBaselineVersion)
+                {
+                    _autoHideLastHash = hash;
+                }
             }).ConfigureAwait(true);
         }
         catch (Exception ex)

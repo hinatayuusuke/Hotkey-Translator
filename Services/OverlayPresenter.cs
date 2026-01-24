@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
@@ -11,6 +12,10 @@ public sealed class OverlayPresenter
     private readonly OverlayWindow _window;
     private IReadOnlyList<OverlayItem> _lastItems = new List<OverlayItem>();
     private bool _isEnabled = true;
+
+    public event Action? Shown;
+    public event Action? Hidden;
+    public event Action? Updated;
 
     public OverlayPresenter(OverlayWindow window)
     {
@@ -29,13 +34,21 @@ public sealed class OverlayPresenter
             if (!_window.IsVisible)
             {
                 _window.Show();
+                Shown?.Invoke();
             }
         });
     }
 
     public void Hide()
     {
-        _window.Dispatcher.Invoke(() => _window.Hide());
+        _window.Dispatcher.Invoke(() =>
+        {
+            if (_window.IsVisible)
+            {
+                _window.Hide();
+                Hidden?.Invoke();
+            }
+        });
     }
 
     public void Update(IReadOnlyList<OverlayItem> items)
@@ -51,6 +64,7 @@ public sealed class OverlayPresenter
         {
             var converted = ConvertToDip(_lastItems);
             _window.UpdateItems(converted);
+            Updated?.Invoke();
         });
     }
 
@@ -70,6 +84,7 @@ public sealed class OverlayPresenter
         {
             var converted = ConvertToDip(_lastItems);
             _window.UpdateItems(converted);
+            Updated?.Invoke();
         });
     }
 
