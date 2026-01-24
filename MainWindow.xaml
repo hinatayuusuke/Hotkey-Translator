@@ -28,6 +28,7 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" VerticalAlignment="Center" />
@@ -36,14 +37,24 @@
                                 <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
                             </ComboBox>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="ROI" VerticalAlignment="Center" Margin="0,6,0,0" />
-
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" VerticalAlignment="Center" Margin="0,6,0,0" />
                             <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
+                                <ComboBox x:Name="CaptureProviderBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
+                                    <ComboBoxItem Content="WGC" Tag="Wgc" />
+                                    <ComboBoxItem Content="DXGI" Tag="Dxgi" />
+                                    <ComboBoxItem Content="GDI" Tag="Gdi" />
+                                </ComboBox>
+                                <CheckBox x:Name="CaptureProviderFixedCheck" Content="Fixed only" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ROI" VerticalAlignment="Center" Margin="0,6,0,0" />
+
+                            <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
                                 <Button x:Name="SelectRoiButton" Content="Select ROI" Width="140" HorizontalAlignment="Left" Click="OnSelectRoi" />
     
                                 <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
                             </StackPanel>
-                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="RoiStatusText" Text="ROI: not set" Margin="0,6,0,0" Grid.ColumnSpan="2" />
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="RoiStatusText" Text="ROI: not set" Margin="0,6,0,0" Grid.ColumnSpan="2" />
                         </Grid>
 
                         <Separator Margin="0,10,0,10" />

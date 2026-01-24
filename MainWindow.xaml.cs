@@ -48,7 +48,7 @@ public partial class MainWindow : Window
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
-    private const int OverlayBaselineDelayMs = 80;
+    private const int OverlayBaselineDelayMs = 150;
 
     public MainWindow()
     {
@@ -253,6 +253,8 @@ public partial class MainWindow : Window
     {
         _isApplyingSettings = true;
         CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
+        SetComboBoxByTag(CaptureProviderBox, settings.PreferredCaptureProvider.ToString());
+        CaptureProviderFixedCheck.IsChecked = settings.CaptureProviderMode == CaptureProviderMode.Fixed;
         ApplyLanguageSelection(SourceLangCombo, SourceLangCustom, settings.SourceLanguage);
         ApplyLanguageSelection(TargetLangCombo, TargetLangCustom, settings.TargetLanguage);
         EnableRoiCheck.IsChecked = settings.EnableRoi;
@@ -488,6 +490,21 @@ public partial class MainWindow : Window
         }
 
         return AppCaptureMode.ActiveWindow;
+    }
+
+    private CaptureProviderKind GetCaptureProviderKind()
+    {
+        if (CaptureProviderBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return tag switch
+            {
+                "Dxgi" => CaptureProviderKind.Dxgi,
+                "Gdi" => CaptureProviderKind.Gdi,
+                _ => CaptureProviderKind.Wgc
+            };
+        }
+
+        return CaptureProviderKind.Wgc;
     }
 
     private OcrEngineKind GetOcrEngineKind()
@@ -744,6 +761,10 @@ public partial class MainWindow : Window
 
         var settings = _settingsService.Settings;
         settings.CaptureMode = GetCaptureMode();
+        settings.CaptureProviderMode = CaptureProviderFixedCheck.IsChecked == true
+            ? CaptureProviderMode.Fixed
+            : CaptureProviderMode.Auto;
+        settings.PreferredCaptureProvider = GetCaptureProviderKind();
         settings.SourceLanguage = GetSelectedLanguage(SourceLangCombo, SourceLangCustom);
         settings.TargetLanguage = GetSelectedLanguage(TargetLangCombo, TargetLangCustom);
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;

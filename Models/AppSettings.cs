@@ -8,12 +8,19 @@ public enum CaptureMode
     ActiveWindow
 }
 
+public enum CaptureProviderMode
+{
+    Auto,
+    Fixed
+}
+
 public sealed class AppSettings
 {
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }
     public NormalizedRect? NormalizedRoi { get; set; }
     public bool EnableRoi { get; set; } = true;
+    public CaptureProviderMode CaptureProviderMode { get; set; } = CaptureProviderMode.Auto;
     public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Wgc;
     public bool EnableWgcCapture { get; set; } = true;
     public bool EnableDxgiCapture { get; set; } = true;

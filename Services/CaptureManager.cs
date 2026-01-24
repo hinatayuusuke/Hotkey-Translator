@@ -104,6 +104,11 @@ public sealed class CaptureManager
             return _providers.ToList();
         }
 
+        if (settings.CaptureProviderMode == CaptureProviderMode.Fixed)
+        {
+            return new List<ICaptureProvider> { preferred };
+        }
+
         var ordered = new List<ICaptureProvider> { preferred };
         ordered.AddRange(_providers.Where(provider => provider.Kind != settings.PreferredCaptureProvider));
         return ordered;
