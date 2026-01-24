@@ -10,6 +10,13 @@ using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services;
 
+public readonly record struct ForceRunOptions(bool SkipPhash, bool SkipOcrDiff, bool SkipTranslationCache)
+{
+    public static ForceRunOptions None => new(false, false, false);
+
+    public bool IsEnabled => SkipPhash || SkipOcrDiff || SkipTranslationCache;
+}
+
 public sealed class PipelineOrchestrator
 {
     private readonly CaptureManager _captureManager;
@@ -62,13 +69,23 @@ public sealed class PipelineOrchestrator
         _logger = logger;
     }
 
-    public async Task RunOnceAsync(CancellationToken cancellationToken)
+    public Task RunOnceAsync(CancellationToken cancellationToken)
+    {
+        return RunOnceAsync(cancellationToken, ForceRunOptions.None);
+    }
+
+    public async Task RunOnceAsync(CancellationToken cancellationToken, ForceRunOptions options)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             var settings = _settingsService.Settings;
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
+
+            if (options.IsEnabled)
+            {
+                _logger.Info($"Force run: skip pHash={options.SkipPhash}, skip OCR diff={options.SkipOcrDiff}, skip translation cache={options.SkipTranslationCache}.");
+            }
 
             _overlayPresenter.Hide();
             using var frame = _captureManager.Capture(settings);
@@ -100,7 +117,7 @@ public sealed class PipelineOrchestrator
             if (settings.PhashThreshold >= 0)
             {
                 var hash = _phashService.ComputeHash(roiBitmap);
-                if (_lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
+                if (!options.SkipPhash && _lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
                 {
                     _logger.Info("pHash unchanged; keeping last overlay.");
                     _overlayPresenter.ShowLast();
@@ -170,9 +187,15 @@ public sealed class PipelineOrchestrator
                     return;
                 }
 
-                var changedLines = _ocrDiffService.FilterChangedLines(groupedLines);
+                var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
                 _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
-                var translations = await ResolveTranslationsAsync(groupedLines, changedLines, settings, cancellationToken).ConfigureAwait(false);
+                var translations = await ResolveTranslationsAsync(
+                        groupedLines,
+                        changedLines,
+                        settings,
+                        options.SkipTranslationCache,
+                        cancellationToken)
+                    .ConfigureAwait(false);
 
                 var overlayItems = groupedLines
                     .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
@@ -250,10 +273,11 @@ public sealed class PipelineOrchestrator
         IReadOnlyList<OcrLine> lines,
         IReadOnlyList<OcrLine> changedLines,
         AppSettings settings,
+        bool skipTranslationCache,
         CancellationToken cancellationToken)
     {
         var translations = new Dictionary<string, string>(StringComparer.Ordinal);
-        var changedSet = new HashSet<OcrLine>(changedLines);
+        var changedSet = skipTranslationCache ? new HashSet<OcrLine>(lines) : new HashSet<OcrLine>(changedLines);
         var pending = new List<PendingTranslation>();
         var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
 
@@ -266,18 +290,21 @@ public sealed class PipelineOrchestrator
             }
 
             var key = _cacheKeyBuilder.Build(settings, normalized);
-            var cached = await _cacheRepository.TryGetAsync(key, cancellationToken).ConfigureAwait(false);
-            if (!string.IsNullOrWhiteSpace(cached))
+            if (!skipTranslationCache)
             {
-                translations[line.Text] = cached;
-                _lastTranslations[normalized] = cached;
-                continue;
-            }
+                var cached = await _cacheRepository.TryGetAsync(key, cancellationToken).ConfigureAwait(false);
+                if (!string.IsNullOrWhiteSpace(cached))
+                {
+                    translations[line.Text] = cached;
+                    _lastTranslations[normalized] = cached;
+                    continue;
+                }
 
-            if (_lastTranslations.TryGetValue(normalized, out var last))
-            {
-                translations[line.Text] = last;
-                continue;
+                if (_lastTranslations.TryGetValue(normalized, out var last))
+                {
+                    translations[line.Text] = last;
+                    continue;
+                }
             }
 
             if (changedSet.Contains(line) && pendingNormalized.Add(normalized))
@@ -304,6 +331,12 @@ public sealed class PipelineOrchestrator
 
             await _cacheRepository.SaveAsync(item.CacheKey, translated, cancellationToken).ConfigureAwait(false);
             _lastTranslations[item.Normalized] = translated;
+            translations[item.SourceText] = translated;
+        }
+
+        if (skipTranslationCache)
+        {
+            return translations;
         }
 
         foreach (var line in lines)

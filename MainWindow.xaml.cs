@@ -30,9 +30,11 @@ public partial class MainWindow : Window
     private PipelineOrchestrator? _pipeline;
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
+    private HotkeyManager? _forceRunHotkeyManager;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
+    private bool _hasRunOnce;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
 
@@ -96,7 +98,10 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager = new HotkeyManager(this, Key.F9, ModifierKeys.None, id: 2);
         _overlayToggleHotkeyManager.HotkeyPressed += OnToggleOverlayHotkeyPressed;
         _overlayToggleHotkeyManager.Register();
-        AppendLog("Ready. Press F8 to capture. Press F9 to toggle overlay.");
+        _forceRunHotkeyManager = new HotkeyManager(this, Key.F10, ModifierKeys.None, id: 3);
+        _forceRunHotkeyManager.HotkeyPressed += OnForceRunHotkeyPressed;
+        _forceRunHotkeyManager.Register();
+        AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -105,6 +110,7 @@ public partial class MainWindow : Window
         _runCts?.Dispose();
         _hotkeyManager?.Dispose();
         _overlayToggleHotkeyManager?.Dispose();
+        _forceRunHotkeyManager?.Dispose();
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         if (_pipeline != null)
@@ -116,7 +122,30 @@ public partial class MainWindow : Window
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
+        if (!_hasRunOnce)
+        {
+            AppendLog("F8: Run once (first run).");
+            await RunOnceAsync().ConfigureAwait(true);
+            return;
+        }
+
+        if (_overlayEnabled)
+        {
+            _overlayEnabled = false;
+            _overlayPresenter?.SetEnabled(false);
+            AppendLog("F8: Overlay hidden.");
+            return;
+        }
+
+        AppendLog("F8: Run once (overlay shown).");
         await RunOnceAsync().ConfigureAwait(true);
+    }
+
+    private async void OnForceRunHotkeyPressed(object? sender, EventArgs e)
+    {
+        AppendLog("Force run: skip pHash, OCR diff, translation cache.");
+        await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true))
+            .ConfigureAwait(true);
     }
 
     private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
@@ -150,16 +179,22 @@ public partial class MainWindow : Window
 
     private async Task RunOnceAsync()
     {
+        await RunOnceAsync(ForceRunOptions.None).ConfigureAwait(true);
+    }
+
+    private async Task RunOnceAsync(ForceRunOptions options)
+    {
         if (_pipeline == null)
         {
             return;
         }
 
+        _hasRunOnce = true;
         EnableOverlay();
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
-        await _pipeline.RunOnceAsync(_runCts.Token).ConfigureAwait(true);
+        await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
