@@ -12,6 +12,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.UI;
@@ -32,6 +33,10 @@ public partial class MainWindow : Window
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
     private HotkeyManager? _ocrOnlyHotkeyManager;
+    private PhashService? _phashService;
+    private DispatcherTimer? _autoHideTimer;
+    private bool _autoHideTickInProgress;
+    private ulong? _autoHideLastHash;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
@@ -66,7 +71,7 @@ public partial class MainWindow : Window
         _captureManager = new CaptureManager(frameGate, _logger);
         var ocrEngine = new OcrEngine(_httpClient, _logger);
         var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
-        var phashService = new PhashService();
+        _phashService = new PhashService();
         var normalization = new NormalizationService();
         var ocrPreprocess = new OcrPreprocessService();
         var lineGrouper = new OcrLineGrouper();
@@ -83,7 +88,7 @@ public partial class MainWindow : Window
             _captureManager,
             ocrEngine,
             ocrDiff,
-            phashService,
+            _phashService,
             normalization,
             ocrPreprocess,
             lineGrouper,
@@ -97,6 +102,7 @@ public partial class MainWindow : Window
         _pipeline.OverlayAutoHidden += OnOverlayAutoHidden;
 
         InitializeHotkeys(_settingsService.Settings);
+        InitializeAutoHideWatcher(_settingsService.Settings);
         AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run. F11: OCR only.");
     }
 
@@ -108,6 +114,11 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        if (_autoHideTimer != null)
+        {
+            _autoHideTimer.Stop();
+            _autoHideTimer.Tick -= OnAutoHideTick;
+        }
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         if (_pipeline != null)
@@ -270,11 +281,14 @@ public partial class MainWindow : Window
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
         SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
+        SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
+        SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
+        UpdateSceneChangeWatchValues();
         UpdateRoiStatus(settings);
         UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
@@ -682,9 +696,31 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnSceneChangeWatchIntervalChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateSceneChangeWatchValues();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSceneChangeWatchPhashChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateSceneChangeWatchValues();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async Task SaveSettingsAsync()
     {
-        if (_isApplyingSettings)
+        if (_isApplyingSettings || !IsLoaded)
         {
             return;
         }
@@ -726,6 +762,8 @@ public partial class MainWindow : Window
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
+        settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
+        settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -743,11 +781,13 @@ public partial class MainWindow : Window
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
+        UpdateSceneChangeWatchValues();
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
         TryUpdateHotkeys(settings);
+        UpdateAutoHideWatcher(settings);
     }
 
     private void PopulateHotkeyKeyBoxes()
@@ -950,7 +990,9 @@ public partial class MainWindow : Window
     private void UpdateSceneChangeControls(AppSettings settings)
     {
         if (EnableSceneChangeAutoHideCheck == null || EnableSceneChangeTextWeightedCheck == null ||
-            SceneChangeThresholdSlider == null || SceneChangeThresholdValue == null)
+            SceneChangeThresholdSlider == null || SceneChangeThresholdValue == null ||
+            SceneChangeWatchIntervalSlider == null || SceneChangeWatchIntervalValue == null ||
+            SceneChangeWatchPhashSlider == null || SceneChangeWatchPhashValue == null)
         {
             return;
         }
@@ -961,6 +1003,149 @@ public partial class MainWindow : Window
         SceneChangeThresholdValue.Foreground = enabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
+        SceneChangeWatchIntervalSlider.IsEnabled = enabled;
+        SceneChangeWatchIntervalValue.Foreground = enabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+        SceneChangeWatchPhashSlider.IsEnabled = enabled;
+        SceneChangeWatchPhashValue.Foreground = enabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+    }
+
+    private void UpdateSceneChangeWatchValues()
+    {
+        if (SceneChangeWatchIntervalValue == null || SceneChangeWatchIntervalSlider == null ||
+            SceneChangeWatchPhashValue == null || SceneChangeWatchPhashSlider == null)
+        {
+            return;
+        }
+
+        SceneChangeWatchIntervalValue.Text = ((int)Math.Round(SceneChangeWatchIntervalSlider.Value)).ToString();
+        SceneChangeWatchPhashValue.Text = ((int)Math.Round(SceneChangeWatchPhashSlider.Value)).ToString();
+    }
+
+    private void InitializeAutoHideWatcher(AppSettings settings)
+    {
+        _autoHideTimer = new DispatcherTimer(DispatcherPriority.Background);
+        _autoHideTimer.Tick += OnAutoHideTick;
+        UpdateAutoHideWatcher(settings);
+    }
+
+    private void UpdateAutoHideWatcher(AppSettings settings)
+    {
+        if (_autoHideTimer == null)
+        {
+            return;
+        }
+
+        if (!settings.EnableSceneChangeAutoHide)
+        {
+            _autoHideTimer.Stop();
+            _autoHideLastHash = null;
+            return;
+        }
+
+        var intervalMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        _autoHideTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
+        if (!_autoHideTimer.IsEnabled)
+        {
+            _autoHideTimer.Start();
+        }
+    }
+
+    private async void OnAutoHideTick(object? sender, EventArgs e)
+    {
+        if (_autoHideTickInProgress || _captureManager == null || _phashService == null)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Settings;
+        if (!settings.EnableSceneChangeAutoHide || !_overlayEnabled)
+        {
+            return;
+        }
+
+        _autoHideTickInProgress = true;
+        try
+        {
+            await Task.Run(() =>
+            {
+                using var frame = _captureManager.Capture(settings);
+                if (frame.IsBlack)
+                {
+                    return;
+                }
+
+                var roiScreen = GetRoiBounds(settings, frame.Bounds);
+                if (roiScreen.IsEmpty)
+                {
+                    return;
+                }
+
+                var roiInFrame = new Rect(
+                    roiScreen.X - frame.Bounds.X,
+                    roiScreen.Y - frame.Bounds.Y,
+                    roiScreen.Width,
+                    roiScreen.Height);
+
+                using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+                var hash = _phashService.ComputeHash(roiBitmap);
+                if (_autoHideLastHash.HasValue)
+                {
+                    var diff = _phashService.HammingDistance(hash, _autoHideLastHash.Value);
+                    var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+                    if (diff >= threshold)
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            _overlayEnabled = false;
+                            _overlayPresenter?.SetEnabled(false);
+                            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
+                        });
+                    }
+                }
+
+                _autoHideLastHash = hash;
+            }).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Auto-hide watcher failed.");
+        }
+        finally
+        {
+            _autoHideTickInProgress = false;
+        }
+    }
+
+    private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
+    {
+        if (!settings.EnableRoi)
+        {
+            return frameBounds;
+        }
+
+        if (settings.NormalizedRoi is { } normalized && !normalized.IsEmpty)
+        {
+            return normalized.ToAbsolute(frameBounds);
+        }
+
+        if (settings.Roi is null || settings.Roi.Value.IsEmpty)
+        {
+            return frameBounds;
+        }
+
+        var absolute = Rect.Intersect(frameBounds, settings.Roi.Value.ToRect());
+        if (!absolute.IsEmpty)
+        {
+            settings.NormalizedRoi = NormalizedRect.FromAbsolute(absolute, frameBounds);
+            // NOTE: Fire-and-forget migration to normalized ROI for DPI-safe persistence.
+            _ = _settingsService.SaveAsync();
+        }
+
+        return absolute;
     }
 
     private void UpdateOcrPreprocessControls(AppSettings settings)

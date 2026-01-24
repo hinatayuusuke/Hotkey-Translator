@@ -268,6 +268,32 @@
                                             ValueChanged="OnSceneChangeThresholdChanged" />
                                     <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Watch interval (ms)" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="SceneChangeWatchIntervalSlider"
+                                            Width="180"
+                                            Minimum="200"
+                                            Maximum="5000"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="200"
+                                            SmallChange="100"
+                                            LargeChange="500"
+                                            ValueChanged="OnSceneChangeWatchIntervalChanged" />
+                                    <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Watcher pHash threshold" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="SceneChangeWatchPhashSlider"
+                                            Width="180"
+                                            Minimum="0"
+                                            Maximum="64"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="2"
+                                            SmallChange="1"
+                                            LargeChange="5"
+                                            ValueChanged="OnSceneChangeWatchPhashChanged" />
+                                    <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,8,0,0">

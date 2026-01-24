@@ -35,6 +35,8 @@ public sealed class AppSettings
     public bool EnableSceneChangeAutoHide { get; set; } = false;
     public bool EnableSceneChangeTextWeighted { get; set; } = true;
     public double SceneChangeThreshold { get; set; } = 0.5;
+    public int SceneChangeWatchIntervalMs { get; set; } = 1000;
+    public int SceneChangeWatchPhashThreshold { get; set; } = 16;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";
