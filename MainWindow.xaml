@@ -207,6 +207,7 @@
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -247,6 +248,19 @@
                                             LargeChange="10"
                                             ValueChanged="OnOcrBinarizationThresholdChanged" />
                                     <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Gamma" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrGammaSlider"
+                                            Width="180"
+                                            Minimum="0.6"
+                                            Maximum="1.8"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="0.1"
+                                            SmallChange="0.05"
+                                            LargeChange="0.1"
+                                            ValueChanged="OnOcrGammaChanged" />
+                                    <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
                                 </StackPanel>
                                 <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
                                 <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="640" Height="360">

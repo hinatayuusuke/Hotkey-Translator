@@ -15,12 +15,126 @@ public sealed class OcrPreprocessService
 
     public Bitmap Apply(Bitmap source, AppSettings settings, int? thresholdOverride, bool? autoThresholdOverride)
     {
+        if (!settings.EnableOcrBinarization && !settings.EnableOcrGamma)
+        {
+            return source;
+        }
+
+        var current = source;
+        var disposeCurrent = false;
+        if (settings.EnableOcrGamma)
+        {
+            current = ApplyGammaCorrection(current, settings.OcrGamma);
+            disposeCurrent = !ReferenceEquals(current, source);
+        }
+
         if (!settings.EnableOcrBinarization)
+        {
+            return current;
+        }
+
+        var output = ApplyBinarization(current, settings, thresholdOverride, autoThresholdOverride);
+        if (disposeCurrent)
+        {
+            current.Dispose();
+        }
+
+        return output;
+    }
+
+    private static Bitmap ApplyGammaCorrection(Bitmap source, double gamma)
+    {
+        if (gamma <= 0)
+        {
+            gamma = 1.0;
+        }
+
+        if (Math.Abs(gamma - 1.0) < 0.001)
         {
             return (Bitmap)source.Clone();
         }
 
-        return ApplyBinarization(source, settings, thresholdOverride, autoThresholdOverride);
+        var input = source;
+        var disposeInput = false;
+        if (source.PixelFormat != PixelFormat.Format32bppPArgb)
+        {
+            // NOTE: Some capture providers may output non-32bpp formats; convert to ensure consistent strides.
+            input = new Bitmap(source.Width, source.Height, PixelFormat.Format32bppPArgb);
+            using (var graphics = Graphics.FromImage(input))
+            {
+                graphics.DrawImage(source, 0, 0, source.Width, source.Height);
+            }
+
+            disposeInput = true;
+        }
+
+        var rect = new Rectangle(0, 0, input.Width, input.Height);
+        var output = new Bitmap(input.Width, input.Height, PixelFormat.Format32bppPArgb);
+        var inputData = input.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
+        var outputData = output.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppPArgb);
+        try
+        {
+            var width = input.Width;
+            var height = input.Height;
+            var inputStride = inputData.Stride;
+            var outputStride = outputData.Stride;
+            var inputRowBytes = Math.Abs(inputStride);
+            var outputRowBytes = Math.Abs(outputStride);
+            var inputBuffer = new byte[inputRowBytes * height];
+            var outputBuffer = new byte[outputRowBytes * height];
+            var lut = BuildGammaLookup(gamma);
+
+            Marshal.Copy(inputData.Scan0, inputBuffer, 0, inputBuffer.Length);
+
+            for (var y = 0; y < height; y++)
+            {
+                var inputRow = inputStride < 0 ? (height - 1 - y) * inputRowBytes : y * inputRowBytes;
+                var outputRow = outputStride < 0 ? (height - 1 - y) * outputRowBytes : y * outputRowBytes;
+                for (var x = 0; x < width; x++)
+                {
+                    var inputIndex = inputRow + (x * 4);
+                    var b = lut[inputBuffer[inputIndex]];
+                    var g = lut[inputBuffer[inputIndex + 1]];
+                    var r = lut[inputBuffer[inputIndex + 2]];
+                    var a = inputBuffer[inputIndex + 3];
+
+                    var outputIndex = outputRow + (x * 4);
+                    outputBuffer[outputIndex] = b;
+                    outputBuffer[outputIndex + 1] = g;
+                    outputBuffer[outputIndex + 2] = r;
+                    outputBuffer[outputIndex + 3] = a;
+                }
+            }
+
+            Marshal.Copy(outputBuffer, 0, outputData.Scan0, outputBuffer.Length);
+        }
+        finally
+        {
+            input.UnlockBits(inputData);
+            output.UnlockBits(outputData);
+            if (disposeInput)
+            {
+                input.Dispose();
+            }
+        }
+
+        return output;
+    }
+
+    private static byte[] BuildGammaLookup(double gamma)
+    {
+        // WHY: Precompute lookup for faster per-pixel correction.
+        var lut = new byte[256];
+        var inv = 1.0 / gamma;
+        for (var i = 0; i < lut.Length; i++)
+        {
+            var normalized = i / 255.0;
+            var corrected = Math.Pow(normalized, inv);
+            var value = (int)Math.Round(corrected * 255.0);
+            lut[i] = (byte)Math.Clamp(value, 0, 255);
+        }
+
+        return lut;
     }
 
     private static Bitmap ApplyBinarization(

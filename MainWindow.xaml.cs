@@ -291,9 +291,11 @@ public partial class MainWindow : Window
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
         EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
         EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
+        EnableOcrGammaCheck.IsChecked = settings.EnableOcrGamma;
         EnableOcrTwoPassCheck.IsChecked = settings.EnableOcrTwoPass;
         OcrTwoPassPreferAutoCheck.IsChecked = settings.OcrTwoPassPreferAuto;
         OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
+        OcrGammaSlider.Value = settings.OcrGamma;
         OcrTwoPassLowThresholdSlider.Value = settings.OcrTwoPassLowThreshold;
         OcrTwoPassHighThresholdSlider.Value = settings.OcrTwoPassHighThreshold;
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
@@ -303,6 +305,7 @@ public partial class MainWindow : Window
         SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
         SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
         UpdateOcrBinarizationThresholdValue();
+        UpdateOcrGammaValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
@@ -697,6 +700,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnOcrGammaChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateOcrGammaValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrTwoPassThresholdValues();
@@ -793,6 +807,8 @@ public partial class MainWindow : Window
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
         settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
         settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
+        settings.EnableOcrGamma = EnableOcrGammaCheck.IsChecked == true;
+        settings.OcrGamma = Math.Round(OcrGammaSlider.Value, 2);
         settings.EnableOcrTwoPass = EnableOcrTwoPassCheck.IsChecked == true;
         settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAutoCheck.IsChecked == true;
         settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThresholdSlider.Value);
@@ -816,6 +832,7 @@ public partial class MainWindow : Window
 
         _overlayWindow?.ApplyStyle(settings);
         UpdateOcrBinarizationThresholdValue();
+        UpdateOcrGammaValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
@@ -1002,6 +1019,16 @@ public partial class MainWindow : Window
         }
 
         OcrBinarizationThresholdValue.Text = ((int)Math.Round(OcrBinarizationThresholdSlider.Value)).ToString();
+    }
+
+    private void UpdateOcrGammaValue()
+    {
+        if (OcrGammaValue == null || OcrGammaSlider == null)
+        {
+            return;
+        }
+
+        OcrGammaValue.Text = OcrGammaSlider.Value.ToString("0.00");
     }
 
     private void UpdateOcrTwoPassThresholdValues()
@@ -1309,6 +1336,7 @@ public partial class MainWindow : Window
     {
         if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null ||
             EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null ||
+            EnableOcrGammaCheck == null || OcrGammaSlider == null || OcrGammaValue == null ||
             EnableOcrTwoPassCheck == null || OcrTwoPassPreferAutoCheck == null ||
             OcrTwoPassLowThresholdSlider == null || OcrTwoPassLowThresholdValue == null ||
             OcrTwoPassHighThresholdSlider == null || OcrTwoPassHighThresholdValue == null)
@@ -1322,6 +1350,7 @@ public partial class MainWindow : Window
         EnableOcrAutoThresholdCheck.IsEnabled = enabled;
         EnableOcrAutoInvertCheck.IsEnabled = enabled;
         EnableOcrTwoPassCheck.IsEnabled = enabled;
+        OcrGammaSlider.IsEnabled = settings.EnableOcrGamma;
         var twoPassEnabled = enabled && settings.EnableOcrTwoPass;
         OcrTwoPassLowThresholdSlider.IsEnabled = twoPassEnabled;
         OcrTwoPassHighThresholdSlider.IsEnabled = twoPassEnabled;
@@ -1333,6 +1362,9 @@ public partial class MainWindow : Window
             : System.Windows.Media.Brushes.DimGray;
         OcrTwoPassPreferAutoCheck.IsEnabled = twoPassEnabled && settings.EnableOcrAutoThreshold;
         OcrBinarizationThresholdValue.Foreground = manualThresholdEnabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+        OcrGammaValue.Foreground = settings.EnableOcrGamma
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
     }

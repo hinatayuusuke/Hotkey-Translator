@@ -48,9 +48,7 @@ public sealed class OcrPreprocessCoordinator
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        var input = settings.EnableOcrBinarization
-            ? _preprocessService.Apply(roiBitmap, settings, null, null)
-            : roiBitmap;
+        var input = _preprocessService.Apply(roiBitmap, settings, null, null);
 
         var result = await _ocrEngine.RecognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
         var stats = _scorer.GetStats(result);
