@@ -422,18 +422,26 @@ public sealed class PipelineOrchestrator
     private bool TryComputeSceneChangeScore(Bitmap currentRoi, Rect roiScreen, AppSettings settings, out double score)
     {
         score = 0.0;
-        if (!settings.EnableSceneChangeAutoHide || _lastRoiSnapshot == null || _lastRoiBounds == null)
+        if (!settings.EnableSceneChangeAutoHide)
         {
+            return false;
+        }
+
+        if (_lastRoiSnapshot == null || _lastRoiBounds == null)
+        {
+            _logger.Info("Scene change skipped: no previous ROI snapshot.");
             return false;
         }
 
         if (_lastOverlayItems.Count == 0)
         {
+            _logger.Info("Scene change skipped: no previous overlay items.");
             return false;
         }
 
-        if (!_lastRoiBounds.Value.Equals(roiScreen))
+        if (!AreRoiBoundsCompatible(_lastRoiBounds.Value, roiScreen))
         {
+            _logger.Info($"Scene change skipped: ROI bounds changed (prev={FormatRect(_lastRoiBounds.Value)} current={FormatRect(roiScreen)}).");
             return false;
         }
 
@@ -452,6 +460,7 @@ public sealed class PipelineOrchestrator
 
         if (maxArea <= 0)
         {
+            _logger.Info("Scene change skipped: overlay areas are empty.");
             return false;
         }
 
@@ -498,6 +507,7 @@ public sealed class PipelineOrchestrator
 
         if (weightSum <= 0)
         {
+            _logger.Info("Scene change skipped: no weighted overlay regions inside ROI.");
             return false;
         }
 
@@ -529,6 +539,21 @@ public sealed class PipelineOrchestrator
         _lastRoiSnapshot?.Dispose();
         _lastRoiSnapshot = snapshot;
         _lastRoiBounds = bounds;
+    }
+
+    private static bool AreRoiBoundsCompatible(Rect a, Rect b)
+    {
+        const double tolerance = 0.5;
+        // WHY: Capture bounds can vary by sub-pixel amounts; allow small drift.
+        return Math.Abs(a.X - b.X) <= tolerance &&
+               Math.Abs(a.Y - b.Y) <= tolerance &&
+               Math.Abs(a.Width - b.Width) <= tolerance &&
+               Math.Abs(a.Height - b.Height) <= tolerance;
+    }
+
+    private static string FormatRect(Rect rect)
+    {
+        return $"{rect.X:0.##},{rect.Y:0.##} {rect.Width:0.##}x{rect.Height:0.##}";
     }
 
     private async Task<OcrPassResult> RunTwoPassOcrAsync(
