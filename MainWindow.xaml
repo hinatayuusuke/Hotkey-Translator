@@ -175,6 +175,7 @@
                                 <ListBoxItem Content="Florence-2 (uv)" />
                                 <ListBoxItem Content="PaddleOCR-VL (vLLM)" />
                                 <ListBoxItem Content="Translation" />
+                                <ListBoxItem Content="Hotkeys" />
                             </ListBox>
                         </Border>
 
@@ -338,6 +339,39 @@
                                         <Button Content="Down" Width="60" Margin="0,6,0,0" Click="OnTranslationPriorityDown" />
                                     </StackPanel>
                                 </StackPanel>
+                            </StackPanel>
+
+                            <StackPanel x:Name="SettingsPanelHotkeys" Visibility="Collapsed" Margin="0,12,0,0">
+                                <TextBlock Text="Hotkeys" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Run once" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyRunOnceKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyRunOnceCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyRunOnceAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyRunOnceShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Toggle overlay" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyToggleOverlayKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyToggleOverlayCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyToggleOverlayAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyToggleOverlayShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Force run" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyForceRunKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyForceRunCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyForceRunAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyForceRunShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="OCR only" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyOcrOnlyKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyOcrOnlyCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyOcrOnlyAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyOcrOnlyShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <TextBlock Text="Note: Win key is not supported." Foreground="DimGray" Margin="0,8,0,0" />
                             </StackPanel>
                         </StackPanel>
                     </Grid>

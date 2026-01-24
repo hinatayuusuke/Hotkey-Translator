@@ -50,6 +50,14 @@ public sealed class AppSettings
     public double MergeVerticalWeight { get; set; } = 0.5;
     public double MergeThresholdRatio { get; set; } = 1.0;
     public int MergeNeighborCount { get; set; } = 12;
+    public string HotkeyRunOnceKey { get; set; } = "F8";
+    public string HotkeyRunOnceModifiers { get; set; } = "None";
+    public string HotkeyToggleOverlayKey { get; set; } = "F9";
+    public string HotkeyToggleOverlayModifiers { get; set; } = "None";
+    public string HotkeyForceRunKey { get; set; } = "F10";
+    public string HotkeyForceRunModifiers { get; set; } = "None";
+    public string HotkeyOcrOnlyKey { get; set; } = "F11";
+    public string HotkeyOcrOnlyModifiers { get; set; } = "None";
     public string SourceLanguage { get; set; } = "en";
     public string TargetLanguage { get; set; } = "ja";
     public string StyleId { get; set; } = "default";

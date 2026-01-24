@@ -31,16 +31,19 @@ public partial class MainWindow : Window
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
+    private HotkeyManager? _ocrOnlyHotkeyManager;
     private CancellationTokenSource? _runCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private bool _hasRunOnce;
+    private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
 
     public MainWindow()
     {
         InitializeComponent();
+        PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
         Closed += OnClosed;
     }
@@ -92,16 +95,8 @@ public partial class MainWindow : Window
             _logger);
         _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
 
-        _hotkeyManager = new HotkeyManager(this, Key.F8, ModifierKeys.None);
-        _hotkeyManager.HotkeyPressed += OnHotkeyPressed;
-        _hotkeyManager.Register();
-        _overlayToggleHotkeyManager = new HotkeyManager(this, Key.F9, ModifierKeys.None, id: 2);
-        _overlayToggleHotkeyManager.HotkeyPressed += OnToggleOverlayHotkeyPressed;
-        _overlayToggleHotkeyManager.Register();
-        _forceRunHotkeyManager = new HotkeyManager(this, Key.F10, ModifierKeys.None, id: 3);
-        _forceRunHotkeyManager.HotkeyPressed += OnForceRunHotkeyPressed;
-        _forceRunHotkeyManager.Register();
-        AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run.");
+        InitializeHotkeys(_settingsService.Settings);
+        AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run. F11: OCR only.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -111,6 +106,7 @@ public partial class MainWindow : Window
         _hotkeyManager?.Dispose();
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
+        _ocrOnlyHotkeyManager?.Dispose();
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         if (_pipeline != null)
@@ -144,7 +140,14 @@ public partial class MainWindow : Window
     private async void OnForceRunHotkeyPressed(object? sender, EventArgs e)
     {
         AppendLog("Force run: skip pHash, OCR diff, translation cache.");
-        await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true))
+        await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true, SkipTranslation: false))
+            .ConfigureAwait(true);
+    }
+
+    private async void OnOcrOnlyHotkeyPressed(object? sender, EventArgs e)
+    {
+        AppendLog("OCR-only run (translation skipped).");
+        await RunOnceAsync(new ForceRunOptions(SkipPhash: false, SkipOcrDiff: false, SkipTranslationCache: false, SkipTranslation: true))
             .ConfigureAwait(true);
     }
 
@@ -251,6 +254,7 @@ public partial class MainWindow : Window
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
+        ApplyHotkeySettingsToUi(settings);
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
@@ -304,6 +308,11 @@ public partial class MainWindow : Window
         _ = SaveSettingsAsync();
     }
 
+    private async void OnHotkeySelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private void OnSwapLanguages(object sender, RoutedEventArgs e)
     {
         var sourceIsCustom = IsCustomSelected(SourceLangCombo);
@@ -341,6 +350,31 @@ public partial class MainWindow : Window
     {
         SourceLangCustom.Visibility = IsCustomSelected(SourceLangCombo) ? Visibility.Visible : Visibility.Collapsed;
         TargetLangCustom.Visibility = IsCustomSelected(TargetLangCombo) ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private void ApplyHotkeySettingsToUi(AppSettings settings)
+    {
+        SetHotkeyKey(HotkeyRunOnceKeyBox, settings.HotkeyRunOnceKey);
+        SetHotkeyKey(HotkeyToggleOverlayKeyBox, settings.HotkeyToggleOverlayKey);
+        SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
+        SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
+
+        SetHotkeyModifiers(settings.HotkeyRunOnceModifiers, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        SetHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
+        SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+    }
+
+    private void ApplyHotkeySettingsFromUi(AppSettings settings)
+    {
+        settings.HotkeyRunOnceKey = GetHotkeyKey(HotkeyRunOnceKeyBox);
+        settings.HotkeyRunOnceModifiers = GetHotkeyModifiers(HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        settings.HotkeyToggleOverlayKey = GetHotkeyKey(HotkeyToggleOverlayKeyBox);
+        settings.HotkeyToggleOverlayModifiers = GetHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
+        settings.HotkeyForceRunKey = GetHotkeyKey(HotkeyForceRunKeyBox);
+        settings.HotkeyForceRunModifiers = GetHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
+        settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
     }
 
     private static bool IsCustomSelected(ComboBox comboBox)
@@ -448,6 +482,59 @@ public partial class MainWindow : Window
                 return;
             }
         }
+    }
+
+    private static void SetHotkeyKey(ComboBox comboBox, string key)
+    {
+        if (comboBox.Items.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var item in comboBox.Items)
+        {
+            if (string.Equals(item?.ToString(), key, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = item;
+                return;
+            }
+        }
+
+        comboBox.SelectedIndex = 0;
+    }
+
+    private static string GetHotkeyKey(ComboBox comboBox)
+    {
+        return comboBox.SelectedItem?.ToString() ?? "F8";
+    }
+
+    private static void SetHotkeyModifiers(string value, CheckBox ctrl, CheckBox alt, CheckBox shift)
+    {
+        var modifiers = ParseModifiers(value);
+        ctrl.IsChecked = modifiers.HasFlag(ModifierKeys.Control);
+        alt.IsChecked = modifiers.HasFlag(ModifierKeys.Alt);
+        shift.IsChecked = modifiers.HasFlag(ModifierKeys.Shift);
+    }
+
+    private static string GetHotkeyModifiers(CheckBox ctrl, CheckBox alt, CheckBox shift)
+    {
+        var modifiers = ModifierKeys.None;
+        if (ctrl.IsChecked == true)
+        {
+            modifiers |= ModifierKeys.Control;
+        }
+
+        if (alt.IsChecked == true)
+        {
+            modifiers |= ModifierKeys.Alt;
+        }
+
+        if (shift.IsChecked == true)
+        {
+            modifiers |= ModifierKeys.Shift;
+        }
+
+        return modifiers == ModifierKeys.None ? "None" : modifiers.ToString();
     }
 
     private void ApplyTranslationPriority(AppSettings settings)
@@ -609,6 +696,7 @@ public partial class MainWindow : Window
         settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
+        ApplyHotkeySettingsFromUi(settings);
         settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
         settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
@@ -636,6 +724,172 @@ public partial class MainWindow : Window
         UpdateTranslationStatus(settings);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
+        TryUpdateHotkeys(settings);
+    }
+
+    private void PopulateHotkeyKeyBoxes()
+    {
+        var keys = BuildHotkeyKeyOptions();
+        HotkeyRunOnceKeyBox.ItemsSource = keys;
+        HotkeyToggleOverlayKeyBox.ItemsSource = keys;
+        HotkeyForceRunKeyBox.ItemsSource = keys;
+        HotkeyOcrOnlyKeyBox.ItemsSource = keys;
+    }
+
+    private static IReadOnlyList<string> BuildHotkeyKeyOptions()
+    {
+        var keys = new List<string>();
+        for (var i = 1; i <= 12; i++)
+        {
+            keys.Add($"F{i}");
+        }
+
+        for (var c = 'A'; c <= 'Z'; c++)
+        {
+            keys.Add(c.ToString());
+        }
+
+        return keys;
+    }
+
+    private void InitializeHotkeys(AppSettings settings)
+    {
+        var config = BuildHotkeyConfigFromSettings(settings);
+        if (TryRegisterHotkeys(config))
+        {
+            _currentHotkeyConfig = config;
+            return;
+        }
+
+        var fallback = HotkeyConfig.Default;
+        if (TryRegisterHotkeys(fallback))
+        {
+            _currentHotkeyConfig = fallback;
+            AppendLog("Hotkey fallback applied due to registration failure.");
+        }
+    }
+
+    private void TryUpdateHotkeys(AppSettings settings)
+    {
+        var config = BuildHotkeyConfigFromSettings(settings);
+        if (_currentHotkeyConfig.HasValue && _currentHotkeyConfig.Value.Equals(config))
+        {
+            return;
+        }
+
+        if (TryRegisterHotkeys(config))
+        {
+            _currentHotkeyConfig = config;
+            AppendLog($"Hotkey updated: RunOnce={FormatHotkey(config.RunOnceKey, config.RunOnceModifiers)}, " +
+                      $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
+                      $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
+                      $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}.");
+        }
+        else
+        {
+            AppendLog("Hotkey update failed; keeping previous hotkeys.");
+        }
+    }
+
+    private bool TryRegisterHotkeys(HotkeyConfig config)
+    {
+        HotkeyManager? runOnce = null;
+        HotkeyManager? toggle = null;
+        HotkeyManager? forceRun = null;
+        HotkeyManager? ocrOnly = null;
+
+        try
+        {
+            runOnce = new HotkeyManager(this, config.RunOnceKey, config.RunOnceModifiers, id: 1);
+            runOnce.HotkeyPressed += OnHotkeyPressed;
+            runOnce.Register();
+
+            toggle = new HotkeyManager(this, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2);
+            toggle.HotkeyPressed += OnToggleOverlayHotkeyPressed;
+            toggle.Register();
+
+            forceRun = new HotkeyManager(this, config.ForceRunKey, config.ForceRunModifiers, id: 3);
+            forceRun.HotkeyPressed += OnForceRunHotkeyPressed;
+            forceRun.Register();
+
+            ocrOnly = new HotkeyManager(this, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4);
+            ocrOnly.HotkeyPressed += OnOcrOnlyHotkeyPressed;
+            ocrOnly.Register();
+        }
+        catch (Exception ex)
+        {
+            runOnce?.Dispose();
+            toggle?.Dispose();
+            forceRun?.Dispose();
+            ocrOnly?.Dispose();
+            _logger?.Error(ex, "Failed to register hotkeys.");
+            return false;
+        }
+
+        _hotkeyManager?.Dispose();
+        _overlayToggleHotkeyManager?.Dispose();
+        _forceRunHotkeyManager?.Dispose();
+        _ocrOnlyHotkeyManager?.Dispose();
+
+        _hotkeyManager = runOnce;
+        _overlayToggleHotkeyManager = toggle;
+        _forceRunHotkeyManager = forceRun;
+        _ocrOnlyHotkeyManager = ocrOnly;
+        return true;
+    }
+
+    private static HotkeyConfig BuildHotkeyConfigFromSettings(AppSettings settings)
+    {
+        return new HotkeyConfig(
+            ParseKey(settings.HotkeyRunOnceKey, Key.F8),
+            ParseModifiers(settings.HotkeyRunOnceModifiers),
+            ParseKey(settings.HotkeyToggleOverlayKey, Key.F9),
+            ParseModifiers(settings.HotkeyToggleOverlayModifiers),
+            ParseKey(settings.HotkeyForceRunKey, Key.F10),
+            ParseModifiers(settings.HotkeyForceRunModifiers),
+            ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
+            ParseModifiers(settings.HotkeyOcrOnlyModifiers));
+    }
+
+    private static Key ParseKey(string value, Key fallback)
+    {
+        return Enum.TryParse(value, true, out Key parsed) && parsed != Key.None ? parsed : fallback;
+    }
+
+    private static ModifierKeys ParseModifiers(string value)
+    {
+        return Enum.TryParse(value, true, out ModifierKeys parsed) ? parsed : ModifierKeys.None;
+    }
+
+    private static string FormatHotkey(Key key, ModifierKeys modifiers)
+    {
+        if (modifiers == ModifierKeys.None)
+        {
+            return key.ToString();
+        }
+
+        return $"{FormatModifiers(modifiers)}+{key}";
+    }
+
+    private static string FormatModifiers(ModifierKeys modifiers)
+    {
+        var parts = new List<string>(3);
+        if (modifiers.HasFlag(ModifierKeys.Control))
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (modifiers.HasFlag(ModifierKeys.Alt))
+        {
+            parts.Add("Alt");
+        }
+
+        if (modifiers.HasFlag(ModifierKeys.Shift))
+        {
+            parts.Add("Shift");
+        }
+
+        return string.Join("+", parts);
     }
 
     private void UpdateOcrBinarizationThresholdValue()
@@ -765,7 +1019,9 @@ public partial class MainWindow : Window
 
     private void UpdateSettingsCategoryPanels()
     {
-        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null || SettingsPanelFlorence == null || SettingsPanelVllm == null || SettingsPanelTranslation == null)
+        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null ||
+            SettingsPanelFlorence == null || SettingsPanelVllm == null || SettingsPanelTranslation == null ||
+            SettingsPanelHotkeys == null)
         {
             return;
         }
@@ -776,5 +1032,27 @@ public partial class MainWindow : Window
         SettingsPanelFlorence.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanelVllm.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanelTranslation.Visibility = index == 4 ? Visibility.Visible : Visibility.Collapsed;
+        SettingsPanelHotkeys.Visibility = index == 5 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    private readonly record struct HotkeyConfig(
+        Key RunOnceKey,
+        ModifierKeys RunOnceModifiers,
+        Key ToggleOverlayKey,
+        ModifierKeys ToggleOverlayModifiers,
+        Key ForceRunKey,
+        ModifierKeys ForceRunModifiers,
+        Key OcrOnlyKey,
+        ModifierKeys OcrOnlyModifiers)
+    {
+        public static HotkeyConfig Default => new(
+            Key.F8,
+            ModifierKeys.None,
+            Key.F9,
+            ModifierKeys.None,
+            Key.F10,
+            ModifierKeys.None,
+            Key.F11,
+            ModifierKeys.None);
     }
 }

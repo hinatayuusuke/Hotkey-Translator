@@ -10,11 +10,11 @@ using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services;
 
-public readonly record struct ForceRunOptions(bool SkipPhash, bool SkipOcrDiff, bool SkipTranslationCache)
+public readonly record struct ForceRunOptions(bool SkipPhash, bool SkipOcrDiff, bool SkipTranslationCache, bool SkipTranslation)
 {
-    public static ForceRunOptions None => new(false, false, false);
+    public static ForceRunOptions None => new(false, false, false, false);
 
-    public bool IsEnabled => SkipPhash || SkipOcrDiff || SkipTranslationCache;
+    public bool IsEnabled => SkipPhash || SkipOcrDiff || SkipTranslationCache || SkipTranslation;
 }
 
 public sealed class PipelineOrchestrator
@@ -84,7 +84,15 @@ public sealed class PipelineOrchestrator
 
             if (options.IsEnabled)
             {
-                _logger.Info($"Force run: skip pHash={options.SkipPhash}, skip OCR diff={options.SkipOcrDiff}, skip translation cache={options.SkipTranslationCache}.");
+                if (options.SkipTranslation && !options.SkipPhash && !options.SkipOcrDiff && !options.SkipTranslationCache)
+                {
+                    _logger.Info("OCR-only run: translation skipped.");
+                }
+                else
+                {
+                    _logger.Info($"Force run: skip pHash={options.SkipPhash}, skip OCR diff={options.SkipOcrDiff}, " +
+                                 $"skip translation cache={options.SkipTranslationCache}, skip translation={options.SkipTranslation}.");
+                }
             }
 
             _overlayPresenter.Hide();
@@ -189,13 +197,21 @@ public sealed class PipelineOrchestrator
 
                 var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
                 _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
-                var translations = await ResolveTranslationsAsync(
-                        groupedLines,
-                        changedLines,
-                        settings,
-                        options.SkipTranslationCache,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                Dictionary<string, string> translations;
+                if (options.SkipTranslation)
+                {
+                    translations = new Dictionary<string, string>(StringComparer.Ordinal);
+                }
+                else
+                {
+                    translations = await ResolveTranslationsAsync(
+                            groupedLines,
+                            changedLines,
+                            settings,
+                            options.SkipTranslationCache,
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 var overlayItems = groupedLines
                     .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
