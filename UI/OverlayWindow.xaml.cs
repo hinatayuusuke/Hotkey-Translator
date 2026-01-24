@@ -15,6 +15,7 @@ public partial class OverlayWindow : Window
     private Brush _foreground = Brushes.White;
     private Brush _background = new SolidColorBrush(Color.FromArgb(136, 0, 0, 0));
     private double _fontSize = 18;
+    private bool _isFixedRoiOverlay;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinLineHeightScale = 0.75;
     private const double MaxLineHeightScale = 1.1;
@@ -27,6 +28,8 @@ public partial class OverlayWindow : Window
     private const double MinWidthScale = 0.3;
     private const double WrapPenaltyStep = 0.08;
     private const double MinWrapPenaltyScale = 0.65;
+    private const double FixedRoiConservativeRatioMultiplier = 1.2;
+    private const double FixedRoiConservativePenaltyMultiplier = 0.7;
     private const double MinFontSize = 8;
     private const double MaxFontSize = 72;
     private const int FitIterations = 7;
@@ -42,6 +45,7 @@ public partial class OverlayWindow : Window
         _fontSize = settings.OverlayFontSize;
         _foreground = ParseBrush(settings.OverlayForeground, Brushes.White);
         _background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
+        _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -197,6 +201,17 @@ public partial class OverlayWindow : Window
             return 1.0;
         }
 
+        var startRatio = ConservativeStartRatio;
+        var fullRatio = ConservativeFullRatio;
+        var maxPenalty = MaxConservativePenalty;
+        if (_isFixedRoiOverlay)
+        {
+            // WHY: Fixed ROI uses a stable container; reduce conservative shrink to keep text readable.
+            startRatio *= FixedRoiConservativeRatioMultiplier;
+            fullRatio *= FixedRoiConservativeRatioMultiplier;
+            maxPenalty *= FixedRoiConservativePenaltyMultiplier;
+        }
+
         var screenHeight = SystemParameters.VirtualScreenHeight;
         if (screenHeight <= 0 || item.Rect.Height <= 0)
         {
@@ -204,7 +219,7 @@ public partial class OverlayWindow : Window
         }
 
         var ratio = item.Rect.Height / screenHeight;
-        var t = (ratio - ConservativeStartRatio) / (ConservativeFullRatio - ConservativeStartRatio);
+        var t = (ratio - startRatio) / (fullRatio - startRatio);
         t = Math.Clamp(t, 0, 1);
         if (t <= 0)
         {
@@ -213,7 +228,7 @@ public partial class OverlayWindow : Window
 
         var lineFactor = item.LineCount <= 1 ? 1.0 : TwoLinePenaltyFactor;
         // WHY: Large boxes with few lines look oversized; shrink aggressively to avoid clipping.
-        var penalty = MaxConservativePenalty * t * lineFactor;
+        var penalty = maxPenalty * t * lineFactor;
         return 1.0 - penalty;
     }
 
