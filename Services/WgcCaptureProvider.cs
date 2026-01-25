@@ -198,14 +198,17 @@ public sealed class WgcCaptureProvider : ICaptureProvider
             // 1. 文字列から WinRT クラス名を作成
             var hsClassId = WinRT.MarshalString.CreateMarshaler(GraphicsCaptureItemRuntimeClass);
             var iid = typeof(IGraphicsCaptureItemInterop).GUID;
+            var hstringAbi = WinRT.MarshalString.GetAbi(hsClassId);
+            _logger.Info($"WGC: ActivationFactory params class='{GraphicsCaptureItemRuntimeClass}', interopIID={iid}, hstring=0x{hstringAbi.ToInt64():X}.");
 
             try
             {
                 // 2. 直接アクティベーションファクトリを取得
-                int hr = RoGetActivationFactory(WinRT.MarshalString.GetAbi(hsClassId), ref iid, out IntPtr factoryPtr);
+                int hr = RoGetActivationFactory(hstringAbi, ref iid, out IntPtr factoryPtr);
+                _logger.Info($"WGC: RoGetActivationFactory hr=0x{hr:X8}, factoryPtr=0x{factoryPtr.ToInt64():X}.");
                 if (hr != 0 || factoryPtr == IntPtr.Zero)
                 {
-                    throw new InvalidOperationException($"Failed to get activation factory: {hr}");
+                    throw new InvalidOperationException($"Failed to get activation factory: 0x{hr:X8}");
                 }
 
                 // 3. 取得したポインタをインターフェースにラップ
@@ -246,6 +249,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         }
         catch (Exception ex)
         {
+            _logger.Error($"WGC: exception detail: {ex}");
             _logger.Error(ex, "WGC: failed to create GraphicsCaptureItem.");
             return null;
         }
