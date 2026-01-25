@@ -113,7 +113,7 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
-            var perfEnabled = settings.EnableOcrPerfLog;
+            var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
             perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
             totalStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
             if (perfEnabled)

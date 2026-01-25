@@ -240,6 +240,7 @@
 
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="Performance" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />

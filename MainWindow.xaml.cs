@@ -48,6 +48,7 @@ public partial class MainWindow : Window
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
+    private volatile bool _loggingEnabled = true;
     private const int OverlayBaselineDelayMs = 150;
 
     public MainWindow()
@@ -72,7 +73,8 @@ public partial class MainWindow : Window
         _overlayPresenter.Shown += OnOverlayShown;
         _overlayPresenter.Hidden += OnOverlayHidden;
         _overlayPresenter.Updated += OnOverlayUpdated;
-        _overlayPresenter.UpdatePerfLogging(_settingsService.Settings.EnableOcrPerfLog, _settingsService.Settings.OcrPerfLogThresholdMs);
+        _overlayPresenter.UpdatePerfLogging(_settingsService.Settings.EnableOcrPerfLog && _settingsService.Settings.EnableLogging,
+            _settingsService.Settings.OcrPerfLogThresholdMs);
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
@@ -291,6 +293,7 @@ public partial class MainWindow : Window
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
         EnableOcrPerfLogCheck.IsChecked = settings.EnableOcrPerfLog;
         OcrPerfLogThresholdBox.Text = settings.OcrPerfLogThresholdMs.ToString();
+        EnableLoggingCheck.IsChecked = settings.EnableLogging;
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
         EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
         EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
@@ -311,6 +314,8 @@ public partial class MainWindow : Window
         SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
         SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
         SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
+        _loggingEnabled = settings.EnableLogging;
+        _logger?.SetEnabled(_loggingEnabled);
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrGammaValue();
         UpdateOcrDownsampleScaleValue();
@@ -852,6 +857,7 @@ public partial class MainWindow : Window
         settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
         settings.EnableOcrGamma = EnableOcrGammaCheck.IsChecked == true;
         settings.OcrGamma = Math.Round(OcrGammaSlider.Value, 2);
+        settings.EnableLogging = EnableLoggingCheck.IsChecked == true;
         settings.EnableOcrPerfLog = EnableOcrPerfLogCheck.IsChecked == true;
         settings.EnableOcrDownsampling = EnableOcrDownsamplingCheck.IsChecked == true;
         settings.OcrDownsampleScale = Math.Round(OcrDownsampleScaleSlider.Value, 2);
@@ -884,7 +890,9 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ApplyStyle(settings);
-        _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog, settings.OcrPerfLogThresholdMs);
+        _loggingEnabled = settings.EnableLogging;
+        _logger?.SetEnabled(_loggingEnabled);
+        _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrGammaValue();
         UpdateOcrDownsampleScaleValue();
@@ -1425,7 +1433,7 @@ public partial class MainWindow : Window
             EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null ||
             EnableOcrGammaCheck == null || OcrGammaSlider == null || OcrGammaValue == null ||
             EnableOcrDownsamplingCheck == null || OcrDownsampleScaleSlider == null || OcrDownsampleScaleValue == null ||
-            EnableOcrPerfLogCheck == null || OcrPerfLogThresholdBox == null ||
+            EnableLoggingCheck == null || EnableOcrPerfLogCheck == null || OcrPerfLogThresholdBox == null ||
             EnableOcrTwoPassCheck == null || OcrTwoPassPreferAutoCheck == null ||
             OcrTwoPassLowThresholdSlider == null || OcrTwoPassLowThresholdValue == null ||
             OcrTwoPassHighThresholdSlider == null || OcrTwoPassHighThresholdValue == null)
@@ -1441,7 +1449,8 @@ public partial class MainWindow : Window
         EnableOcrTwoPassCheck.IsEnabled = enabled;
         OcrGammaSlider.IsEnabled = settings.EnableOcrGamma;
         OcrDownsampleScaleSlider.IsEnabled = settings.EnableOcrDownsampling;
-        OcrPerfLogThresholdBox.IsEnabled = settings.EnableOcrPerfLog;
+        EnableOcrPerfLogCheck.IsEnabled = settings.EnableLogging;
+        OcrPerfLogThresholdBox.IsEnabled = settings.EnableLogging && settings.EnableOcrPerfLog;
         var twoPassEnabled = enabled && settings.EnableOcrTwoPass;
         OcrTwoPassLowThresholdSlider.IsEnabled = twoPassEnabled;
         OcrTwoPassHighThresholdSlider.IsEnabled = twoPassEnabled;
@@ -1461,13 +1470,18 @@ public partial class MainWindow : Window
         OcrDownsampleScaleValue.Foreground = settings.EnableOcrDownsampling
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
-        OcrPerfLogThresholdBox.Foreground = settings.EnableOcrPerfLog
+        OcrPerfLogThresholdBox.Foreground = settings.EnableLogging && settings.EnableOcrPerfLog
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
     }
 
     private void AppendLog(string message)
     {
+        if (!_loggingEnabled)
+        {
+            return;
+        }
+
         if (!Dispatcher.CheckAccess())
         {
             Dispatcher.Invoke(() => AppendLog(message));
