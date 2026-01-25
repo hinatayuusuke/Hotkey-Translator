@@ -68,10 +68,11 @@ public partial class MainWindow : Window
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
-        _overlayPresenter = new OverlayPresenter(_overlayWindow);
+        _overlayPresenter = new OverlayPresenter(_overlayWindow, _logger);
         _overlayPresenter.Shown += OnOverlayShown;
         _overlayPresenter.Hidden += OnOverlayHidden;
         _overlayPresenter.Updated += OnOverlayUpdated;
+        _overlayPresenter.UpdatePerfLogging(_settingsService.Settings.EnableOcrPerfLog, _settingsService.Settings.OcrPerfLogThresholdMs);
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
@@ -883,6 +884,7 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ApplyStyle(settings);
+        _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog, settings.OcrPerfLogThresholdMs);
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrGammaValue();
         UpdateOcrDownsampleScaleValue();
