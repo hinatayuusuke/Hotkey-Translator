@@ -3,12 +3,15 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using Hotkey_Translator.Models;
+using Vortice.Direct3D;
+using Vortice.Direct3D11;
+using Vortice.DXGI;
 using WinRT;
-using WinRT.Interop;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 using Windows.Graphics.Imaging;
+using static Vortice.Direct3D11.D3D11;
 
 namespace Hotkey_Translator.Services;
 
@@ -43,6 +46,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
     {
         frame = null!;
         error = null;
+        IDirect3DDevice? direct3DDevice = null;
 
         try
         {
@@ -65,8 +69,10 @@ public sealed class WgcCaptureProvider : ICaptureProvider
                 return false;
             }
 
-            _logger.Info("WGC: creating Direct3D device.");
-            using var direct3DDevice = CreateDirect3DDevice();
+            _logger.Info("WGC: creating Direct3D devices.");
+            var devices = CreateDirect3DDevices();
+            using var d3dDevice = devices.D3DDevice;
+            direct3DDevice = devices.Direct3DDevice;
 
             var size = item.Size;
             using var framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
@@ -114,138 +120,62 @@ public sealed class WgcCaptureProvider : ICaptureProvider
             _logger.Error(ex, "WGC capture failed.");
             return false;
         }
-    }
-
-    private IDirect3DDevice CreateDirect3DDevice()
-    {
-        IntPtr d3dDevice = IntPtr.Zero;
-        IntPtr dxgiDevice = IntPtr.Zero;
-        IntPtr direct3DDevice = IntPtr.Zero;
-        try
-        {
-            unsafe
-            {
-                var levels = stackalloc D3DFeatureLevel[2]
-                {
-                    D3DFeatureLevel.Level11_1,
-                    D3DFeatureLevel.Level11_0
-                };
-
-                var hr = D3D11CreateDevice(
-                    IntPtr.Zero,
-                    D3DDriverType.Hardware,
-                    IntPtr.Zero,
-                    D3D11CreateDeviceBgraSupport,
-                    levels,
-                    2,
-                    D3D11SdkVersion,
-                    out d3dDevice,
-                    IntPtr.Zero,
-                    IntPtr.Zero);
-
-                if (hr != 0 || d3dDevice == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException("Failed to create D3D11 device.");
-                }
-            }
-
-            var dxgiGuid = IidIdxgiDevice;
-            var qiResult = Marshal.QueryInterface(d3dDevice, ref dxgiGuid, out dxgiDevice);
-            if (qiResult != 0)
-            {
-                throw new InvalidOperationException("Failed to query IDXGIDevice.");
-            }
-
-            if (dxgiDevice == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("Failed to query IDXGIDevice.");
-            }
-
-            var result = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice, out direct3DDevice);
-            if (result != 0 || direct3DDevice == IntPtr.Zero)
-            {
-                throw new InvalidOperationException("Failed to create IDirect3DDevice for WGC.");
-            }
-
-            _logger.Info("WGC: created IDirect3DDevice.");
-            return (IDirect3DDevice)Marshal.GetObjectForIUnknown(direct3DDevice);
-        }
         finally
         {
-            if (direct3DDevice != IntPtr.Zero)
-            {
-                Marshal.Release(direct3DDevice);
-            }
-
-            if (dxgiDevice != IntPtr.Zero)
-            {
-                Marshal.Release(dxgiDevice);
-            }
-
-            if (d3dDevice != IntPtr.Zero)
-            {
-                Marshal.Release(d3dDevice);
-            }
+            (direct3DDevice as IDisposable)?.Dispose();
         }
+    }
+
+    private static (ID3D11Device D3DDevice, IDirect3DDevice Direct3DDevice) CreateDirect3DDevices()
+    {
+        var featureLevels = new[]
+        {
+            FeatureLevel.Level_11_1,
+            FeatureLevel.Level_11_0
+        };
+
+        var result = D3D11CreateDevice(
+            null,
+            DriverType.Hardware,
+            DeviceCreationFlags.BgraSupport,
+            featureLevels,
+            out ID3D11Device? d3dDevice,
+            out FeatureLevel _);
+
+        if (result.Failure || d3dDevice is null)
+        {
+            throw new InvalidOperationException($"D3D11CreateDevice failed: {result.Code}");
+        }
+
+        using var dxgiDevice = d3dDevice.QueryInterface<IDXGIDevice>();
+        var winrtDevice = CreateWinrtDeviceFromDxgiDevice(dxgiDevice);
+        return (d3dDevice, winrtDevice);
     }
 
     private GraphicsCaptureItem? CreateCaptureItem(CaptureMode mode)
     {
         try
         {
-            _logger.Info("WGC: creating interop factory via RoGetActivationFactory.");
+            _logger.Info("WGC: querying activation factory via CsWinRT.");
 
-            // 1. 文字列から WinRT クラス名を作成
-            var hsClassId = WinRT.MarshalString.CreateMarshaler(GraphicsCaptureItemRuntimeClass);
-            var iid = typeof(IGraphicsCaptureItemInterop).GUID;
-            var hstringAbi = WinRT.MarshalString.GetAbi(hsClassId);
-            _logger.Info($"WGC: ActivationFactory params class='{GraphicsCaptureItemRuntimeClass}', interopIID={iid}, hstring=0x{hstringAbi.ToInt64():X}.");
+            var factoryRef = WinRT.ActivationFactory.Get(GraphicsCaptureItemRuntimeClass);
+            var interop = factoryRef.AsInterface<IGraphicsCaptureItemInterop>();
+            var itemIid = GraphicsCaptureItemInterfaceGuid;
 
-            try
+            if (mode == CaptureMode.ActiveWindow)
             {
-                // 2. 直接アクティベーションファクトリを取得
-                int hr = RoGetActivationFactory(hstringAbi, ref iid, out IntPtr factoryPtr);
-                _logger.Info($"WGC: RoGetActivationFactory hr=0x{hr:X8}, factoryPtr=0x{factoryPtr.ToInt64():X}.");
-                if (hr != 0 || factoryPtr == IntPtr.Zero)
-                {
-                    throw new InvalidOperationException($"Failed to get activation factory: 0x{hr:X8}");
-                }
-
-                // 3. 取得したポインタをインターフェースにラップ
-                var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPtr);
-
-                try
-                {
-                    var itemIid = GraphicsCaptureItemInterfaceGuid;
-                    IntPtr itemPtr = IntPtr.Zero;
-
-                    if (mode == CaptureMode.ActiveWindow)
-                    {
-                        var hwnd = GetForegroundWindow();
-                        if (hwnd == IntPtr.Zero) return null;
-                        _logger.Info("WGC: creating capture item for window.");
-                        itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
-                    }
-                    else
-                    {
-                        var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
-                        if (monitor == IntPtr.Zero) return null;
-                        _logger.Info("WGC: creating capture item for monitor.");
-                        itemPtr = interop.CreateForMonitor(monitor, ref itemIid);
-                    }
-
-                    return MarshalToGraphicsCaptureItem(itemPtr);
-                }
-                finally
-                {
-                    Marshal.Release(factoryPtr);
-                }
+                var hwnd = GetForegroundWindow();
+                if (hwnd == IntPtr.Zero) return null;
+                _logger.Info("WGC: creating capture item for window.");
+                var itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
+                return MarshalToGraphicsCaptureItem(itemPtr);
             }
-            finally
-            {
-                // WHY: MarshalStringはIDisposable非実装のため、明示解放が必要。
-                WinRT.MarshalString.DisposeMarshaler(hsClassId);
-            }
+
+            var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
+            if (monitor == IntPtr.Zero) return null;
+            _logger.Info("WGC: creating capture item for monitor.");
+            var monitorPtr = interop.CreateForMonitor(monitor, ref itemIid);
+            return MarshalToGraphicsCaptureItem(monitorPtr);
         }
         catch (Exception ex)
         {
@@ -270,6 +200,14 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         {
             Marshal.Release(ptr);
         }
+    }
+
+    private static IDirect3DDevice CreateWinrtDeviceFromDxgiDevice(IDXGIDevice dxgiDevice)
+    {
+        var hr = CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice.NativePointer, out var devicePtr);
+        Marshal.ThrowExceptionForHR(hr);
+        // WHY: Use CsWinRT ABI wrapper to avoid invalid cast RCW issues.
+        return MarshalInterface<IDirect3DDevice>.FromAbi(devicePtr);
     }
 
     private static Rect? GetActiveWindowBounds()
@@ -306,55 +244,25 @@ public sealed class WgcCaptureProvider : ICaptureProvider
     }
 
     private static readonly Guid GraphicsCaptureItemInterfaceGuid =
-        typeof(GraphicsCaptureItem).GetInterface("IGraphicsCaptureItem")?.GUID ?? typeof(GraphicsCaptureItem).GUID;
+        new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
     private const string GraphicsCaptureItemRuntimeClass = "Windows.Graphics.Capture.GraphicsCaptureItem";
 
-    [DllImport("d3d11.dll")]
+    [DllImport("d3d11.dll", ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
-
-    [DllImport("d3d11.dll")]
-    private static extern unsafe int D3D11CreateDevice(
-        IntPtr adapter,
-        D3DDriverType driverType,
-        IntPtr software,
-        uint flags,
-        D3DFeatureLevel* featureLevels,
-        uint featureLevelsCount,
-        uint sdkVersion,
-        out IntPtr device,
-        IntPtr featureLevel,
-        IntPtr immediateContext);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
-    [DllImport("combase.dll", PreserveSig = true)]
-    private static extern int RoGetActivationFactory(IntPtr activatableClassId, ref Guid iid, out IntPtr factory);
 
-       [DllImport("user32.dll")]
+    [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(PointStruct pt, int dwFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
 
     private const int MonitorDefaultToPrimary = 1;
-    private const uint D3D11CreateDeviceBgraSupport = 0x20;
-    private const uint D3D11SdkVersion = 7;
-    private static readonly Guid IidIdxgiDevice = new("54EC77FA-1377-44E6-8C32-88FD5F44C84C");
-
-    private enum D3DDriverType : uint
-    {
-        Hardware = 1
-    }
-
-    private enum D3DFeatureLevel : uint
-    {
-        Level11_1 = 0xB100,
-        Level11_0 = 0xB000
-    }
-
     [StructLayout(LayoutKind.Sequential)]
     private struct PointStruct
     {
@@ -392,10 +300,9 @@ public sealed class WgcCaptureProvider : ICaptureProvider
 [ComImport]
 [Guid("3B219634-2708-4E31-A0C2-052C90311E3B")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-
 public interface IGraphicsCaptureItemInterop
 {
-// メソッドの戻り値を IntPtr ではなく、生成されるオブジェクトとして定義
+    // メソッドの戻り値を IntPtr ではなく、生成されるオブジェクトとして定義
     IntPtr CreateForWindow([In] IntPtr window, [In] ref Guid iid);
     IntPtr CreateForMonitor([In] IntPtr monitor, [In] ref Guid iid);
 }

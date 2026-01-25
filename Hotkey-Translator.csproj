@@ -3,6 +3,7 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.22621.0</TargetFramework>
+    <WindowsSdkPackageVersion>10.0.19041.38</WindowsSdkPackageVersion>
     <RootNamespace>Hotkey_Translator</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -20,7 +21,7 @@
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
-   
+ 
 
     <!-- DirectX（D3D11 + DXGI Desktop Duplication） -->
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.2" />
@@ -30,6 +31,13 @@
 
   <ItemGroup>
     <Compile Remove="Tools\**\*.cs" />
+    <Compile Remove="Doc\**\*" />
+    <Page Remove="Doc\**\*" />
+    <None Remove="Doc\**\*" />
   </ItemGroup>
+
+<PropertyGroup>
+  <DefaultItemExcludes>$(DefaultItemExcludes);Doc\**</DefaultItemExcludes>
+</PropertyGroup>
 
 </Project>

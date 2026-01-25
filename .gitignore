@@ -5,6 +5,7 @@
 
 # doc
 doc/
+.doc/
 agents.md
 .vsdoc/
 .agent/
