@@ -95,12 +95,31 @@ public sealed class PipelineOrchestrator
 
     public async Task RunOnceAsync(CancellationToken cancellationToken, ForceRunOptions options)
     {
+        var waitStopwatch = Stopwatch.StartNew();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        waitStopwatch.Stop();
         Bitmap? roiSnapshot = null;
         Rect roiSnapshotBounds = default;
+        var perfActive = false;
+        var queueWaitMs = 0L;
+        long captureMs = 0;
+        long cropMs = 0;
+        long ocrMs = 0;
+        long groupMs = 0;
+        long diffMs = 0;
+        long overlayMs = 0;
+        Stopwatch? totalStopwatch = null;
+        int perfThresholdMs = 0;
         try
         {
             var settings = _settingsService.Settings;
+            var perfEnabled = settings.EnableOcrPerfLog;
+            perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
+            totalStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+            if (perfEnabled)
+            {
+                queueWaitMs = waitStopwatch.ElapsedMilliseconds;
+            }
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
 
             if (options.IsEnabled)
@@ -117,7 +136,13 @@ public sealed class PipelineOrchestrator
             }
 
             _overlayPresenter.Hide();
+            Stopwatch? captureStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
             using var frame = _captureManager.Capture(settings);
+            if (perfEnabled && captureStopwatch != null)
+            {
+                captureStopwatch.Stop();
+                captureMs = captureStopwatch.ElapsedMilliseconds;
+            }
 
             if (frame.IsBlack)
             {
@@ -141,7 +166,13 @@ public sealed class PipelineOrchestrator
                 roiScreen.Width,
                 roiScreen.Height);
 
+            Stopwatch? cropStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
             using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+            if (perfEnabled && cropStopwatch != null)
+            {
+                cropStopwatch.Stop();
+                cropMs = cropStopwatch.ElapsedMilliseconds;
+            }
             roiSnapshot = (Bitmap)roiBitmap.Clone();
             roiSnapshotBounds = roiScreen;
 
@@ -192,6 +223,7 @@ public sealed class PipelineOrchestrator
             }
 
             var ocrStopwatch = Stopwatch.StartNew();
+            perfActive = perfEnabled;
             OcrResultModel ocrResult;
             Bitmap? ocrInput = null;
             try
@@ -204,6 +236,10 @@ public sealed class PipelineOrchestrator
                 NotifyOcrPreprocessPreview(ocrInput);
 
                 ocrStopwatch.Stop();
+                if (perfEnabled)
+                {
+                    ocrMs = ocrStopwatch.ElapsedMilliseconds;
+                }
                 _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
                 var mappedLines = ocrResult.Lines
                     .Select(line => line with
@@ -219,6 +255,10 @@ public sealed class PipelineOrchestrator
                 var groupStopwatch = Stopwatch.StartNew();
                 var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
                 groupStopwatch.Stop();
+                if (perfEnabled)
+                {
+                    groupMs = groupStopwatch.ElapsedMilliseconds;
+                }
                 _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
                 if (groupedLines.Count == 0)
                 {
@@ -227,7 +267,13 @@ public sealed class PipelineOrchestrator
                     return;
                 }
 
+                Stopwatch? diffStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
+                if (perfEnabled && diffStopwatch != null)
+                {
+                    diffStopwatch.Stop();
+                    diffMs = diffStopwatch.ElapsedMilliseconds;
+                }
                 _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
                 Dictionary<string, string> translations;
                 if (options.SkipTranslation)
@@ -248,7 +294,13 @@ public sealed class PipelineOrchestrator
                 var overlayItems = BuildOverlayItems(groupedLines, translations, roiScreen, settings);
 
                 _lastOverlayItems = overlayItems;
+                Stopwatch? overlayStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 _overlayPresenter.Update(overlayItems);
+                if (perfEnabled && overlayStopwatch != null)
+                {
+                    overlayStopwatch.Stop();
+                    overlayMs = overlayStopwatch.ElapsedMilliseconds;
+                }
             }
             finally
             {
@@ -270,6 +322,16 @@ public sealed class PipelineOrchestrator
         }
         finally
         {
+            if (totalStopwatch != null)
+            {
+                totalStopwatch.Stop();
+                if (perfActive && totalStopwatch.ElapsedMilliseconds >= perfThresholdMs)
+                {
+                    _logger.Info($"[Perf] QueueWait={queueWaitMs}ms, Capture={captureMs}ms, Crop={cropMs}ms, OCR={ocrMs}ms, " +
+                                 $"Group={groupMs}ms, Diff={diffMs}ms, Overlay={overlayMs}ms (total={totalStopwatch.ElapsedMilliseconds}ms).");
+                }
+            }
+
             if (roiSnapshot != null)
             {
                 UpdateLastRoiSnapshot(roiSnapshot, roiSnapshotBounds);

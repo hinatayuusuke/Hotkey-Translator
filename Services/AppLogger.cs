@@ -13,16 +13,16 @@ public sealed class AppLogger
 
     public void Info(string message)
     {
-        _sink($"{DateTime.Now:HH:mm:ss} {message}");
+        _sink($"{DateTime.Now:HH:mm:ss.fff} {message}");
     }
 
     public void Error(string message)
     {
-        _sink($"{DateTime.Now:HH:mm:ss} ERROR: {message}");
+        _sink($"{DateTime.Now:HH:mm:ss.fff} ERROR: {message}");
     }
 
     public void Error(Exception ex, string message)
     {
-        _sink($"{DateTime.Now:HH:mm:ss} ERROR: {message} {ex.Message}");
+        _sink($"{DateTime.Now:HH:mm:ss.fff} ERROR: {message} {ex.Message}");
     }
 }

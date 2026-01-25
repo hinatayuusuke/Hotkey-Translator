@@ -288,6 +288,8 @@ public partial class MainWindow : Window
         ApplyHotkeySettingsToUi(settings);
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
+        EnableOcrPerfLogCheck.IsChecked = settings.EnableOcrPerfLog;
+        OcrPerfLogThresholdBox.Text = settings.OcrPerfLogThresholdMs.ToString();
         EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
         EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
         EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
@@ -849,6 +851,7 @@ public partial class MainWindow : Window
         settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
         settings.EnableOcrGamma = EnableOcrGammaCheck.IsChecked == true;
         settings.OcrGamma = Math.Round(OcrGammaSlider.Value, 2);
+        settings.EnableOcrPerfLog = EnableOcrPerfLogCheck.IsChecked == true;
         settings.EnableOcrDownsampling = EnableOcrDownsamplingCheck.IsChecked == true;
         settings.OcrDownsampleScale = Math.Round(OcrDownsampleScaleSlider.Value, 2);
         settings.EnableOcrTwoPass = EnableOcrTwoPassCheck.IsChecked == true;
@@ -872,6 +875,11 @@ public partial class MainWindow : Window
         if (double.TryParse(IouThresholdBox.Text.Trim(), out var iouThreshold))
         {
             settings.OcrIouThreshold = iouThreshold;
+        }
+
+        if (int.TryParse(OcrPerfLogThresholdBox.Text.Trim(), out var perfThreshold))
+        {
+            settings.OcrPerfLogThresholdMs = Math.Max(0, perfThreshold);
         }
 
         _overlayWindow?.ApplyStyle(settings);
@@ -1415,6 +1423,7 @@ public partial class MainWindow : Window
             EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null ||
             EnableOcrGammaCheck == null || OcrGammaSlider == null || OcrGammaValue == null ||
             EnableOcrDownsamplingCheck == null || OcrDownsampleScaleSlider == null || OcrDownsampleScaleValue == null ||
+            EnableOcrPerfLogCheck == null || OcrPerfLogThresholdBox == null ||
             EnableOcrTwoPassCheck == null || OcrTwoPassPreferAutoCheck == null ||
             OcrTwoPassLowThresholdSlider == null || OcrTwoPassLowThresholdValue == null ||
             OcrTwoPassHighThresholdSlider == null || OcrTwoPassHighThresholdValue == null)
@@ -1430,6 +1439,7 @@ public partial class MainWindow : Window
         EnableOcrTwoPassCheck.IsEnabled = enabled;
         OcrGammaSlider.IsEnabled = settings.EnableOcrGamma;
         OcrDownsampleScaleSlider.IsEnabled = settings.EnableOcrDownsampling;
+        OcrPerfLogThresholdBox.IsEnabled = settings.EnableOcrPerfLog;
         var twoPassEnabled = enabled && settings.EnableOcrTwoPass;
         OcrTwoPassLowThresholdSlider.IsEnabled = twoPassEnabled;
         OcrTwoPassHighThresholdSlider.IsEnabled = twoPassEnabled;
@@ -1447,6 +1457,9 @@ public partial class MainWindow : Window
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
         OcrDownsampleScaleValue.Foreground = settings.EnableOcrDownsampling
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
+        OcrPerfLogThresholdBox.Foreground = settings.EnableOcrPerfLog
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
     }
