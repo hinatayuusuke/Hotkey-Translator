@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services;
@@ -48,11 +49,16 @@ public sealed class OcrPreprocessCoordinator
         AppSettings settings,
         CancellationToken cancellationToken)
     {
-        var input = _preprocessService.Apply(roiBitmap, settings, null, null);
+        var inputState = PrepareOcrInput(roiBitmap, settings);
+        var pass = await RunOcrPassAsync("Single", inputState, roiBitmap.Width, roiBitmap.Height, settings, null, null, cancellationToken)
+            .ConfigureAwait(false);
 
-        var result = await _ocrEngine.RecognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
-        var stats = _scorer.GetStats(result);
-        return new OcrPassResult("Single", result, input, stats);
+        if (inputState.ShouldDispose && !ReferenceEquals(pass.Input, inputState.Bitmap))
+        {
+            inputState.Bitmap.Dispose();
+        }
+
+        return pass;
     }
 
     private async Task<OcrPassResult> RunTwoPassAsync(
@@ -63,17 +69,20 @@ public sealed class OcrPreprocessCoordinator
         var low = Math.Min(settings.OcrTwoPassLowThreshold, settings.OcrTwoPassHighThreshold);
         var high = Math.Max(settings.OcrTwoPassLowThreshold, settings.OcrTwoPassHighThreshold);
         var candidates = new List<OcrPassResult>();
+        var inputState = PrepareOcrInput(roiBitmap, settings);
 
         try
         {
             if (settings.EnableOcrAutoThreshold && settings.OcrTwoPassPreferAuto)
             {
-                candidates.Add(await RunOcrPassAsync("Auto", roiBitmap, settings, settings.OcrBinarizationThreshold, true, cancellationToken)
+                candidates.Add(await RunOcrPassAsync("Auto", inputState, roiBitmap.Width, roiBitmap.Height, settings, settings.OcrBinarizationThreshold, true, cancellationToken)
                     .ConfigureAwait(false));
             }
 
-            candidates.Add(await RunOcrPassAsync("Low", roiBitmap, settings, low, false, cancellationToken).ConfigureAwait(false));
-            candidates.Add(await RunOcrPassAsync("High", roiBitmap, settings, high, false, cancellationToken).ConfigureAwait(false));
+            candidates.Add(await RunOcrPassAsync("Low", inputState, roiBitmap.Width, roiBitmap.Height, settings, low, false, cancellationToken)
+                .ConfigureAwait(false));
+            candidates.Add(await RunOcrPassAsync("High", inputState, roiBitmap.Width, roiBitmap.Height, settings, high, false, cancellationToken)
+                .ConfigureAwait(false));
 
             var best = candidates[0];
             foreach (var candidate in candidates.Skip(1))
@@ -90,6 +99,11 @@ public sealed class OcrPreprocessCoordinator
                 {
                     candidate.Input.Dispose();
                 }
+            }
+
+            if (inputState.ShouldDispose && candidates.All(candidate => !ReferenceEquals(candidate.Input, inputState.Bitmap)))
+            {
+                inputState.Bitmap.Dispose();
             }
 
             var lowStats = FindCandidate(candidates, "Low");
@@ -117,21 +131,24 @@ public sealed class OcrPreprocessCoordinator
 
     private async Task<OcrPassResult> RunOcrPassAsync(
         string label,
-        Bitmap roiBitmap,
+        OcrInputState inputState,
+        int originalWidth,
+        int originalHeight,
         AppSettings settings,
-        int threshold,
-        bool useAutoThreshold,
+        int? threshold,
+        bool? useAutoThreshold,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var preprocessStopwatch = Stopwatch.StartNew();
-        var input = _preprocessService.Apply(roiBitmap, settings, threshold, useAutoThreshold);
+        var input = _preprocessService.Apply(inputState.Bitmap, settings, threshold, useAutoThreshold);
         preprocessStopwatch.Stop();
 
         var ocrStopwatch = Stopwatch.StartNew();
         var result = await _ocrEngine.RecognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
         ocrStopwatch.Stop();
 
+        result = ScaleOcrResult(result, originalWidth, originalHeight, inputState.ScaleX, inputState.ScaleY);
         var stats = _scorer.GetStats(result);
         _logger?.Info($"OCR pass {label}: threshold={threshold} auto={useAutoThreshold} " +
                       $"lines={stats.LineCount}, chars={stats.CharCount}, symbols={stats.SymbolCount}, " +
@@ -152,6 +169,66 @@ public sealed class OcrPreprocessCoordinator
 
         return null;
     }
+
+    private static OcrInputState PrepareOcrInput(Bitmap roiBitmap, AppSettings settings)
+    {
+        if (!settings.EnableOcrDownsampling)
+        {
+            return new OcrInputState(roiBitmap, 1.0, 1.0, false);
+        }
+
+        var scale = Math.Clamp(settings.OcrDownsampleScale, 0.5, 1.0);
+        if (scale >= 1.0)
+        {
+            return new OcrInputState(roiBitmap, 1.0, 1.0, false);
+        }
+
+        var targetWidth = Math.Max(1, (int)Math.Round(roiBitmap.Width * scale));
+        var targetHeight = Math.Max(1, (int)Math.Round(roiBitmap.Height * scale));
+        if (targetWidth == roiBitmap.Width && targetHeight == roiBitmap.Height)
+        {
+            return new OcrInputState(roiBitmap, 1.0, 1.0, false);
+        }
+
+        var resized = BitmapHelper.Resize(roiBitmap, targetWidth, targetHeight);
+        var scaleX = targetWidth / (double)roiBitmap.Width;
+        var scaleY = targetHeight / (double)roiBitmap.Height;
+        return new OcrInputState(resized, scaleX, scaleY, true);
+    }
+
+    private static OcrResultModel ScaleOcrResult(
+        OcrResultModel result,
+        int originalWidth,
+        int originalHeight,
+        double scaleX,
+        double scaleY)
+    {
+        if (scaleX <= 0 || scaleY <= 0)
+        {
+            return result;
+        }
+
+        if (Math.Abs(scaleX - 1.0) < 0.0001 && Math.Abs(scaleY - 1.0) < 0.0001)
+        {
+            return result;
+        }
+
+        var lines = result.Lines
+            .Select(line => line with
+            {
+                Rect = new Rect(
+                    line.Rect.X / scaleX,
+                    line.Rect.Y / scaleY,
+                    line.Rect.Width / scaleX,
+                    line.Rect.Height / scaleY),
+                LineHeight = line.LineHeight > 0 ? line.LineHeight / scaleY : 0
+            })
+            .ToList();
+
+        return new OcrResultModel(lines, originalWidth, originalHeight);
+    }
+
+    private readonly record struct OcrInputState(Bitmap Bitmap, double ScaleX, double ScaleY, bool ShouldDispose);
 }
 
 public sealed record OcrPassResult(string Label, OcrResultModel Result, Bitmap Input, OcrCandidateStats Stats);

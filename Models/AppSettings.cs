@@ -37,6 +37,8 @@ public sealed class AppSettings
     public bool EnableOcrAutoInvert { get; set; } = false;
     public bool EnableOcrGamma { get; set; } = false;
     public double OcrGamma { get; set; } = 1.0;
+    public bool EnableOcrDownsampling { get; set; } = false;
+    public double OcrDownsampleScale { get; set; } = 0.75;
     public bool EnableOcrTwoPass { get; set; } = false;
     public int OcrTwoPassLowThreshold { get; set; } = 120;
     public int OcrTwoPassHighThreshold { get; set; } = 180;

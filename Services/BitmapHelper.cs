@@ -5,6 +5,7 @@ using Windows.Graphics.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 
 namespace Hotkey_Translator.Services;
 
@@ -55,6 +56,30 @@ public static class BitmapHelper
             result.UnlockBits(data);
         }
 
+        return result;
+    }
+
+    public static Bitmap Resize(Bitmap source, int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(width), "Resize dimensions must be positive.");
+        }
+
+        if (width == source.Width && height == source.Height)
+        {
+            return (Bitmap)source.Clone();
+        }
+
+        var result = new Bitmap(width, height, PixelFormat.Format32bppPArgb);
+        result.SetResolution(source.HorizontalResolution, source.VerticalResolution);
+        using var graphics = Graphics.FromImage(result);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.CompositingQuality = CompositingQuality.HighQuality;
+        // WHY: Bilinear downsampling balances OCR legibility with performance.
+        graphics.InterpolationMode = InterpolationMode.HighQualityBilinear;
+        graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+        graphics.DrawImage(source, new Rectangle(0, 0, width, height), 0, 0, source.Width, source.Height, GraphicsUnit.Pixel);
         return result;
     }
 }
