@@ -278,6 +278,23 @@
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Overlay base font" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OverlayFontSizeSlider"
+                                            Width="180"
+                                            Minimum="8"
+                                            Maximum="48"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="1"
+                                            SmallChange="1"
+                                            LargeChange="2"
+                                            ValueChanged="OnOverlayFontSizeChanged" />
+                                    <TextBlock x:Name="OverlayFontSizeValue"
+                                               Width="48"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right" />
+                                </StackPanel>
                                 <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
 
                                 <Separator Margin="0,12,0,8" />
