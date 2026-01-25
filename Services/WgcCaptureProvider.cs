@@ -192,14 +192,8 @@ public sealed class WgcCaptureProvider : ICaptureProvider
             return null;
         }
 
-        try
-        {
-            return (GraphicsCaptureItem)Marshal.GetObjectForIUnknown(ptr);
-        }
-        finally
-        {
-            Marshal.Release(ptr);
-        }
+        // WHY: CsWinRT requires ABI wrapping; Marshal.GetObjectForIUnknown returns RCW that cannot be cast.
+        return MarshalInterface<GraphicsCaptureItem>.FromAbi(ptr);
     }
 
     private static IDirect3DDevice CreateWinrtDeviceFromDxgiDevice(IDXGIDevice dxgiDevice)
@@ -298,7 +292,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
     
 }
 [ComImport]
-[Guid("3B219634-2708-4E31-A0C2-052C90311E3B")]
+[Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
 [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
 public interface IGraphicsCaptureItemInterop
 {
