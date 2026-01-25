@@ -3,6 +3,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
 using Hotkey_Translator.Models;
+using WinRT;
+using WinRT.Interop;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
@@ -63,6 +65,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
                 return false;
             }
 
+            _logger.Info("WGC: creating Direct3D device.");
             using var direct3DDevice = CreateDirect3DDevice();
 
             var size = item.Size;
@@ -96,6 +99,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
                 return false;
             }
 
+            _logger.Info("WGC: converting capture surface to SoftwareBitmap.");
             using (capturedFrame)
             using (var softwareBitmap = SoftwareBitmap.CreateCopyFromSurfaceAsync(capturedFrame.Surface).AsTask().GetAwaiter().GetResult())
             {
@@ -107,12 +111,12 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         catch (Exception ex)
         {
             error = ex.Message;
-            _logger.Info($"WGC capture failed: {ex.Message}");
+            _logger.Error(ex, "WGC capture failed.");
             return false;
         }
     }
 
-    private static IDirect3DDevice CreateDirect3DDevice()
+    private IDirect3DDevice CreateDirect3DDevice()
     {
         IntPtr d3dDevice = IntPtr.Zero;
         IntPtr dxgiDevice = IntPtr.Zero;
@@ -163,6 +167,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
                 throw new InvalidOperationException("Failed to create IDirect3DDevice for WGC.");
             }
 
+            _logger.Info("WGC: created IDirect3DDevice.");
             return (IDirect3DDevice)Marshal.GetObjectForIUnknown(direct3DDevice);
         }
         finally
@@ -184,70 +189,74 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         }
     }
 
-    private static GraphicsCaptureItem? CreateCaptureItem(CaptureMode mode)
+    private GraphicsCaptureItem? CreateCaptureItem(CaptureMode mode)
     {
-        var factory = GetActivationFactory<IGraphicsCaptureItemInterop>(GraphicsCaptureItemRuntimeClass);
         try
         {
-            if (mode == CaptureMode.ActiveWindow)
-            {
-                var hwnd = GetForegroundWindow();
-                if (hwnd == IntPtr.Zero)
-                {
-                    return null;
-                }
+            _logger.Info("WGC: creating interop factory via RoGetActivationFactory.");
 
-                var iid = typeof(GraphicsCaptureItem).GUID;
-                return factory.CreateForWindow(hwnd, ref iid);
-            }
+            // 1. 文字列から WinRT クラス名を作成
+            var hsClassId = WinRT.MarshalString.CreateMarshaler(GraphicsCaptureItemRuntimeClass);
+            var iid = typeof(IGraphicsCaptureItemInterop).GUID;
 
-            var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
-            if (monitor == IntPtr.Zero)
-            {
-                return null;
-            }
-
-            var monitorIid = typeof(GraphicsCaptureItem).GUID;
-            return factory.CreateForMonitor(monitor, ref monitorIid);
-        }
-        finally
-        {
-            Marshal.ReleaseComObject(factory);
-        }
-    }
-
-    private static T GetActivationFactory<T>(string runtimeClassId) where T : class
-    {
-        IntPtr hstring = IntPtr.Zero;
-        IntPtr factoryPtr = IntPtr.Zero;
-        try
-        {
-            var hr = WindowsCreateString(runtimeClassId, runtimeClassId.Length, out hstring);
-            if (hr != 0)
-            {
-                throw new InvalidOperationException("Failed to create HSTRING.");
-            }
-
-            var iid = typeof(T).GUID;
-            hr = RoGetActivationFactory(hstring, ref iid, out factoryPtr);
+            // 2. 直接アクティベーションファクトリを取得
+            int hr = RoGetActivationFactory(hsClassId.GetNativeIdentifier(), ref iid, out IntPtr factoryPtr);
             if (hr != 0 || factoryPtr == IntPtr.Zero)
             {
-                throw new InvalidOperationException("Failed to get activation factory.");
+                throw new InvalidOperationException($"Failed to get activation factory: {hr}");
             }
 
-            return (T)Marshal.GetObjectForIUnknown(factoryPtr);
-        }
-        finally
-        {
-            if (factoryPtr != IntPtr.Zero)
+            // 3. 取得したポインタをインターフェースにラップ
+            var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPtr);
+            
+            try
+            {
+                var itemIid = GraphicsCaptureItemInterfaceGuid;
+                IntPtr itemPtr = IntPtr.Zero;
+
+                if (mode == CaptureMode.ActiveWindow)
+                {
+                    var hwnd = GetForegroundWindow();
+                    if (hwnd == IntPtr.Zero) return null;
+                    _logger.Info("WGC: creating capture item for window.");
+                    itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
+                }
+                else
+                {
+                    var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
+                    if (monitor == IntPtr.Zero) return null;
+                    _logger.Info("WGC: creating capture item for monitor.");
+                    itemPtr = interop.CreateForMonitor(monitor, ref itemIid);
+                }
+
+                return MarshalToGraphicsCaptureItem(itemPtr);
+            }
+            finally
             {
                 Marshal.Release(factoryPtr);
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "WGC: failed to create GraphicsCaptureItem.");
+            return null;
+        }
+    }
 
-            if (hstring != IntPtr.Zero)
-            {
-                WindowsDeleteString(hstring);
-            }
+    private static GraphicsCaptureItem? MarshalToGraphicsCaptureItem(IntPtr ptr)
+    {
+        if (ptr == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            return (GraphicsCaptureItem)Marshal.GetObjectForIUnknown(ptr);
+        }
+        finally
+        {
+            Marshal.Release(ptr);
         }
     }
 
@@ -284,16 +293,9 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         return info.Monitor.ToRect();
     }
 
+    private static readonly Guid GraphicsCaptureItemInterfaceGuid =
+        typeof(GraphicsCaptureItem).GetInterface("IGraphicsCaptureItem")?.GUID ?? typeof(GraphicsCaptureItem).GUID;
     private const string GraphicsCaptureItemRuntimeClass = "Windows.Graphics.Capture.GraphicsCaptureItem";
-
-    [ComImport]
-    [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
-    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IGraphicsCaptureItemInterop
-    {
-        GraphicsCaptureItem CreateForWindow(IntPtr window, ref Guid iid);
-        GraphicsCaptureItem CreateForMonitor(IntPtr monitor, ref Guid iid);
-    }
 
     [DllImport("d3d11.dll")]
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(IntPtr dxgiDevice, out IntPtr graphicsDevice);
@@ -311,22 +313,15 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         IntPtr featureLevel,
         IntPtr immediateContext);
 
-    [DllImport("combase.dll")]
-    private static extern int RoGetActivationFactory(IntPtr activatableClassId, ref Guid iid, out IntPtr factory);
-
-    [DllImport("combase.dll")]
-    private static extern int WindowsCreateString([MarshalAs(UnmanagedType.LPWStr)] string sourceString, int length, out IntPtr hstring);
-
-    [DllImport("combase.dll")]
-    private static extern int WindowsDeleteString(IntPtr hstring);
-
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+    [DllImport("combase.dll", PreserveSig = true)]
+    private static extern int RoGetActivationFactory(IntPtr activatableClassId, ref Guid iid, out IntPtr factory);
 
-    [DllImport("user32.dll")]
+       [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(PointStruct pt, int dwFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -380,4 +375,15 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         public NativeRect Work;
         public uint Flags;
     }
+    
+}
+[ComImport]
+[Guid("3B219634-2708-4E31-A0C2-052C90311E3B")]
+[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+
+public interface IGraphicsCaptureItemInterop
+{
+// メソッドの戻り値を IntPtr ではなく、生成されるオブジェクトとして定義
+    IntPtr CreateForWindow([In] IntPtr window, [In] ref Guid iid);
+    IntPtr CreateForMonitor([In] IntPtr monitor, [In] ref Guid iid);
 }
