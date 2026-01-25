@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Drawing;
@@ -6,6 +7,7 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -49,7 +51,13 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
     private volatile bool _loggingEnabled = true;
+    private readonly ConcurrentQueue<string> _logQueue = new();
+    private DispatcherTimer? _logFlushTimer;
+    private bool _logFlushPending;
+    private int _logLineCount;
     private const int OverlayBaselineDelayMs = 150;
+    private const int LogFlushIntervalMs = 150;
+    private const int MaxLogLines = 1000;
 
     public MainWindow()
     {
@@ -62,6 +70,7 @@ public partial class MainWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         _logger = new AppLogger(AppendLog);
+        InitializeLogBuffer();
         await _settingsService.LoadAsync().ConfigureAwait(true);
         ApplySettingsToUi(_settingsService.Settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
@@ -131,6 +140,11 @@ public partial class MainWindow : Window
         {
             _autoHideTimer.Stop();
             _autoHideTimer.Tick -= OnAutoHideTick;
+        }
+        if (_logFlushTimer != null)
+        {
+            _logFlushTimer.Stop();
+            _logFlushTimer.Tick -= OnLogFlushTick;
         }
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
@@ -314,8 +328,7 @@ public partial class MainWindow : Window
         SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
         SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
         SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
-        _loggingEnabled = settings.EnableLogging;
-        _logger?.SetEnabled(_loggingEnabled);
+        UpdateLoggingState(settings.EnableLogging);
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrGammaValue();
         UpdateOcrDownsampleScaleValue();
@@ -890,8 +903,7 @@ public partial class MainWindow : Window
         }
 
         _overlayWindow?.ApplyStyle(settings);
-        _loggingEnabled = settings.EnableLogging;
-        _logger?.SetEnabled(_loggingEnabled);
+        UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
         UpdateOcrBinarizationThresholdValue();
         UpdateOcrGammaValue();
@@ -1482,14 +1494,147 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!Dispatcher.CheckAccess())
+        _logQueue.Enqueue(message);
+    }
+
+    private void InitializeLogBuffer()
+    {
+        _logFlushTimer = new DispatcherTimer(DispatcherPriority.Background);
+        _logFlushTimer.Interval = TimeSpan.FromMilliseconds(LogFlushIntervalMs);
+        _logFlushTimer.Tick += OnLogFlushTick;
+        _logFlushTimer.Start();
+    }
+
+    private void OnLogFlushTick(object? sender, EventArgs e)
+    {
+        FlushLogs();
+    }
+
+    private void FlushLogs()
+    {
+        if (!_loggingEnabled || LogBox == null)
         {
-            Dispatcher.Invoke(() => AppendLog(message));
+            ClearLogQueue();
             return;
         }
 
-        LogBox.AppendText(message + Environment.NewLine);
-        LogBox.ScrollToEnd();
+        if (_logFlushPending)
+        {
+            return;
+        }
+
+        var builder = new StringBuilder();
+        while (_logQueue.TryDequeue(out var message))
+        {
+            builder.AppendLine(message);
+        }
+
+        if (builder.Length == 0)
+        {
+            return;
+        }
+
+        var payload = builder.ToString();
+        _logFlushPending = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
+        {
+            _logFlushPending = false;
+            LogBox.AppendText(payload);
+            _logLineCount += CountNewlines(payload);
+            TrimLogLines(MaxLogLines);
+            LogBox.ScrollToEnd();
+        }));
+    }
+
+    private void TrimLogLines(int maxLines)
+    {
+        if (maxLines <= 0 || _logLineCount <= maxLines || LogBox == null)
+        {
+            return;
+        }
+
+        var removeLines = _logLineCount - maxLines;
+        var text = LogBox.Text;
+        var cutIndex = IndexOfNthNewline(text, removeLines);
+        if (cutIndex < 0)
+        {
+            _logLineCount = CountLines(text);
+            return;
+        }
+
+        LogBox.Text = text[(cutIndex + 1)..];
+        _logLineCount = maxLines;
+    }
+
+    private static int IndexOfNthNewline(string text, int count)
+    {
+        if (string.IsNullOrEmpty(text) || count <= 0)
+        {
+            return -1;
+        }
+
+        var index = -1;
+        var remaining = count;
+        while (remaining > 0)
+        {
+            index = text.IndexOf('\n', index + 1);
+            if (index < 0)
+            {
+                return -1;
+            }
+
+            remaining--;
+        }
+
+        return index;
+    }
+
+    private static int CountNewlines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var ch in text)
+        {
+            if (ch == '\n')
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static int CountLines(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return 0;
+        }
+
+        var lines = CountNewlines(text);
+        return text.EndsWith("\n", StringComparison.Ordinal) ? lines : lines + 1;
+    }
+
+    private void ClearLogQueue()
+    {
+        while (_logQueue.TryDequeue(out _))
+        {
+        }
+    }
+
+    private void UpdateLoggingState(bool enabled)
+    {
+        _loggingEnabled = enabled;
+        _logger?.SetEnabled(enabled);
+        if (!enabled)
+        {
+            ClearLogQueue();
+            _logFlushPending = false;
+        }
     }
 
     private void OnOcrPreprocessPreviewReady(Bitmap bitmap)
