@@ -283,7 +283,7 @@
                                     <Slider x:Name="OverlayFontSizeSlider"
                                             Width="180"
                                             Minimum="8"
-                                            Maximum="48"
+                                            Maximum="96"
                                             IsSnapToTickEnabled="True"
                                             TickFrequency="1"
                                             SmallChange="1"
