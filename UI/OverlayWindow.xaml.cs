@@ -25,6 +25,8 @@ public partial class OverlayWindow : Window
     private const double ConservativeFullRatio = 0.23;
     private const double MaxConservativePenalty = 0.6;
     private const double TwoLinePenaltyFactor = 0.8;
+    private const double MinLineHeightScaleFactor = 0.6;
+    private const double MaxLineHeightScaleFactor = 1.8;
     private const double MinWidthScale = 0.3;
     private const double WrapPenaltyStep = 0.08;
     private const double MinWrapPenaltyScale = 0.65;
@@ -162,18 +164,26 @@ public partial class OverlayWindow : Window
 
     private double GetBaseFontSize(OverlayItem item)
     {
+        var baseSize = _fontSize > 0 ? _fontSize : MinFontSize;
         var lineHeight = item.LineHeight;
         if (lineHeight <= 0 && item.LineCount > 0 && item.Rect.Height > 0)
         {
             lineHeight = item.Rect.Height / item.LineCount;
         }
 
-        var baseScale = GetOccupancyScale(item.Rect);
-        var baseSize = lineHeight > 0 ? lineHeight * baseScale : _fontSize;
+        if (lineHeight > 0 && _fontSize > 0)
+        {
+            // WHY: Always scale from user baseline; clamp to avoid noisy OCR line heights.
+            var scale = lineHeight / _fontSize;
+            scale = Math.Clamp(scale, MinLineHeightScaleFactor, MaxLineHeightScaleFactor);
+            baseSize *= scale;
+        }
+
+        baseSize *= GetOccupancyScale(item.Rect);
         baseSize *= GetConservativeScale(item);
         if (double.IsNaN(baseSize) || double.IsInfinity(baseSize) || baseSize <= 0)
         {
-            return _fontSize;
+            return Math.Clamp(_fontSize, MinFontSize, MaxFontSize);
         }
 
         return Math.Clamp(baseSize, MinFontSize, MaxFontSize);
