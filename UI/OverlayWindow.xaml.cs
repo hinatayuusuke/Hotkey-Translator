@@ -46,7 +46,9 @@ public partial class OverlayWindow : Window
     {
         _fontSize = settings.OverlayFontSize;
         _foreground = ParseBrush(settings.OverlayForeground, Brushes.White);
-        _background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
+        // NOTE: Opacity slider overrides the alpha channel from OverlayBackground.
+        var background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
+        _background = ApplyOverlayOpacity(background, settings.OverlayBackgroundOpacity);
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
     }
 
@@ -320,6 +322,18 @@ public partial class OverlayWindow : Window
         {
             return fallback;
         }
+    }
+
+    private static Brush ApplyOverlayOpacity(Brush brush, double opacity)
+    {
+        if (brush is not SolidColorBrush solid)
+        {
+            return brush;
+        }
+
+        var clamped = Math.Clamp(opacity, 0.0, 1.0);
+        var alpha = (byte)Math.Round(clamped * 255.0);
+        return new SolidColorBrush(Color.FromArgb(alpha, solid.Color.R, solid.Color.G, solid.Color.B));
     }
 
     private const int GwlExStyle = -20;

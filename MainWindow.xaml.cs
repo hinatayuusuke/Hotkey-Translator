@@ -299,6 +299,7 @@ public partial class MainWindow : Window
         OcrTwoPassLowThresholdSlider.Value = settings.OcrTwoPassLowThreshold;
         OcrTwoPassHighThresholdSlider.Value = settings.OcrTwoPassHighThreshold;
         OverlayFontSizeSlider.Value = settings.OverlayFontSize;
+        OverlayBackgroundOpacitySlider.Value = settings.OverlayBackgroundOpacity;
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
@@ -309,6 +310,7 @@ public partial class MainWindow : Window
         UpdateOcrGammaValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOverlayFontSizeValue();
+        UpdateOverlayBackgroundOpacityValue();
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
@@ -746,6 +748,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnOverlayBackgroundOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateOverlayBackgroundOpacityValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSceneChangeThresholdValue();
@@ -827,6 +840,7 @@ public partial class MainWindow : Window
         settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThresholdSlider.Value);
         settings.OcrTwoPassHighThreshold = (int)Math.Round(OcrTwoPassHighThresholdSlider.Value);
         settings.OverlayFontSize = Math.Round(OverlayFontSizeSlider.Value, 1);
+        settings.OverlayBackgroundOpacity = Math.Round(OverlayBackgroundOpacitySlider.Value, 2);
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
@@ -849,6 +863,7 @@ public partial class MainWindow : Window
         UpdateOcrGammaValue();
         UpdateOcrTwoPassThresholdValues();
         UpdateOverlayFontSizeValue();
+        UpdateOverlayBackgroundOpacityValue();
         UpdateOcrPreprocessControls(settings);
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
@@ -1066,6 +1081,16 @@ public partial class MainWindow : Window
         }
 
         OverlayFontSizeValue.Text = OverlayFontSizeSlider.Value.ToString("0.0");
+    }
+
+    private void UpdateOverlayBackgroundOpacityValue()
+    {
+        if (OverlayBackgroundOpacityValue == null || OverlayBackgroundOpacitySlider == null)
+        {
+            return;
+        }
+
+        OverlayBackgroundOpacityValue.Text = OverlayBackgroundOpacitySlider.Value.ToString("0.00");
     }
 
     private void UpdateSceneChangeThresholdValue()

@@ -86,6 +86,7 @@ public sealed class AppSettings
     public double OverlayFontSize { get; set; } = 18;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
     public string OverlayBackground { get; set; } = "#88000000";
+    public double OverlayBackgroundOpacity { get; set; } = 0.5333333333333333;
 
     [JsonIgnore]
     public string? ApiKey { get; set; }

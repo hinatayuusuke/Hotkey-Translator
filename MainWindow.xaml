@@ -166,6 +166,42 @@
                             </StackPanel>
                         </Grid>
 
+                        <Separator Margin="0,10,0,10" />
+                        <TextBlock Text="Overlay" FontWeight="SemiBold" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="Overlay base font" Width="150" VerticalAlignment="Center" />
+                            <Slider x:Name="OverlayFontSizeSlider"
+                                    Width="180"
+                                    Minimum="8"
+                                    Maximum="96"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="1"
+                                    SmallChange="1"
+                                    LargeChange="2"
+                                    ValueChanged="OnOverlayFontSizeChanged" />
+                            <TextBlock x:Name="OverlayFontSizeValue"
+                                       Width="48"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Right" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="Overlay opacity" Width="150" VerticalAlignment="Center" />
+                            <Slider x:Name="OverlayBackgroundOpacitySlider"
+                                    Width="180"
+                                    Minimum="0"
+                                    Maximum="1"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="0.05"
+                                    SmallChange="0.01"
+                                    LargeChange="0.1"
+                                    ValueChanged="OnOverlayBackgroundOpacityChanged" />
+                            <TextBlock x:Name="OverlayBackgroundOpacityValue"
+                                       Width="48"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Right" />
+                        </StackPanel>
 
                         <Separator Margin="0,10,0,10" />
                     </StackPanel>
@@ -278,23 +314,6 @@
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Overlay base font" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="OverlayFontSizeSlider"
-                                            Width="180"
-                                            Minimum="8"
-                                            Maximum="96"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="1"
-                                            SmallChange="1"
-                                            LargeChange="2"
-                                            ValueChanged="OnOverlayFontSizeChanged" />
-                                    <TextBlock x:Name="OverlayFontSizeValue"
-                                               Width="48"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right" />
-                                </StackPanel>
                                 <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
 
                                 <Separator Margin="0,12,0,8" />
