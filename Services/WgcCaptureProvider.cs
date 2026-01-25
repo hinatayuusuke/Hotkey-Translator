@@ -199,41 +199,49 @@ public sealed class WgcCaptureProvider : ICaptureProvider
             var hsClassId = WinRT.MarshalString.CreateMarshaler(GraphicsCaptureItemRuntimeClass);
             var iid = typeof(IGraphicsCaptureItemInterop).GUID;
 
-            // 2. 直接アクティベーションファクトリを取得
-            int hr = RoGetActivationFactory(hsClassId.GetNativeIdentifier(), ref iid, out IntPtr factoryPtr);
-            if (hr != 0 || factoryPtr == IntPtr.Zero)
-            {
-                throw new InvalidOperationException($"Failed to get activation factory: {hr}");
-            }
-
-            // 3. 取得したポインタをインターフェースにラップ
-            var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPtr);
-            
             try
             {
-                var itemIid = GraphicsCaptureItemInterfaceGuid;
-                IntPtr itemPtr = IntPtr.Zero;
-
-                if (mode == CaptureMode.ActiveWindow)
+                // 2. 直接アクティベーションファクトリを取得
+                int hr = RoGetActivationFactory(WinRT.MarshalString.GetAbi(hsClassId), ref iid, out IntPtr factoryPtr);
+                if (hr != 0 || factoryPtr == IntPtr.Zero)
                 {
-                    var hwnd = GetForegroundWindow();
-                    if (hwnd == IntPtr.Zero) return null;
-                    _logger.Info("WGC: creating capture item for window.");
-                    itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
-                }
-                else
-                {
-                    var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
-                    if (monitor == IntPtr.Zero) return null;
-                    _logger.Info("WGC: creating capture item for monitor.");
-                    itemPtr = interop.CreateForMonitor(monitor, ref itemIid);
+                    throw new InvalidOperationException($"Failed to get activation factory: {hr}");
                 }
 
-                return MarshalToGraphicsCaptureItem(itemPtr);
+                // 3. 取得したポインタをインターフェースにラップ
+                var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factoryPtr);
+
+                try
+                {
+                    var itemIid = GraphicsCaptureItemInterfaceGuid;
+                    IntPtr itemPtr = IntPtr.Zero;
+
+                    if (mode == CaptureMode.ActiveWindow)
+                    {
+                        var hwnd = GetForegroundWindow();
+                        if (hwnd == IntPtr.Zero) return null;
+                        _logger.Info("WGC: creating capture item for window.");
+                        itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
+                    }
+                    else
+                    {
+                        var monitor = MonitorFromPoint(new PointStruct(0, 0), MonitorDefaultToPrimary);
+                        if (monitor == IntPtr.Zero) return null;
+                        _logger.Info("WGC: creating capture item for monitor.");
+                        itemPtr = interop.CreateForMonitor(monitor, ref itemIid);
+                    }
+
+                    return MarshalToGraphicsCaptureItem(itemPtr);
+                }
+                finally
+                {
+                    Marshal.Release(factoryPtr);
+                }
             }
             finally
             {
-                Marshal.Release(factoryPtr);
+                // WHY: MarshalStringはIDisposable非実装のため、明示解放が必要。
+                WinRT.MarshalString.DisposeMarshaler(hsClassId);
             }
         }
         catch (Exception ex)
