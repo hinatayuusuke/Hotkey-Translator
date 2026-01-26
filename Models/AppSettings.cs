@@ -21,7 +21,7 @@ public sealed class AppSettings
     public NormalizedRect? NormalizedRoi { get; set; }
     public bool EnableRoi { get; set; } = true;
     public CaptureProviderMode CaptureProviderMode { get; set; } = CaptureProviderMode.Auto;
-    public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Wgc;
+    public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Gdi;
     public bool EnableWgcCapture { get; set; } = true;
     public bool EnableDxgiCapture { get; set; } = true;
     public int BlackFrameThreshold { get; set; } = 3;
@@ -29,7 +29,7 @@ public sealed class AppSettings
     public double BlackVarianceThreshold { get; set; } = 8.0;
     public int BlackSampleStride { get; set; } = 8;
     public int ProviderCooldownSeconds { get; set; } = 3;
-    public int PhashThreshold { get; set; } = 10;
+    public int PhashThreshold { get; set; } = 4;
     public double OcrIouThreshold { get; set; } = 0.85;
     public bool EnableOcrBinarization { get; set; } = false;
     public int OcrBinarizationThreshold { get; set; } = 160;
@@ -47,11 +47,11 @@ public sealed class AppSettings
     public int OcrTwoPassHighThreshold { get; set; } = 180;
     public bool OcrTwoPassPreferAuto { get; set; } = true;
     public bool EnableFixedRoiOverlay { get; set; } = false;
-    public bool EnableSceneChangeAutoHide { get; set; } = false;
-    public bool EnableSceneChangeTextWeighted { get; set; } = true;
-    public double SceneChangeThreshold { get; set; } = 0.5;
+    public bool EnableSceneChangeAutoHide { get; set; } = true;
+    public bool EnableSceneChangeTextWeighted { get; set; } = false;
+    public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
-    public int SceneChangeWatchPhashThreshold { get; set; } = 16;
+    public int SceneChangeWatchPhashThreshold { get; set; } = 8;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";
@@ -88,10 +88,10 @@ public sealed class AppSettings
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";
     public List<string> TranslationPriority { get; set; } = new(TranslationProviderNames.Defaults);
-    public double OverlayFontSize { get; set; } = 18;
+    public double OverlayFontSize { get; set; } = 48;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";
-    public string OverlayBackground { get; set; } = "#88000000";
-    public double OverlayBackgroundOpacity { get; set; } = 0.5333333333333333;
+    public string OverlayBackground { get; set; } = "#AA000000";
+    public double OverlayBackgroundOpacity { get; set; } = 0.75;
 
     [JsonIgnore]
     public string? ApiKey { get; set; }
