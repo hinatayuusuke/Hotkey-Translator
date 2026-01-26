@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Linq;
@@ -1279,6 +1280,8 @@ public partial class MainWindow : Window
             return;
         }
 
+        var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
+        var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
         _autoHideBaselineVersion++;
         _autoHideBaselinePending = true;
         _autoHideLastHash = null;
@@ -1289,6 +1292,7 @@ public partial class MainWindow : Window
 
         _ = Task.Run(async () =>
         {
+            Stopwatch? baselineStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
             try
             {
                 // WHY: Delay a bit so the overlay frame is fully composed before hashing.
@@ -1328,6 +1332,14 @@ public partial class MainWindow : Window
             }
             finally
             {
+                if (baselineStopwatch != null)
+                {
+                    baselineStopwatch.Stop();
+                    if (baselineStopwatch.ElapsedMilliseconds >= perfThresholdMs)
+                    {
+                        _logger?.Info($"[Perf] AutoHideBaselineReset={baselineStopwatch.ElapsedMilliseconds}ms.");
+                    }
+                }
                 _autoHideBaselinePending = false;
             }
         }, token);
@@ -1348,56 +1360,73 @@ public partial class MainWindow : Window
 
         var baselineHash = _autoHideLastHash.Value;
         var baselineVersion = _autoHideBaselineVersion;
+        var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
+        var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
         _autoHideTickInProgress = true;
         try
         {
             await Task.Run(() =>
             {
-                using var frame = _captureManager.Capture(settings);
-                if (frame.IsBlack)
+                Stopwatch? watcherStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+                try
                 {
-                    return;
-                }
-
-                var roiScreen = GetRoiBounds(settings, frame.Bounds);
-                if (roiScreen.IsEmpty)
-                {
-                    return;
-                }
-
-                var roiInFrame = new Rect(
-                    roiScreen.X - frame.Bounds.X,
-                    roiScreen.Y - frame.Bounds.Y,
-                    roiScreen.Width,
-                    roiScreen.Height);
-
-                using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-                var hash = _phashService.ComputeHash(roiBitmap);
-                if (baselineVersion != _autoHideBaselineVersion)
-                {
-                    return;
-                }
-
-                var diff = _phashService.HammingDistance(hash, baselineHash);
-                var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
-                if (baselineVersion != _autoHideBaselineVersion)
-                {
-                    return;
-                }
-
-                if (diff >= threshold)
-                {
-                    Dispatcher.Invoke(() =>
+                    using var frame = _captureManager.Capture(settings);
+                    if (frame.IsBlack)
                     {
-                        _overlayEnabled = false;
-                        _overlayPresenter?.SetEnabled(false);
-                        AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
-                    });
-                }
+                        return;
+                    }
 
-                if (baselineVersion == _autoHideBaselineVersion)
+                    var roiScreen = GetRoiBounds(settings, frame.Bounds);
+                    if (roiScreen.IsEmpty)
+                    {
+                        return;
+                    }
+
+                    var roiInFrame = new Rect(
+                        roiScreen.X - frame.Bounds.X,
+                        roiScreen.Y - frame.Bounds.Y,
+                        roiScreen.Width,
+                        roiScreen.Height);
+
+                    using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+                    var hash = _phashService.ComputeHash(roiBitmap);
+                    if (baselineVersion != _autoHideBaselineVersion)
+                    {
+                        return;
+                    }
+
+                    var diff = _phashService.HammingDistance(hash, baselineHash);
+                    var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+                    if (baselineVersion != _autoHideBaselineVersion)
+                    {
+                        return;
+                    }
+
+                    if (diff >= threshold)
+                    {
+                        Dispatcher.Invoke(() =>
+                        {
+                            _overlayEnabled = false;
+                            _overlayPresenter?.SetEnabled(false);
+                            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
+                        });
+                    }
+
+                    if (baselineVersion == _autoHideBaselineVersion)
+                    {
+                        _autoHideLastHash = hash;
+                    }
+                }
+                finally
                 {
-                    _autoHideLastHash = hash;
+                    if (watcherStopwatch != null)
+                    {
+                        watcherStopwatch.Stop();
+                        if (watcherStopwatch.ElapsedMilliseconds >= perfThresholdMs)
+                        {
+                            _logger?.Info($"[Perf] AutoHideWatcherTick={watcherStopwatch.ElapsedMilliseconds}ms.");
+                        }
+                    }
                 }
             }).ConfigureAwait(true);
         }

@@ -178,6 +178,7 @@ public sealed class PipelineOrchestrator
 
             if (settings.EnableSceneChangeAutoHide)
             {
+                Stopwatch? sceneChangeStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 var evaluation = _sceneChangeEvaluator.Evaluate(
                     roiBitmap,
                     roiScreen,
@@ -185,6 +186,14 @@ public sealed class PipelineOrchestrator
                     _lastRoiBounds,
                     _lastOverlayItems,
                     settings);
+                if (sceneChangeStopwatch != null)
+                {
+                    sceneChangeStopwatch.Stop();
+                    if (sceneChangeStopwatch.ElapsedMilliseconds >= perfThresholdMs)
+                    {
+                        _logger.Info($"[Perf] SceneChangeEvaluate={sceneChangeStopwatch.ElapsedMilliseconds}ms.");
+                    }
+                }
                 if (!evaluation.CanEvaluate)
                 {
                     if (!string.IsNullOrWhiteSpace(evaluation.SkipReason))
