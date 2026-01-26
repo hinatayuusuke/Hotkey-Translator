@@ -26,7 +26,6 @@ public sealed class PipelineOrchestrator
     private readonly NormalizationService _normalizationService;
     private readonly OcrPreprocessService _ocrPreprocessService;
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
-    private readonly SceneChangeEvaluator _sceneChangeEvaluator;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
@@ -42,7 +41,6 @@ public sealed class PipelineOrchestrator
     private Rect? _lastRoiBounds;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
-    public event Action<double>? OverlayAutoHidden;
 
     public bool TryGetLastRoiHash(out ulong hash)
     {
@@ -78,7 +76,6 @@ public sealed class PipelineOrchestrator
         _normalizationService = normalizationService;
         _ocrPreprocessService = ocrPreprocessService;
         _ocrPreprocessCoordinator = new OcrPreprocessCoordinator(_ocrEngine, _ocrPreprocessService, new OcrCandidateScorer(), _logger);
-        _sceneChangeEvaluator = new SceneChangeEvaluator(_phashService);
         _lineGrouper = lineGrouper;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
@@ -175,44 +172,6 @@ public sealed class PipelineOrchestrator
             }
             roiSnapshot = (Bitmap)roiBitmap.Clone();
             roiSnapshotBounds = roiScreen;
-
-            if (settings.EnableSceneChangeAutoHide)
-            {
-                Stopwatch? sceneChangeStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-                var evaluation = _sceneChangeEvaluator.Evaluate(
-                    roiBitmap,
-                    roiScreen,
-                    _lastRoiSnapshot,
-                    _lastRoiBounds,
-                    _lastOverlayItems,
-                    settings);
-                if (sceneChangeStopwatch != null)
-                {
-                    sceneChangeStopwatch.Stop();
-                    if (sceneChangeStopwatch.ElapsedMilliseconds >= perfThresholdMs)
-                    {
-                        _logger.Info($"[Perf] SceneChangeEvaluate={sceneChangeStopwatch.ElapsedMilliseconds}ms.");
-                    }
-                }
-                if (!evaluation.CanEvaluate)
-                {
-                    if (!string.IsNullOrWhiteSpace(evaluation.SkipReason))
-                    {
-                        _logger.Info($"Scene change skipped: {evaluation.SkipReason}");
-                    }
-                }
-                else
-                {
-                    var threshold = Math.Clamp(settings.SceneChangeThreshold, 0.0, 1.0);
-                    _logger.Info($"Scene change score: {evaluation.Score:0.00} (threshold={threshold:0.00}, text-weighted={settings.EnableSceneChangeTextWeighted}).");
-                    if (evaluation.Score >= threshold)
-                    {
-                        _overlayPresenter.SetEnabled(false);
-                        OverlayAutoHidden?.Invoke(evaluation.Score);
-                        return;
-                    }
-                }
-            }
 
             if (settings.PhashThreshold >= 0)
             {

@@ -120,7 +120,6 @@ public partial class MainWindow : Window
             _settingsService,
             _logger);
         _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
-        _pipeline.OverlayAutoHidden += OnOverlayAutoHidden;
 
         InitializeHotkeys(_settingsService.Settings);
         InitializeAutoHideWatcher(_settingsService.Settings);
@@ -152,7 +151,6 @@ public partial class MainWindow : Window
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
-            _pipeline.OverlayAutoHidden -= OnOverlayAutoHidden;
         }
         if (_overlayPresenter != null)
         {
@@ -1681,13 +1679,6 @@ public partial class MainWindow : Window
         {
             _logger?.Error(ex, "Failed to update OCR preprocess preview.");
         }
-    }
-
-    private void OnOverlayAutoHidden(double score)
-    {
-        _overlayEnabled = false;
-        _overlayPresenter?.SetEnabled(false);
-        AppendLog($"Overlay auto-hidden (scene change score {score:0.00}).");
     }
 
     private static BitmapSource CreateBitmapSource(Bitmap bitmap)
