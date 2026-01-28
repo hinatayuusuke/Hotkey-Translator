@@ -2,8 +2,22 @@
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.IO;
+using System.Linq;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
+
+var argList = args.ToList();
+var dumpMeta = false;
+for (var i = argList.Count - 1; i >= 0; i--)
+{
+    if (string.Equals(argList[i], "--dump-meta", StringComparison.OrdinalIgnoreCase))
+    {
+        dumpMeta = true;
+        argList.RemoveAt(i);
+    }
+}
+
+args = argList.ToArray();
 
 var mode = CaptureMode.Screen;
 var argIndex = 0;
@@ -23,6 +37,12 @@ var durationSeconds = 5;
 var intervalMs = 500;
 var outputDir = Environment.CurrentDirectory;
 string? singleOutput = null;
+
+if (dumpMeta)
+{
+    Environment.SetEnvironmentVariable("HOTKEY_TRANSLATOR_DXGI_DEBUG", "1");
+    Console.WriteLine("DXGI debug logging enabled.");
+}
 
 var logger = new AppLogger(Console.WriteLine);
 var provider = new DxgiDuplicationProvider(logger);
@@ -187,8 +207,8 @@ static void SaveFrame(CaptureFrame frame, string outputPath)
 static void PrintUsage()
 {
     Console.WriteLine("Usage:");
-    Console.WriteLine("  dotnet run --project Tools/DxgiCaptureSmokeTest -- [screen|window] [durationSeconds] [intervalMs] [outputDir]");
-    Console.WriteLine("  dotnet run --project Tools/DxgiCaptureSmokeTest -- [screen|window] [outputFile.png]");
+    Console.WriteLine("  dotnet run --project Tools/DxgiCaptureSmokeTest -- [--dump-meta] [screen|window] [durationSeconds] [intervalMs] [outputDir]");
+    Console.WriteLine("  dotnet run --project Tools/DxgiCaptureSmokeTest -- [--dump-meta] [screen|window] [outputFile.png]");
     Console.WriteLine("Defaults:");
     Console.WriteLine("  durationSeconds=5 intervalMs=500 outputDir=.");
 }

@@ -1,7 +1,9 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using Hotkey_Translator.Models;
 using Vortice.Direct3D;
@@ -13,6 +15,7 @@ namespace Hotkey_Translator.Services;
 public sealed class DxgiDuplicationProvider : ICaptureProvider
 {
     private readonly AppLogger _logger;
+    private readonly bool _debugLogEnabled = IsDxgiDebugEnabled();
     private readonly object _sessionLock = new();
     private DxgiResidentSession? _residentSession;
     private bool _residentEnabled;
@@ -62,11 +65,26 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
         try
         {
-            var captureTarget = ResolveCaptureTarget(mode, out var monitorBounds, out var windowBounds, out var monitorHandle, out var targetBounds);
+            var captureTarget = ResolveCaptureTarget(
+                mode,
+                out var monitorBounds,
+                out var windowBounds,
+                out var monitorHandle,
+                out var targetBounds,
+                out var windowHandle);
             if (!captureTarget)
             {
                 error = "Failed to resolve DXGI capture target.";
                 return false;
+            }
+
+            if (_debugLogEnabled)
+            {
+                var windowInfo = mode == CaptureMode.ActiveWindow
+                    ? $"hwnd=0x{windowHandle.ToInt64():X} title=\"{GetWindowTitle(windowHandle)}\" process=\"{GetWindowProcessName(windowHandle)}\""
+                    : "hwnd=<screen>";
+                DebugLog($"Capture start mode={mode} resident={_residentEnabled} {windowInfo}");
+                DebugLog($"Monitor handle=0x{monitorHandle.ToInt64():X} monitorBounds={FormatRect(monitorBounds)} windowBounds={FormatRect(windowBounds)} targetBounds={FormatRect(targetBounds)}");
             }
 
             lock (_sessionLock)
@@ -99,17 +117,19 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         out Rect monitorBounds,
         out Rect windowBounds,
         out IntPtr monitorHandle,
-        out Rect targetBounds)
+        out Rect targetBounds,
+        out IntPtr windowHandle)
     {
         monitorBounds = Rect.Empty;
         windowBounds = Rect.Empty;
         monitorHandle = IntPtr.Zero;
         targetBounds = Rect.Empty;
+        windowHandle = IntPtr.Zero;
 
         if (mode == CaptureMode.ActiveWindow)
         {
-            var hwnd = GetForegroundWindow();
-            if (hwnd == IntPtr.Zero)
+            windowHandle = GetForegroundWindow();
+            if (windowHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -121,7 +141,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
             }
 
             windowBounds = bounds.Value;
-            monitorHandle = MonitorFromWindow(hwnd, MonitorDefaultToNearest);
+            monitorHandle = MonitorFromWindow(windowHandle, MonitorDefaultToNearest);
             if (monitorHandle == IntPtr.Zero)
             {
                 return false;
@@ -148,8 +168,9 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         var context = CreateDeviceAndContext(out var device);
         try
         {
-            var duplication = CreateDuplication(device, monitorHandle);
-            return new DxgiResidentSession(device, context, duplication, monitorHandle);
+            var duplication = CreateDuplication(device, monitorHandle, out var outputDescription);
+            var duplicationDesc = duplication.Description;
+            return new DxgiResidentSession(device, context, duplication, monitorHandle, duplicationDesc, outputDescription);
         }
         catch
         {
@@ -256,6 +277,15 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                     }
 
                     using var texture = resource.QueryInterface<ID3D11Texture2D>();
+                    if (_debugLogEnabled)
+                    {
+                        var outputDesc = session.OutputDescription;
+                        var dupDesc = session.DuplicationDescription;
+                        var textureDesc = texture.Description;
+                        DebugLog($"Output device={TrimDeviceName(outputDesc.DeviceName)} desktop={FormatDesktopCoordinates(outputDesc)} rotation={outputDesc.Rotation} attached={outputDesc.AttachedToDesktop}");
+                        DebugLog($"Duplication rotation={dupDesc.Rotation} mode={dupDesc.ModeDescription.Width}x{dupDesc.ModeDescription.Height} format={dupDesc.ModeDescription.Format}");
+                        DebugLog($"FrameInfo present={frameInfo.LastPresentTime} accum={frameInfo.AccumulatedFrames} texture={textureDesc.Width}x{textureDesc.Height} format={textureDesc.Format}");
+                    }
                     session.EnsureStaging(texture);
 
                     session.Context.CopyResource(session.Staging!, texture);
@@ -266,6 +296,10 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                         var intersect = Rect.Intersect(windowBounds, monitorBounds);
                         if (intersect.IsEmpty)
                         {
+                            if (_debugLogEnabled)
+                            {
+                                DebugLog($"Intersect empty window={FormatRect(windowBounds)} monitor={FormatRect(monitorBounds)}");
+                            }
                             bitmap.Dispose();
                             error = "Active window is outside monitor bounds.";
                             return false;
@@ -276,8 +310,19 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                             intersect.Y - monitorBounds.Y,
                             intersect.Width,
                             intersect.Height);
+                        var transformed = TransformDesktopRectToOutputRect(
+                            intersect,
+                            monitorBounds,
+                            session.DuplicationDescription.Rotation,
+                            bitmap.Width,
+                            bitmap.Height);
+                        if (_debugLogEnabled)
+                        {
+                            DebugLog($"Rect intersect={FormatRect(intersect)} relative={FormatRect(relative)} transformed={FormatRect(transformed)}");
+                        }
 
-                        var cropped = BitmapHelper.Crop(bitmap, relative);
+                        var cropped = BitmapHelper.Crop(bitmap, transformed);
+                        cropped = RotateToDesktopOrientation(cropped, session.DuplicationDescription.Rotation);
                         bitmap.Dispose();
                         frame = new CaptureFrame(cropped, intersect, Kind, DateTimeOffset.UtcNow);
                         return true;
@@ -316,8 +361,9 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         return context;
     }
 
-    private static IDXGIOutputDuplication CreateDuplication(ID3D11Device device, IntPtr monitorHandle)
+    private static IDXGIOutputDuplication CreateDuplication(ID3D11Device device, IntPtr monitorHandle, out OutputDescription outputDescription)
     {
+        outputDescription = default;
         using var dxgiDevice = device.QueryInterface<IDXGIDevice>();
         var result = dxgiDevice.GetAdapter(out var adapter);
         if (result.Failure)
@@ -343,6 +389,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                         continue;
                     }
 
+                    outputDescription = description;
                     using var output1 = output.QueryInterface<IDXGIOutput1>();
                     return output1.DuplicateOutput(device);
                 }
@@ -458,11 +505,193 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         return rect.Width > 0 && rect.Height > 0;
     }
 
+    private void DebugLog(string message)
+    {
+        if (_debugLogEnabled)
+        {
+            _logger.Info($"[DXGI-DEBUG] {message}");
+        }
+    }
+
+    private static bool IsDxgiDebugEnabled()
+    {
+        var value = Environment.GetEnvironmentVariable(DxgiDebugEnvVar);
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        return value.Equals("1", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("true", StringComparison.OrdinalIgnoreCase)
+               || value.Equals("yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetWindowTitle(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return string.Empty;
+        }
+
+        var length = GetWindowTextLength(hwnd);
+        if (length <= 0)
+        {
+            return string.Empty;
+        }
+
+        var builder = new StringBuilder(length + 1);
+        _ = GetWindowText(hwnd, builder, builder.Capacity);
+        return builder.ToString();
+    }
+
+    private static string GetWindowProcessName(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return string.Empty;
+        }
+
+        _ = GetWindowThreadProcessId(hwnd, out var processId);
+        if (processId == 0)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            using var process = Process.GetProcessById((int)processId);
+            return process.ProcessName;
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static string FormatRect(Rect rect)
+    {
+        return $"[{rect.X:0.##},{rect.Y:0.##},{rect.Width:0.##},{rect.Height:0.##}]";
+    }
+
+    private static string FormatDesktopCoordinates(OutputDescription description)
+    {
+        var coords = description.DesktopCoordinates;
+        return $"[{coords.Left},{coords.Top},{coords.Right},{coords.Bottom}]";
+    }
+
+    private static string TrimDeviceName(string deviceName)
+    {
+        return deviceName?.TrimEnd('\0') ?? string.Empty;
+    }
+
+    private static Rect TransformDesktopRectToOutputRect(
+        Rect desktopRect,
+        Rect monitorBounds,
+        ModeRotation rotation,
+        int outputWidth,
+        int outputHeight)
+    {
+        var relative = new Rect(
+            desktopRect.X - monitorBounds.X,
+            desktopRect.Y - monitorBounds.Y,
+            desktopRect.Width,
+            desktopRect.Height);
+
+        if (rotation == ModeRotation.Identity || rotation == ModeRotation.Unspecified)
+        {
+            return relative;
+        }
+
+        if (outputWidth <= 0 || outputHeight <= 0)
+        {
+            return relative;
+        }
+
+        // WHY: DXGI duplication surfaces are rotated; map desktop-space rect into output-space before cropping.
+        var topLeft = TransformPoint(relative.X, relative.Y, outputWidth, outputHeight, rotation);
+        var topRight = TransformPoint(relative.Right, relative.Y, outputWidth, outputHeight, rotation);
+        var bottomLeft = TransformPoint(relative.X, relative.Bottom, outputWidth, outputHeight, rotation);
+        var bottomRight = TransformPoint(relative.Right, relative.Bottom, outputWidth, outputHeight, rotation);
+
+        var minX = Math.Min(Math.Min(topLeft.X, topRight.X), Math.Min(bottomLeft.X, bottomRight.X));
+        var minY = Math.Min(Math.Min(topLeft.Y, topRight.Y), Math.Min(bottomLeft.Y, bottomRight.Y));
+        var maxX = Math.Max(Math.Max(topLeft.X, topRight.X), Math.Max(bottomLeft.X, bottomRight.X));
+        var maxY = Math.Max(Math.Max(topLeft.Y, topRight.Y), Math.Max(bottomLeft.Y, bottomRight.Y));
+
+        var transformed = new Rect(minX, minY, Math.Max(0, maxX - minX), Math.Max(0, maxY - minY));
+        return ClampRect(transformed, outputWidth, outputHeight);
+    }
+
+    private static System.Windows.Point TransformPoint(
+        double x,
+        double y,
+        double outputWidth,
+        double outputHeight,
+        ModeRotation rotation)
+    {
+        return rotation switch
+        {
+            // WHY: Desktop (rotated) -> Texture (native) mapping; pixel edge -1 is ignored for continuous coords.
+            ModeRotation.Rotate90 => new System.Windows.Point(y, outputHeight - x),
+            ModeRotation.Rotate180 => new System.Windows.Point(outputWidth - x, outputHeight - y),
+            ModeRotation.Rotate270 => new System.Windows.Point(outputWidth - y, x),
+            _ => new System.Windows.Point(x, y)
+        };
+    }
+
+    private static Rect ClampRect(Rect rect, int maxWidth, int maxHeight)
+    {
+        if (maxWidth <= 0 || maxHeight <= 0)
+        {
+            return rect;
+        }
+
+        var x = Math.Max(0, rect.X);
+        var y = Math.Max(0, rect.Y);
+        var right = Math.Min(maxWidth, rect.Right);
+        var bottom = Math.Min(maxHeight, rect.Bottom);
+        if (right <= x || bottom <= y)
+        {
+            return Rect.Empty;
+        }
+
+        return new Rect(x, y, right - x, bottom - y);
+    }
+
+    private static Bitmap RotateToDesktopOrientation(Bitmap source, ModeRotation rotation)
+    {
+        var rotateFlip = rotation switch
+        {
+            ModeRotation.Rotate90 => RotateFlipType.Rotate90FlipNone,
+            ModeRotation.Rotate180 => RotateFlipType.Rotate180FlipNone,
+            ModeRotation.Rotate270 => RotateFlipType.Rotate270FlipNone,
+            _ => RotateFlipType.RotateNoneFlipNone
+        };
+
+        if (rotateFlip == RotateFlipType.RotateNoneFlipNone)
+        {
+            return source;
+        }
+
+        // WHY: DXGI duplication delivers rotated output buffers; rotate cropped frames for OCR/preview alignment.
+        source.RotateFlip(rotateFlip);
+        return source;
+    }
+
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, DwmWindowAttribute dwAttribute, out NativeRect pvAttribute, int cbAttribute);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
@@ -483,6 +712,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
     private const int DxgiErrorInvalidCall = unchecked((int)0x887A0001);
     private const int MonitorDefaultToPrimary = 1;
     private const int MonitorDefaultToNearest = 2;
+    private const string DxgiDebugEnvVar = "HOTKEY_TRANSLATOR_DXGI_DEBUG";
 
     private static bool IsRecoverableDxgiError(int code)
     {
@@ -538,18 +768,24 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
             ID3D11Device device,
             ID3D11DeviceContext context,
             IDXGIOutputDuplication duplication,
-            IntPtr monitorHandle)
+            IntPtr monitorHandle,
+            OutduplDescription duplicationDescription,
+            OutputDescription outputDescription)
         {
             Device = device;
             Context = context;
             Duplication = duplication;
             MonitorHandle = monitorHandle;
+            DuplicationDescription = duplicationDescription;
+            OutputDescription = outputDescription;
         }
 
         public ID3D11Device Device { get; }
         public ID3D11DeviceContext Context { get; }
         public IDXGIOutputDuplication Duplication { get; }
         public IntPtr MonitorHandle { get; }
+        public OutduplDescription DuplicationDescription { get; }
+        public OutputDescription OutputDescription { get; }
         public ID3D11Texture2D? Staging { get; private set; }
 
         public void EnsureStaging(ID3D11Texture2D source)
