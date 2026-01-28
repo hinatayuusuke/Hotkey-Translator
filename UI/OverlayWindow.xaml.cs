@@ -112,6 +112,8 @@ public partial class OverlayWindow : Window
         var extended = GetWindowLongPtr(hwnd, GwlExStyle);
         var updated = new IntPtr(extended.ToInt64() | WsExTransparent | WsExToolWindow | WsExNoActivate);
         SetWindowLongPtr(hwnd, GwlExStyle, updated);
+        // WHY: Exclude the overlay from capture so scene-change checks and OCR use clean frames.
+        _ = SetWindowDisplayAffinity(hwnd, WindowDisplayAffinityExcludeFromCapture);
     }
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
@@ -380,6 +382,7 @@ public partial class OverlayWindow : Window
     private const int WsExTransparent = 0x00000020;
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
+    private const uint WindowDisplayAffinityExcludeFromCapture = 0x00000011;
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
     private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
@@ -392,6 +395,9 @@ public partial class OverlayWindow : Window
 
     [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr")]
     private static extern IntPtr SetWindowLongPtr64(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
 
     private static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
     {
