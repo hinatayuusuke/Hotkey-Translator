@@ -9,6 +9,7 @@ namespace Hotkey_Translator.Services;
 public sealed class CaptureManager
 {
     private readonly IReadOnlyList<ICaptureProvider> _providers;
+    private readonly DxgiDuplicationProvider _dxgiProvider;
     private readonly Dictionary<CaptureProviderKind, ProviderState> _states = new();
     private readonly FrameGate _frameGate;
     private readonly AppLogger _logger;
@@ -17,16 +18,18 @@ public sealed class CaptureManager
     {
         _frameGate = frameGate;
         _logger = logger;
+        _dxgiProvider = new DxgiDuplicationProvider(_logger);
         _providers = new ICaptureProvider[]
         {
             new WgcCaptureProvider(_logger),
-            new DxgiDuplicationProvider(_logger),
+            _dxgiProvider,
             new GdiCaptureProvider()
         };
     }
 
     public CaptureFrame Capture(AppSettings settings)
     {
+        UpdateDxgiResidentState(settings);
         var now = DateTimeOffset.UtcNow;
         var order = BuildProviderOrder(settings);
         Exception? lastError = null;
@@ -79,6 +82,7 @@ public sealed class CaptureManager
 
     public Rect GetCaptureBounds(AppSettings settings)
     {
+        UpdateDxgiResidentState(settings);
         var order = BuildProviderOrder(settings);
         foreach (var provider in order)
         {
@@ -117,6 +121,12 @@ public sealed class CaptureManager
     private ProviderState GetState(CaptureProviderKind kind)
     {
         return _states.TryGetValue(kind, out var state) ? state : default;
+    }
+
+    private void UpdateDxgiResidentState(AppSettings settings)
+    {
+        var enableResident = settings.EnableDxgiCapture && settings.PreferredCaptureProvider == CaptureProviderKind.Dxgi;
+        _dxgiProvider.SetResidentEnabled(enableResident);
     }
 
     private bool IsInCooldown(CaptureProviderKind kind, DateTimeOffset now)
