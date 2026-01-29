@@ -4,11 +4,11 @@
 ## Get latest from `dotnet new gitignore`
 
 # doc
-doc/
+#doc/
 .doc/
-agents.md
+#agents.md
 .vsdoc/
-.agent/
+#.agent/
 .serena/
 
 # dotenv files
