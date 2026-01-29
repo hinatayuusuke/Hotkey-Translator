@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+option csharp_namespace = "Hotkey_Translator.OcrGrpc";
+
+package ocr;
+
+service OcrService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Recognize(OcrRequest) returns (OcrResponse);
+}
+
+message HealthRequest {
+}
+
+message HealthResponse {
+  bool ready = 1;
+  string message = 2;
+}
+
+message OcrRequest {
+  bytes image = 1;
+  string language = 2;
+  string device = 3;
+  string model_dir = 4;
+}
+
+message OcrResponse {
+  string json = 1;
+}

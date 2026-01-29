@@ -19,7 +19,7 @@ public sealed class OcrEngine
     {
         _logger = logger;
         _winRtProvider = new WinRtOcrProvider(logger);
-        _paddleProvider = new PaddleOcrProvider(logger);
+        _paddleProvider = new PaddleGrpcOcrProvider(logger);
         _paddleVllmProvider = new PaddleVllmOcrProvider(httpClient, logger);
         _florenceProvider = new FlorenceOcrProvider(logger);
     }

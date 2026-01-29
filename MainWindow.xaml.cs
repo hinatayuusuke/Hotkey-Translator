@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private CacheRepository? _cacheRepository;
     private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
+    private PaddleGrpcHost? _paddleGrpcHost;
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
@@ -76,6 +77,7 @@ public partial class MainWindow : Window
         ApplySettingsToUi(_settingsService.Settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
+        await StartPaddleGrpcHostAsync(_settingsService.Settings).ConfigureAwait(true);
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
@@ -148,6 +150,7 @@ public partial class MainWindow : Window
         }
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
+        _paddleGrpcHost?.Stop();
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
@@ -159,6 +162,24 @@ public partial class MainWindow : Window
             _overlayPresenter.Updated -= OnOverlayUpdated;
         }
         _overlayWindow?.Close();
+    }
+
+    private async Task StartPaddleGrpcHostAsync(AppSettings settings)
+    {
+        if (!settings.EnablePaddleGrpcHost)
+        {
+            return;
+        }
+
+        _paddleGrpcHost ??= new PaddleGrpcHost(_logger);
+        try
+        {
+            await _paddleGrpcHost.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Info($"Paddle gRPC host failed to start: {ex.Message}");
+        }
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)

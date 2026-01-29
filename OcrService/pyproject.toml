@@ -1,0 +1,24 @@
+[project]
+name = "ocrservice"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+dependencies = [
+    "grpcio>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "numpy>=2.2.6",
+    "paddleocr[all]>=3.3.3",
+    "paddlepaddle-gpu==3.3.0",
+    "pillow>=12.1.0",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]
+[[tool.uv.index]]
+name = "paddle-cu118"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu118" }

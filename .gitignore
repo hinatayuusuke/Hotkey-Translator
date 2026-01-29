@@ -9,6 +9,7 @@ doc/
 agents.md
 .vsdoc/
 .agent/
+.serena/
 
 # dotenv files
 .env

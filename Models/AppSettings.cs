@@ -58,6 +58,16 @@ public sealed class AppSettings
     public string PaddleLanguage { get; set; } = "japan";
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }
+    public bool EnablePaddleGrpcHost { get; set; } = true;
+    public string PaddleGrpcProjectDir { get; set; } = "OcrService";
+    public string PaddleGrpcUvPath { get; set; } = "uv";
+    public string PaddleGrpcServerScript { get; set; } = "server.py";
+    public string PaddleGrpcEndpoint { get; set; } = "http://127.0.0.1:50051";
+    public string PaddleGrpcHost { get; set; } = "127.0.0.1";
+    public int PaddleGrpcPort { get; set; } = 50051;
+    public int PaddleGrpcReadyTimeoutMs { get; set; } = 10000;
+    public int PaddleGrpcRestartMax { get; set; } = 3;
+    public int PaddleGrpcRestartWindowSeconds { get; set; } = 30;
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
     public string FlorenceUvPath { get; set; } = "uv";
     public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";

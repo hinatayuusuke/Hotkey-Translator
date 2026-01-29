@@ -21,6 +21,11 @@
     <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    <PackageReference Include="Grpc.Net.Client" Version="2.63.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.25.3" />
+    <PackageReference Include="Grpc.Tools" Version="2.63.0">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
  
 
     <!-- DirectX（D3D11 + DXGI Desktop Duplication） -->
@@ -34,6 +39,10 @@
     <Compile Remove="Doc\**\*" />
     <Page Remove="Doc\**\*" />
     <None Remove="Doc\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="Protos\\OcrGrpc.proto" GrpcServices="Client" />
   </ItemGroup>
 
 <PropertyGroup>
