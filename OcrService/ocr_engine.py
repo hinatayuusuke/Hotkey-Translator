@@ -65,6 +65,8 @@ class PaddleOcrEngine:
             "lang": language,
             "ocr_version": ocr_version,  # "PP-OCRv5"
             "use_textline_orientation": bool(use_textline_orientation),
+            "text_detection_model_name": "PP-OCRv5_mobile_det",
+            "text_recognition_model_name": "PP-OCRv5_server_rec",
         }
 
         # model_dir を使う場合は PaddleOCR 3.x の仕様に沿ってください。

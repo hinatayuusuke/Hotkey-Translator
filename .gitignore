@@ -10,6 +10,7 @@
 .vsdoc/
 #.agent/
 .serena/
+.testpicture/
 
 # dotenv files
 .env
