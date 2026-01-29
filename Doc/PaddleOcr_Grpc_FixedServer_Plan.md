@@ -1,25 +1,25 @@
-﻿# Paddle OCR gRPC 固定サーバー仕様 実装案（GPU強制 + 言語追従）
+﻿# Paddle OCR gRPC 固定サーバー仕様 実装案（GPU強制 + 言語追従 + 検出モデル切替）
 
 1. **概要（1–3行）**
    gRPCホスト起動時に `cpu` 指定なら `gpu`（line 0）へ強制上書きし、
-   requestは `language` のみを送信して WPF UI の言語選択に追従させる。
+   requestは `language` と `text_detection_model_name` のみを送信して WPF UI の選択に追従させる。
 
 2. **ゴール / 非ゴール**
    **ゴール**
 
    * PaddleOCR 3.x / GPU必須前提で常駐サーバーを安定起動
    * WPF側とPython側のパラメータ不整合を排除
-   * 言語設定だけはUIに追従し、それ以外は固定化する
+   * 言語と検出モデルだけはUIに追従し、それ以外は固定化する
 
    **非ゴール**
 
-   * ランタイムでモデル/デバイスを切り替える
+   * ランタイムでモデル（検出以外）/デバイスを切り替える
    * CPUフォールバックでPaddleOCRを動かす
 
 3. **前提・仮定**（不確実性の扱いを明確化）
 
-   * サーバー起動時にモデル/デバイスを固定する運用
-   * 言語は request の値を使用し、必要なら内部でOCRエンジンを切り替える
+   * サーバー起動時にデバイス/基本設定を固定する運用
+   * 言語と検出モデル名は request の値を使用
    * GPUが必須で、`cpu` 指定は受け付けない
    * WPF側のOCRは gRPC 不可時に WinRTへフォールバック
 
@@ -34,31 +34,31 @@
    ### コンポーネント構成
 
    * WPF: `PaddleGrpcHost`（起動時にGPU強制）
-   * WPF: `PaddleGrpcOcrProvider`（requestは `language` のみ送信）
-   * Python: `server.py` / `ocr_engine.py`（起動時固定パラメータ＋言語はrequest反映）
+   * WPF: `PaddleGrpcOcrProvider`（requestは `language` + `text_detection_model_name` のみ送信）
+   * Python: `server.py` / `ocr_engine.py`（起動時固定パラメータ＋言語/検出モデルはrequest反映）
 
    ### データフロー / シーケンス
 
    1. WPF起動時、`PaddleGrpcHost.StartAsync` で `PaddleDevice` が `cpu` の場合は `gpu` に強制上書き
    2. Pythonサーバーは固定パラメータで `PaddleOcrEngine` を初期化
-   3. OCR request は画像bytes＋言語のみ送信し、サーバーが言語を反映して推論
+   3. OCR request は画像bytes＋言語＋検出モデルのみ送信し、サーバーが言語/検出モデルを反映して推論
 
    ### 既存パターンへの整合
 
    * 既存の「サーバー起動時に固定パラメータ」の運用を強化
-   * requestは言語のみ反映し、他パラメータは固定
+   * requestは言語/検出モデルのみ反映し、他パラメータは固定
 
 6. **インターフェース設計**
 
    ### gRPC API
 
    * `OcrRequest` から `device/model_dir` を削除
-   * `OcrRequest` は `image` + `language`
+   * `OcrRequest` は `image` + `language` + `text_detection_model_name`
 
    ### WPF側
 
    * `PaddleGrpcHost` で `PaddleDevice == "cpu"` の場合 `gpu` に上書き
-   * `PaddleGrpcOcrProvider` は `image` + `language` のみ送信
+   * `PaddleGrpcOcrProvider` は `image` + `language` + `text_detection_model_name` のみ送信
 
 7. **実装手順（ステップ分割）**
 
@@ -68,10 +68,11 @@
 
    ### Step 2: gRPC request簡略化
    * `Protos/OcrGrpc.proto` / `OcrService/ocr.proto` から `device/model_dir` を削除
-   * `PaddleGrpcOcrProvider` の request 送信を `image` + `language` に変更
+   * `PaddleGrpcOcrProvider` の request 送信を `image` + `language` + `text_detection_model_name` に変更
 
    ### Step 3: Python側整合
-   * `server.py` は引数で固定値を受け取り、requestは画像＋言語のみ利用
+   * `server.py` は引数で固定値を受け取り、requestは画像＋言語＋検出モデルのみ利用
+   * `ocr_engine.py` で `text_detection_model_name` に応じて検出モデルを切替
    * 受信側で `device/model_dir` に依存しない構造を明示
 
 8. **非機能要件チェック**
@@ -96,6 +97,8 @@
   * `Protos/OcrGrpc.proto`
   * `OcrService/ocr.proto`
   * `OcrService/server.py`
+  * `OcrService/ocr_engine.py`
+  * UI設定（検出モデル選択追加）
 * ドキュメント更新
   * 本ドキュメント
 
@@ -103,5 +106,6 @@
 
 * [ ] gRPCホスト起動時に `cpu` 指定が `gpu` に強制上書きされる
 * [ ] OCR request に `device/model_dir` が含まれない
-* [ ] Python側は固定パラメータで推論し、requestは画像＋言語のみ受け取る
+* [ ] OCR request に `text_detection_model_name` が含まれる
+* [ ] Python側は固定パラメータで推論し、requestは画像＋言語＋検出モデルのみ受け取る
 * [ ] 既存のWinRTフォールバックが維持される
