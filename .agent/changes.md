@@ -2339,3 +2339,26 @@
 
 ### Tests / Verification
 - 未実施（実装のみ）
+**2026-01-30 14:54 (Asia/Taipei) — Add OCR engine UI simplification plan**
+
+### Summary
+- Added plan to keep only WinRT and PaddleOCRv5 in OCR engine UI.
+
+### Context / Goal
+- Simplify engine selection and reduce maintenance overhead.
+
+### Changes
+- Documented steps to trim OcrEngineKind, UI options, and branching logic.
+
+### Files Touched
+- Doc/OcrEngine_UI_Simplify_Plan.md — new implementation plan.
+
+### Behavioral Impact
+- None (documentation only).
+
+### Risk & Mitigation
+- Risk: None (no runtime changes).
+- Mitigation: N/A.
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
