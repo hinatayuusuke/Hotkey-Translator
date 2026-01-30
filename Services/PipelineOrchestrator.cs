@@ -41,6 +41,8 @@ public sealed class PipelineOrchestrator
     private Rect? _lastRoiBounds;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
+    public event Action? TranslationStarted;
+    public event Action? TranslationCompleted;
 
     public bool TryGetLastRoiHash(out ulong hash)
     {
@@ -402,7 +404,16 @@ public sealed class PipelineOrchestrator
 
         _logger.Info($"Translation pending: {pending.Count} items.");
         var pendingTexts = pending.Select(item => item.SourceText).ToList();
-        var results = await _translationService.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
+        TranslationStarted?.Invoke();
+        IReadOnlyDictionary<string, string> results;
+        try
+        {
+            results = await _translationService.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            TranslationCompleted?.Invoke();
+        }
         foreach (var item in pending)
         {
             if (!results.TryGetValue(item.SourceText, out var translated) || string.IsNullOrWhiteSpace(translated))

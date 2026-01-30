@@ -123,6 +123,8 @@ public partial class MainWindow : Window
             _settingsService,
             _logger);
         _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
+        _pipeline.TranslationStarted += OnTranslationStarted;
+        _pipeline.TranslationCompleted += OnTranslationCompleted;
 
         InitializeHotkeys(_settingsService.Settings);
         InitializeAutoHideWatcher(_settingsService.Settings);
@@ -155,6 +157,8 @@ public partial class MainWindow : Window
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
+            _pipeline.TranslationStarted -= OnTranslationStarted;
+            _pipeline.TranslationCompleted -= OnTranslationCompleted;
         }
         if (_overlayPresenter != null)
         {
@@ -1705,6 +1709,26 @@ public partial class MainWindow : Window
         {
             _logger?.Error(ex, "Failed to update OCR preprocess preview.");
         }
+    }
+
+    private void OnTranslationStarted()
+    {
+        if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        {
+            return;
+        }
+
+        SetBusyOverlay(true, "Translating...");
+    }
+
+    private void OnTranslationCompleted()
+    {
+        if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        {
+            return;
+        }
+
+        SetBusyOverlay(true, "OCR running...");
     }
 
     private static BitmapSource CreateBitmapSource(Bitmap bitmap)

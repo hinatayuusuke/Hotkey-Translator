@@ -2595,3 +2595,29 @@
 
 ### Tests / Verification
 - 未実施（UIの見た目確認が必要）
+**2026-01-30 19:36 (Asia/Taipei) — Add translation loading state to shared overlay**
+
+### Summary
+- Reused the central busy overlay to show a "Translating..." state during translation.
+
+### Context / Goal
+- Provide feedback when translation takes longer than OCR.
+- Reuse the existing loading UI instead of adding a new widget.
+
+### Changes
+- Added translation start/end events in the pipeline.
+- Updated the busy overlay message while translation is running.
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — emit translation start/end events.
+- `MainWindow.xaml.cs` — subscribe to events and update busy overlay text.
+
+### Behavioral Impact
+- The busy overlay now switches to "Translating..." while translation is in progress.
+
+### Risk & Mitigation
+- Risk: Message may briefly flip if translation is fast.
+- Mitigation: Only shows when there are pending translation items.
+
+### Tests / Verification
+- `dotnet build`
