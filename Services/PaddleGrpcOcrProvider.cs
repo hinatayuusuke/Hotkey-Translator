@@ -117,11 +117,6 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
 
     private static string ResolvePaddleLanguage(AppSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleLanguage))
-        {
-            return settings.PaddleLanguage.Trim();
-        }
-
         var source = settings.SourceLanguage?.Trim() ?? string.Empty;
         return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
     }

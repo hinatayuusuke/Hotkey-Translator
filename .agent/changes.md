@@ -2414,3 +2414,32 @@
 
 ### Tests / Verification
 - 未実施（ビルド修正のみ）
+**2026-01-30 15:11 (Asia/Taipei) — Simplify Paddle OCR settings**
+
+### Summary
+- Simplified Paddle OCR settings to only select detection model and bind language to Main settings.
+
+### Context / Goal
+- Remove deprecated Paddle UI fields and keep only Mobile/Server detection model selection.
+- Ensure Paddle gRPC uses Main language settings consistently.
+
+### Changes
+- Mapped Paddle detection model selection to `PaddleTextDetectionModelName` in settings UI.
+- Removed Paddle UI field bindings for project/device/lang/model values.
+- Updated Paddle gRPC language resolution to always follow Main language settings.
+
+### Files Touched
+- `MainWindow.xaml.cs` — bind Paddle detection model ComboBox and drop removed UI field assignments.
+- `Services/PaddleGrpcHost.cs` — resolve Paddle language from Main settings only.
+- `Services/PaddleGrpcOcrProvider.cs` — resolve Paddle language from Main settings only.
+
+### Behavioral Impact
+- Paddle OCR language now always follows Main language settings; Paddle-specific language overrides are ignored.
+- UI only persists the detection model choice (mobile/server).
+
+### Risk & Mitigation
+- Risk: Users relying on legacy PaddleLanguage values may see language change to Main settings.
+- Mitigation: Main language already drives OCR flow; fallback remains `en` for non-Japanese.
+
+### Tests / Verification
+- 未実施（UIとgRPCの手動確認が必要）

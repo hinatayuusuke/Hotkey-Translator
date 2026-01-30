@@ -300,11 +300,7 @@ public partial class MainWindow : Window
             OcrEngineKind.Paddle => "Paddle",
             _ => "WinRt"
         });
-        PaddleProjectDirBox.Text = settings.PaddleProjectDir;
-        PaddleUvPathBox.Text = settings.PaddleUvPath;
-        PaddleLanguageBox.Text = settings.PaddleLanguage;
-        PaddleDeviceBox.Text = settings.PaddleDevice;
-        PaddleModelDirBox.Text = settings.PaddleModelDir ?? string.Empty;
+        SetComboBoxByTag(PaddleDetectionModelBox, settings.PaddleTextDetectionModelName);
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -471,6 +467,16 @@ public partial class MainWindow : Window
         }
 
         return string.Empty;
+    }
+
+    private static string GetSelectedTag(ComboBox comboBox, string fallback)
+    {
+        if (comboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return tag;
+        }
+
+        return fallback;
     }
 
     private static void SelectLanguageByTag(ComboBox comboBox, string tag)
@@ -844,11 +850,7 @@ public partial class MainWindow : Window
         settings.TargetLanguage = GetSelectedLanguage(TargetLangCombo, TargetLangCustom);
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;
         settings.OcrEngine = GetOcrEngineKind();
-        settings.PaddleProjectDir = PaddleProjectDirBox.Text.Trim();
-        settings.PaddleUvPath = PaddleUvPathBox.Text.Trim();
-        settings.PaddleLanguage = PaddleLanguageBox.Text.Trim();
-        settings.PaddleDevice = PaddleDeviceBox.Text.Trim();
-        settings.PaddleModelDir = string.IsNullOrWhiteSpace(PaddleModelDirBox.Text) ? null : PaddleModelDirBox.Text.Trim();
+        settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
