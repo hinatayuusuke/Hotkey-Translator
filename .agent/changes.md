@@ -2548,3 +2548,27 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-01-30 19:10 (Asia/Taipei) — Simplify F8 hotkey behavior**
+
+### Summary
+- Removed overlay hide toggle from F8 so it always triggers a run.
+
+### Context / Goal
+- Avoid confusing dual behavior on the F8 hotkey.
+- Keep overlay toggling only on F9.
+
+### Changes
+- Simplified F8 handler to always run OCR and updated the startup hint text.
+
+### Files Touched
+- `MainWindow.xaml.cs` — removed F8 overlay-hide branch and adjusted log message.
+
+### Behavioral Impact
+- Pressing F8 no longer hides the overlay; it always runs OCR once.
+
+### Risk & Mitigation
+- Risk: Users relying on F8 to hide overlay lose that shortcut.
+- Mitigation: F9 still toggles overlay, and logs were updated.
+
+### Tests / Verification
+- 未実施（ホットキー動作の手動確認が必要）

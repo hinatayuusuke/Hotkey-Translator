@@ -126,7 +126,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(_settingsService.Settings);
         InitializeAutoHideWatcher(_settingsService.Settings);
-        AppendLog("Ready. F8: hide overlay if shown, or run once if hidden. F9: toggle overlay. F10: force run. F11: OCR only.");
+        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: OCR only.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -192,15 +192,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (_overlayEnabled)
-        {
-            _overlayEnabled = false;
-            _overlayPresenter?.SetEnabled(false);
-            AppendLog("F8: Overlay hidden.");
-            return;
-        }
-
-        AppendLog("F8: Run once (overlay shown).");
+        AppendLog("F8: Run once.");
         await RunOnceAsync().ConfigureAwait(true);
     }
 
