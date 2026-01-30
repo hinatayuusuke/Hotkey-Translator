@@ -2572,3 +2572,26 @@
 
 ### Tests / Verification
 - 未実施（ホットキー動作の手動確認が必要）
+**2026-01-30 19:28 (Asia/Taipei) — Remove dimming background for OCR busy overlay**
+
+### Summary
+- Removed the semi-transparent dark overlay behind the OCR loading indicator.
+
+### Context / Goal
+- Keep OCR loading UI lightweight without obscuring the underlying content.
+
+### Changes
+- Set busy overlay background to transparent so only the centered indicator remains.
+
+### Files Touched
+- `MainWindow.xaml` — made BusyOverlay background transparent.
+
+### Behavioral Impact
+- OCR loading now shows only the centered indicator; no full-screen dimming.
+
+### Risk & Mitigation
+- Risk: Indicator could be less noticeable on bright backgrounds.
+- Mitigation: The indicator box remains visible with a light background.
+
+### Tests / Verification
+- 未実施（UIの見た目確認が必要）

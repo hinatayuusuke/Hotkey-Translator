@@ -470,7 +470,7 @@
 
         <TextBox x:Name="LogBox" Grid.Column="2" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
 
-        <Grid x:Name="BusyOverlay" Grid.ColumnSpan="3" Background="#66000000" Visibility="Collapsed" Panel.ZIndex="10">
+        <Grid x:Name="BusyOverlay" Grid.ColumnSpan="3" Background="Transparent" Visibility="Collapsed" Panel.ZIndex="10">
             <Border Background="#F8FFFFFF" Padding="24" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel>
                     <TextBlock x:Name="BusyOverlayText" Text="OCR running..." FontWeight="SemiBold" Margin="0,0,0,8" />
