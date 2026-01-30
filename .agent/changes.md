@@ -2520,3 +2520,31 @@
 
 ### Tests / Verification
 - 未実施（ローカル環境での実行が必要）
+**2026-01-30 18:23 (Asia/Taipei) — Add overlay short-line shrink toggle**
+
+### Summary
+- Added a UI setting to enable/disable overlay shrink for 1–2 line OCR results.
+
+### Context / Goal
+- Allow users to turn off conservative shrink behavior for short line counts.
+- Keep default behavior unchanged unless the new toggle is disabled.
+
+### Changes
+- Added `EnableOverlayShortLineShrink` to settings and wired it to the UI.
+- Applied the toggle in overlay rendering to skip short-line shrink when disabled.
+
+### Files Touched
+- `Models/AppSettings.cs` — added `EnableOverlayShortLineShrink` setting.
+- `MainWindow.xaml` — added checkbox in Overlay Layout section.
+- `MainWindow.xaml.cs` — save/apply the new toggle.
+- `UI/OverlayWindow.xaml.cs` — gate short-line shrink by setting.
+
+### Behavioral Impact
+- Users can now disable the 1–2 line shrink behavior globally.
+
+### Risk & Mitigation
+- Risk: Disabling shrink may cause text overflow in small boxes.
+- Mitigation: Default remains enabled; users can re-enable if needed.
+
+### Tests / Verification
+- `dotnet build`

@@ -17,6 +17,7 @@ public partial class OverlayWindow : Window
     private double _fontSize = 18;
     private bool _isFixedRoiOverlay;
     private bool _expandOverlayRect = true;
+    private bool _enableShortLineShrink = true;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double OverlayExpandRatio = 0.05;
     private const double OverlayExpandFixedX = 3.0;
@@ -57,6 +58,7 @@ public partial class OverlayWindow : Window
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
         // WHY: Paddle OCR boxes are already larger; avoid extra expansion in overlay.
         _expandOverlayRect = settings.OcrEngine != OcrEngineKind.Paddle;
+        _enableShortLineShrink = settings.EnableOverlayShortLineShrink;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -218,6 +220,11 @@ public partial class OverlayWindow : Window
 
     private double GetConservativeScale(OverlayItem item)
     {
+        if (!_enableShortLineShrink)
+        {
+            return 1.0;
+        }
+
         if (item.LineCount >= 3)
         {
             return 1.0;

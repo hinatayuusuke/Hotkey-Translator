@@ -344,6 +344,7 @@
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOverlayShortLineShrinkCheck" Content="Shrink overlay for 1–2 lines" Margin="0,4,0,0" Click="OnSettingChanged" />
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Scene Change Auto-hide" FontWeight="SemiBold" />
