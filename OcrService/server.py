@@ -36,9 +36,31 @@ import ocr_pb2
 import ocr_pb2_grpc
 
 
+class EnginePool:
+    def __init__(self, default_language: str, device: str, model_dir: str | None, default_det_model: str):
+        self._default_language = default_language
+        self._device = device
+        self._model_dir = model_dir
+        self._default_det_model = default_det_model
+        self._engines: dict[tuple[str, str], PaddleOcrEngine] = {}
+
+    def get(self, language: str | None, det_model: str | None) -> PaddleOcrEngine:
+        lang = (language or self._default_language or "japan").strip() or "japan"
+        model = (det_model or self._default_det_model or "PP-OCRv5_mobile_det").strip() or "PP-OCRv5_mobile_det"
+        key = (lang, model)
+        if key not in self._engines:
+            self._engines[key] = PaddleOcrEngine(
+                language=lang,
+                device=self._device,
+                model_dir=self._model_dir,
+                text_detection_model_name=model,
+            )
+        return self._engines[key]
+
+
 class OcrService(ocr_pb2_grpc.OcrServiceServicer):
-    def __init__(self, engine: PaddleOcrEngine):
-        self._engine = engine
+    def __init__(self, engines: EnginePool):
+        self._engines = engines
         self._ready = True
 
     def Health(self, request, context):
@@ -51,7 +73,8 @@ class OcrService(ocr_pb2_grpc.OcrServiceServicer):
             return ocr_pb2.OcrResponse()
 
         try:
-            payload = self._engine.recognize(request.image)
+            engine = self._engines.get(request.language, request.text_detection_model_name)
+            payload = engine.recognize(request.image)
             return ocr_pb2.OcrResponse(json=payload)
         except Exception as exc:
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -66,14 +89,15 @@ def main() -> int:
     parser.add_argument("--lang", default="japan")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--det-model", default="PP-OCRv5_mobile_det")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
-    logging.info("Initializing PaddleOCR...")
-    engine = PaddleOcrEngine(args.lang, args.device, args.model)
+    logging.info("Initializing PaddleOCR engine pool...")
+    engine_pool = EnginePool(args.lang, args.device, args.model, args.det_model)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
-    ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine), server)
+    ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine_pool), server)
     server.add_insecure_port(f"{args.host}:{args.port}")
     server.start()
     logging.info("PaddleOCR gRPC listening on %s:%s", args.host, args.port)

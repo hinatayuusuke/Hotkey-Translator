@@ -25,6 +25,7 @@ class PaddleOcrEngine:
         disable_model_source_check: bool = True,
         use_textline_orientation: bool = True,
         ocr_version: str = "PP-OCRv5",
+        text_detection_model_name: str = "PP-OCRv5_mobile_det",
     ):
         try:
             from paddleocr import PaddleOCR
@@ -65,7 +66,7 @@ class PaddleOcrEngine:
             "lang": language,
             "ocr_version": ocr_version,  # "PP-OCRv5"
             "use_textline_orientation": bool(use_textline_orientation),
-            "text_detection_model_name": "PP-OCRv5_mobile_det",
+            "text_detection_model_name": text_detection_model_name,
             "text_recognition_model_name": "PP-OCRv5_server_rec",
         }
 

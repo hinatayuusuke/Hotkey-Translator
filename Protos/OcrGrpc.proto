@@ -20,8 +20,7 @@ message HealthResponse {
 message OcrRequest {
   bytes image = 1;
   string language = 2;
-  string device = 3;
-  string model_dir = 4;
+  string text_detection_model_name = 3;
 }
 
 message OcrResponse {

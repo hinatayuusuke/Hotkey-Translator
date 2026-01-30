@@ -107,7 +107,15 @@ public sealed class PaddleGrpcHost : IDisposable
         var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
         var modelDir = string.IsNullOrWhiteSpace(settings.PaddleModelDir) ? null : ResolvePath(settings.PaddleModelDir);
         var device = string.IsNullOrWhiteSpace(settings.PaddleDevice) ? "cpu" : settings.PaddleDevice.Trim();
+        if (string.Equals(device, "cpu", StringComparison.OrdinalIgnoreCase))
+        {
+            // WHY: PaddleOCR v5 GPU-only path is enforced; override cpu to gpu:0 for host startup.
+            device = "gpu:0";
+        }
         var language = ResolvePaddleLanguage(settings);
+        var detModel = string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName)
+            ? "PP-OCRv5_mobile_det"
+            : settings.PaddleTextDetectionModelName.Trim();
 
         var startInfo = new ProcessStartInfo
         {
@@ -132,6 +140,8 @@ public sealed class PaddleGrpcHost : IDisposable
         startInfo.ArgumentList.Add(device);
         startInfo.ArgumentList.Add("--lang");
         startInfo.ArgumentList.Add(language);
+        startInfo.ArgumentList.Add("--det-model");
+        startInfo.ArgumentList.Add(detModel);
         if (!string.IsNullOrWhiteSpace(modelDir))
         {
             startInfo.ArgumentList.Add("--model");

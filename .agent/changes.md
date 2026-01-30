@@ -2282,3 +2282,60 @@
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
+**2026-01-30 14:38 (Asia/Taipei) — Add ROI UI plan**
+
+### Summary
+- Expanded the ROI pHash/OCR plan with user UI design details.
+
+### Context / Goal
+- Provide a UI concept for managing multiple ROIs and translation gating settings.
+
+### Changes
+- Added ROI list/editor, gating controls, and UX notes to the plan.
+
+### Files Touched
+- Doc/Roi_Phash_Ocr_Translation_Plan.md — appended user UI section.
+
+### Behavioral Impact
+- None (documentation only).
+
+### Risk & Mitigation
+- Risk: None (no runtime changes).
+- Mitigation: N/A.
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+**2026-01-30 14:41 (Asia/Taipei) — Implement Paddle gRPC fixed-server contract**
+
+### Summary
+- Implemented language + detection model request contract with GPU enforcement for Paddle gRPC OCR.
+
+### Context / Goal
+- Align WPF and Python with fixed server settings while allowing UI-driven language and detection model selection.
+- Remove per-request device/model_dir and enforce GPU for PaddleOCR v5.
+
+### Changes
+- Updated gRPC protos to send only language and text_detection_model_name.
+- Added Paddle text detection model setting and passed it to the gRPC server.
+- Implemented engine pool on the Python side for language/model selection and updated OCR engine init signature.
+- Adjusted Paddle gRPC client request payload to match the new contract.
+
+### Files Touched
+- Protos/OcrGrpc.proto — removed device/model_dir fields, added text_detection_model_name.
+- OcrService/ocr.proto — same contract update for Python.
+- Models/AppSettings.cs — added PaddleTextDetectionModelName.
+- Services/PaddleGrpcHost.cs — enforce GPU and pass det-model.
+- Services/PaddleGrpcOcrProvider.cs — send language + text_detection_model_name only.
+- OcrService/ocr_engine.py — accept text_detection_model_name parameter.
+- OcrService/server.py — engine pool keyed by language/detection model and request handling.
+
+### Behavioral Impact
+- Paddle OCR requests now vary language and detection model only; device/model_dir are fixed server-side.
+- Host startup forces GPU when CPU is configured.
+
+### Risk & Mitigation
+- Risk: Protocol change requires WPF/Python to be updated together.
+- Mitigation: Both client and server protos updated in this change set.
+
+### Tests / Verification
+- 未実施（実装のみ）

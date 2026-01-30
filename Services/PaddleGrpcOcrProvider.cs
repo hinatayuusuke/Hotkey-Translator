@@ -41,8 +41,7 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
         {
             Image = Google.Protobuf.ByteString.CopyFrom(stream.ToArray()),
             Language = ResolvePaddleLanguage(settings),
-            Device = string.IsNullOrWhiteSpace(settings.PaddleDevice) ? "cpu" : settings.PaddleDevice.Trim(),
-            ModelDir = string.IsNullOrWhiteSpace(settings.PaddleModelDir) ? string.Empty : ResolvePath(settings.PaddleModelDir)
+            TextDetectionModelName = ResolveTextDetectionModelName(settings)
         };
 
         var response = await client.RecognizeAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -127,20 +126,14 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
         return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
     }
 
-    private static string ResolvePath(string path)
+    private static string ResolveTextDetectionModelName(AppSettings settings)
     {
-        if (Path.IsPathRooted(path))
+        if (!string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName))
         {
-            return path;
+            return settings.PaddleTextDetectionModelName.Trim();
         }
 
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return "PP-OCRv5_mobile_det";
     }
 
     private sealed class PaddleOcrResponse
