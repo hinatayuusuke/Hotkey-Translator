@@ -2471,3 +2471,27 @@
 
 ### Tests / Verification
 - 未実施（gRPCサーバの起動とOCR実行の手動確認が必要）
+**2026-01-30 16:01 (Asia/Taipei) — Disable overlay expansion for Paddle OCR**
+
+### Summary
+- Disabled overlay box expansion when using Paddle OCR to avoid oversized boxes.
+
+### Context / Goal
+- Paddle OCR produces larger detection boxes than WinRT.
+- Keep WinRT expansion behavior while rendering Paddle OCR boxes as-is.
+
+### Changes
+- Added an engine-aware flag to skip overlay expansion for Paddle OCR.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — gate overlay expansion by OCR engine.
+
+### Behavioral Impact
+- Paddle OCR overlays now use raw detection boxes; WinRT remains expanded.
+
+### Risk & Mitigation
+- Risk: Some Paddle boxes might feel tight for small text.
+- Mitigation: Expansion can be reintroduced later with a Paddle-specific ratio if needed.
+
+### Tests / Verification
+- 未実施（Paddle/WinRT切替の描画確認が必要）

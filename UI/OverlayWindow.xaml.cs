@@ -16,6 +16,7 @@ public partial class OverlayWindow : Window
     private Brush _background = new SolidColorBrush(Color.FromArgb(136, 0, 0, 0));
     private double _fontSize = 18;
     private bool _isFixedRoiOverlay;
+    private bool _expandOverlayRect = true;
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double OverlayExpandRatio = 0.05;
     private const double OverlayExpandFixedX = 3.0;
@@ -54,6 +55,8 @@ public partial class OverlayWindow : Window
         var background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
         _background = ApplyOverlayOpacity(background, settings.OverlayBackgroundOpacity);
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
+        // WHY: Paddle OCR boxes are already larger; avoid extra expansion in overlay.
+        _expandOverlayRect = settings.OcrEngine != OcrEngineKind.Paddle;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -61,7 +64,7 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Children.Clear();
         foreach (var item in items)
         {
-            var rect = ExpandOverlayRect(item.Rect);
+            var rect = _expandOverlayRect ? ExpandOverlayRect(item.Rect) : item.Rect;
             var availableWidth = rect.Width > 0
                 ? Math.Max(0, rect.Width - OverlayPadding.Left - OverlayPadding.Right)
                 : double.PositiveInfinity;
