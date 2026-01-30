@@ -46,6 +46,7 @@ public partial class MainWindow : Window
     private int _autoHideBaselineVersion;
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
+    private CancellationTokenSource? _translationOverlayCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private bool _overlayVisible;
@@ -61,6 +62,7 @@ public partial class MainWindow : Window
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
+    private const int TranslationOverlayDelayMs = 200;
 
     public MainWindow()
     {
@@ -135,6 +137,8 @@ public partial class MainWindow : Window
     {
         _runCts?.Cancel();
         _runCts?.Dispose();
+        _translationOverlayCts?.Cancel();
+        _translationOverlayCts?.Dispose();
         _hotkeyManager?.Dispose();
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
@@ -276,6 +280,7 @@ public partial class MainWindow : Window
         {
             SetBusyOverlay(false, null);
             Interlocked.Exchange(ref _runInProgress, 0);
+            _translationOverlayCts?.Cancel();
         }
     }
 
@@ -1711,9 +1716,27 @@ public partial class MainWindow : Window
         }
     }
 
-    private void OnTranslationStarted()
+    private async void OnTranslationStarted()
     {
         if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        {
+            return;
+        }
+
+        _translationOverlayCts?.Cancel();
+        _translationOverlayCts?.Dispose();
+        _translationOverlayCts = new CancellationTokenSource();
+        var token = _translationOverlayCts.Token;
+        try
+        {
+            await Task.Delay(TranslationOverlayDelayMs, token).ConfigureAwait(false);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (token.IsCancellationRequested || Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
         {
             return;
         }
@@ -1723,6 +1746,7 @@ public partial class MainWindow : Window
 
     private void OnTranslationCompleted()
     {
+        _translationOverlayCts?.Cancel();
         if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
         {
             return;

@@ -2621,3 +2621,28 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-01-30 19:39 (Asia/Taipei) — Delay translation loading overlay**
+
+### Summary
+- Added a short delay so the translating indicator only appears for non-instant translations.
+
+### Context / Goal
+- Avoid flicker when translation completes quickly.
+- Reuse the existing busy overlay message without extra UI.
+
+### Changes
+- Added a delayed translation overlay timer with cancellation on completion.
+- Canceled pending translation overlay when OCR run finishes or app closes.
+
+### Files Touched
+- `MainWindow.xaml.cs` — delayed "Translating..." display and cancellation logic.
+
+### Behavioral Impact
+- The translating overlay appears only if translation takes longer than ~200ms.
+
+### Risk & Mitigation
+- Risk: If translation completes just after delay, brief message swap may occur.
+- Mitigation: Delay is short and overlay is already visible during OCR.
+
+### Tests / Verification
+- `dotnet build`
