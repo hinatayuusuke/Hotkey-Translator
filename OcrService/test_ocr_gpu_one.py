@@ -1,6 +1,6 @@
 # test_ocr_gpu_one.py
-import sys
 import json
+import argparse
 from pathlib import Path
 
 import paddle
@@ -8,15 +8,18 @@ from ocr_engine import PaddleOcrEngine
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("image", nargs="?", default="test.png", help="input image path")
+    parser.add_argument("--lang", default="japan", help="OCR language (e.g. japan, en)")
+    parser.add_argument("--det-model", default="PP-OCRv5_mobile_det", help="text detection model name")
+    parser.add_argument("--device", default="gpu:0", help="Paddle device (gpu:0)")
+    args = parser.parse_args()
+
     print("paddle:", paddle.__version__)
     print("compiled_with_cuda:", paddle.device.is_compiled_with_cuda())
     print("paddle device:", paddle.device.get_device())
 
-    # --- 引数で画像ファイル指定 ---
-    if len(sys.argv) >= 2:
-        img_path = Path(sys.argv[1])
-    else:
-        img_path = Path("test.png")
+    img_path = Path(args.image)
 
     if not img_path.exists():
         raise FileNotFoundError(f"画像が見つかりません: {img_path.resolve()}")
@@ -25,7 +28,13 @@ def main():
     print("image:", img_path.name, "bytes:", len(image_bytes))
 
     # GPU必須（CPU禁止）
-    engine = PaddleOcrEngine(language="japan", device="gpu:0", model_dir=None, disable_model_source_check=True)
+    engine = PaddleOcrEngine(
+        language=args.lang,
+        device=args.device,
+        model_dir=None,
+        disable_model_source_check=True,
+        text_detection_model_name=args.det_model,
+    )
     out = engine.recognize(image_bytes)
 
     payload = json.loads(out)

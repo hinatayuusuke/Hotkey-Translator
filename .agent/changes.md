@@ -2495,3 +2495,28 @@
 
 ### Tests / Verification
 - 未実施（Paddle/WinRT切替の描画確認が必要）
+**2026-01-30 16:51 (Asia/Taipei) — Parameterize Paddle OCR test script**
+
+### Summary
+- Added CLI args to choose language and detection model when testing Paddle OCR engine.
+
+### Context / Goal
+- Allow quick validation of `ocr_engine.py` with different language/model combinations.
+- Keep GPU-only behavior while making test usage flexible.
+
+### Changes
+- Replaced manual argv handling with argparse and added `--lang`/`--det-model`/`--device` options.
+- Passed selected arguments into `PaddleOcrEngine` initialization.
+
+### Files Touched
+- `OcrService/test_ocr_gpu_one.py` — added argparse and parameterized engine init.
+
+### Behavioral Impact
+- Test script now accepts optional flags for language/model/device; defaults unchanged.
+
+### Risk & Mitigation
+- Risk: None; test script only.
+- Mitigation: Defaults preserve prior behavior.
+
+### Tests / Verification
+- 未実施（ローカル環境での実行が必要）
