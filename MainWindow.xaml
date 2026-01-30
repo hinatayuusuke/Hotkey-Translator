@@ -69,8 +69,6 @@
                             <ComboBox Grid.Column="1" x:Name="OcrEngineBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
-                                <ComboBoxItem Content="Florence-2 (Large/Base)" Tag="Florence2" />
-                                <ComboBoxItem Content="PaddleOCR-VL (vLLM)" Tag="PaddleVllm" />
                             </ComboBox>
                         </Grid>
 
@@ -216,15 +214,13 @@
                         </Grid.ColumnDefinitions>
 
                         <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0">
-                            <ListBox x:Name="SettingsCategoryList" SelectionChanged="OnSettingsCategoryChanged" SelectedIndex="0">
-                                <ListBoxItem Content="OCR" />
-                                <ListBoxItem Content="Paddle OCR" />
-                                <ListBoxItem Content="Florence-2 (uv)" />
-                                <ListBoxItem Content="PaddleOCR-VL (vLLM)" />
-                                <ListBoxItem Content="Translation" />
-                                <ListBoxItem Content="Hotkeys" />
-                            </ListBox>
-                        </Border>
+                                <ListBox x:Name="SettingsCategoryList" SelectionChanged="OnSettingsCategoryChanged" SelectedIndex="0">
+                                    <ListBoxItem Content="OCR" />
+                                    <ListBoxItem Content="Paddle OCR" />
+                                    <ListBoxItem Content="Translation" />
+                                    <ListBoxItem Content="Hotkeys" />
+                                </ListBox>
+                            </Border>
 
                         <StackPanel Grid.Column="1" Margin="12,0,0,0">
                             <StackPanel x:Name="SettingsPanelOcr">
@@ -415,46 +411,6 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                     <TextBlock Text="Model dir" Width="90" VerticalAlignment="Center" />
                                     <TextBox x:Name="PaddleModelDirBox" Width="180" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <StackPanel x:Name="SettingsPanelFlorence" Visibility="Collapsed" Margin="0,8,0,0">
-                                <TextBlock Text="Florence-2 (uv)" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Project" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="FlorenceProjectDirBox" Width="180" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Model" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="FlorenceModelNameBox" Width="220" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Device" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="FlorenceDeviceBox" Width="80" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="uv path" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="FlorenceUvPathBox" Width="180" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Model dir" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="FlorenceModelDirBox" Width="220" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                            </StackPanel>
-
-                            <StackPanel x:Name="SettingsPanelVllm" Visibility="Collapsed" Margin="0,8,0,0">
-                                <TextBlock Text="PaddleOCR-VL (vLLM)" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Base URL" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="VllmBaseUrlBox" Width="220" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="Model" Width="90" VerticalAlignment="Center" />
-                                    <TextBox x:Name="VllmModelNameBox" Width="220" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                    <TextBlock Text="API key" Width="90" VerticalAlignment="Center" />
-                                    <PasswordBox x:Name="VllmApiKeyBox" Width="220" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
                             </StackPanel>
 

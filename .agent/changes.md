@@ -2362,3 +2362,55 @@
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
+**2026-01-30 14:59 (Asia/Taipei) — Simplify OCR engine UI to WinRT/Paddle**
+
+### Summary
+- Removed Florence and PaddleVLLM OCR options from UI and runtime selection logic.
+
+### Context / Goal
+- Keep only WinRT and PaddleOCRv5 as selectable engines per the UI simplification plan.
+- Reduce settings surface and avoid unused engine branches.
+
+### Changes
+- Trimmed OCR engine ComboBox to two options and removed Florence/VLLM settings panels.
+- Updated settings mapping and engine selection logic to ignore removed engines.
+- Removed Florence/VLLM branches from OcrEngine.
+
+### Files Touched
+- MainWindow.xaml — removed Florence/VLLM items and panels.
+- MainWindow.xaml.cs — simplified engine selection and settings panel routing.
+- Services/OcrEngine.cs — removed Florence/VLLM provider branches.
+
+### Behavioral Impact
+- OCR engine selection now only allows WinRT or PaddleOCRv5; legacy selections fall back to WinRT.
+
+### Risk & Mitigation
+- Risk: Users with Florence/VLLM in settings lose access to those engines.
+- Mitigation: Default mapping falls back to WinRT without crashing.
+
+### Tests / Verification
+- 未実施（UI整理のみ）
+**2026-01-30 15:00 (Asia/Taipei) — Remove Florence/VLLM settings bindings**
+
+### Summary
+- Removed Florence/VLLM UI bindings from settings save path after UI cleanup.
+
+### Context / Goal
+- Fix build errors caused by deleted UI controls while keeping OCR engine options trimmed.
+- Ensure settings save path only references existing UI elements.
+
+### Changes
+- Deleted Florence/VLLM settings assignments in SaveSettingsAsync.
+
+### Files Touched
+- MainWindow.xaml.cs — removed Florence/VLLM control references in settings save.
+
+### Behavioral Impact
+- Florence/VLLM settings are no longer persisted via UI (controls removed already).
+
+### Risk & Mitigation
+- Risk: Users with old settings may lose those values when saving.
+- Mitigation: Values are no longer used and engine options are removed.
+
+### Tests / Verification
+- 未実施（ビルド修正のみ）
