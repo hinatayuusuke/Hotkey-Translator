@@ -2236,3 +2236,49 @@
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
+**2026-01-30 14:29 (Asia/Taipei) — Update Paddle gRPC fixed server plan**
+
+### Summary
+- Updated the Paddle gRPC plan to include language + detection model selection from UI.
+
+### Context / Goal
+- Align gRPC request contract with UI-driven language and detection model selection.
+
+### Changes
+- Revised fixed-server plan to send language and 	ext_detection_model_name only.
+
+### Files Touched
+- Doc/PaddleOcr_Grpc_FixedServer_Plan.md — updated request contract and steps.
+
+### Behavioral Impact
+- None (documentation only).
+
+### Risk & Mitigation
+- Risk: None (no runtime changes).
+- Mitigation: N/A.
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+**2026-01-30 14:30 (Asia/Taipei) — Add ROI pHash/translation gating plan**
+
+### Summary
+- Added a plan for multi-ROI pHash monitoring with OCR/translation gating and cache reuse.
+
+### Context / Goal
+- Reduce OCR/translation load by only processing changed ROIs and skipping low-value text.
+
+### Changes
+- Documented ROI-based pHash monitoring, OCR gating thresholds, and cache reuse flow.
+
+### Files Touched
+- Doc/Roi_Phash_Ocr_Translation_Plan.md — new implementation plan.
+
+### Behavioral Impact
+- None (documentation only).
+
+### Risk & Mitigation
+- Risk: None (no runtime changes).
+- Mitigation: N/A.
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
