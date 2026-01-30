@@ -4,7 +4,10 @@ import logging
 import os
 import subprocess
 import sys
+import time
+from collections import OrderedDict
 from concurrent import futures
+from threading import Lock
 
 import grpc
 
@@ -37,25 +40,63 @@ import ocr_pb2_grpc
 
 
 class EnginePool:
-    def __init__(self, default_language: str, device: str, model_dir: str | None, default_det_model: str):
+    def __init__(
+        self,
+        default_language: str,
+        device: str,
+        model_dir: str | None,
+        default_det_model: str,
+        max_engines: int = 2,
+        ttl_seconds: int = 1800,
+    ):
         self._default_language = default_language
         self._device = device
         self._model_dir = model_dir
         self._default_det_model = default_det_model
-        self._engines: dict[tuple[str, str], PaddleOcrEngine] = {}
+        # WHY: prevent unbounded memory usage when switching language/model combos.
+        self._max_engines = max(1, max_engines)
+        self._ttl_seconds = max(60, ttl_seconds)
+        self._engines: OrderedDict[tuple[str, str], tuple[PaddleOcrEngine, float]] = OrderedDict()
+        self._lock = Lock()
+
+    def _evict_expired(self, now: float) -> None:
+        if not self._engines:
+            return
+        expired_keys = [
+            key for key, (_, last_used) in self._engines.items() if now - last_used > self._ttl_seconds
+        ]
+        for key in expired_keys:
+            self._engines.pop(key, None)
+            logging.info("Evicted PaddleOCR engine (TTL): %s", key)
+
+    def _evict_lru(self) -> None:
+        while len(self._engines) > self._max_engines:
+            key, _ = self._engines.popitem(last=False)
+            logging.info("Evicted PaddleOCR engine (LRU): %s", key)
 
     def get(self, language: str | None, det_model: str | None) -> PaddleOcrEngine:
         lang = (language or self._default_language or "japan").strip() or "japan"
         model = (det_model or self._default_det_model or "PP-OCRv5_mobile_det").strip() or "PP-OCRv5_mobile_det"
         key = (lang, model)
-        if key not in self._engines:
-            self._engines[key] = PaddleOcrEngine(
+        now = time.monotonic()
+        with self._lock:
+            self._evict_expired(now)
+            if key in self._engines:
+                engine, _ = self._engines[key]
+                self._engines[key] = (engine, now)
+                self._engines.move_to_end(key)
+                return engine
+
+            engine = PaddleOcrEngine(
                 language=lang,
                 device=self._device,
                 model_dir=self._model_dir,
                 text_detection_model_name=model,
             )
-        return self._engines[key]
+            self._engines[key] = (engine, now)
+            self._engines.move_to_end(key)
+            self._evict_lru()
+            return engine
 
 
 class OcrService(ocr_pb2_grpc.OcrServiceServicer):
@@ -94,7 +135,8 @@ def main() -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
     logging.info("Initializing PaddleOCR engine pool...")
-    engine_pool = EnginePool(args.lang, args.device, args.model, args.det_model)
+    engine_pool = EnginePool(args.lang, args.device, args.model, args.det_model, max_engines=2, ttl_seconds=1800)
+    logging.info("PaddleOCR EnginePool: max=%s ttl=%ss", 2, 1800)
 
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
     ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine_pool), server)

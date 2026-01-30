@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private bool _autoHideBaselinePending;
     private int _autoHideBaselineVersion;
     private CancellationTokenSource? _runCts;
+    private int _runInProgress;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private bool _overlayVisible;
@@ -258,12 +259,48 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (Interlocked.Exchange(ref _runInProgress, 1) == 1)
+        {
+            AppendLog("Run skipped: OCR already running.");
+            return;
+        }
+
+        var isFirstRun = !_hasRunOnce;
         _hasRunOnce = true;
         EnableOverlay();
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
-        await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+        SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
+        try
+        {
+            await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+        }
+        finally
+        {
+            SetBusyOverlay(false, null);
+            Interlocked.Exchange(ref _runInProgress, 0);
+        }
+    }
+
+    private void SetBusyOverlay(bool visible, string? message)
+    {
+        if (BusyOverlay == null || BusyOverlayText == null)
+        {
+            return;
+        }
+
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => SetBusyOverlay(visible, message));
+            return;
+        }
+
+        BusyOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        if (!string.IsNullOrWhiteSpace(message))
+        {
+            BusyOverlayText.Text = message;
+        }
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)

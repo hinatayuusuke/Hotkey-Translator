@@ -2443,3 +2443,31 @@
 
 ### Tests / Verification
 - 未実施（UIとgRPCの手動確認が必要）
+**2026-01-30 15:25 (Asia/Taipei) — Add Paddle OCR cache limits and busy overlay**
+
+### Summary
+- Added LRU/TTL limits to PaddleOCR engine cache and a UI busy overlay to prevent OCR spam during initialization.
+
+### Context / Goal
+- Keep PaddleOCR server memory bounded when switching language/model.
+- Improve UX by blocking repeated OCR triggers while initialization is in progress.
+
+### Changes
+- Implemented EnginePool LRU (max 2) and TTL eviction with logging in gRPC server.
+- Added busy overlay UI and run guard to prevent concurrent OCR runs.
+
+### Files Touched
+- `OcrService/server.py` — added LRU/TTL cache eviction and logging.
+- `MainWindow.xaml` — added busy overlay panel.
+- `MainWindow.xaml.cs` — added run guard and overlay toggle during OCR.
+
+### Behavioral Impact
+- PaddleOCR engine cache is limited to 2 entries with long TTL; old entries are evicted.
+- OCR hotkeys/buttons are ignored while a run is already in progress, with a visible loading overlay.
+
+### Risk & Mitigation
+- Risk: Evicted engines may reinitialize, causing a temporary delay.
+- Mitigation: TTL is long and cache size is small but sufficient for typical use.
+
+### Tests / Verification
+- 未実施（gRPCサーバの起動とOCR実行の手動確認が必要）
