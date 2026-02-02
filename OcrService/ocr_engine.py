@@ -6,7 +6,7 @@ from typing import Optional, Any
 
 import numpy as np
 import paddle
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 class PaddleOcrEngine:
@@ -90,6 +90,10 @@ class PaddleOcrEngine:
 
         # bytes -> RGB ndarray (H, W, 3) uint8
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        padding_px = 40
+        if padding_px > 0:
+            padding_color = self._estimate_padding_color(image)
+            image = ImageOps.expand(image, border=padding_px, fill=padding_color)
         img_np = np.array(image)
 
         # PaddleOCR 3.x の推奨: predict()
@@ -98,6 +102,13 @@ class PaddleOcrEngine:
         #print(repr(result))
         #print("=== RAW OCR RESULT END ===")
         lines = self._parse_v5_predict_result(result)
+        if padding_px > 0 and lines:
+            for line in lines:
+                box = line.get("box")
+                if not box or len(box) < 2:
+                    continue
+                box[0] = max(0.0, box[0] - padding_px)
+                box[1] = max(0.0, box[1] - padding_px)
         return json.dumps({"lines": lines}, ensure_ascii=False)
 
     @staticmethod
@@ -162,3 +173,28 @@ class PaddleOcrEngine:
             )
 
         return lines
+
+    @staticmethod
+    def _estimate_padding_color(image: Image.Image) -> tuple[int, int, int]:
+        arr = np.asarray(image)
+        if arr.ndim != 3 or arr.shape[2] < 3:
+            return (0, 0, 0)
+        height, width = arr.shape[0], arr.shape[1]
+        edge = max(1, min(4, width // 2, height // 2))
+        top = arr[:edge, :, :3]
+        bottom = arr[height - edge : height, :, :3]
+        left = arr[:, :edge, :3]
+        right = arr[:, width - edge : width, :3]
+        samples = np.concatenate(
+            [
+                top.reshape(-1, 3),
+                bottom.reshape(-1, 3),
+                left.reshape(-1, 3),
+                right.reshape(-1, 3),
+            ],
+            axis=0,
+        )
+        if samples.size == 0:
+            return (0, 0, 0)
+        mean = samples.mean(axis=0)
+        return (int(mean[0]), int(mean[1]), int(mean[2]))

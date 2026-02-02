@@ -2756,3 +2756,29 @@
 
 ### Tests / Verification
 - 未実施（ローカル実行が必要）
+**2026-02-02 15:54 (Asia/Taipei) — Add padding + clamp for Paddle OCR preprocessing**
+
+### Summary
+- Added padding with background color estimation and safe coordinate clamp for PaddleOCR preprocessing.
+
+### Context / Goal
+- Reduce edge clipping for text near image borders.
+- Ensure corrected boxes never go negative after padding compensation.
+
+### Changes
+- Added padding expansion using estimated border color before OCR.
+- Subtracted padding from result boxes and clamped x/y to non-negative.
+- Added helper to estimate padding color from image edges.
+
+### Files Touched
+- `OcrService/ocr_engine.py` — added padding, coordinate correction, and color estimation.
+
+### Behavioral Impact
+- OCR runs on padded images; reported boxes are shifted back and clamped to original coordinates.
+
+### Risk & Mitigation
+- Risk: Padding could slightly change detection near edges.
+- Mitigation: Padding color is estimated from image borders to minimize artifacts.
+
+### Tests / Verification
+- 未実施（OCRの結果確認が必要）
