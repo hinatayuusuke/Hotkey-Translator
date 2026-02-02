@@ -62,12 +62,16 @@ class PaddleOcrEngine:
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
 
+        source_key = (language or "").strip().lower()
+        lang_for_engine = "japan" if source_key.startswith("ja") else "en"
+        rec_model_name = self._resolve_rec_model_name(source_key)
+
         kwargs: dict[str, Any] = {
-            "lang": language,
+            "lang": lang_for_engine,
             "ocr_version": ocr_version,  # "PP-OCRv5"
             "use_textline_orientation": bool(use_textline_orientation),
             "text_detection_model_name": text_detection_model_name,
-            "text_recognition_model_name": "PP-OCRv5_server_rec",
+            "text_recognition_model_name": rec_model_name,
         }
 
         # model_dir を使う場合は PaddleOCR 3.x の仕様に沿ってください。
@@ -76,6 +80,16 @@ class PaddleOcrEngine:
             kwargs["det_model_dir"] = model_dir
 
         self._engine = PaddleOCR(**kwargs)
+
+    @staticmethod
+    def _resolve_rec_model_name(source_key: str) -> str:
+        if source_key == "en-mixed":
+            return "latin_PP-OCRv5_mobile_rec"
+        if source_key.startswith("en"):
+            return "en_PP-OCRv5_mobile_rec"
+        if source_key.startswith("ru"):
+            return "eslav_PP-OCRv5_mobile_rec"
+        return "PP-OCRv5_server_rec"
 
     def recognize(self, image_bytes: bytes) -> str:
         # 念のためGPU固定チェック
