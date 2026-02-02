@@ -2706,3 +2706,53 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-02 15:20 (Asia/Taipei) — Add auto recognition model selection**
+
+### Summary
+- Added an Auto option for Paddle OCR recognition model that maps from Source language.
+
+### Context / Goal
+- Let recognition model follow Source language when set to Auto, otherwise keep the selected model.
+- Keep per-request behavior without requiring gRPC restarts.
+
+### Changes
+- Added Auto entry to recognition model dropdown.
+- Resolved Auto to en/eslav/server_rec based on Source language in gRPC client and host.
+
+### Files Touched
+- `MainWindow.xaml` — added Auto entry in recognition model dropdown.
+- `Services/PaddleGrpcOcrProvider.cs` — resolve Auto to recognition model by Source language.
+- `Services/PaddleGrpcHost.cs` — resolve Auto for server startup defaults.
+
+### Behavioral Impact
+- Selecting Auto maps Source=en to en_PP-OCRv5_mobile_rec, Source=ru to eslav_PP-OCRv5_mobile_rec; others use PP-OCRv5_server_rec.
+
+### Risk & Mitigation
+- Risk: Users may expect different mappings for other languages.
+- Mitigation: Auto is optional; manual selection remains available.
+
+### Tests / Verification
+- `dotnet build`
+**2026-02-02 15:28 (Asia/Taipei) — Add rec model flag to Paddle OCR test**
+
+### Summary
+- Extended the Paddle OCR test script to accept a recognition model argument.
+
+### Context / Goal
+- Keep test coverage aligned with new recognition model selection.
+
+### Changes
+- Added `--rec-model` CLI flag and passed it into `PaddleOcrEngine`.
+
+### Files Touched
+- `OcrService/test_ocr_gpu_one.py` — added recognition model argument.
+
+### Behavioral Impact
+- Test script can now validate specific recognition models.
+
+### Risk & Mitigation
+- Risk: None; test script only.
+- Mitigation: Defaults preserve previous behavior.
+
+### Tests / Verification
+- 未実施（ローカル実行が必要）

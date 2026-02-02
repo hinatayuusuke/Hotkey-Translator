@@ -116,9 +116,7 @@ public sealed class PaddleGrpcHost : IDisposable
         var detModel = string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName)
             ? "PP-OCRv5_mobile_det"
             : settings.PaddleTextDetectionModelName.Trim();
-        var recModel = string.IsNullOrWhiteSpace(settings.PaddleTextRecognitionModelName)
-            ? "PP-OCRv5_server_rec"
-            : settings.PaddleTextRecognitionModelName.Trim();
+        var recModel = ResolveTextRecognitionModelName(settings);
 
         var startInfo = new ProcessStartInfo
         {
@@ -347,5 +345,42 @@ public sealed class PaddleGrpcHost : IDisposable
     {
         var source = settings.SourceLanguage?.Trim() ?? string.Empty;
         return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
+    }
+
+    private static string ResolveTextRecognitionModelName(AppSettings settings)
+    {
+        var selected = settings.PaddleTextRecognitionModelName?.Trim();
+        if (string.IsNullOrWhiteSpace(selected))
+        {
+            return "PP-OCRv5_server_rec";
+        }
+
+        if (selected.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveRecognitionModelByLanguage(settings.SourceLanguage);
+        }
+
+        return selected;
+    }
+
+    private static string ResolveRecognitionModelByLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return "PP-OCRv5_server_rec";
+        }
+
+        var normalized = language.Trim();
+        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+        {
+            return "en_PP-OCRv5_mobile_rec";
+        }
+
+        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+        {
+            return "eslav_PP-OCRv5_mobile_rec";
+        }
+
+        return "PP-OCRv5_server_rec";
     }
 }

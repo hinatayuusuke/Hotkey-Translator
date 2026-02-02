@@ -134,9 +134,36 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
 
     private static string ResolveTextRecognitionModelName(AppSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleTextRecognitionModelName))
+        var selected = settings.PaddleTextRecognitionModelName?.Trim();
+        if (string.IsNullOrWhiteSpace(selected))
         {
-            return settings.PaddleTextRecognitionModelName.Trim();
+            return "PP-OCRv5_server_rec";
+        }
+
+        if (selected.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveRecognitionModelByLanguage(settings.SourceLanguage);
+        }
+
+        return selected;
+    }
+
+    private static string ResolveRecognitionModelByLanguage(string? language)
+    {
+        if (string.IsNullOrWhiteSpace(language))
+        {
+            return "PP-OCRv5_server_rec";
+        }
+
+        var normalized = language.Trim();
+        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+        {
+            return "en_PP-OCRv5_mobile_rec";
+        }
+
+        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+        {
+            return "eslav_PP-OCRv5_mobile_rec";
         }
 
         return "PP-OCRv5_server_rec";

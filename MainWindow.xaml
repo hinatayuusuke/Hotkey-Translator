@@ -403,6 +403,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
                                     <ComboBox x:Name="PaddleRecognitionModelBox" Width="220" SelectionChanged="OnSettingChanged">
+                                        <ComboBoxItem Content="Auto (source language)" Tag="auto" />
                                         <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
                                         <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
                                         <ComboBoxItem Content="Latin (latin_PP-OCRv5_mobile_rec)" Tag="latin_PP-OCRv5_mobile_rec" />

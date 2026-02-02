@@ -12,6 +12,7 @@ def main():
     parser.add_argument("image", nargs="?", default="test.png", help="input image path")
     parser.add_argument("--lang", default="japan", help="OCR language (e.g. japan, en)")
     parser.add_argument("--det-model", default="PP-OCRv5_mobile_det", help="text detection model name")
+    parser.add_argument("--rec-model", default="PP-OCRv5_server_rec", help="text recognition model name")
     parser.add_argument("--device", default="gpu:0", help="Paddle device (gpu:0)")
     args = parser.parse_args()
 
@@ -34,6 +35,7 @@ def main():
         model_dir=None,
         disable_model_source_check=True,
         text_detection_model_name=args.det_model,
+        text_recognition_model_name=args.rec_model,
     )
     out = engine.recognize(image_bytes)
 
