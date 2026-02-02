@@ -2677,3 +2677,32 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-02 15:12 (Asia/Taipei) — Send Paddle OCR recognition model per request**
+
+### Summary
+- Added `text_recognition_model_name` to gRPC requests so recognition model changes apply without server restart.
+
+### Context / Goal
+- Match the per-request behavior of `text_detection_model_name`.
+- Avoid restarting the Paddle gRPC server when changing recognition model in UI.
+
+### Changes
+- Extended OcrRequest in protos with `text_recognition_model_name`.
+- Sent recognition model from the Paddle gRPC client and consumed it on the server.
+- Updated server proto regeneration to refresh when `ocr.proto` changes.
+
+### Files Touched
+- `Protos/OcrGrpc.proto` — added `text_recognition_model_name` field.
+- `OcrService/ocr.proto` — added `text_recognition_model_name` field.
+- `Services/PaddleGrpcOcrProvider.cs` — send recognition model in requests.
+- `OcrService/server.py` — use request recognition model and auto-regenerate proto on change.
+
+### Behavioral Impact
+- Recognition model selection now applies immediately per OCR request; no gRPC restart required.
+
+### Risk & Mitigation
+- Risk: Older generated Python stubs may miss the new field.
+- Mitigation: Server now regenerates stubs when `ocr.proto` changes.
+
+### Tests / Verification
+- `dotnet build`

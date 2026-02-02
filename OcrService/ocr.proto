@@ -19,6 +19,7 @@ message OcrRequest {
   bytes image = 1;
   string language = 2;
   string text_detection_model_name = 3;
+  string text_recognition_model_name = 4;
 }
 
 message OcrResponse {

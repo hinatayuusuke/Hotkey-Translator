@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tocr.proto\x12\x03ocr\"\x0f\n\rHealthRequest\"0\n\x0eHealthResponse\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"P\n\nOcrRequest\x12\r\n\x05image\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t\x12!\n\x19text_detection_model_name\x18\x03 \x01(\t\"\x1b\n\x0bOcrResponse\x12\x0c\n\x04json\x18\x01 \x01(\t2o\n\nOcrService\x12\x31\n\x06Health\x12\x12.ocr.HealthRequest\x1a\x13.ocr.HealthResponse\x12.\n\tRecognize\x12\x0f.ocr.OcrRequest\x1a\x10.ocr.OcrResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\tocr.proto\x12\x03ocr\"\x0f\n\rHealthRequest\"0\n\x0eHealthResponse\x12\r\n\x05ready\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"u\n\nOcrRequest\x12\r\n\x05image\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t\x12!\n\x19text_detection_model_name\x18\x03 \x01(\t\x12#\n\x1btext_recognition_model_name\x18\x04 \x01(\t\"\x1b\n\x0bOcrResponse\x12\x0c\n\x04json\x18\x01 \x01(\t2o\n\nOcrService\x12\x31\n\x06Health\x12\x12.ocr.HealthRequest\x1a\x13.ocr.HealthResponse\x12.\n\tRecognize\x12\x0f.ocr.OcrRequest\x1a\x10.ocr.OcrResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -36,9 +36,9 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_HEALTHRESPONSE']._serialized_start=35
   _globals['_HEALTHRESPONSE']._serialized_end=83
   _globals['_OCRREQUEST']._serialized_start=85
-  _globals['_OCRREQUEST']._serialized_end=165
-  _globals['_OCRRESPONSE']._serialized_start=167
-  _globals['_OCRRESPONSE']._serialized_end=194
-  _globals['_OCRSERVICE']._serialized_start=196
-  _globals['_OCRSERVICE']._serialized_end=307
+  _globals['_OCRREQUEST']._serialized_end=202
+  _globals['_OCRRESPONSE']._serialized_start=204
+  _globals['_OCRRESPONSE']._serialized_end=231
+  _globals['_OCRSERVICE']._serialized_start=233
+  _globals['_OCRSERVICE']._serialized_end=344
 # @@protoc_insertion_point(module_scope)

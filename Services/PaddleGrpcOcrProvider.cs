@@ -41,7 +41,8 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
         {
             Image = Google.Protobuf.ByteString.CopyFrom(stream.ToArray()),
             Language = ResolvePaddleLanguage(settings),
-            TextDetectionModelName = ResolveTextDetectionModelName(settings)
+            TextDetectionModelName = ResolveTextDetectionModelName(settings),
+            TextRecognitionModelName = ResolveTextRecognitionModelName(settings)
         };
 
         var response = await client.RecognizeAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -129,6 +130,16 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider
         }
 
         return "PP-OCRv5_mobile_det";
+    }
+
+    private static string ResolveTextRecognitionModelName(AppSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.PaddleTextRecognitionModelName))
+        {
+            return settings.PaddleTextRecognitionModelName.Trim();
+        }
+
+        return "PP-OCRv5_server_rec";
     }
 
     private sealed class PaddleOcrResponse

@@ -15,20 +15,29 @@ from ocr_engine import PaddleOcrEngine
 
 
 def ensure_proto() -> None:
-    if os.path.exists(os.path.join(os.path.dirname(__file__), "ocr_pb2.py")):
-        return
+    base_dir = os.path.dirname(__file__)
+    proto_path = os.path.join(base_dir, "ocr.proto")
+    pb2_path = os.path.join(base_dir, "ocr_pb2.py")
+    pb2_grpc_path = os.path.join(base_dir, "ocr_pb2_grpc.py")
+    if os.path.exists(pb2_path) and os.path.exists(pb2_grpc_path):
+        try:
+            proto_mtime = os.path.getmtime(proto_path)
+            if os.path.getmtime(pb2_path) >= proto_mtime and os.path.getmtime(pb2_grpc_path) >= proto_mtime:
+                return
+        except OSError:
+            pass
 
     cmd = [
         sys.executable,
         "-m",
         "grpc_tools.protoc",
         "-I",
-        os.path.dirname(__file__),
+        base_dir,
         "--python_out",
-        os.path.dirname(__file__),
+        base_dir,
         "--grpc_python_out",
-        os.path.dirname(__file__),
-        os.path.join(os.path.dirname(__file__), "ocr.proto"),
+        base_dir,
+        proto_path,
     ]
     subprocess.check_call(cmd)
 
@@ -76,11 +85,11 @@ class EnginePool:
             key, _ = self._engines.popitem(last=False)
             logging.info("Evicted PaddleOCR engine (LRU): %s", key)
 
-    def get(self, language: str | None, det_model: str | None) -> PaddleOcrEngine:
+    def get(self, language: str | None, det_model: str | None, rec_model: str | None) -> PaddleOcrEngine:
         lang = (language or self._default_language or "japan").strip() or "japan"
         model = (det_model or self._default_det_model or "PP-OCRv5_mobile_det").strip() or "PP-OCRv5_mobile_det"
-        rec_model = (self._default_rec_model or "PP-OCRv5_server_rec").strip() or "PP-OCRv5_server_rec"
-        key = (lang, model, rec_model)
+        rec = (rec_model or self._default_rec_model or "PP-OCRv5_server_rec").strip() or "PP-OCRv5_server_rec"
+        key = (lang, model, rec)
         now = time.monotonic()
         with self._lock:
             self._evict_expired(now)
@@ -95,7 +104,7 @@ class EnginePool:
                 device=self._device,
                 model_dir=self._model_dir,
                 text_detection_model_name=model,
-                text_recognition_model_name=rec_model,
+                text_recognition_model_name=rec,
             )
             self._engines[key] = (engine, now)
             self._engines.move_to_end(key)
@@ -118,7 +127,11 @@ class OcrService(ocr_pb2_grpc.OcrServiceServicer):
             return ocr_pb2.OcrResponse()
 
         try:
-            engine = self._engines.get(request.language, request.text_detection_model_name)
+            engine = self._engines.get(
+                request.language,
+                request.text_detection_model_name,
+                request.text_recognition_model_name,
+            )
             payload = engine.recognize(request.image)
             return ocr_pb2.OcrResponse(json=payload)
         except Exception as exc:
