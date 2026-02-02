@@ -400,6 +400,23 @@
                                         <ComboBoxItem Content="Server (PP-OCRv5_server_det)" Tag="PP-OCRv5_server_det" />
                                     </ComboBox>
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="PaddleRecognitionModelBox" Width="220" SelectionChanged="OnSettingChanged">
+                                        <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
+                                        <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Latin (latin_PP-OCRv5_mobile_rec)" Tag="latin_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="East Slavic (eslav_PP-OCRv5_mobile_rec)" Tag="eslav_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Korean (korean_PP-OCRv5_mobile_rec)" Tag="korean_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Thai (th_PP-OCRv5_mobile_rec)" Tag="th_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Greek (el_PP-OCRv5_mobile_rec)" Tag="el_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Arabic (arabic_PP-OCRv5_mobile_rec)" Tag="arabic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Cyrillic (cyrillic_PP-OCRv5_mobile_rec)" Tag="cyrillic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Devanagari (devanagari_PP-OCRv5_mobile_rec)" Tag="devanagari_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Telugu (te_PP-OCRv5_mobile_rec)" Tag="te_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
+                                    </ComboBox>
+                                </StackPanel>
                                 <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
                             </StackPanel>
 

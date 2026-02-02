@@ -26,6 +26,7 @@ class PaddleOcrEngine:
         use_textline_orientation: bool = True,
         ocr_version: str = "PP-OCRv5",
         text_detection_model_name: str = "PP-OCRv5_mobile_det",
+        text_recognition_model_name: str = "PP-OCRv5_server_rec",
     ):
         try:
             from paddleocr import PaddleOCR
@@ -64,7 +65,7 @@ class PaddleOcrEngine:
 
         source_key = (language or "").strip().lower()
         lang_for_engine = "japan" if source_key.startswith("ja") else "en"
-        rec_model_name = self._resolve_rec_model_name(source_key)
+        rec_model_name = (text_recognition_model_name or "PP-OCRv5_server_rec").strip() or "PP-OCRv5_server_rec"
 
         kwargs: dict[str, Any] = {
             "lang": lang_for_engine,
@@ -80,16 +81,6 @@ class PaddleOcrEngine:
             kwargs["det_model_dir"] = model_dir
 
         self._engine = PaddleOCR(**kwargs)
-
-    @staticmethod
-    def _resolve_rec_model_name(source_key: str) -> str:
-        if source_key == "en-mixed":
-            return "latin_PP-OCRv5_mobile_rec"
-        if source_key.startswith("en"):
-            return "en_PP-OCRv5_mobile_rec"
-        if source_key.startswith("ru"):
-            return "eslav_PP-OCRv5_mobile_rec"
-        return "PP-OCRv5_server_rec"
 
     def recognize(self, image_bytes: bytes) -> str:
         # 念のためGPU固定チェック

@@ -2646,3 +2646,34 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-02 15:02 (Asia/Taipei) — Add Paddle OCR recognition model setting**
+
+### Summary
+- Added a Paddle OCR recognition model selection in settings and wired it to the gRPC server.
+
+### Context / Goal
+- Let users choose `text_recognition_model_name` via Paddle OCR settings.
+- Keep changes scoped to Paddle OCR without affecting WinRT/translation.
+
+### Changes
+- Added `PaddleTextRecognitionModelName` to settings and UI binding.
+- Passed recognition model to Paddle gRPC host and server.
+- Used the selected recognition model when initializing PaddleOCR.
+
+### Files Touched
+- `Models/AppSettings.cs` — added Paddle recognition model setting.
+- `MainWindow.xaml` — added recognition model dropdown in Paddle OCR settings.
+- `MainWindow.xaml.cs` — save/apply recognition model selection.
+- `Services/PaddleGrpcHost.cs` — pass `--rec-model` to gRPC server.
+- `OcrService/server.py` — accept `--rec-model` and include it in engine cache.
+- `OcrService/ocr_engine.py` — use provided recognition model name.
+
+### Behavioral Impact
+- Paddle OCR uses the selected recognition model; defaults remain server_rec.
+
+### Risk & Mitigation
+- Risk: Invalid model names could break PaddleOCR init.
+- Mitigation: UI uses a fixed dropdown list of valid model names.
+
+### Tests / Verification
+- `dotnet build`

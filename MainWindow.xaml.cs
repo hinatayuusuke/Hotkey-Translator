@@ -339,6 +339,7 @@ public partial class MainWindow : Window
             _ => "WinRt"
         });
         SetComboBoxByTag(PaddleDetectionModelBox, settings.PaddleTextDetectionModelName);
+        SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -890,6 +891,7 @@ public partial class MainWindow : Window
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;
         settings.OcrEngine = GetOcrEngineKind();
         settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
+        settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();

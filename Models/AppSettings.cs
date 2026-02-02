@@ -60,6 +60,7 @@ public sealed class AppSettings
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
+    public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";
     public bool EnablePaddleGrpcHost { get; set; } = true;
     public string PaddleGrpcProjectDir { get; set; } = "OcrService";
     public string PaddleGrpcUvPath { get; set; } = "uv";

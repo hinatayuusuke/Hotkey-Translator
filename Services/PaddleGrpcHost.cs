@@ -116,6 +116,9 @@ public sealed class PaddleGrpcHost : IDisposable
         var detModel = string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName)
             ? "PP-OCRv5_mobile_det"
             : settings.PaddleTextDetectionModelName.Trim();
+        var recModel = string.IsNullOrWhiteSpace(settings.PaddleTextRecognitionModelName)
+            ? "PP-OCRv5_server_rec"
+            : settings.PaddleTextRecognitionModelName.Trim();
 
         var startInfo = new ProcessStartInfo
         {
@@ -142,6 +145,8 @@ public sealed class PaddleGrpcHost : IDisposable
         startInfo.ArgumentList.Add(language);
         startInfo.ArgumentList.Add("--det-model");
         startInfo.ArgumentList.Add(detModel);
+        startInfo.ArgumentList.Add("--rec-model");
+        startInfo.ArgumentList.Add(recModel);
         if (!string.IsNullOrWhiteSpace(modelDir))
         {
             startInfo.ArgumentList.Add("--model");
