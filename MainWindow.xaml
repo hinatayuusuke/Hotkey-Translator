@@ -442,13 +442,46 @@
                                   <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
                               </StackPanel>
 
-                            <StackPanel x:Name="SettingsPanelTranslation" Visibility="Collapsed" Margin="0,12,0,0">
-                                <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
-                                <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,6,0,6" />
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
-                                    <PasswordBox x:Name="DeepLApiKeyBox" Width="200" LostFocus="OnSettingLostFocus" />
-                                </StackPanel>
+                              <StackPanel x:Name="SettingsPanelTranslation" Visibility="Collapsed" Margin="0,12,0,0">
+                                  <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
+                                  <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,6,0,6" />
+                                  <Separator Margin="0,8,0,8" />
+                                  <TextBlock Text="Local NLLB200 (CTranslate2)" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableCTranslate2Check"
+                                            Content="Enable CTranslate2 translation"
+                                            Margin="0,6,0,0"
+                                            Click="OnSettingChanged" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Device" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="CTranslate2DeviceBox" Width="120" SelectionChanged="OnSettingChanged">
+                                          <ComboBoxItem Content="CPU" Tag="cpu" />
+                                          <ComboBoxItem Content="GPU" Tag="gpu" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Precision" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="CTranslate2PrecisionBox" Width="120" SelectionChanged="OnSettingChanged">
+                                          <ComboBoxItem Content="int8" Tag="int8" />
+                                          <ComboBoxItem Content="fp16" Tag="fp16" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Model id" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="CTranslate2ModelIdBox" Width="240" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Model dir" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="CTranslate2ModelDirBox" Width="240" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <CheckBox x:Name="EnableCTranslate2AutoDownloadCheck"
+                                            Content="Auto-download model if missing"
+                                            Margin="0,6,0,0"
+                                            Click="OnSettingChanged" />
+                                  <Separator Margin="0,10,0,8" />
+                                  <StackPanel Orientation="Horizontal">
+                                      <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
+                                      <PasswordBox x:Name="DeepLApiKeyBox" Width="200" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
                                     <TextBox x:Name="DeepLEndpointBox" Width="200" LostFocus="OnSettingLostFocus" />

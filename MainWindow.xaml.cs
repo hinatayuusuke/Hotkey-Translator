@@ -33,6 +33,7 @@ public partial class MainWindow : Window
     private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
     private PaddleGrpcHost? _paddleGrpcHost;
+    private CTranslate2GrpcHost? _ct2GrpcHost;
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
@@ -81,6 +82,7 @@ public partial class MainWindow : Window
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
         await StartPaddleGrpcHostAsync(_settingsService.Settings).ConfigureAwait(true);
+        _ = StartCTranslate2GrpcHostAsync(_settingsService.Settings);
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
@@ -105,6 +107,7 @@ public partial class MainWindow : Window
         var geminiClient = new GeminiClient(_httpClient, _logger);
         var translationProviders = new List<ITranslationProvider>
         {
+            new CTranslate2GrpcTranslationProvider(_logger),
             new DeepLTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
         };
@@ -158,6 +161,7 @@ public partial class MainWindow : Window
         _cacheRepository?.Dispose();
         _httpClient.Dispose();
         _paddleGrpcHost?.Stop();
+        _ct2GrpcHost?.Stop();
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
@@ -189,6 +193,35 @@ public partial class MainWindow : Window
         {
             _logger?.Info($"Paddle gRPC host failed to start: {ex.Message}");
         }
+    }
+
+    private async Task StartCTranslate2GrpcHostAsync(AppSettings settings)
+    {
+        if (!settings.EnableCTranslate2)
+        {
+            return;
+        }
+
+        _ct2GrpcHost ??= new CTranslate2GrpcHost(_logger);
+        try
+        {
+            await _ct2GrpcHost.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Info($"CTranslate2 gRPC host failed to start: {ex.Message}");
+        }
+    }
+
+    private async Task UpdateCTranslate2GrpcHostAsync(AppSettings settings)
+    {
+        if (!settings.EnableCTranslate2)
+        {
+            _ct2GrpcHost?.Stop();
+            return;
+        }
+
+        await StartCTranslate2GrpcHostAsync(settings).ConfigureAwait(true);
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
@@ -342,6 +375,12 @@ public partial class MainWindow : Window
         SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
         EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
         PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
+        EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
+        SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
+        SetComboBoxByTag(CTranslate2PrecisionBox, settings.CTranslate2Precision);
+        CTranslate2ModelIdBox.Text = settings.CTranslate2ModelId;
+        CTranslate2ModelDirBox.Text = settings.CTranslate2ModelDir ?? string.Empty;
+        EnableCTranslate2AutoDownloadCheck.IsChecked = settings.EnableCTranslate2AutoDownload;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -413,13 +452,14 @@ public partial class MainWindow : Window
 
     private void UpdateTranslationStatus(AppSettings settings)
     {
+        var ct2Status = settings.EnableCTranslate2 ? "CTranslate2: enabled" : "CTranslate2: disabled";
         var geminiStatus = settings.EnableGemini
             ? (string.IsNullOrWhiteSpace(settings.ApiKey) ? "Gemini: key missing" : "Gemini: enabled")
             : "Gemini: disabled";
         var deepLStatus = settings.EnableDeepL
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
-        TranslationStatusText.Text = $"Translation status: {geminiStatus} | {deepLStatus}";
+        TranslationStatusText.Text = $"Translation status: {ct2Status} | {geminiStatus} | {deepLStatus}";
     }
 
     private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -908,6 +948,14 @@ public partial class MainWindow : Window
         settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
+        settings.EnableCTranslate2 = EnableCTranslate2Check.IsChecked == true;
+        settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
+        settings.CTranslate2Precision = GetSelectedTag(CTranslate2PrecisionBox, "int8");
+        settings.CTranslate2ModelId = CTranslate2ModelIdBox.Text.Trim();
+        settings.CTranslate2ModelDir = string.IsNullOrWhiteSpace(CTranslate2ModelDirBox.Text)
+            ? null
+            : CTranslate2ModelDirBox.Text.Trim();
+        settings.EnableCTranslate2AutoDownload = EnableCTranslate2AutoDownloadCheck.IsChecked == true;
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -973,6 +1021,7 @@ public partial class MainWindow : Window
         AppendLog("Settings saved.");
         TryUpdateHotkeys(settings);
         UpdateAutoHideWatcher(settings);
+        _ = UpdateCTranslate2GrpcHostAsync(settings);
     }
 
     private void PopulateHotkeyKeyBoxes()

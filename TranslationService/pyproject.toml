@@ -1,0 +1,17 @@
+[project]
+name = "translationservice"
+version = "0.1.0"
+description = "CTranslate2 NLLB200 gRPC translation service"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "ctranslate2>=4.5.0",
+    "grpcio>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "huggingface-hub>=0.26.0",
+    "sentencepiece>=0.2.0",
+    "transformers>=4.44.0",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]

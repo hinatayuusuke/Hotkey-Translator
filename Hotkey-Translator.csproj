@@ -43,6 +43,7 @@
 
   <ItemGroup>
     <Protobuf Include="Protos\\OcrGrpc.proto" GrpcServices="Client" />
+    <Protobuf Include="Protos\\TranslationGrpc.proto" GrpcServices="Client" />
   </ItemGroup>
 
 <PropertyGroup>

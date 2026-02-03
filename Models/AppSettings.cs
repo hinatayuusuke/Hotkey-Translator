@@ -102,6 +102,21 @@ public sealed class AppSettings
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";
+    public bool EnableCTranslate2 { get; set; } = false;
+    public string CTranslate2GrpcProjectDir { get; set; } = "TranslationService";
+    public string CTranslate2GrpcUvPath { get; set; } = "uv";
+    public string CTranslate2GrpcServerScript { get; set; } = "server.py";
+    public string CTranslate2GrpcEndpoint { get; set; } = "http://127.0.0.1:50061";
+    public string CTranslate2GrpcHost { get; set; } = "127.0.0.1";
+    public int CTranslate2GrpcPort { get; set; } = 50061;
+    public int CTranslate2GrpcReadyTimeoutMs { get; set; } = 60000;
+    public int CTranslate2GrpcRestartMax { get; set; } = 3;
+    public int CTranslate2GrpcRestartWindowSeconds { get; set; } = 30;
+    public string CTranslate2ModelId { get; set; } = "entai2965/nllb-200-distilled-600M-ctranslate2";
+    public string? CTranslate2ModelDir { get; set; }
+    public string CTranslate2Device { get; set; } = "cpu";
+    public string CTranslate2Precision { get; set; } = "int8";
+    public bool EnableCTranslate2AutoDownload { get; set; } = true;
     public List<string> TranslationPriority { get; set; } = new(TranslationProviderNames.Defaults);
     public double OverlayFontSize { get; set; } = 48;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";

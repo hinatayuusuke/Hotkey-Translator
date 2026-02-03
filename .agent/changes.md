@@ -2883,3 +2883,41 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-03 16:51 (Asia/Taipei) — Add CTranslate2 gRPC translation service**
+
+### Summary
+- Added a separate CTranslate2/NLLB200 gRPC translation service and integrated it as a translation provider.
+
+### Context / Goal
+- Provide offline translation via CTranslate2 with CPU/GPU support and integrate with existing fallback chain.
+- Keep translation host separate from OCR and allow UI configuration.
+
+### Changes
+- Added translation gRPC proto, host, and provider wired into translation fallback.
+- Added TranslationService Python server with NLLB200 engine and uv dependencies.
+- Added UI + settings for enabling CTranslate2 and configuring device/precision/model download.
+
+### Files Touched
+- `Protos/TranslationGrpc.proto` — new translation gRPC contract.
+- `Hotkey-Translator.csproj` — added translation proto for client generation.
+- `TranslationService/translation.proto` — server-side proto.
+- `TranslationService/translator_engine.py` — NLLB200 engine wrapper.
+- `TranslationService/server.py` — gRPC server entrypoint.
+- `TranslationService/pyproject.toml` — uv dependencies for translation server.
+- `Services/CTranslate2GrpcHost.cs` — host/monitor for translation server.
+- `Services/CTranslate2GrpcTranslationProvider.cs` — gRPC translation provider.
+- `Models/AppSettings.cs` — added CTranslate2 settings.
+- `Models/TranslationProviderNames.cs` — added CTranslate2 provider name.
+- `MainWindow.xaml` — added CTranslate2 UI controls.
+- `MainWindow.xaml.cs` — wired settings, host startup, provider list, status text.
+
+### Behavioral Impact
+- When enabled, CTranslate2 translations are attempted (with fallback to other providers on failure).
+- Translation server can auto-download the NLLB200 model and run on CPU/GPU.
+
+### Risk & Mitigation
+- Risk: Model download or gRPC startup latency can delay translation availability.
+- Mitigation: Host startup failures are logged; fallback providers remain active.
+
+### Tests / Verification
+- `dotnet build`
