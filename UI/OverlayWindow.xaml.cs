@@ -194,7 +194,7 @@ public partial class OverlayWindow : Window
             dpi.PixelsPerDip)
         {
             MaxTextWidth = maxWidth,
-            MaxTextHeight = maxHeight,
+            // WHY: Keep MaxTextHeight unset so we can detect vertical overflow via measured Height.
             TextAlignment = TextAlignment.Left
         };
 

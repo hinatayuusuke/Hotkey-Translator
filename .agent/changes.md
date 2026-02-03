@@ -2807,3 +2807,27 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-03 13:35 (Asia/Taipei) — Fix overlay fit measurement**
+
+### Summary
+- Fixed font fit measurement to detect vertical overflow correctly.
+
+### Context / Goal
+- Overlay font sizing was not shrinking because height was always clamped in measurement.
+- Ensure fit-only sizing can detect clipping and shrink accordingly.
+
+### Changes
+- Removed MaxTextHeight from FormattedText measurement to allow real height comparison.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — adjusted Fit measurement to avoid height clamping.
+
+### Behavioral Impact
+- Overlay text now shrinks when the measured height exceeds the available box height.
+
+### Risk & Mitigation
+- Risk: Slightly different line breaking vs prior measurement.
+- Mitigation: Still respects MaxTextWidth; only height clamp removed for accurate fit.
+
+### Tests / Verification
+- `dotnet build`
