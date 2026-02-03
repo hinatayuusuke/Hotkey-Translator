@@ -2831,3 +2831,28 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-03 13:52 (Asia/Taipei) — Remove overlay box expansion**
+
+### Summary
+- Removed post-process overlay rectangle expansion so OCR boxes render as-is.
+
+### Context / Goal
+- Keep overlay bounds aligned with OCR results across engines.
+- Avoid expansion-driven misalignment now that fit-only sizing is in place.
+
+### Changes
+- Removed expansion constants, logic, and method from overlay rendering.
+- Render overlay directly using OCR rects without enlargement.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — removed overlay rect expansion logic and usage.
+
+### Behavioral Impact
+- Overlay boxes match OCR-detected bounds; no extra padding/expansion is applied.
+
+### Risk & Mitigation
+- Risk: Small OCR boxes may look tighter than before.
+- Mitigation: Fit-only sizing still shrinks text to fit within the box.
+
+### Tests / Verification
+- `dotnet build`

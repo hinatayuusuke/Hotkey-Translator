@@ -16,14 +16,9 @@ public partial class OverlayWindow : Window
     private Brush _background = new SolidColorBrush(Color.FromArgb(136, 0, 0, 0));
     private double _fontSize = 18;
     private bool _isFixedRoiOverlay;
-    private bool _expandOverlayRect = true;
     private bool _enableFontStabilization = true;
     private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
-    private const double OverlayExpandRatio = 0.05;
-    private const double OverlayExpandFixedX = 3.0;
-    private const double OverlayExpandFixedY = 2.0;
-    private const double OverlayExpandMaxPx = 20.0;
     private const double MinFontSize = 8;
     private const double MaxFontSize = 72;
     private const int FitIterations = 7;
@@ -45,8 +40,6 @@ public partial class OverlayWindow : Window
         var background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
         _background = ApplyOverlayOpacity(background, settings.OverlayBackgroundOpacity);
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
-        // WHY: Paddle OCR boxes are already larger; avoid extra expansion in overlay.
-        _expandOverlayRect = settings.OcrEngine != OcrEngineKind.Paddle;
         _enableFontStabilization = settings.EnableOverlayShortLineShrink;
     }
 
@@ -56,7 +49,7 @@ public partial class OverlayWindow : Window
         var nextCache = new Dictionary<string, double>(items.Count);
         foreach (var item in items)
         {
-            var rect = _expandOverlayRect ? ExpandOverlayRect(item.Rect) : item.Rect;
+            var rect = item.Rect;
             var availableWidth = rect.Width > 0
                 ? Math.Max(0, rect.Width - OverlayPadding.Left - OverlayPadding.Right)
                 : double.PositiveInfinity;
@@ -277,41 +270,6 @@ public partial class OverlayWindow : Window
         var clamped = Math.Clamp(opacity, 0.0, 1.0);
         var alpha = (byte)Math.Round(clamped * 255.0);
         return new SolidColorBrush(Color.FromArgb(alpha, solid.Color.R, solid.Color.G, solid.Color.B));
-    }
-
-    private Rect ExpandOverlayRect(Rect rect)
-    {
-        if (rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0)
-        {
-            return rect;
-        }
-
-        var expandX = Math.Min(OverlayExpandFixedX + (rect.Width * OverlayExpandRatio), OverlayExpandMaxPx);
-        var expandY = Math.Min(OverlayExpandFixedY + (rect.Height * OverlayExpandRatio), OverlayExpandMaxPx);
-
-        var expanded = new Rect(
-            rect.X - expandX,
-            rect.Y - expandY,
-            rect.Width + (expandX * 2),
-            rect.Height + (expandY * 2));
-
-        // WHY: Clamp in window coordinates to avoid DPI mismatch across monitors.
-        var boundsWidth = ActualWidth > 0 ? ActualWidth : Width;
-        var boundsHeight = ActualHeight > 0 ? ActualHeight : Height;
-        if (boundsWidth <= 0 || boundsHeight <= 0)
-        {
-            return expanded;
-        }
-
-        var bounds = new Rect(0, 0, boundsWidth, boundsHeight);
-        var clamped = Rect.Intersect(expanded, bounds);
-        if (clamped.IsEmpty)
-        {
-            // NOTE: Some OCR results can be outside the visible screen; fall back to the original rect.
-            return rect;
-        }
-
-        return clamped;
     }
 
     private const int GwlExStyle = -20;
