@@ -2856,3 +2856,30 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-03 15:13 (Asia/Taipei) — Paddle confidence line filter**
+
+### Summary
+- Added Paddle-only confidence filtering to drop low-score OCR lines.
+
+### Context / Goal
+- Remove false-positive OCR lines without affecting WinRT output.
+
+### Changes
+- Added Paddle confidence filter settings (enable + threshold) and UI controls.
+- Applied line filtering in the OCR pipeline before grouping/translation.
+
+### Files Touched
+- `Models/AppSettings.cs` — added confidence filter settings.
+- `MainWindow.xaml` — added Paddle confidence filter UI.
+- `MainWindow.xaml.cs` — wired UI settings and threshold value display.
+- `Services/PipelineOrchestrator.cs` — filtered low-confidence Paddle lines.
+
+### Behavioral Impact
+- When enabled and using Paddle OCR, low-confidence lines are skipped before translation and overlay.
+
+### Risk & Mitigation
+- Risk: Threshold set too high may drop valid lines.
+- Mitigation: Default is modest (0.60) and adjustable in UI.
+
+### Tests / Verification
+- `dotnet build`

@@ -211,7 +211,29 @@ public sealed class PipelineOrchestrator
                     ocrMs = ocrStopwatch.ElapsedMilliseconds;
                 }
                 _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
-                var mappedLines = ocrResult.Lines
+                var rawLines = ocrResult.Lines;
+                if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleConfidenceFilter)
+                {
+                    var threshold = Math.Clamp(settings.PaddleConfidenceThreshold, 0.0, 1.0);
+                    var filtered = rawLines
+                        .Where(line => line.Confidence >= threshold)
+                        .ToList();
+                    if (filtered.Count != rawLines.Count)
+                    {
+                        _logger.Info($"Paddle confidence filter: {filtered.Count}/{rawLines.Count} lines kept (threshold={threshold:0.00}).");
+                    }
+
+                    rawLines = filtered;
+                }
+
+                if (rawLines.Count == 0)
+                {
+                    _logger.Info("OCR returned no lines after confidence filtering.");
+                    _overlayPresenter.ShowLast();
+                    return;
+                }
+
+                var mappedLines = rawLines
                     .Select(line => line with
                     {
                         Rect = new Rect(

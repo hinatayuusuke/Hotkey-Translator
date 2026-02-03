@@ -340,6 +340,8 @@ public partial class MainWindow : Window
         });
         SetComboBoxByTag(PaddleDetectionModelBox, settings.PaddleTextDetectionModelName);
         SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
+        EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
+        PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -382,6 +384,7 @@ public partial class MainWindow : Window
         UpdateOverlayFontSizeValue();
         UpdateOverlayBackgroundOpacityValue();
         UpdateOcrPreprocessControls(settings);
+        UpdatePaddleConfidenceThresholdValue();
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
         UpdateSceneChangeWatchValues();
@@ -785,6 +788,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnPaddleConfidenceThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdatePaddleConfidenceThresholdValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async void OnOcrDownsampleScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrDownsampleScaleValue();
@@ -892,6 +906,8 @@ public partial class MainWindow : Window
         settings.OcrEngine = GetOcrEngineKind();
         settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
         settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
+        settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
+        settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -1142,6 +1158,16 @@ public partial class MainWindow : Window
         }
 
         OcrGammaValue.Text = OcrGammaSlider.Value.ToString("0.00");
+    }
+
+    private void UpdatePaddleConfidenceThresholdValue()
+    {
+        if (PaddleConfidenceThresholdValue == null || PaddleConfidenceThresholdSlider == null)
+        {
+            return;
+        }
+
+        PaddleConfidenceThresholdValue.Text = PaddleConfidenceThresholdSlider.Value.ToString("0.00");
     }
 
     private void UpdateOcrDownsampleScaleValue()

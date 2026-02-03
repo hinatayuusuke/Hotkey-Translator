@@ -400,11 +400,11 @@
                                         <ComboBoxItem Content="Server (PP-OCRv5_server_det)" Tag="PP-OCRv5_server_det" />
                                     </ComboBox>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
-                                    <ComboBox x:Name="PaddleRecognitionModelBox" Width="220" SelectionChanged="OnSettingChanged">
-                                        <ComboBoxItem Content="Auto (source language)" Tag="auto" />
-                                        <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleRecognitionModelBox" Width="220" SelectionChanged="OnSettingChanged">
+                                          <ComboBoxItem Content="Auto (source language)" Tag="auto" />
+                                          <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
                                         <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
                                         <ComboBoxItem Content="Latin (latin_PP-OCRv5_mobile_rec)" Tag="latin_PP-OCRv5_mobile_rec" />
                                         <ComboBoxItem Content="East Slavic (eslav_PP-OCRv5_mobile_rec)" Tag="eslav_PP-OCRv5_mobile_rec" />
@@ -414,12 +414,33 @@
                                         <ComboBoxItem Content="Arabic (arabic_PP-OCRv5_mobile_rec)" Tag="arabic_PP-OCRv5_mobile_rec" />
                                         <ComboBoxItem Content="Cyrillic (cyrillic_PP-OCRv5_mobile_rec)" Tag="cyrillic_PP-OCRv5_mobile_rec" />
                                         <ComboBoxItem Content="Devanagari (devanagari_PP-OCRv5_mobile_rec)" Tag="devanagari_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Telugu (te_PP-OCRv5_mobile_rec)" Tag="te_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
-                                    </ComboBox>
-                                </StackPanel>
-                                <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
-                            </StackPanel>
+                                          <ComboBoxItem Content="Telugu (te_PP-OCRv5_mobile_rec)" Tag="te_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
+                                            Content="Filter low-confidence lines (Paddle only)"
+                                            Margin="0,8,0,0"
+                                            Click="OnSettingChanged" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Confidence threshold" Width="120" VerticalAlignment="Center" />
+                                      <Slider x:Name="PaddleConfidenceThresholdSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="1"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="0.05"
+                                              SmallChange="0.01"
+                                              LargeChange="0.1"
+                                              ValueChanged="OnPaddleConfidenceThresholdChanged" />
+                                      <TextBlock x:Name="PaddleConfidenceThresholdValue"
+                                                 Width="36"
+                                                 Margin="8,0,0,0"
+                                                 VerticalAlignment="Center"
+                                                 TextAlignment="Right" />
+                                  </StackPanel>
+                                  <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
+                              </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelTranslation" Visibility="Collapsed" Margin="0,12,0,0">
                                 <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
