@@ -2921,3 +2921,33 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-03 17:18 (Asia/Taipei) — Simplify CTranslate2 UI and restart behavior**
+
+### Summary
+- Simplified CTranslate2 UI to enable + device only and added automatic restart logic.
+
+### Context / Goal
+- Hide advanced translation settings and enforce fixed precision rules.
+- Restart the translation gRPC host when device or related settings change.
+
+### Changes
+- Removed CTranslate2 precision/model/autodownload controls from the UI.
+- Enforced CPU=int8, GPU=fp16 and always-on auto-download in settings normalization.
+- Added host config tracking and restart logic when settings change.
+- Added startup logs for CTranslate2 host.
+
+### Files Touched
+- `MainWindow.xaml` — removed advanced CTranslate2 controls.
+- `MainWindow.xaml.cs` — normalized CTranslate2 settings, restart logic, and updated bindings.
+- `Services/CTranslate2GrpcHost.cs` — added startup logging for device/precision and auto-download.
+
+### Behavioral Impact
+- CTranslate2 runs with fixed precision per device and restarts automatically when device changes.
+- Auto-download is always enabled and no longer exposed in the UI.
+
+### Risk & Mitigation
+- Risk: Users cannot tweak model/endpoint via UI.
+- Mitigation: Settings remain in config for manual editing if needed.
+
+### Tests / Verification
+- `dotnet build`

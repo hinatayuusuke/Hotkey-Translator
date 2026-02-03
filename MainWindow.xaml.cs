@@ -64,6 +64,7 @@ public partial class MainWindow : Window
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
+    private CTranslate2HostConfig? _ct2HostConfig;
 
     public MainWindow()
     {
@@ -202,6 +203,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        NormalizeCTranslate2Settings(settings);
         _ct2GrpcHost ??= new CTranslate2GrpcHost(_logger);
         try
         {
@@ -218,9 +220,23 @@ public partial class MainWindow : Window
         if (!settings.EnableCTranslate2)
         {
             _ct2GrpcHost?.Stop();
+            _ct2HostConfig = null;
             return;
         }
 
+        var config = BuildCTranslate2HostConfig(settings);
+        if (_ct2HostConfig.HasValue && _ct2HostConfig.Value.Equals(config) && _ct2GrpcHost is { IsRunning: true })
+        {
+            return;
+        }
+
+        if (_ct2GrpcHost is { IsRunning: true })
+        {
+            _logger?.Info("CTranslate2 settings changed; restarting gRPC host.");
+            _ct2GrpcHost.Stop();
+        }
+
+        _ct2HostConfig = config;
         await StartCTranslate2GrpcHostAsync(settings).ConfigureAwait(true);
     }
 
@@ -377,10 +393,6 @@ public partial class MainWindow : Window
         PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
         EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
         SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
-        SetComboBoxByTag(CTranslate2PrecisionBox, settings.CTranslate2Precision);
-        CTranslate2ModelIdBox.Text = settings.CTranslate2ModelId;
-        CTranslate2ModelDirBox.Text = settings.CTranslate2ModelDir ?? string.Empty;
-        EnableCTranslate2AutoDownloadCheck.IsChecked = settings.EnableCTranslate2AutoDownload;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -460,6 +472,51 @@ public partial class MainWindow : Window
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
         TranslationStatusText.Text = $"Translation status: {ct2Status} | {geminiStatus} | {deepLStatus}";
+    }
+
+    private static void NormalizeCTranslate2Settings(AppSettings settings)
+    {
+        settings.CTranslate2Device = NormalizeCTranslate2Device(settings.CTranslate2Device);
+        settings.CTranslate2Precision = ResolveCTranslate2Precision(settings.CTranslate2Device);
+        settings.EnableCTranslate2AutoDownload = true;
+        if (string.IsNullOrWhiteSpace(settings.CTranslate2ModelId))
+        {
+            settings.CTranslate2ModelId = "entai2965/nllb-200-distilled-600M-ctranslate2";
+        }
+    }
+
+    private static string NormalizeCTranslate2Device(string? device)
+    {
+        var normalized = (device ?? string.Empty).Trim();
+        if (normalized.StartsWith("gpu", StringComparison.OrdinalIgnoreCase) ||
+            normalized.StartsWith("cuda", StringComparison.OrdinalIgnoreCase))
+        {
+            return "gpu";
+        }
+
+        return "cpu";
+    }
+
+    private static string ResolveCTranslate2Precision(string? device)
+    {
+        var normalized = NormalizeCTranslate2Device(device);
+        return normalized == "gpu" ? "fp16" : "int8";
+    }
+
+    private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
+    {
+        NormalizeCTranslate2Settings(settings);
+        return new CTranslate2HostConfig(
+            settings.CTranslate2Device,
+            settings.CTranslate2Precision,
+            settings.CTranslate2ModelId,
+            settings.CTranslate2ModelDir,
+            settings.CTranslate2GrpcEndpoint,
+            settings.CTranslate2GrpcHost,
+            settings.CTranslate2GrpcPort,
+            settings.CTranslate2GrpcProjectDir,
+            settings.CTranslate2GrpcUvPath,
+            settings.CTranslate2GrpcServerScript);
     }
 
     private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -950,12 +1007,7 @@ public partial class MainWindow : Window
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
         settings.EnableCTranslate2 = EnableCTranslate2Check.IsChecked == true;
         settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
-        settings.CTranslate2Precision = GetSelectedTag(CTranslate2PrecisionBox, "int8");
-        settings.CTranslate2ModelId = CTranslate2ModelIdBox.Text.Trim();
-        settings.CTranslate2ModelDir = string.IsNullOrWhiteSpace(CTranslate2ModelDirBox.Text)
-            ? null
-            : CTranslate2ModelDirBox.Text.Trim();
-        settings.EnableCTranslate2AutoDownload = EnableCTranslate2AutoDownloadCheck.IsChecked == true;
+        NormalizeCTranslate2Settings(settings);
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -1888,6 +1940,18 @@ public partial class MainWindow : Window
         SettingsPanelTranslation.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
         SettingsPanelHotkeys.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    private readonly record struct CTranslate2HostConfig(
+        string Device,
+        string Precision,
+        string ModelId,
+        string? ModelDir,
+        string Endpoint,
+        string Host,
+        int Port,
+        string ProjectDir,
+        string UvPath,
+        string ServerScript);
 
     private readonly record struct HotkeyConfig(
         Key RunOnceKey,

@@ -112,6 +112,12 @@ public sealed class CTranslate2GrpcHost : IDisposable
         var device = string.IsNullOrWhiteSpace(settings.CTranslate2Device) ? "cpu" : settings.CTranslate2Device.Trim();
         var precision = string.IsNullOrWhiteSpace(settings.CTranslate2Precision) ? "int8" : settings.CTranslate2Precision.Trim();
 
+        _logger?.Info($"Starting CTranslate2 gRPC (device={device}, precision={precision}).");
+        if (settings.EnableCTranslate2AutoDownload && string.IsNullOrWhiteSpace(modelDir))
+        {
+            _logger?.Info("CTranslate2 auto-download enabled (model cache will be created if missing).");
+        }
+
         var startInfo = new ProcessStartInfo
         {
             FileName = uvPath,
