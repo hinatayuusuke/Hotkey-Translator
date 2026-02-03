@@ -2782,3 +2782,28 @@
 
 ### Tests / Verification
 - 未実施（OCRの結果確認が必要）
+**2026-02-03 12:11 (Asia/Taipei) — Fit-only overlay font sizing**
+
+### Summary
+- Simplified overlay font sizing to fit-only with quantization and hysteresis.
+
+### Context / Goal
+- Align overlay font sizing with fit-only plan and reduce jitter.
+- Remove multi-stage scaling and ensure text always fits.
+
+### Changes
+- Replaced font sizing logic with fit-only binary search and fallback shrinking.
+- Added quantized inputs and hysteresis cache for stable font sizes.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — replaced overlay font sizing with fit-only sizing, cache, and helpers.
+
+### Behavioral Impact
+- Overlay text now uses the largest size that fits the box, shrinking further only when needed; small fluctuations are smoothed.
+
+### Risk & Mitigation
+- Risk: Font sizes may differ from prior scaling rules.
+- Mitigation: Fit-only sizing prevents clipping; hysteresis reduces jitter.
+
+### Tests / Verification
+- `dotnet build`

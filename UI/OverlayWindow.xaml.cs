@@ -17,30 +17,19 @@ public partial class OverlayWindow : Window
     private double _fontSize = 18;
     private bool _isFixedRoiOverlay;
     private bool _expandOverlayRect = true;
-    private bool _enableShortLineShrink = true;
+    private bool _enableFontStabilization = true;
+    private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double OverlayExpandRatio = 0.05;
     private const double OverlayExpandFixedX = 3.0;
     private const double OverlayExpandFixedY = 2.0;
     private const double OverlayExpandMaxPx = 20.0;
-    private const double MinLineHeightScale = 0.75;
-    private const double MaxLineHeightScale = 1.1;
-    private const double MinOccupancyRatio = 0.05;
-    private const double MaxOccupancyRatio = 0.20;
-    private const double ConservativeStartRatio = 0.18;
-    private const double ConservativeFullRatio = 0.23;
-    private const double MaxConservativePenalty = 0.6;
-    private const double TwoLinePenaltyFactor = 0.8;
-    private const double MinLineHeightScaleFactor = 0.6;
-    private const double MaxLineHeightScaleFactor = 1.8;
-    private const double MinWidthScale = 0.3;
-    private const double WrapPenaltyStep = 0.08;
-    private const double MinWrapPenaltyScale = 0.65;
-    private const double FixedRoiConservativeRatioMultiplier = 1.2;
-    private const double FixedRoiConservativePenaltyMultiplier = 0.7;
     private const double MinFontSize = 8;
     private const double MaxFontSize = 72;
     private const int FitIterations = 7;
+    private const double FontQuantizeStepPx = 5.0;
+    private const double FontHysteresisThreshold = 1.0;
+    private const double MinFallbackFontSize = 6.0;
 
     public OverlayWindow()
     {
@@ -58,12 +47,13 @@ public partial class OverlayWindow : Window
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
         // WHY: Paddle OCR boxes are already larger; avoid extra expansion in overlay.
         _expandOverlayRect = settings.OcrEngine != OcrEngineKind.Paddle;
-        _enableShortLineShrink = settings.EnableOverlayShortLineShrink;
+        _enableFontStabilization = settings.EnableOverlayShortLineShrink;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
     {
         OverlayCanvas.Children.Clear();
+        var nextCache = new Dictionary<string, double>(items.Count);
         foreach (var item in items)
         {
             var rect = _expandOverlayRect ? ExpandOverlayRect(item.Rect) : item.Rect;
@@ -73,7 +63,9 @@ public partial class OverlayWindow : Window
             var availableHeight = rect.Height > 0
                 ? Math.Max(0, rect.Height - OverlayPadding.Top - OverlayPadding.Bottom)
                 : double.PositiveInfinity;
-            var fontSize = ResolveFontSize(item, availableWidth, availableHeight);
+            var cacheKey = BuildFontCacheKey(item, rect);
+            var fontSize = ResolveFontSize(item, availableWidth, availableHeight, cacheKey);
+            nextCache[cacheKey] = fontSize;
             var textBlock = new TextBlock
             {
                 Text = item.Text,
@@ -108,6 +100,8 @@ public partial class OverlayWindow : Window
             Canvas.SetTop(container, rect.Y);
             OverlayCanvas.Children.Add(container);
         }
+
+        _fontSizeCache = nextCache;
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -134,18 +128,12 @@ public partial class OverlayWindow : Window
         Height = SystemParameters.VirtualScreenHeight;
     }
 
-    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight)
+    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight, string cacheKey)
     {
-        var baseSize = GetBaseFontSize(item);
+        var baseSize = Math.Clamp(_fontSize, MinFontSize, MaxFontSize);
         if (string.IsNullOrWhiteSpace(item.Text))
         {
             return baseSize;
-        }
-
-        if (availableWidth > 0 && !double.IsInfinity(availableWidth))
-        {
-            baseSize *= GetWidthConservativeScale(item.Text, baseSize, availableWidth, item.LineCount);
-            baseSize = Math.Clamp(baseSize, MinFontSize, MaxFontSize);
         }
 
         if (availableWidth <= 0 || availableHeight <= 0 || double.IsInfinity(availableWidth) || double.IsInfinity(availableHeight))
@@ -153,155 +141,39 @@ public partial class OverlayWindow : Window
             return baseSize;
         }
 
-        if (Fits(item.Text, baseSize, availableWidth, availableHeight))
+        var quantizedWidth = _enableFontStabilization ? QuantizeLength(availableWidth) : availableWidth;
+        var quantizedHeight = _enableFontStabilization ? QuantizeLength(availableHeight) : availableHeight;
+        var resolved = FitMaxFont(item.Text, MinFontSize, baseSize, quantizedWidth, quantizedHeight);
+        if (!Fits(item.Text, resolved, availableWidth, availableHeight))
         {
-            return baseSize;
+            resolved = FitMaxFont(item.Text, MinFontSize, baseSize, availableWidth, availableHeight);
         }
 
-        var low = MinFontSize;
-        var high = baseSize;
-        for (var i = 0; i < FitIterations; i++)
+        if (!Fits(item.Text, MinFontSize, availableWidth, availableHeight))
         {
-            var mid = (low + high) / 2.0;
-            if (Fits(item.Text, mid, availableWidth, availableHeight))
+            var upper = Math.Min(MinFontSize, baseSize);
+            resolved = FitMaxFont(item.Text, MinFallbackFontSize, upper, availableWidth, availableHeight);
+        }
+
+        if (!_enableFontStabilization)
+        {
+            return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
+        }
+
+        if (_fontSizeCache.TryGetValue(cacheKey, out var last))
+        {
+            if (resolved < last)
             {
-                low = mid;
+                return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
             }
-            else
+
+            if (resolved - last < FontHysteresisThreshold)
             {
-                high = mid;
+                return Math.Clamp(last, MinFallbackFontSize, MaxFontSize);
             }
         }
 
-        return low;
-    }
-
-    private double GetBaseFontSize(OverlayItem item)
-    {
-        var baseSize = _fontSize > 0 ? _fontSize : MinFontSize;
-        var lineHeight = item.LineHeight;
-        if (lineHeight <= 0 && item.LineCount > 0 && item.Rect.Height > 0)
-        {
-            lineHeight = item.Rect.Height / item.LineCount;
-        }
-
-        if (lineHeight > 0 && _fontSize > 0)
-        {
-            // WHY: Always scale from user baseline; clamp to avoid noisy OCR line heights.
-            var scale = lineHeight / _fontSize;
-            scale = Math.Clamp(scale, MinLineHeightScaleFactor, MaxLineHeightScaleFactor);
-            baseSize *= scale;
-        }
-
-        baseSize *= GetOccupancyScale(item.Rect);
-        baseSize *= GetConservativeScale(item);
-        if (double.IsNaN(baseSize) || double.IsInfinity(baseSize) || baseSize <= 0)
-        {
-            return Math.Clamp(_fontSize, MinFontSize, MaxFontSize);
-        }
-
-        return Math.Clamp(baseSize, MinFontSize, MaxFontSize);
-    }
-
-    private double GetOccupancyScale(Rect rect)
-    {
-        var screenHeight = SystemParameters.VirtualScreenHeight;
-        if (screenHeight <= 0 || rect.Height <= 0)
-        {
-            return MinLineHeightScale;
-        }
-
-        var ratio = rect.Height / screenHeight;
-        ratio = Math.Clamp(ratio, MinOccupancyRatio, MaxOccupancyRatio);
-        var t = (ratio - MinOccupancyRatio) / (MaxOccupancyRatio - MinOccupancyRatio);
-        // WHY: Small OCR boxes get conservative sizing to reduce overflow; large boxes can be larger.
-        return MinLineHeightScale + (MaxLineHeightScale - MinLineHeightScale) * t;
-    }
-
-    private double GetConservativeScale(OverlayItem item)
-    {
-        if (!_enableShortLineShrink)
-        {
-            return 1.0;
-        }
-
-        if (item.LineCount >= 3)
-        {
-            return 1.0;
-        }
-
-        var startRatio = ConservativeStartRatio;
-        var fullRatio = ConservativeFullRatio;
-        var maxPenalty = MaxConservativePenalty;
-        if (_isFixedRoiOverlay)
-        {
-            // WHY: Fixed ROI uses a stable container; reduce conservative shrink to keep text readable.
-            startRatio *= FixedRoiConservativeRatioMultiplier;
-            fullRatio *= FixedRoiConservativeRatioMultiplier;
-            maxPenalty *= FixedRoiConservativePenaltyMultiplier;
-        }
-
-        var screenHeight = SystemParameters.VirtualScreenHeight;
-        if (screenHeight <= 0 || item.Rect.Height <= 0)
-        {
-            return 1.0;
-        }
-
-        var ratio = item.Rect.Height / screenHeight;
-        var t = (ratio - startRatio) / (fullRatio - startRatio);
-        t = Math.Clamp(t, 0, 1);
-        if (t <= 0)
-        {
-            return 1.0;
-        }
-
-        var lineFactor = item.LineCount <= 1 ? 1.0 : TwoLinePenaltyFactor;
-        // WHY: Large boxes with few lines look oversized; shrink aggressively to avoid clipping.
-        var penalty = maxPenalty * t * lineFactor;
-        return 1.0 - penalty;
-    }
-
-    private double GetWidthConservativeScale(string text, double fontSize, double maxWidth, int expectedLines)
-    {
-        if (expectedLines <= 0 || maxWidth <= 0 || double.IsInfinity(maxWidth))
-        {
-            return 1.0;
-        }
-
-        var dpi = VisualTreeHelper.GetDpi(this);
-        var formatted = new FormattedText(
-            text,
-            CultureInfo.CurrentUICulture,
-            FlowDirection,
-            new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-            fontSize,
-            _foreground,
-            dpi.PixelsPerDip)
-        {
-            MaxTextWidth = maxWidth
-        };
-
-        formatted.LineHeight = Math.Max(1.0, fontSize);
-        var estimatedLines = Math.Max(1, (int)Math.Ceiling(formatted.Height / formatted.LineHeight));
-        if (estimatedLines <= expectedLines)
-        {
-            return 1.0;
-        }
-
-        // WHY: When wrapping exceeds OCR line count, shrink aggressively to avoid clipping.
-        var ratio = (double)expectedLines / estimatedLines;
-        var scale = Math.Sqrt(Math.Clamp(ratio, 0.0, 1.0));
-
-        var extraLines = estimatedLines - expectedLines;
-        if (extraLines > 0)
-        {
-            // WHY: Extra wrap lines tend to cause visual clipping; apply an additional penalty.
-            var wrapScale = 1.0 - (extraLines * WrapPenaltyStep);
-            wrapScale = Math.Clamp(wrapScale, MinWrapPenaltyScale, 1.0);
-            scale = Math.Min(scale, wrapScale);
-        }
-
-        return Math.Clamp(scale, MinWidthScale, 1.0);
+        return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
     }
 
     private bool Fits(string text, double fontSize, double maxWidth, double maxHeight)
@@ -327,6 +199,60 @@ public partial class OverlayWindow : Window
         };
 
         return formatted.Width <= maxWidth && formatted.Height <= maxHeight;
+    }
+
+    private double FitMaxFont(string text, double minFont, double maxFont, double maxWidth, double maxHeight)
+    {
+        var lower = Math.Clamp(minFont, MinFallbackFontSize, MaxFontSize);
+        var upper = Math.Clamp(maxFont, lower, MaxFontSize);
+        if (!Fits(text, lower, maxWidth, maxHeight))
+        {
+            return lower;
+        }
+
+        var best = lower;
+        for (var i = 0; i < FitIterations; i++)
+        {
+            var mid = (lower + upper) / 2.0;
+            if (Fits(text, mid, maxWidth, maxHeight))
+            {
+                best = mid;
+                lower = mid;
+            }
+            else
+            {
+                upper = mid;
+            }
+        }
+
+        return best;
+    }
+
+    private static double QuantizeLength(double value)
+    {
+        if (FontQuantizeStepPx <= 0 || value <= 0 || double.IsNaN(value) || double.IsInfinity(value))
+        {
+            return value;
+        }
+
+        return Math.Round(value / FontQuantizeStepPx, MidpointRounding.AwayFromZero) * FontQuantizeStepPx;
+    }
+
+    private string BuildFontCacheKey(OverlayItem item, Rect rect)
+    {
+        var x = _enableFontStabilization ? QuantizeLength(rect.X) : rect.X;
+        var y = _enableFontStabilization ? QuantizeLength(rect.Y) : rect.Y;
+        var width = _enableFontStabilization ? QuantizeLength(rect.Width) : rect.Width;
+        var height = _enableFontStabilization ? QuantizeLength(rect.Height) : rect.Height;
+        var text = item.Text ?? string.Empty;
+        return string.Format(
+            CultureInfo.InvariantCulture,
+            "{0:0.0}|{1:0.0}|{2:0.0}|{3:0.0}|{4}",
+            x,
+            y,
+            width,
+            height,
+            text);
     }
 
     private static Brush ParseBrush(string value, Brush fallback)
