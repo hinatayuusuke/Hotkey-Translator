@@ -1,7 +1,28 @@
 import logging
 import os
+import warnings
 from typing import Iterable, List, Optional
 
+
+def _ensure_optional_ct2_dirs() -> None:
+    if os.name != "nt":
+        return
+
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec("ctranslate2")
+        if spec is None or spec.origin is None:
+            return
+        package_dir = os.path.dirname(spec.origin)
+    except Exception:
+        return
+    rocm_core = os.path.abspath(os.path.join(package_dir, "..", "_rocm_sdk_core", "bin"))
+    rocm_custom = os.path.abspath(os.path.join(package_dir, "..", "_rocm_sdk_libraries_custom", "bin"))
+    os.makedirs(rocm_core, exist_ok=True)
+    os.makedirs(rocm_custom, exist_ok=True)
+
+_ensure_optional_ct2_dirs()
 import ctranslate2
 from huggingface_hub import snapshot_download
 from transformers import AutoTokenizer
@@ -26,11 +47,7 @@ class NllbTranslator:
         model_path = resolve_model_path(model_id, model_dir, auto_download)
         self._model_path = model_path
 
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            model_path,
-            use_fast=False,
-            trust_remote_code=False,
-        )
+        self._tokenizer = load_nllb_tokenizer(model_path, model_id)
         self._translator = ctranslate2.Translator(
             model_path,
             device=self._device,
@@ -51,14 +68,11 @@ class NllbTranslator:
         if not src_lang or not tgt_lang:
             raise ValueError("source_lang and target_lang are required.")
 
-        if not hasattr(self._tokenizer, "lang_code_to_id"):
-            raise ValueError("Tokenizer does not provide lang_code_to_id.")
+        if hasattr(self._tokenizer, "src_lang"):
+            self._tokenizer.src_lang = src_lang
+        if hasattr(self._tokenizer, "tgt_lang"):
+            self._tokenizer.tgt_lang = tgt_lang
 
-        lang_code_to_id = self._tokenizer.lang_code_to_id
-        if src_lang not in lang_code_to_id or tgt_lang not in lang_code_to_id:
-            raise ValueError(f"Unsupported language: {src_lang} -> {tgt_lang}")
-
-        self._tokenizer.src_lang = src_lang
         encoded = self._tokenizer(
             sentences,
             return_tensors=None,
@@ -69,9 +83,7 @@ class NllbTranslator:
         input_ids = encoded["input_ids"]
         tokens = [self._tokenizer.convert_ids_to_tokens(ids) for ids in input_ids]
 
-        tgt_id = lang_code_to_id[tgt_lang]
-        tgt_token = self._tokenizer.convert_ids_to_tokens([tgt_id])
-        target_prefix = [tgt_token for _ in tokens]
+        target_prefix = [[tgt_lang] for _ in tokens]
 
         results = self._translator.translate_batch(
             tokens,
@@ -81,6 +93,8 @@ class NllbTranslator:
         outputs: List[str] = []
         for result in results:
             hypothesis = result.hypotheses[0]
+            if hypothesis and hypothesis[0] == tgt_lang:
+                hypothesis = hypothesis[1:]
             output_ids = self._tokenizer.convert_tokens_to_ids(hypothesis)
             outputs.append(self._tokenizer.decode(output_ids, skip_special_tokens=True))
 
@@ -105,6 +119,34 @@ def normalize_precision(device: str, precision: str) -> str:
     return "float16"
 
 
+def load_nllb_tokenizer(model_path: str, model_id: str):
+    tokenizer = _load_tokenizer(model_path)
+    if hasattr(tokenizer, "lang_code_to_id"):
+        return tokenizer
+
+    logging.info("Tokenizer from model path lacks lang_code_to_id; falling back to NLLB base tokenizer.")
+    return _load_tokenizer("facebook/nllb-200-distilled-600M")
+
+
+def _load_tokenizer(model_path: str):
+    try:
+        return AutoTokenizer.from_pretrained(
+            model_path,
+            use_fast=False,
+            trust_remote_code=False,
+            fix_mistral_regex=True,
+        )
+    except TypeError as exc:
+        if "fix_mistral_regex" not in str(exc):
+            raise
+        warnings.filterwarnings("ignore", message=".*incorrect regex pattern.*")
+        return AutoTokenizer.from_pretrained(
+            model_path,
+            use_fast=False,
+            trust_remote_code=False,
+        )
+
+
 def resolve_model_path(model_id: str, model_dir: Optional[str], auto_download: bool) -> str:
     if model_dir:
         resolved = os.path.abspath(model_dir)
@@ -122,5 +164,4 @@ def resolve_model_path(model_id: str, model_dir: Optional[str], auto_download: b
     return snapshot_download(
         repo_id=model_id,
         local_dir=os.path.join(cache_root, model_id.replace("/", "_")),
-        local_dir_use_symlinks=False,
     )

@@ -1,0 +1,12 @@
+The sound in this game is primitive (even compared to Curse of the Azure Bonds)
+and drastically slows down moving around, far more than in any later Gold Box
+game.  You should probably turn it off.
+
+The keyboard interface has a steep learning curve at the outset, but isn't hard
+to get used to.
+
+If you're emulating the game in DOSBox under Windows, you can download Gold Box
+Companion from http://gbc.zorbus.net/ 
+
+to provide a variety of modern interface
+enhancements.

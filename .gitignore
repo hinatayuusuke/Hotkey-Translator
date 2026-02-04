@@ -11,7 +11,7 @@
 #.agent/
 .serena/
 .testpicture/
-
+.TransTest/
 # dotenv files
 .env
 
