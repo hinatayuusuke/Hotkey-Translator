@@ -3338,3 +3338,27 @@
 
 ### Tests / Verification
 - 未実施（パラメータ変更のみのため）
+**2026-02-04 19:39 (Asia/Taipei) — Re-download model if binary missing**
+
+### Summary
+- Ensured the model auto-downloads if model.bin is missing.
+
+### Context / Goal
+- Fix startup failures when the model directory exists but is incomplete.
+
+### Changes
+- Added a model.bin existence check before skipping downloads.
+- Log a warning and re-download if the directory is partial.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — model path resolution guard.
+
+### Behavioral Impact
+- Partial model directories trigger a fresh download instead of failing.
+
+### Risk & Mitigation
+- Risk: Extra download if model.bin was manually removed.
+- Mitigation: Only triggers when the file is missing.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）

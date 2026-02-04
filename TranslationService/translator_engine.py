@@ -416,8 +416,12 @@ def resolve_model_path(
     cache_root = os.path.join(base_dir, "models")
     os.makedirs(cache_root, exist_ok=True)
     local_dir = os.path.join(cache_root, model_id.replace("/", "_"))
+    model_bin = os.path.join(local_dir, "model.bin")
     if os.path.isdir(local_dir) and os.listdir(local_dir):
-        return local_dir
+        if os.path.isfile(model_bin):
+            return local_dir
+        # WHY: Partial downloads can leave the directory without the model binary.
+        logging.warning("Model directory exists but model.bin is missing; re-downloading.")
 
     logging.info("Downloading model %s into %s", model_id, cache_root)
     return snapshot_download(
