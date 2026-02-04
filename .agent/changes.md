@@ -3197,3 +3197,121 @@
 
 ### Tests / Verification
 - 未実施（ログ追加のみのため）
+**2026-02-04 16:29 (Asia/Taipei) — Add logging config to translation entrypoints**
+
+### Summary
+- Added configurable logging setup to translation server and test harness.
+
+### Context / Goal
+- Enable DEBUG chunking logs via environment without code changes.
+
+### Changes
+- Read `LOGLEVEL` in `server.py` and `test_translation_engine.py`.
+- Standardized log format for easier debugging.
+
+### Files Touched
+- `TranslationService/server.py` — logging.basicConfig with LOGLEVEL.
+- `TranslationService/test_translation_engine.py` — logging.basicConfig with LOGLEVEL.
+
+### Behavioral Impact
+- DEBUG logs can be enabled by setting `LOGLEVEL=DEBUG`.
+
+### Risk & Mitigation
+- Risk: Verbose logs if LOGLEVEL is set too high.
+- Mitigation: Default remains INFO.
+
+### Tests / Verification
+- 未実施（ログ設定のみのため）
+**2026-02-04 16:35 (Asia/Taipei) — Remove comma delimiters from chunking**
+
+### Summary
+- Removed comma-based delimiters to reduce over-splitting.
+
+### Context / Goal
+- Avoid unnatural splits caused by commas in long text.
+
+### Changes
+- Dropped Chinese/Japanese/English commas from the delimiter set.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — delimiter set update.
+
+### Behavioral Impact
+- Chunking is less aggressive on comma-separated clauses.
+
+### Risk & Mitigation
+- Risk: Larger chunks before token-budget split.
+- Mitigation: Token-budget guard still enforces the max length.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 16:41 (Asia/Taipei) — Remove unused quote candidates**
+
+### Summary
+- Removed the unused quote candidate set in delimiter splitting.
+
+### Context / Goal
+- Clean up leftover variables after simplifying English period rules.
+
+### Changes
+- Deleted unused `quote_candidates` variable.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — removed unused variable.
+
+### Behavioral Impact
+- No runtime behavior changes.
+
+### Risk & Mitigation
+- Risk: None (unused variable).
+- Mitigation: Not applicable.
+
+### Tests / Verification
+- 未実施（リファクタのみのため）
+**2026-02-04 17:19 (Asia/Taipei) — Force local tokenizer loading**
+
+### Summary
+- Forced NLLB tokenizer loading to use local files only.
+
+### Context / Goal
+- Avoid remote access after pre-caching the base tokenizer.
+
+### Changes
+- Set the primary tokenizer load path to `local_files_only=True`.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — local-only tokenizer load.
+
+### Behavioral Impact
+- Tokenizer loading will fail if local files are missing.
+
+### Risk & Mitigation
+- Risk: Missing cache causes load errors.
+- Mitigation: Run the pre-cache command before starting.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 17:23 (Asia/Taipei) — Force base NLLB tokenizer**
+
+### Summary
+- Always load the base NLLB tokenizer locally to avoid regex warnings and quality regressions.
+
+### Context / Goal
+- Stabilize translation quality regardless of the model-bundled tokenizer.
+
+### Changes
+- Prefer `facebook/nllb-200-distilled-600M` tokenizer with local-only loading.
+- Fall back to the model tokenizer only if the base tokenizer is missing.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — tokenizer selection logic.
+
+### Behavioral Impact
+- Tokenization should be consistent with the base NLLB model.
+
+### Risk & Mitigation
+- Risk: Missing base tokenizer cache causes fallback.
+- Mitigation: Pre-cache once using the provided command.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）

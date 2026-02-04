@@ -1,4 +1,6 @@
 import argparse
+import logging
+import os
 import time
 
 from translator_engine import NllbTranslator
@@ -50,6 +52,10 @@ def load_texts_from_file(path: str) -> list[str]:
 
 def main() -> int:
     args = parse_args()
+    logging.basicConfig(
+        level=os.getenv("LOGLEVEL", "INFO").upper(),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     if args.input:
         texts = load_texts_from_file(args.input)
     else:

@@ -186,8 +186,7 @@ def _split_by_delimiters(text: str) -> list[str]:
     current = ""
     i = 0
     length = len(text)
-    hard_delims = set("。！？!?．，、；;:：")
-    quote_candidates = {'"', "'", "“", "”", "‘", "’", "(", "["}
+    hard_delims = set("。！？!?．")
 
     while i < length:
         ch = text[i]
@@ -328,22 +327,15 @@ def get_cuda_compute_capability() -> Optional[float]:
 
 
 def load_nllb_tokenizer(model_path: str, hf_token: Optional[str]):
-    tokenizer = _load_tokenizer(model_path, hf_token, local_files_only=False)
-    if hasattr(tokenizer, "lang_code_to_id"):
-        return tokenizer
-
     try:
-        fallback = _load_tokenizer(
+        return _load_tokenizer(
             "facebook/nllb-200-distilled-600M",
             hf_token,
             local_files_only=True,
         )
-        if hasattr(fallback, "lang_code_to_id"):
-            return fallback
     except Exception:
-        logging.warning("Base NLLB tokenizer not found locally; keeping model tokenizer.")
-
-    return tokenizer
+        logging.warning("Base NLLB tokenizer not found locally; falling back to model tokenizer.")
+        return _load_tokenizer(model_path, hf_token, local_files_only=True)
 
 
 def _load_tokenizer(model_path: str, hf_token: Optional[str], local_files_only: bool):

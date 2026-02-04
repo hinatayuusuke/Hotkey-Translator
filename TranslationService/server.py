@@ -84,7 +84,10 @@ def main() -> int:
     parser.add_argument("--auto-download", action="store_true")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+    logging.basicConfig(
+        level=os.getenv("LOGLEVEL", "INFO").upper(),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
     logging.info("Initializing NLLB200 translator...")
     engine = NllbTranslator(
         model_id=args.model_id,
