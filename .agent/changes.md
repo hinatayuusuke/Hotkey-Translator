@@ -3028,3 +3028,28 @@
 
 ### Tests / Verification
 - 未実施（ロジック変更のみのため）
+**2026-02-04 11:43 (Asia/Taipei) — Robust tokenizer fallback and regex fix**
+
+### Summary
+- Reintroduced local-only NLLB tokenizer fallback and applied proper regex patching for fast tokenizers.
+
+### Context / Goal
+- Recover translation quality while keeping HF offline after initial download.
+
+### Changes
+- Attempted NLLB slow tokenizer load first; fall back to fast tokenizer with corrected regex patch.
+- Restored lang_code_to_id check and local-only base tokenizer fallback.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — tokenizer loading strategy and regex patching.
+
+### Behavioral Impact
+- Local tokenizer loading is more stable and avoids broken regex tokenization.
+- If base tokenizer is not cached, no HF access is triggered.
+
+### Risk & Mitigation
+- Risk: If base tokenizer is missing locally, fallback stays on model tokenizer.
+- Mitigation: User can pre-cache the base tokenizer or clear cache to re-download.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）

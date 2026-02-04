@@ -123,35 +123,69 @@ def normalize_precision(device: str, precision: str) -> str:
 
 
 def load_nllb_tokenizer(model_path: str, hf_token: Optional[str]):
-    return _load_tokenizer(model_path, hf_token)
+    tokenizer = _load_tokenizer(model_path, hf_token, local_files_only=False)
+    if hasattr(tokenizer, "lang_code_to_id"):
+        return tokenizer
 
+    try:
+        fallback = _load_tokenizer(
+            "facebook/nllb-200-distilled-600M",
+            hf_token,
+            local_files_only=True,
+        )
+        if hasattr(fallback, "lang_code_to_id"):
+            return fallback
+    except Exception:
+        logging.warning("Base NLLB tokenizer not found locally; keeping model tokenizer.")
 
-def _load_tokenizer(model_path: str, hf_token: Optional[str]):
-    tokenizer_kwargs = {
-        "use_fast": False,
-        "trust_remote_code": False,
-    }
-    if hf_token:
-        tokenizer_kwargs["token"] = hf_token
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message=".*incorrect regex pattern.*")
-        tokenizer = AutoTokenizer.from_pretrained(model_path, **tokenizer_kwargs)
-    _apply_mistral_regex_fix(tokenizer)
     return tokenizer
 
 
-def _apply_mistral_regex_fix(tokenizer) -> None:
+def _load_tokenizer(model_path: str, hf_token: Optional[str], local_files_only: bool):
+    tokenizer_kwargs = {
+        "use_fast": False,
+        "trust_remote_code": False,
+        "local_files_only": local_files_only,
+    }
+    if hf_token:
+        tokenizer_kwargs["token"] = hf_token
+    try:
+        from transformers.models.nllb.tokenization_nllb import NllbTokenizer
+
+        return NllbTokenizer.from_pretrained(model_path, **tokenizer_kwargs)
+    except Exception:
+        pass
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message=".*incorrect regex pattern.*")
+        tokenizer = AutoTokenizer.from_pretrained(model_path, **tokenizer_kwargs)
+    _apply_mistral_regex_fix(tokenizer, model_path, local_files_only)
+    return tokenizer
+
+
+def _apply_mistral_regex_fix(tokenizer, model_path: str, local_files_only: bool) -> None:
     try:
         from transformers.tokenization_utils_tokenizers import TokenizersBackend
     except Exception:
         return
-    if not hasattr(tokenizer, "_tokenizer"):
+    if not hasattr(tokenizer, "backend_tokenizer"):
+        return
+    if not os.path.isdir(model_path):
         return
     patch = getattr(TokenizersBackend, "_patch_mistral_regex", None)
     if not patch:
         return
     try:
-        tokenizer._tokenizer = patch(tokenizer._tokenizer, fix_mistral_regex=True)
+        patched = patch(
+            tokenizer.backend_tokenizer,
+            model_path,
+            local_files_only=local_files_only,
+            is_local=True,
+            init_kwargs={"fix_mistral_regex": True},
+            fix_mistral_regex=True,
+        )
+        tokenizer.backend_tokenizer = patched
+        setattr(tokenizer, "fix_mistral_regex", True)
     except Exception:
         return
 
