@@ -3315,3 +3315,26 @@
 
 ### Tests / Verification
 - 未実施（ロジック変更のみのため）
+**2026-02-04 18:37 (Asia/Taipei) — Set beam size for translation**
+
+### Summary
+- Set beam search size to 4 for NLLB translations.
+
+### Context / Goal
+- Improve translation quality for verification.
+
+### Changes
+- Added `beam_size=4` to CTranslate2 translate_batch calls.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — translate_batch parameters.
+
+### Behavioral Impact
+- Translation quality may improve at the cost of slightly slower decoding.
+
+### Risk & Mitigation
+- Risk: Increased latency for large batches.
+- Mitigation: Beam size can be tuned down if needed.
+
+### Tests / Verification
+- 未実施（パラメータ変更のみのため）

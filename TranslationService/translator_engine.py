@@ -100,6 +100,8 @@ class NllbTranslator:
         results = self._translator.translate_batch(
             tokens,
             target_prefix=target_prefix,
+            beam_size=4,
+            repetition_penalty=1.2,
         )
 
         chunk_outputs: List[str] = []
