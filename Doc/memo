@@ -8,3 +8,5 @@ WPF (C#): OCR（画面認識）、翻訳API連携、ユーザー設定、DLL注�
 OBSのGithubコードを参考に、DLL (C++ + ImGui): ゲームプロセス内でのDirectX、Vulkenフック、共有メモリの監視、テキスト描画。
 
 通信: 共有メモリ（Memory Mapped File）による高速データ転送。
+F11は原文、翻訳切り替え
+F9は非表示と最新結果の表示切り替え
