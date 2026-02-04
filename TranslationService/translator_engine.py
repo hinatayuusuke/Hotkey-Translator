@@ -38,16 +38,19 @@ class NllbTranslator:
         auto_download: bool,
     ) -> None:
         os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+        # WHY: Windows without symlink support spams warnings; caching still works without symlinks.
+        os.environ.setdefault("HF_HUB_DISABLE_SYMLINKS_WARNING", "1")
 
         self._model_id = model_id
         self._model_dir = model_dir
         self._device = normalize_device(device)
         self._precision = normalize_precision(self._device, precision)
+        self._hf_token = resolve_hf_token()
 
-        model_path = resolve_model_path(model_id, model_dir, auto_download)
+        model_path = resolve_model_path(model_id, model_dir, auto_download, self._hf_token)
         self._model_path = model_path
 
-        self._tokenizer = load_nllb_tokenizer(model_path, model_id)
+        self._tokenizer = load_nllb_tokenizer(model_path, self._hf_token)
         self._translator = ctranslate2.Translator(
             model_path,
             device=self._device,
@@ -119,35 +122,54 @@ def normalize_precision(device: str, precision: str) -> str:
     return "float16"
 
 
-def load_nllb_tokenizer(model_path: str, model_id: str):
-    tokenizer = _load_tokenizer(model_path)
-    if hasattr(tokenizer, "lang_code_to_id"):
-        return tokenizer
-
-    logging.info("Tokenizer from model path lacks lang_code_to_id; falling back to NLLB base tokenizer.")
-    return _load_tokenizer("facebook/nllb-200-distilled-600M")
+def load_nllb_tokenizer(model_path: str, hf_token: Optional[str]):
+    return _load_tokenizer(model_path, hf_token)
 
 
-def _load_tokenizer(model_path: str):
-    try:
-        return AutoTokenizer.from_pretrained(
-            model_path,
-            use_fast=False,
-            trust_remote_code=False,
-            fix_mistral_regex=True,
-        )
-    except TypeError as exc:
-        if "fix_mistral_regex" not in str(exc):
-            raise
+def _load_tokenizer(model_path: str, hf_token: Optional[str]):
+    tokenizer_kwargs = {
+        "use_fast": False,
+        "trust_remote_code": False,
+    }
+    if hf_token:
+        tokenizer_kwargs["token"] = hf_token
+    with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message=".*incorrect regex pattern.*")
-        return AutoTokenizer.from_pretrained(
-            model_path,
-            use_fast=False,
-            trust_remote_code=False,
-        )
+        tokenizer = AutoTokenizer.from_pretrained(model_path, **tokenizer_kwargs)
+    _apply_mistral_regex_fix(tokenizer)
+    return tokenizer
 
 
-def resolve_model_path(model_id: str, model_dir: Optional[str], auto_download: bool) -> str:
+def _apply_mistral_regex_fix(tokenizer) -> None:
+    try:
+        from transformers.tokenization_utils_tokenizers import TokenizersBackend
+    except Exception:
+        return
+    if not hasattr(tokenizer, "_tokenizer"):
+        return
+    patch = getattr(TokenizersBackend, "_patch_mistral_regex", None)
+    if not patch:
+        return
+    try:
+        tokenizer._tokenizer = patch(tokenizer._tokenizer, fix_mistral_regex=True)
+    except Exception:
+        return
+
+
+def resolve_hf_token() -> Optional[str]:
+    for key in ("HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        value = os.getenv(key)
+        if value:
+            return value
+    return None
+
+
+def resolve_model_path(
+    model_id: str,
+    model_dir: Optional[str],
+    auto_download: bool,
+    hf_token: Optional[str],
+) -> str:
     if model_dir:
         resolved = os.path.abspath(model_dir)
         if not os.path.isdir(resolved):
@@ -160,8 +182,13 @@ def resolve_model_path(model_id: str, model_dir: Optional[str], auto_download: b
     base_dir = os.path.dirname(__file__)
     cache_root = os.path.join(base_dir, "models")
     os.makedirs(cache_root, exist_ok=True)
+    local_dir = os.path.join(cache_root, model_id.replace("/", "_"))
+    if os.path.isdir(local_dir) and os.listdir(local_dir):
+        return local_dir
+
     logging.info("Downloading model %s into %s", model_id, cache_root)
     return snapshot_download(
         repo_id=model_id,
-        local_dir=os.path.join(cache_root, model_id.replace("/", "_")),
+        local_dir=local_dir,
+        token=hf_token,
     )

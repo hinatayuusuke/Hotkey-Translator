@@ -7,6 +7,3 @@ to get used to.
 
 If you're emulating the game in DOSBox under Windows, you can download Gold Box
 Companion from http://gbc.zorbus.net/ 
-
-to provide a variety of modern interface
-enhancements.

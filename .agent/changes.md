@@ -2951,3 +2951,80 @@
 
 ### Tests / Verification
 - `dotnet build`
+**2026-02-04 11:17 (Asia/Taipei) — Translation tokenizer warning fixes**
+
+### Summary
+- Reduced Hugging Face warning noise and improved tokenizer loading robustness.
+
+### Context / Goal
+- Address Mistral regex, symlink caching, and unauthenticated download warnings.
+- Keep translation downloads authenticated when a token is provided.
+
+### Changes
+- Added HF token resolution and pass-through to downloads/tokenizer loading.
+- Suppressed symlink warning on Windows via environment default.
+- Hardened tokenizer loading with regex fix application and warning filtering.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — updated HF hub handling and tokenizer load logic.
+
+### Behavioral Impact
+- Tokenizer loads with a safer regex patch path and fewer warnings.
+- Authenticated downloads are used automatically when `HF_TOKEN` is set.
+
+### Risk & Mitigation
+- Risk: Some warnings are suppressed, potentially hiding environment issues.
+- Mitigation: Behavior is limited to known noisy warnings; failures still surface as errors.
+
+### Tests / Verification
+- 未実施（警告対応のみのため）
+**2026-02-04 11:26 (Asia/Taipei) — Reduce HF access in translator engine**
+
+### Summary
+- Avoided unnecessary Hugging Face access when cached and removed lang_code_to_id fallback.
+
+### Context / Goal
+- Stop extra HF requests after first download.
+- Remove redundant tokenizer fallback now that target_prefix is used.
+
+### Changes
+- Skip snapshot_download when the cached model directory exists.
+- Always use the local tokenizer without lang_code_to_id checks.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — cache-aware model path resolution and tokenizer load simplification.
+
+### Behavioral Impact
+- Cached models no longer trigger HF metadata checks.
+- Tokenizer loading no longer falls back to base NLLB.
+
+### Risk & Mitigation
+- Risk: Corrupted local cache could go unnoticed.
+- Mitigation: If translation fails, user can delete the cache to force re-download.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 11:32 (Asia/Taipei) — Use slow tokenizer for NLLB**
+
+### Summary
+- Switched NLLB tokenizer to the slow (sentencepiece) implementation to avoid regex warnings and quality regressions.
+
+### Context / Goal
+- Restore translation quality while eliminating the incorrect regex pattern warning.
+
+### Changes
+- Forced `use_fast=False` in NLLB tokenizer loading.
+- Simplified tokenizer load path now that regex patching is unnecessary for slow tokenizers.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — use slow tokenizer path for NLLB.
+
+### Behavioral Impact
+- Tokenizer loading is slightly slower but translation output is more stable.
+
+### Risk & Mitigation
+- Risk: Slightly slower initialization due to slow tokenizer.
+- Mitigation: Initialization happens once per engine; runtime translation unaffected.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
