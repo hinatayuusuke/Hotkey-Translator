@@ -15,6 +15,7 @@
 # dotenv files
 .env
 TranslationService/models/
+docignore/
 
 # User-specific files
 *.rsuser
