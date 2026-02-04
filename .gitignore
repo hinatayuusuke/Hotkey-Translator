@@ -14,6 +14,7 @@
 .TransTest/
 # dotenv files
 .env
+TranslationService/models/
 
 # User-specific files
 *.rsuser
