@@ -55,7 +55,7 @@ wheels = [
 
 [[package]]
 name = "ctranslate2"
-version = "4.7.0"
+version = "3.24.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' and sys_platform == 'win32'" },
@@ -64,9 +64,9 @@ dependencies = [
     { name = "setuptools", marker = "sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/b1/3592bf8b2a26074aae36925e719c31319c03c52b1d73379ed1e3b50c88af/ctranslate2-4.7.0-cp310-cp310-win_amd64.whl", hash = "sha256:727ea23c557ec0df71cc8282ebee5208b8204a40e2e7efe9c221f6b90e8df7ba", size = 18842429, upload-time = "2026-02-03T03:22:32.022Z" },
-    { url = "https://files.pythonhosted.org/packages/0d/ff/a714c0e05f44d70715bd7d3db008dac5e0b2237940fc7856193241bd08f0/ctranslate2-4.7.0-cp311-cp311-win_amd64.whl", hash = "sha256:5ef12427487085039d61c8d2f76b9c308d64ef0fcc5f94ebd54e8baacfc2e311", size = 18843356, upload-time = "2026-02-03T03:22:43.657Z" },
-    { url = "https://files.pythonhosted.org/packages/57/55/37ce9240a11c85fe976690b74965ec1abff631084aa75bf5f71ce70fa21e/ctranslate2-4.7.0-cp312-cp312-win_amd64.whl", hash = "sha256:e19b81d2306f307206b874068825c7305586c6d14eaefe73f0d9799ba994a703", size = 18844990, upload-time = "2026-02-03T03:22:56.321Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/0f/6f03d02cff98b10c6f3a2ecd74d691e0930c9598d816bf67f98f44b02500/ctranslate2-3.24.0-cp310-cp310-win_amd64.whl", hash = "sha256:d972c229613220d33eb5faabb35c1e063eab885da6264c693aa01d53ad9c5af2", size = 20198564, upload-time = "2024-01-09T10:39:16.262Z" },
+    { url = "https://files.pythonhosted.org/packages/54/be/a55bbeb04e7f3b119b64a76d2644f3548e9fec83733eadc46b9a970d342e/ctranslate2-3.24.0-cp311-cp311-win_amd64.whl", hash = "sha256:bb54d91826c3de21fda5784661e732fdfb4da6d877e8495b87b2bb7ed6f88123", size = 20199211, upload-time = "2024-01-09T10:39:29.547Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/ff/75535fc8bf1f341e9e504b879072caf1d70920735fb3117b669fa2911a69/ctranslate2-3.24.0-cp312-cp312-win_amd64.whl", hash = "sha256:8608d290b651b7c9dd007806493d56744697fbfaf1f4e89082805bb0f8179357", size = 20201516, upload-time = "2024-01-09T10:39:42.8Z" },
 ]
 
 [[package]]
@@ -407,7 +407,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ctranslate2", specifier = ">=4.5.0" },
+    { name = "ctranslate2", specifier = "==3.24.0" },
     { name = "grpcio", specifier = ">=1.76.0" },
     { name = "grpcio-tools", specifier = ">=1.76.0" },
     { name = "huggingface-hub", specifier = ">=0.26.0" },

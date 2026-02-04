@@ -3053,3 +3053,30 @@
 
 ### Tests / Verification
 - 未実施（ロジック変更のみのため）
+**2026-02-04 11:53 (Asia/Taipei) — GPU precision auto-fallback**
+
+### Summary
+- Added GPU FP16/FP32 selection based on compute capability with runtime fallback.
+
+### Context / Goal
+- Avoid GPU translation failures when FP16 is unsupported.
+- Prefer FP16 on tensor-core GPUs and FP32 otherwise.
+
+### Changes
+- Added compute capability probe via `nvidia-smi`.
+- Selected FP16 for capable GPUs, FP32 otherwise.
+- Added FP16->FP32 fallback on Translator initialization errors.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — GPU precision selection and safe fallback.
+
+### Behavioral Impact
+- GPU runs on FP16 when supported; otherwise it automatically uses FP32.
+- GPU initialization no longer fails due to unsupported FP16.
+
+### Risk & Mitigation
+- Risk: `nvidia-smi` missing or slow could delay initialization.
+- Mitigation: Failure to query falls back to existing preference and runtime fallback remains.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）

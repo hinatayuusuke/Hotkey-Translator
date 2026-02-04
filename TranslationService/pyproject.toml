@@ -5,7 +5,7 @@ description = "CTranslate2 NLLB200 gRPC translation service"
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 dependencies = [
-    "ctranslate2>=4.5.0",
+    "ctranslate2==3.24.0",
     "grpcio>=1.76.0",
     "grpcio-tools>=1.76.0",
     "huggingface-hub>=0.26.0",

@@ -1,5 +1,6 @@
 import logging
 import os
+import subprocess
 import warnings
 from typing import Iterable, List, Optional
 
@@ -46,16 +47,14 @@ class NllbTranslator:
         self._device = normalize_device(device)
         self._precision = normalize_precision(self._device, precision)
         self._hf_token = resolve_hf_token()
+        if self._device == "cuda":
+            self._precision = resolve_gpu_precision(self._precision)
 
         model_path = resolve_model_path(model_id, model_dir, auto_download, self._hf_token)
         self._model_path = model_path
 
         self._tokenizer = load_nllb_tokenizer(model_path, self._hf_token)
-        self._translator = ctranslate2.Translator(
-            model_path,
-            device=self._device,
-            compute_type=self._precision,
-        )
+        self._translator = build_translator(model_path, self._device, self._precision)
 
     @property
     def model_path(self) -> str:
@@ -120,6 +119,59 @@ def normalize_precision(device: str, precision: str) -> str:
     if pref in ("int8", "int8_float16", "int8_bfloat16"):
         return pref
     return "float16"
+
+
+def resolve_gpu_precision(preferred: str) -> str:
+    pref = (preferred or "").strip().lower()
+    if pref.startswith("int8"):
+        return pref
+    if pref not in ("float16", "float32", "float"):
+        pref = "float16"
+    compute_cap = get_cuda_compute_capability()
+    if compute_cap is not None and compute_cap < 7.0:
+        # WHY: GPUs without tensor cores often fail or perform poorly with FP16.
+        return "float32"
+    return "float16" if pref == "float16" else "float32"
+
+
+def build_translator(model_path: str, device: str, compute_type: str) -> ctranslate2.Translator:
+    try:
+        return ctranslate2.Translator(
+            model_path,
+            device=device,
+            compute_type=compute_type,
+        )
+    except ValueError as exc:
+        if device == "cuda" and compute_type == "float16":
+            logging.warning("FP16 not supported; falling back to float32. (%s)", exc)
+            return ctranslate2.Translator(
+                model_path,
+                device=device,
+                compute_type="float32",
+            )
+        raise
+
+
+def get_cuda_compute_capability() -> Optional[float]:
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_cap", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=2,
+            check=False,
+        )
+    except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    output = (result.stdout or "").strip().splitlines()
+    if not output:
+        return None
+    try:
+        return float(output[0].strip())
+    except ValueError:
+        return None
 
 
 def load_nllb_tokenizer(model_path: str, hf_token: Optional[str]):
