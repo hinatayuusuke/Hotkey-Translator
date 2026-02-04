@@ -3080,3 +3080,120 @@
 
 ### Tests / Verification
 - 未実施（ロジック変更のみのため）
+**2026-02-04 15:48 (Asia/Taipei) — Token-budgeted chunking for NLLB**
+
+### Summary
+- Added token-length based chunking in the translation engine to avoid 512-token overflow.
+
+### Context / Goal
+- Prevent translation degradation when inputs exceed the NLLB token limit.
+
+### Changes
+- Split inputs by delimiters and token budget before translation.
+- Added fallback splitting for long segments and hard character splits when needed.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — token-budgeted chunking logic.
+
+### Behavioral Impact
+- Long inputs are split into safe chunks and reassembled after translation.
+
+### Risk & Mitigation
+- Risk: Over-splitting can make translations slightly less natural.
+- Mitigation: Prefer sentence/line delimiters and only hard split when required.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 16:01 (Asia/Taipei) — Expand delimiter set for chunking**
+
+### Summary
+- Added English and Chinese punctuation to the token-budgeted split delimiters.
+
+### Context / Goal
+- Improve chunking accuracy for English/Chinese inputs.
+
+### Changes
+- Expanded delimiter regex to include English and Chinese punctuation marks.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — updated delimiter regex in chunking.
+
+### Behavioral Impact
+- Long inputs split more naturally on English/Chinese punctuation.
+
+### Risk & Mitigation
+- Risk: Additional punctuation may increase splitting frequency.
+- Mitigation: Token budget guard still controls chunk size.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 16:03 (Asia/Taipei) — Conditional English period splitting**
+
+### Summary
+- Implemented conditional handling for English periods to reduce false splits.
+
+### Context / Goal
+- Avoid over-splitting on '.' while still honoring sentence boundaries in English.
+
+### Changes
+- Replaced regex-based delimiter split with a scanner.
+- Added conditional split for '.' based on next token (uppercase/quote/end) and decimal checks.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — delimiter splitting logic.
+
+### Behavioral Impact
+- English period splitting is more conservative and should reduce false positives.
+
+### Risk & Mitigation
+- Risk: Some abbreviations may still be split.
+- Mitigation: Token-budget guard prevents overflow; heuristic favors fewer splits.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 16:15 (Asia/Taipei) — Split on punctuation followed by space**
+
+### Summary
+- Adjusted sentence splitting to cut after punctuation when followed by whitespace.
+
+### Context / Goal
+- Improve English sentence splitting by using a simpler whitespace-based rule.
+
+### Changes
+- Split on punctuation (including '.') only when the next character is whitespace.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — delimiter handling update.
+
+### Behavioral Impact
+- English sentences are split more aggressively when punctuation is followed by spaces.
+
+### Risk & Mitigation
+- Risk: URLs or abbreviations followed by space may be split.
+- Mitigation: Token-budget guard remains; splitting is acceptable for chunking.
+
+### Tests / Verification
+- 未実施（ロジック変更のみのため）
+**2026-02-04 16:19 (Asia/Taipei) — Add debug logging for chunking**
+
+### Summary
+- Added DEBUG logs to show how input is split into segments and chunks.
+
+### Context / Goal
+- Make token-budget splitting decisions visible for tuning.
+
+### Changes
+- Logged segment list and final chunk list in chunking pipeline.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — debug logs for chunking.
+
+### Behavioral Impact
+- When DEBUG logging is enabled, chunking details are emitted.
+
+### Risk & Mitigation
+- Risk: Large logs for very long inputs.
+- Mitigation: Only emitted at DEBUG level.
+
+### Tests / Verification
+- 未実施（ログ追加のみのため）

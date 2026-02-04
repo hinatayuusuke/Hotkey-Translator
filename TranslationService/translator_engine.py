@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 import warnings
 from typing import Iterable, List, Optional
@@ -75,12 +76,21 @@ class NllbTranslator:
         if hasattr(self._tokenizer, "tgt_lang"):
             self._tokenizer.tgt_lang = tgt_lang
 
-        encoded = self._tokenizer(
+        max_tokens = 512
+        chunked_texts, boundaries = split_texts_by_token_budget(
             sentences,
+            self._tokenizer,
+            max_tokens,
+        )
+        if not chunked_texts:
+            return ["" for _ in sentences]
+
+        encoded = self._tokenizer(
+            chunked_texts,
             return_tensors=None,
             padding=True,
             truncation=True,
-            max_length=512,
+            max_length=max_tokens,
         )
         input_ids = encoded["input_ids"]
         tokens = [self._tokenizer.convert_ids_to_tokens(ids) for ids in input_ids]
@@ -92,13 +102,17 @@ class NllbTranslator:
             target_prefix=target_prefix,
         )
 
-        outputs: List[str] = []
+        chunk_outputs: List[str] = []
         for result in results:
             hypothesis = result.hypotheses[0]
             if hypothesis and hypothesis[0] == tgt_lang:
                 hypothesis = hypothesis[1:]
             output_ids = self._tokenizer.convert_tokens_to_ids(hypothesis)
-            outputs.append(self._tokenizer.decode(output_ids, skip_special_tokens=True))
+            chunk_outputs.append(self._tokenizer.decode(output_ids, skip_special_tokens=True))
+
+        outputs: List[str] = []
+        for start, end in boundaries:
+            outputs.append("".join(chunk_outputs[start:end]).strip())
 
         return outputs
 
@@ -119,6 +133,145 @@ def normalize_precision(device: str, precision: str) -> str:
     if pref in ("int8", "int8_float16", "int8_bfloat16"):
         return pref
     return "float16"
+
+
+def split_texts_by_token_budget(
+    texts: Iterable[str],
+    tokenizer,
+    max_tokens: int,
+) -> tuple[list[str], list[tuple[int, int]]]:
+    chunked: list[str] = []
+    boundaries: list[tuple[int, int]] = []
+    for text in texts:
+        start = len(chunked)
+        chunks = split_text_by_token_budget(text, tokenizer, max_tokens)
+        chunked.extend(chunks)
+        boundaries.append((start, len(chunked)))
+    return chunked, boundaries
+
+
+def split_text_by_token_budget(text: str, tokenizer, max_tokens: int) -> list[str]:
+    raw = text.strip()
+    if not raw:
+        return []
+    segments = _split_by_delimiters(raw)
+    logging.debug("Split segments (%d): %s", len(segments), segments)
+    normalized: list[str] = []
+    for segment in segments:
+        if _token_count(segment, tokenizer) <= max_tokens:
+            normalized.append(segment)
+            continue
+        normalized.extend(_split_long_segment(segment, tokenizer, max_tokens))
+
+    chunks: list[str] = []
+    current = ""
+    for segment in normalized:
+        candidate = current + segment if current else segment
+        if _token_count(candidate, tokenizer) <= max_tokens:
+            current = candidate
+            continue
+
+        if current:
+            chunks.append(current)
+        current = segment
+
+    if current:
+        chunks.append(current)
+    logging.debug("Final chunks (%d): %s", len(chunks), chunks)
+    return chunks
+
+
+def _split_by_delimiters(text: str) -> list[str]:
+    segments: list[str] = []
+    current = ""
+    i = 0
+    length = len(text)
+    hard_delims = set("。！？!?．，、；;:：")
+    quote_candidates = {'"', "'", "“", "”", "‘", "’", "(", "["}
+
+    while i < length:
+        ch = text[i]
+        if ch == "\n":
+            j = i
+            while j < length and text[j] == "\n":
+                j += 1
+            current += text[i:j]
+            segments.append(current)
+            current = ""
+            i = j
+            continue
+
+        if ch in hard_delims or ch == ".":
+            current += ch
+            j = i + 1
+            if j < length and text[j].isspace():
+                while j < length and text[j].isspace():
+                    j += 1
+                segments.append(current)
+                current = ""
+                i = j
+                continue
+            i += 1
+            continue
+
+        current += ch
+        i += 1
+
+    if current:
+        segments.append(current)
+    return segments
+
+
+def _split_long_segment(text: str, tokenizer, max_tokens: int) -> list[str]:
+    words = re.split(r"(\s+)", text)
+    chunks: list[str] = []
+    current = ""
+    for part in words:
+        if not part:
+            continue
+        candidate = current + part if current else part
+        if _token_count(candidate, tokenizer) <= max_tokens:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+            current = ""
+        if _token_count(part, tokenizer) <= max_tokens:
+            current = part
+            continue
+        # WHY: Very long tokens need a hard split to honor the max token budget.
+        chunks.extend(_split_by_char_budget(part, tokenizer, max_tokens))
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _split_by_char_budget(text: str, tokenizer, max_tokens: int) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+    for ch in text:
+        candidate = current + ch
+        if _token_count(candidate, tokenizer) <= max_tokens:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        current = ch
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _token_count(text: str, tokenizer) -> int:
+    encoded = tokenizer(
+        text,
+        return_tensors=None,
+        add_special_tokens=True,
+        padding=False,
+        truncation=False,
+    )
+    return len(encoded["input_ids"])
 
 
 def resolve_gpu_precision(preferred: str) -> str:
