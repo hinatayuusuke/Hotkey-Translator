@@ -3491,3 +3491,33 @@
 
 ### Tests / Verification
 - 未実施（F9→OCRの目視確認が必要なため）
+**2026-02-06 00:32 (Asia/Taipei) — Implement F11 overlay text toggle**
+
+### Summary
+- Switched F11 from OCR-only run to toggling overlay text between translated and source.
+
+### Context / Goal
+- Allow quick source/translated overlay switching without re-running OCR/translation.
+- Ignore toggles while OCR/translation is running.
+
+### Changes
+- Added `OverlayTextMode` and stored last OCR/translation data in the pipeline.
+- Made pipeline rebuild overlay items for the selected text mode on F11.
+- Updated hotkey handler/logs and UI label to reflect the new F11 behavior.
+
+### Files Touched
+- `Models/OverlayTextMode.cs` — added overlay text mode enum.
+- `Services/PipelineOrchestrator.cs` — store last OCR/translation data and support mode toggling.
+- `MainWindow.xaml.cs` — F11 toggles overlay text mode with busy/no-data guard.
+- `MainWindow.xaml` — hotkey label updated to “Overlay text”.
+
+### Behavioral Impact
+- F11 now toggles overlay between translated and source text without running OCR.
+- Toggle is ignored during active OCR/translation or when no overlay data exists.
+
+### Risk & Mitigation
+- Risk: Users expecting OCR-only on F11 lose that behavior.
+- Mitigation: Log message and UI label now reflect the new purpose.
+
+### Tests / Verification
+- 未実施（F11トグルとF8/F10の目視確認が必要なため）

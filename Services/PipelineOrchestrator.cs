@@ -36,6 +36,10 @@ public sealed class PipelineOrchestrator
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly Dictionary<string, string> _lastTranslations = new(StringComparer.Ordinal);
     private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
+    private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
+    private IReadOnlyList<OcrLine>? _lastGroupedLines;
+    private Dictionary<string, string> _lastOverlayTranslations = new(StringComparer.Ordinal);
+    private Rect _lastOverlayRoiScreen;
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
     private Rect? _lastRoiBounds;
@@ -282,8 +286,10 @@ public sealed class PipelineOrchestrator
                         .ConfigureAwait(false);
                 }
 
-                var overlayItems = BuildOverlayItems(groupedLines, translations, roiScreen, settings);
-
+                _lastGroupedLines = groupedLines.ToList();
+                _lastOverlayTranslations = new Dictionary<string, string>(translations, StringComparer.Ordinal);
+                _lastOverlayRoiScreen = roiScreen;
+                var overlayItems = BuildOverlayItems(groupedLines, translations, roiScreen, settings, _overlayTextMode);
                 _lastOverlayItems = overlayItems;
                 Stopwatch? overlayStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 _overlayPresenter.Update(overlayItems);
@@ -328,6 +334,40 @@ public sealed class PipelineOrchestrator
                 UpdateLastRoiSnapshot(roiSnapshot, roiSnapshotBounds);
             }
 
+            _gate.Release();
+        }
+    }
+
+    public bool TrySetOverlayTextMode(OverlayTextMode mode, out string? reason)
+    {
+        reason = null;
+        if (!_gate.Wait(0))
+        {
+            reason = "F11: toggle ignored (OCR/translation running).";
+            return false;
+        }
+
+        try
+        {
+            if (_lastGroupedLines == null || _lastGroupedLines.Count == 0)
+            {
+                reason = "F11: toggle ignored (no overlay data).";
+                return false;
+            }
+
+            _overlayTextMode = mode;
+            var overlayItems = BuildOverlayItems(
+                _lastGroupedLines,
+                _lastOverlayTranslations,
+                _lastOverlayRoiScreen,
+                _settingsService.Settings,
+                _overlayTextMode);
+            _lastOverlayItems = overlayItems;
+            _overlayPresenter.Update(overlayItems);
+            return true;
+        }
+        finally
+        {
             _gate.Release();
         }
     }
@@ -463,9 +503,15 @@ public sealed class PipelineOrchestrator
         return translations;
     }
 
-    private static string GetOverlayText(string sourceText, Dictionary<string, string> translations, int lineCount)
+    private static string GetOverlayText(
+        string sourceText,
+        Dictionary<string, string> translations,
+        int lineCount,
+        OverlayTextMode mode)
     {
-        var text = translations.TryGetValue(sourceText, out var translated) ? translated : sourceText;
+        var text = mode == OverlayTextMode.Translated && translations.TryGetValue(sourceText, out var translated)
+            ? translated
+            : sourceText;
         return NormalizeOverlayText(text, lineCount);
     }
 
@@ -473,12 +519,13 @@ public sealed class PipelineOrchestrator
         IReadOnlyList<OcrLine> groupedLines,
         Dictionary<string, string> translations,
         Rect roiScreen,
-        AppSettings settings)
+        AppSettings settings,
+        OverlayTextMode mode)
     {
         if (!settings.EnableFixedRoiOverlay)
         {
             return groupedLines
-                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount), line.Rect, line.LineCount, line.LineHeight))
+                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount, mode), line.Rect, line.LineCount, line.LineHeight))
                 .ToList();
         }
 
@@ -495,7 +542,7 @@ public sealed class PipelineOrchestrator
         var lines = new List<string>(ordered.Count);
         foreach (var line in ordered)
         {
-            var text = GetOverlayText(line.Text, translations, line.LineCount);
+            var text = GetOverlayText(line.Text, translations, line.LineCount, mode);
             if (!string.IsNullOrWhiteSpace(text))
             {
                 lines.Add(text);

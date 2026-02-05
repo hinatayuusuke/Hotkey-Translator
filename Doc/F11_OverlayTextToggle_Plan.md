@@ -16,12 +16,14 @@ F11 を「OCR-only 実行」から「オーバーレイ表示内容の切り替�
 - 翻訳未取得の行は現状でも原文フォールバックで表示されている。
 - F11 の既存「OCR-only 実行」は廃止する。
 - F11 は OCR/翻訳が進行中のタイミングでは無視する（状態は切り替えない）。
+- 現状のF9はウィンドウを隠さず、OverlayCanvasの透明切替で非表示にする。
 
 4. **現状整理**
 - F11 は `OnOcrOnlyHotkeyPressed` で `RunOnceAsync(SkipTranslation=true)` を実行。
 - `OverlayItem` は表示用テキストのみを持つため、後から表示内容を切替できない。
 - `PipelineOrchestrator` は `groupedLines` と `translations` をローカル変数で保持し、再利用しない。
 - `RunOnceAsync` は `_gate` により排他制御されているが、F11 トグルはその外にある。
+- F9 による非表示は `OverlayPresenter.SetEnabled(false)` でCanvas透明化される（ウィンドウは常時表示）。
 
 5. **提案アーキテクチャ**
 - コンポーネント構成: `OverlayTextMode`（Translated/Source）を追加し、`PipelineOrchestrator` に「直近のOCR行/翻訳/ROI」を保持させる。
@@ -35,7 +37,7 @@ F11 を「OCR-only 実行」から「オーバーレイ表示内容の切り替�
 - `PipelineOrchestrator` に `TrySetOverlayTextMode(OverlayTextMode mode)` を追加し、最後のデータから再描画する（取得できない場合は `false` を返す）。
 - `MainWindow` の F11 ハンドラはモードをトグルし、`_pipeline.TrySetOverlayTextMode(...)` を呼ぶ。
 - 入出力、エラー、バリデーション:
-- 直近データが無い場合は no-op（`ShowLast` を維持）で安全に終了し、ログに「データなし」を出す。
+- 直近データが無い場合は no-op で安全に終了し、ログに「データなし」を出す。
 - OCR/翻訳が進行中で `TrySetOverlayTextMode` が失敗したら F11 を無視し、ログに理由を出す。
 - 翻訳が無い行は既存と同様に原文フォールバックで表示。
 

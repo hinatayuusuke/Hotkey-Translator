@@ -52,6 +52,7 @@ public partial class MainWindow : Window
     private bool _overlayEnabled = true;
     private bool _overlayVisible;
     private bool _hasRunOnce;
+    private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
@@ -138,7 +139,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(_settingsService.Settings);
         InitializeAutoHideWatcher(_settingsService.Settings);
-        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: OCR only.");
+        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -343,11 +344,25 @@ public partial class MainWindow : Window
             .ConfigureAwait(true);
     }
 
-    private async void OnOcrOnlyHotkeyPressed(object? sender, EventArgs e)
+    private void OnOcrOnlyHotkeyPressed(object? sender, EventArgs e)
     {
-        AppendLog("OCR-only run (translation skipped).");
-        await RunOnceAsync(new ForceRunOptions(SkipPhash: false, SkipOcrDiff: false, SkipTranslationCache: false, SkipTranslation: true))
-            .ConfigureAwait(true);
+        if (_pipeline == null)
+        {
+            return;
+        }
+
+        var nextMode = _overlayTextMode == OverlayTextMode.Translated
+            ? OverlayTextMode.Source
+            : OverlayTextMode.Translated;
+
+        if (!_pipeline.TrySetOverlayTextMode(nextMode, out var reason))
+        {
+            AppendLog(reason ?? "Overlay text toggle ignored.");
+            return;
+        }
+
+        _overlayTextMode = nextMode;
+        AppendLog($"Overlay text mode: {_overlayTextMode}.");
     }
 
     private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
