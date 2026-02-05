@@ -40,8 +40,10 @@ public sealed class OverlayPresenter
             if (!_window.IsVisible)
             {
                 _window.Show();
-                Shown?.Invoke();
             }
+
+            _window.SetOverlayVisibility(true);
+            Shown?.Invoke();
         });
     }
 
@@ -49,11 +51,10 @@ public sealed class OverlayPresenter
     {
         InvokeOnUi("OverlayHide", measureRender: false, () =>
         {
-            if (_window.IsVisible)
-            {
-                _window.Hide();
-                Hidden?.Invoke();
-            }
+            // WHY: Keep the window resident to avoid DWM flash; only toggle overlay visibility.
+            _window.UpdateItems(Array.Empty<OverlayItem>());
+            _window.SetOverlayVisibility(false);
+            Hidden?.Invoke();
         });
     }
 
@@ -112,13 +113,16 @@ public sealed class OverlayPresenter
         return converted;
     }
 
-    public void SetEnabled(bool enabled)
+    public void SetEnabled(bool enabled, bool showLast = true)
     {
         _isEnabled = enabled;
         if (_isEnabled)
         {
             Show();
-            ShowLast();
+            if (showLast)
+            {
+                ShowLast();
+            }
             return;
         }
 

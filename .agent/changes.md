@@ -3437,3 +3437,57 @@
 
 ### Tests / Verification
 - 未実施（手動でOCR実行時のちらつき確認が必要なため）
+**2026-02-05 23:59 (Asia/Taipei) — Toggle overlay via canvas opacity**
+
+### Summary
+- Keep the overlay window resident and toggle only the canvas visibility to avoid Hide/Show flashes.
+
+### Context / Goal
+- F9 hide/show caused flashes due to window Hide/Show behavior.
+- Switch to transparency toggling while keeping the window shown.
+
+### Changes
+- Added `SetOverlayVisibility` to control overlay canvas opacity.
+- `OverlayPresenter.Hide()` now toggles canvas visibility instead of hiding the window.
+- `OverlayPresenter.Show()` ensures the window is shown and the canvas is visible.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — added canvas visibility helper.
+- `Services/OverlayPresenter.cs` — hide/show now toggle overlay visibility without window hide.
+
+### Behavioral Impact
+- F9 now hides the overlay by making it transparent while keeping the window shown; flashing from Hide/Show should be eliminated.
+
+### Risk & Mitigation
+- Risk: Minor compositing overhead from keeping the window visible.
+- Mitigation: Canvas is fully transparent when hidden; overhead should be negligible.
+
+### Tests / Verification
+- 未実施（F9の表示/非表示とOCR実行の目視確認が必要なため）
+**2026-02-06 00:18 (Asia/Taipei) — Suppress stale overlay on run start**
+
+### Summary
+- Prevent showing the previous overlay when auto-enabling at run start.
+
+### Context / Goal
+- After hiding via F9, starting OCR still flashed the previous overlay before new results.
+- Ensure the overlay stays blank until the new update arrives.
+
+### Changes
+- Added optional `showLast` flag to `OverlayPresenter.SetEnabled`.
+- Auto-enable during `RunOnce` now uses `showLast: false`.
+- Hide now clears overlay visuals while keeping cached items for ShowLast.
+
+### Files Touched
+- `Services/OverlayPresenter.cs` — add `showLast` flag and clear visuals on hide.
+- `MainWindow.xaml.cs` — suppress ShowLast when auto-enabling for a run.
+
+### Behavioral Impact
+- Starting OCR after F9 hide no longer shows the previous overlay before new items arrive.
+
+### Risk & Mitigation
+- Risk: Overlay remains blank until the next successful update when auto-enabled.
+- Mitigation: Update flow still renders new results as usual; F9 toggle uses ShowLast.
+
+### Tests / Verification
+- 未実施（F9→OCRの目視確認が必要なため）

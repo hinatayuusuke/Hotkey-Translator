@@ -370,7 +370,7 @@ public partial class MainWindow : Window
         }
 
         _overlayEnabled = true;
-        _overlayPresenter.SetEnabled(true);
+        _overlayPresenter.SetEnabled(true, showLast: false);
         AppendLog("Overlay shown.");
     }
 

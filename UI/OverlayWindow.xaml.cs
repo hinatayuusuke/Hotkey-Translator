@@ -97,6 +97,11 @@ public partial class OverlayWindow : Window
         _fontSizeCache = nextCache;
     }
 
+    public void SetOverlayVisibility(bool visible)
+    {
+        OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
