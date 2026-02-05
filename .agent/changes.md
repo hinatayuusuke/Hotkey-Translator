@@ -3413,3 +3413,27 @@
 
 ### Tests / Verification
 - 未実施（手動でF9トグル確認が必要なため）
+**2026-02-05 22:44 (Asia/Taipei) — Remove overlay hide/show during OCR run**
+
+### Summary
+- Stop hiding the overlay window during OCR runs to eliminate flicker.
+
+### Context / Goal
+- Overlay flickers (A disappears and reappears before B) during OCR runs.
+- Preserve continuous overlay visibility while new results are computed.
+
+### Changes
+- Removed per-run `Hide()`/`Show()` calls around the capture/OCR pipeline.
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — removed overlay hide/show in `RunOnceAsync`.
+
+### Behavioral Impact
+- The previous overlay remains visible until the new overlay items are updated; no hide/show flicker.
+
+### Risk & Mitigation
+- Risk: If capture exclusion fails on some environments, the overlay could appear in OCR input because it stays visible.
+- Mitigation: None in this change; can reintroduce conditional hide if needed.
+
+### Tests / Verification
+- 未実施（手動でOCR実行時のちらつき確認が必要なため）

@@ -134,7 +134,6 @@ public sealed class PipelineOrchestrator
                 }
             }
 
-            _overlayPresenter.Hide();
             Stopwatch? captureStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
             using var frame = _captureManager.Capture(settings);
             if (perfEnabled && captureStopwatch != null)
@@ -329,7 +328,6 @@ public sealed class PipelineOrchestrator
                 UpdateLastRoiSnapshot(roiSnapshot, roiSnapshotBounds);
             }
 
-            _overlayPresenter.Show();
             _gate.Release();
         }
     }
