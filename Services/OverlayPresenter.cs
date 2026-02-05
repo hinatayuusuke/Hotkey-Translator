@@ -117,6 +117,7 @@ public sealed class OverlayPresenter
         _isEnabled = enabled;
         if (_isEnabled)
         {
+            Show();
             ShowLast();
             return;
         }

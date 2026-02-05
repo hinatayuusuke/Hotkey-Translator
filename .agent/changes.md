@@ -3389,3 +3389,27 @@
 
 ### Tests / Verification
 - 未実施（UI/起動時フローの目視が必要なため）
+**2026-02-05 21:57 (Asia/Taipei) — Show overlay on toggle enable**
+
+### Summary
+- Ensure F9 re-enables the overlay window by calling Show before ShowLast.
+
+### Context / Goal
+- F9 toggling ON was not showing the overlay after it had been hidden.
+- Keep the existing behavior that ShowLast is a no-op when no items exist.
+
+### Changes
+- Call `Show()` when enabling the overlay so the window becomes visible before `ShowLast()`.
+
+### Files Touched
+- `Services/OverlayPresenter.cs` — show window on enable before replaying last items.
+
+### Behavioral Impact
+- Toggling overlay ON now displays the overlay window even after a prior Hide; content still depends on last items.
+
+### Risk & Mitigation
+- Risk: Overlay window may appear empty if no items exist yet.
+- Mitigation: Window is transparent and ShowLast still guards empty item updates.
+
+### Tests / Verification
+- 未実施（手動でF9トグル確認が必要なため）
