@@ -232,7 +232,8 @@ public sealed class PipelineOrchestrator
                 if (rawLines.Count == 0)
                 {
                     _logger.Info("OCR returned no lines after confidence filtering.");
-                    _overlayPresenter.ShowLast();
+                    _overlayPresenter.ClearOverlay();
+                    _overlayPresenter.ShowToast("No text detected", frame.Bounds);
                     return;
                 }
 
@@ -258,7 +259,8 @@ public sealed class PipelineOrchestrator
                 if (groupedLines.Count == 0)
                 {
                     _logger.Info("OCR returned no lines.");
-                    _overlayPresenter.ShowLast();
+                    _overlayPresenter.ClearOverlay();
+                    _overlayPresenter.ShowToast("No text detected", frame.Bounds);
                     return;
                 }
 

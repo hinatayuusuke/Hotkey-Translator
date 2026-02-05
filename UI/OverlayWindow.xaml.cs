@@ -6,7 +6,9 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.UI;
 
@@ -25,11 +27,20 @@ public partial class OverlayWindow : Window
     private const double FontQuantizeStepPx = 5.0;
     private const double FontHysteresisThreshold = 1.0;
     private const double MinFallbackFontSize = 6.0;
+    private const int ToastDurationMs = 1200;
+    private const int ToastMinIntervalMs = 500;
+    private const double ToastMargin = 12.0;
+    private const double ToastMaxWidth = 260.0;
+    private readonly DispatcherTimer _toastTimer;
+    private DateTime _lastToastAtUtc = DateTime.MinValue;
 
     public OverlayWindow()
     {
         InitializeComponent();
         Loaded += OnLoaded;
+        _toastTimer = new DispatcherTimer(DispatcherPriority.Background);
+        _toastTimer.Interval = TimeSpan.FromMilliseconds(ToastDurationMs);
+        _toastTimer.Tick += OnToastTimerTick;
     }
 
     public void ApplyStyle(AppSettings settings)
@@ -102,6 +113,43 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
     }
 
+    public void ShowToast(string text, Rect anchor)
+    {
+        if (ToastContainer == null || ToastText == null)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow;
+        // WHY: Avoid flooding the UI with repeated toast updates.
+        if ((now - _lastToastAtUtc).TotalMilliseconds < ToastMinIntervalMs)
+        {
+            return;
+        }
+
+        _lastToastAtUtc = now;
+        ToastText.Text = text;
+        ToastText.MaxWidth = ToastMaxWidth;
+        ToastContainer.Visibility = Visibility.Visible;
+
+        ToastContainer.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var size = ToastContainer.DesiredSize;
+        var target = anchor.IsEmpty
+            ? new Rect(SystemParameters.VirtualScreenLeft, SystemParameters.VirtualScreenTop,
+                SystemParameters.VirtualScreenWidth, SystemParameters.VirtualScreenHeight)
+            : anchor;
+        var anchorDip = DpiHelper.ScreenRectToWindowDip(this, target);
+        var left = anchorDip.X + anchorDip.Width - size.Width - ToastMargin;
+        var top = anchorDip.Y + anchorDip.Height - size.Height - ToastMargin;
+        left = Math.Max(ToastMargin, Math.Min(left, Math.Max(ToastMargin, ActualWidth - size.Width - ToastMargin)));
+        top = Math.Max(ToastMargin, Math.Min(top, Math.Max(ToastMargin, ActualHeight - size.Height - ToastMargin)));
+        Canvas.SetLeft(ToastContainer, left);
+        Canvas.SetTop(ToastContainer, top);
+
+        _toastTimer.Stop();
+        _toastTimer.Start();
+    }
+
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
@@ -116,6 +164,15 @@ public partial class OverlayWindow : Window
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
         UpdateBounds();
+    }
+
+    private void OnToastTimerTick(object? sender, EventArgs e)
+    {
+        _toastTimer.Stop();
+        if (ToastContainer != null)
+        {
+            ToastContainer.Visibility = Visibility.Collapsed;
+        }
     }
 
     private void UpdateBounds()

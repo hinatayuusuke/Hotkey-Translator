@@ -7,5 +7,19 @@
         Topmost="True"
         ShowInTaskbar="False"
         ResizeMode="NoResize">
-    <Canvas x:Name="OverlayCanvas" IsHitTestVisible="False" />
+    <Grid IsHitTestVisible="False">
+        <Canvas x:Name="OverlayCanvas" />
+        <Canvas x:Name="ToastCanvas">
+            <Border x:Name="ToastContainer"
+                    Background="#CC000000"
+                    CornerRadius="4"
+                    Padding="6,3"
+                    Visibility="Collapsed">
+                <TextBlock x:Name="ToastText"
+                           Foreground="White"
+                           FontSize="12"
+                           TextWrapping="Wrap" />
+            </Border>
+        </Canvas>
+    </Grid>
 </Window>

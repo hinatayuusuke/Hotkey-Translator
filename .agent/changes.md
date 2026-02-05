@@ -3521,3 +3521,55 @@
 
 ### Tests / Verification
 - 未実施（F11トグルとF8/F10の目視確認が必要なため）
+**2026-02-06 00:45 (Asia/Taipei) — Show toast on OCR no-text**
+
+### Summary
+- Show a small “No text detected” toast at the focused window’s bottom-right when OCR finds zero lines, and clear the overlay.
+
+### Context / Goal
+- Users should see explicit feedback when OCR detects no text.
+- Avoid showing stale overlay results on zero-line OCR runs.
+
+### Changes
+- Added toast UI elements to the overlay window and a timed show/hide method with a simple rate limit.
+- Added `OverlayPresenter` APIs to clear overlays and show toasts.
+- On zero-line OCR results, clear overlay and show the toast instead of showing the last overlay.
+
+### Files Touched
+- `UI/OverlayWindow.xaml` — added toast container UI.
+- `UI/OverlayWindow.xaml.cs` — toast positioning, timing, and rate limiting.
+- `Services/OverlayPresenter.cs` — added `ClearOverlay` and `ShowToast` wrappers.
+- `Services/PipelineOrchestrator.cs` — zero-line OCR now clears overlay and shows toast.
+
+### Behavioral Impact
+- When OCR detects no text, the overlay is cleared and a brief “No text detected” toast appears.
+
+### Risk & Mitigation
+- Risk: Toast could spam on repeated failures.
+- Mitigation: Added a minimum interval between toast displays.
+
+### Tests / Verification
+- 未実施（OCR 0行時の表示確認が必要なため）
+**2026-02-06 00:48 (Asia/Taipei) — Fix missing DpiHelper using**
+
+### Summary
+- Added the missing namespace import for `DpiHelper` in the overlay window.
+
+### Context / Goal
+- Build failed because `DpiHelper` was referenced without its namespace.
+
+### Changes
+- Added `using Hotkey_Translator.Services;` to `OverlayWindow.xaml.cs`.
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — added missing using directive.
+
+### Behavioral Impact
+- No runtime behavior change; build error resolved.
+
+### Risk & Mitigation
+- Risk: None.
+- Mitigation: N/A.
+
+### Tests / Verification
+- 未実施（ビルド再実行が必要）

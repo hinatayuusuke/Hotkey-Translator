@@ -95,6 +95,29 @@ public sealed class OverlayPresenter
         });
     }
 
+    public void ClearOverlay()
+    {
+        _lastItems = Array.Empty<OverlayItem>();
+        if (!_isEnabled)
+        {
+            return;
+        }
+
+        InvokeOnUi("OverlayClear", measureRender: false, () =>
+        {
+            _window.UpdateItems(Array.Empty<OverlayItem>());
+            Updated?.Invoke();
+        });
+    }
+
+    public void ShowToast(string text, Rect anchor)
+    {
+        InvokeOnUi("OverlayToast", measureRender: false, () =>
+        {
+            _window.ShowToast(text, anchor);
+        });
+    }
+
     private IReadOnlyList<OverlayItem> ConvertToDip(IReadOnlyList<OverlayItem> items)
     {
         var converted = new List<OverlayItem>(items.Count);
