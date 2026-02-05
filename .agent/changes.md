@@ -3362,3 +3362,30 @@
 
 ### Tests / Verification
 - 未実施（ロジック変更のみのため）
+**2026-02-05 10:57 (Asia/Taipei) — On-demand OCR/CT2 loading**
+
+### Summary
+- Load PaddleOCR/CTranslate2 only when selected/enabled, with a busy overlay and failure rollback.
+
+### Context / Goal
+- Reduce startup overhead while keeping heavy OCR/translation resources resident once loaded.
+- Provide clear UX for load failures and memory release timing.
+
+### Changes
+- Added on-demand host loading with busy overlay, failure dialogs, and settings rollback.
+- Added settings UI notice about memory release requiring restart.
+
+### Files Touched
+- `MainWindow.xaml.cs` — on-demand host load flow, failure handling, and rollback.
+- `MainWindow.xaml` — added resource-release notice text near OCR/CT2 settings.
+
+### Behavioral Impact
+- PaddleOCR/CTranslate2 hosts load only when selected/enabled; disabling does not unload until restart.
+- Loading shows a busy overlay; failures disable the setting and show a dialog.
+
+### Risk & Mitigation
+- Risk: Users may expect memory to free immediately after turning OFF.
+- Mitigation: Added explicit restart-required notice in settings and failure dialogs with log guidance.
+
+### Tests / Verification
+- 未実施（UI/起動時フローの目視が必要なため）

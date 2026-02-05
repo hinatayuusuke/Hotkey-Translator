@@ -71,6 +71,10 @@
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                             </ComboBox>
                         </Grid>
+                        <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
+                                   Foreground="DimGray"
+                                   TextWrapping="Wrap"
+                                   Margin="0,6,0,0" />
 
                         <Separator Margin="0,10,0,10" />
                         <TextBlock Text="Translation" FontWeight="SemiBold" />
@@ -451,6 +455,10 @@
                                             Content="Enable CTranslate2 translation"
                                             Margin="0,6,0,0"
                                             Click="OnSettingChanged" />
+                                  <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Device" Width="120" VerticalAlignment="Center" />
                                       <ComboBox x:Name="CTranslate2DeviceBox" Width="120" SelectionChanged="OnSettingChanged">

@@ -65,6 +65,7 @@ public partial class MainWindow : Window
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private CTranslate2HostConfig? _ct2HostConfig;
+    private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
 
     public MainWindow()
     {
@@ -82,8 +83,11 @@ public partial class MainWindow : Window
         ApplySettingsToUi(_settingsService.Settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
-        await StartPaddleGrpcHostAsync(_settingsService.Settings).ConfigureAwait(true);
-        _ = StartCTranslate2GrpcHostAsync(_settingsService.Settings);
+        var settingsChanged = await EnsureResourceHostsAsync(_settingsService.Settings).ConfigureAwait(true);
+        if (settingsChanged)
+        {
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+        }
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(_settingsService.Settings);
@@ -178,66 +182,145 @@ public partial class MainWindow : Window
         _overlayWindow?.Close();
     }
 
-    private async Task StartPaddleGrpcHostAsync(AppSettings settings)
+    private async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
-        if (!settings.EnablePaddleGrpcHost)
+        if (!ShouldLoadPaddle(settings) && !ShouldLoadCTranslate2(settings))
         {
-            return;
+            return false;
         }
 
-        _paddleGrpcHost ??= new PaddleGrpcHost(_logger);
+        await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
+        var overlayShown = false;
+        var settingsChanged = false;
         try
         {
-            await _paddleGrpcHost.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            if (ShouldLoadPaddle(settings))
+            {
+                _paddleGrpcHost ??= new PaddleGrpcHost(_logger);
+                if (_paddleGrpcHost is not { IsRunning: true })
+                {
+                    SetBusyOverlay(true, "Loading PaddleOCR...");
+                    overlayShown = true;
+                    if (!await TryStartPaddleGrpcHostAsync(settings).ConfigureAwait(true))
+                    {
+                        settingsChanged = true;
+                    }
+                }
+            }
+
+            if (ShouldLoadCTranslate2(settings))
+            {
+                _ct2GrpcHost ??= new CTranslate2GrpcHost(_logger);
+                var config = BuildCTranslate2HostConfig(settings);
+                if (_ct2GrpcHost is { IsRunning: true })
+                {
+                    if (_ct2HostConfig.HasValue && !_ct2HostConfig.Value.Equals(config))
+                    {
+                        // NOTE: Keep the host resident until restart; apply changes on next launch.
+                        _logger?.Info("CTranslate2 settings changed; reload deferred until restart.");
+                    }
+                }
+                else
+                {
+                    SetBusyOverlay(true, "Loading CTranslate2...");
+                    overlayShown = true;
+                    if (await TryStartCTranslate2GrpcHostAsync(settings).ConfigureAwait(true))
+                    {
+                        _ct2HostConfig = config;
+                    }
+                    else
+                    {
+                        settingsChanged = true;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            if (overlayShown)
+            {
+                SetBusyOverlay(false, null);
+            }
+            _resourceLoadGate.Release();
+        }
+
+        return settingsChanged;
+    }
+
+    private static bool ShouldLoadPaddle(AppSettings settings)
+    {
+        return settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost;
+    }
+
+    private static bool ShouldLoadCTranslate2(AppSettings settings)
+    {
+        return settings.EnableCTranslate2;
+    }
+
+    private async Task<bool> TryStartPaddleGrpcHostAsync(AppSettings settings)
+    {
+        try
+        {
+            await _paddleGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger?.Info($"Paddle gRPC host failed to start: {ex.Message}");
+            _logger?.Error(ex, "Paddle gRPC host failed to start.");
+            _paddleGrpcHost?.Stop();
+            DisablePaddleOcr(settings);
+            ShowLoadFailure("Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.");
+            return false;
         }
     }
 
-    private async Task StartCTranslate2GrpcHostAsync(AppSettings settings)
+    private async Task<bool> TryStartCTranslate2GrpcHostAsync(AppSettings settings)
     {
-        if (!settings.EnableCTranslate2)
-        {
-            return;
-        }
-
-        NormalizeCTranslate2Settings(settings);
-        _ct2GrpcHost ??= new CTranslate2GrpcHost(_logger);
         try
         {
-            await _ct2GrpcHost.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            await _ct2GrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            return true;
         }
         catch (Exception ex)
         {
-            _logger?.Info($"CTranslate2 gRPC host failed to start: {ex.Message}");
-        }
-    }
-
-    private async Task UpdateCTranslate2GrpcHostAsync(AppSettings settings)
-    {
-        if (!settings.EnableCTranslate2)
-        {
+            _logger?.Error(ex, "CTranslate2 gRPC host failed to start.");
             _ct2GrpcHost?.Stop();
             _ct2HostConfig = null;
+            DisableCTranslate2(settings);
+            ShowLoadFailure("Failed to load CTranslate2. The setting has been turned OFF. See the logs for details.");
+            return false;
+        }
+    }
+
+    private void DisablePaddleOcr(AppSettings settings)
+    {
+        settings.OcrEngine = OcrEngineKind.WinRt;
+        _isApplyingSettings = true;
+        SetComboBoxByTag(OcrEngineBox, "WinRt");
+        _isApplyingSettings = false;
+    }
+
+    private void DisableCTranslate2(AppSettings settings)
+    {
+        settings.EnableCTranslate2 = false;
+        _isApplyingSettings = true;
+        if (EnableCTranslate2Check != null)
+        {
+            EnableCTranslate2Check.IsChecked = false;
+        }
+        _isApplyingSettings = false;
+        UpdateTranslationStatus(settings);
+    }
+
+    private void ShowLoadFailure(string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowLoadFailure(message));
             return;
         }
 
-        var config = BuildCTranslate2HostConfig(settings);
-        if (_ct2HostConfig.HasValue && _ct2HostConfig.Value.Equals(config) && _ct2GrpcHost is { IsRunning: true })
-        {
-            return;
-        }
-
-        if (_ct2GrpcHost is { IsRunning: true })
-        {
-            _logger?.Info("CTranslate2 settings changed; restarting gRPC host.");
-            _ct2GrpcHost.Stop();
-        }
-
-        _ct2HostConfig = config;
-        await StartCTranslate2GrpcHostAsync(settings).ConfigureAwait(true);
+        MessageBox.Show(this, message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
@@ -1069,11 +1152,11 @@ public partial class MainWindow : Window
         UpdateSceneChangeWatchValues();
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
+        await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         await _settingsService.SaveAsync().ConfigureAwait(true);
         AppendLog("Settings saved.");
         TryUpdateHotkeys(settings);
         UpdateAutoHideWatcher(settings);
-        _ = UpdateCTranslate2GrpcHostAsync(settings);
     }
 
     private void PopulateHotkeyKeyBoxes()
