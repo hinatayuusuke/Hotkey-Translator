@@ -12,6 +12,7 @@
 .serena/
 .testpicture/
 .TransTest/
+TranslationServiceLlama/LlamaCpp/
 # dotenv files
 .env
 TranslationService/models/

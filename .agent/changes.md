@@ -3838,3 +3838,57 @@
 
 ### Tests / Verification
 - Verified directory creation via Get-ChildItem .\\Tools\\LlamaCpp.
+
+**2026-02-06 16:14 (Asia/Taipei) — Align Llama binary folder with service-local layout**
+
+### Summary
+- Created a service-local Llama binary directory and updated default LlamaServerPath to match it.
+
+### Context / Goal
+- Use TranslationServiceLlama-relative binary placement for stable path resolution.
+- Match runtime defaults to the agreed folder structure.
+
+### Changes
+- Added TranslationServiceLlama/LlamaCpp directory.
+- Updated default/fallback LlamaServerPath to LlamaCpp\\llama-server.exe.
+
+### Files Touched
+- TranslationServiceLlama/LlamaCpp — new directory for llama-server.exe and DLLs.
+- Models/AppSettings.cs — default LlamaServerPath changed to service-local relative path.
+- MainWindow.xaml.cs — normalization fallback for empty LlamaServerPath updated.
+
+### Behavioral Impact
+- New setups default to TranslationServiceLlama\\LlamaCpp\\llama-server.exe without manual path rewrites.
+
+### Risk & Mitigation
+- Risk: Existing settings may still point to old paths.
+- Mitigation: Existing explicit paths are preserved; only default/fallback changed.
+
+### Tests / Verification
+- Verified directory creation via Get-ChildItem .\\TranslationServiceLlama.
+- Code-level path defaults verified by search and patch.
+
+**2026-02-06 16:26 (Asia/Taipei) — Add plan for TranslationServiceLlama CUDA DLL auto-download**
+
+### Summary
+- Added an implementation plan document for auto-downloading CUDA12 DLL dependencies via pyproject.toml and boot-time PATH injection.
+
+### Context / Goal
+- Clarify whether current TranslationServiceLlama layout can auto-fetch CUDA DLLs.
+- Provide a concrete implementation path that avoids global Windows PATH manual setup.
+
+### Changes
+- Added a new design document covering dependency strategy, startup flow, validation, and risks.
+
+### Files Touched
+- Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md — New implementation plan for CUDA DLL auto-download and llama-server runtime resolution.
+
+### Behavioral Impact
+- No runtime behavior change yet (documentation-only task).
+
+### Risk & Mitigation
+- Risk: Plan may diverge from future runtime code structure.
+- Mitigation: The document explicitly defines candidate files and DoD for implementation-time validation.
+
+### Tests / Verification
+- Verified file creation and UTF-8 output at Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md.

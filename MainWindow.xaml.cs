@@ -677,7 +677,7 @@ public partial class MainWindow : Window
     private static void NormalizeLlamaSettings(AppSettings settings)
     {
         settings.LlamaServerPath = string.IsNullOrWhiteSpace(settings.LlamaServerPath)
-            ? "llama-server"
+            ? "LlamaCpp\\llama-server.exe"
             : settings.LlamaServerPath.Trim();
         settings.LlamaHost = string.IsNullOrWhiteSpace(settings.LlamaHost)
             ? "127.0.0.1"
