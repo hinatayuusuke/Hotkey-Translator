@@ -139,7 +139,7 @@ class NllbTranslator:
             tokens,
             target_prefix=target_prefix,
             beam_size=4,
-            repetition_penalty=1.2,
+            repetition_penalty=1.1,
         )
 
         chunk_outputs: List[str] = []
