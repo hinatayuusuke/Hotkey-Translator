@@ -4012,3 +4012,85 @@
 ### Tests / Verification
 - 実施: dotnet build Hotkey-Translator.csproj -v minimal
 - 結果: 成功（警告 0 / エラー 0）
+
+**2026-02-06 23:54 (Asia/Taipei) — Draft fixed OCR window lock implementation plan**
+
+### Summary
+- OCR対象ウィンドウを固定する機能の実装案を Doc/ に追加した。
+
+### Context / Goal
+- 現状は ActiveWindow 前提で、フォーカス移動時にOCR対象が変わる。
+- OCR対象を固定し、フォーカス非依存で同一ウィンドウを継続認識できる設計案を整理する。
+
+### Changes
+- 現行の CaptureManager / Provider / AppSettings の制約を踏まえた段階導入プランを作成。
+- AppSettings 追加項目、ICaptureProvider I/F拡張、フォールバック方針、DoD を明文化。
+
+### Files Touched
+- Doc/FixedCaptureWindow_Plan.md — 固定ウィンドウOCR機能の実装提案を新規作成。
+
+### Behavioral Impact
+- ドキュメント追加のみで、アプリ実行時の挙動変更はない。
+
+### Risk & Mitigation
+- Risk: 実装前提の認識違いが残る可能性。
+- Mitigation: 現行コード構造に基づいた影響範囲・非ゴール・段階導入を先に合意できる内容にした。
+
+### Tests / Verification
+- 未実施（設計ドキュメント作成のみ）。
+
+**2026-02-06 23:59 (Asia/Taipei) — Revise fixed-window OCR plan to hotkey-only flow**
+
+### Summary
+- 固定ウィンドウOCR計画をUI前提からホットキー固定/解除前提へ更新した。
+
+### Context / Goal
+- 固定対象の指定はUIよりホットキー運用の方が操作負荷が低く、実装も小さく抑えられる。
+- Doc/FixedCaptureWindow_Plan.md を実運用に合わせて再設計する。
+
+### Changes
+- UI導線（固定ボタン/表示）の記述を削除し、ホットキー方式（固定/解除）へ置換。
+- 実装手順、影響範囲、DoD をホットキー中心に再定義。
+- フォールバック方針とログ運用を「UIなしで状態追跡可能」な方針に更新。
+
+### Files Touched
+- Doc/FixedCaptureWindow_Plan.md — ホットキー専用案へ全面更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。アプリ実行挙動は変更なし。
+
+### Risk & Mitigation
+- Risk: UIなしのため固定状態が見えづらい。
+- Mitigation: ログで固定/解除/再解決/フォールバックを明示する方針を計画へ反映。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
+
+**2026-02-07 00:04 (Asia/Taipei) — Add user-configurable hotkey spec to fixed-window plan**
+
+### Summary
+- 固定ウィンドウ計画に「他ホットキーと同様にユーザー変更可能」な仕様を追記した。
+
+### Context / Goal
+- 固定/解除ホットキーも既存 F8/F9/F10/F11 と同等に、ユーザーが設定画面で変更できる必要がある。
+- Hotkey-only 方針を維持しつつ、設定可能性を計画へ明示する。
+
+### Changes
+- ゴールに「固定/解除ホットキーのユーザー変更」を追加。
+- 非ゴールを「固定対象専用UI」に限定し、Hotkeys設定統合は対象内に明確化。
+- 実装手順 Step 3 を「既存 Hotkeys 設定へ統合」に更新。
+- 影響範囲に MainWindow.xaml の Hotkeys 設定項目追加を反映。
+- DoD に「固定/解除ホットキーの変更・保存」を追加。
+
+### Files Touched
+- Doc/FixedCaptureWindow_Plan.md — ホットキー変更可能要件を反映して更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。実行挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: 専用UIを作らない方針と設定変更要件の境界が曖昧になる。
+- Mitigation: 専用固定UIは非ゴール、既存Hotkeys設定統合はゴールとして分離して明記。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
