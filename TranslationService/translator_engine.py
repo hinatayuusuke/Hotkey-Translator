@@ -198,7 +198,7 @@ def split_text_by_token_budget(text: str, tokenizer, max_tokens: int) -> list[st
     if not raw:
         return []
     raw_tokens = _token_count(raw, tokenizer)
-    soft_no_split_tokens = min(max_tokens, 256)
+    soft_no_split_tokens = min(max_tokens, 128)
     if raw_tokens <= soft_no_split_tokens:
         logging.debug(
             "Skip splitting: token_count=%d <= soft_no_split_tokens=%d (max_tokens=%d)",
