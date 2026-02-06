@@ -152,7 +152,10 @@ class NllbTranslator:
 
         outputs: List[str] = []
         for start, end in boundaries:
-            outputs.append("".join(chunk_outputs[start:end]).strip())
+            merged = ""
+            for part in chunk_outputs[start:end]:
+                merged = _merge_with_boundary(merged, part)
+            outputs.append(merged.strip())
 
         return outputs
 
@@ -206,7 +209,7 @@ def split_text_by_token_budget(text: str, tokenizer, max_tokens: int) -> list[st
     chunks: list[str] = []
     current = ""
     for segment in normalized:
-        candidate = current + segment if current else segment
+        candidate = _merge_with_boundary(current, segment)
         if _token_count(candidate, tokenizer) <= max_tokens:
             current = candidate
             continue
@@ -259,6 +262,22 @@ def _split_by_delimiters(text: str) -> list[str]:
     if current:
         segments.append(current)
     return segments
+
+
+def _merge_with_boundary(left: str, right: str) -> str:
+    if not left:
+        return right
+    if not right:
+        return left
+    if left[-1].isspace() or right[0].isspace():
+        return left + right
+    if left[-1] == "\n" or right[0] == "\n":
+        return left + right
+    if right[0] in ".,!?;:)]}\"'":
+        return left + right
+    # WHY: Delimiter-based splitting can drop boundary spaces (". Without" -> ".Without").
+    # Restoring one separator avoids accidental sentence fusion that hurts translation quality.
+    return left + " " + right
 
 
 def _split_long_segment(text: str, tokenizer, max_tokens: int) -> list[str]:

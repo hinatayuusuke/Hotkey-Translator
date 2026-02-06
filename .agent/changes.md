@@ -3892,3 +3892,33 @@
 
 ### Tests / Verification
 - Verified file creation and UTF-8 output at Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md.
+
+**2026-02-06 18:53 (Asia/Taipei) — Fix sentence boundary loss in NLLB chunk merge**
+
+### Summary
+- Fixed missing translation tail caused by dropped sentence boundaries during chunk merge.
+
+### Context / Goal
+- Translation output sometimes omitted the latter sentence after delimiter-based splitting.
+- Preserve boundaries so split-and-merge input stays semantically equivalent to original text.
+
+### Changes
+- Replaced raw string concatenation in chunk assembly with boundary-aware merging.
+- Added _merge_with_boundary(left, right) to restore a single separator when delimiters removed whitespace.
+- Applied the same boundary-aware merge when recombining translated chunk outputs.
+
+### Files Touched
+- TranslationService/translator_engine.py — Added boundary-aware merge helper and wired it into pre-translation chunk merge and post-translation output merge.
+
+### Behavioral Impact
+- Inputs split into multiple segments/chunks keep sentence boundaries (". Without" no longer becomes ".Without").
+- Reduces cases where NLLB drops or degrades translation of later sentences.
+
+### Risk & Mitigation
+- Risk: Boundary insertion could add spaces in some punctuation edge cases.
+- Mitigation: Merge logic avoids insertion when whitespace/newline already exists or right side starts with closing punctuation.
+
+### Tests / Verification
+- Ran: uv run test_translation_engine.py --device gpu --auto-download --source-lang eng_Latn --target-lang jpn_Jpan --input .TransTest\test4.txt
+- Verified debug log changed from fused chunk (Switch.Without) to proper boundary (Switch. Without).
+- Verified output now contains translation for the latter sentence (Without further ado...).

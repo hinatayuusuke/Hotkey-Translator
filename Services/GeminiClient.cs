@@ -150,22 +150,12 @@ public sealed class GeminiClient
     private static string BuildPrompt(IReadOnlyList<string> texts, AppSettings settings)
     {
         var inputJson = JsonSerializer.Serialize(texts, JsonOptions);
-        return $@"You are a professional game localization expert. Translate the text array from {settings.SourceLanguage} to {settings.TargetLanguage}.
-
-                Context: The input text is scanned via OCR and may contain recognition errors (typos, extra spaces, mixed-up letters like 'l'/'1').
-
-                Rules:
-                1. **OCR Correction & Inference**: 
-                - Infer the intended meaning despite OCR errors (e.g., treat 'L0adin9' as 'Loading', 'G a m e' as 'Game').
-                - If the text looks broken but understandable, translate the *intended* word.
-                - If a line is pure graphical noise (e.g., ';;__--'), keep it unchanged.
-                2. **Context Adaptation**:
-                - **UI**: Use concise, functional terms for menus and buttons.
-                - **Dialogue**: Use natural, expressive language for speech/narrative.
-                3. **Strict Mapping**: Maintain the exact count and order of the input array.
-                4. **Output**: Return only the JSON matching the schema.
-
-                Input array: {inputJson}";
+        return $@"Role: Game Localization Expert. Translate array from {settings.SourceLanguage} to {settings.TargetLanguage}.
+            Rules:
+            1. Fix OCR errors (e.g., 'L0adin9'->'Loading') but keep graphical noise unchanged.
+            2. Tone: Concise for UI, natural for Dialogue.
+            3. Output only JSON. Maintain exact array length and order.
+            Input: {inputJson}";
     }
 
     private static string? ExtractJsonText(string rawResponse)
