@@ -197,20 +197,38 @@ def split_text_by_token_budget(text: str, tokenizer, max_tokens: int) -> list[st
     raw = text.strip()
     if not raw:
         return []
+    raw_tokens = _token_count(raw, tokenizer)
+    soft_no_split_tokens = min(max_tokens, 256)
+    if raw_tokens <= soft_no_split_tokens:
+        logging.debug(
+            "Skip splitting: token_count=%d <= soft_no_split_tokens=%d (max_tokens=%d)",
+            raw_tokens,
+            soft_no_split_tokens,
+            max_tokens,
+        )
+        return [raw]
+    split_budget = soft_no_split_tokens
+    logging.debug(
+        "Enable splitting: token_count=%d > soft_no_split_tokens=%d (split_budget=%d, max_tokens=%d)",
+        raw_tokens,
+        soft_no_split_tokens,
+        split_budget,
+        max_tokens,
+    )
     segments = _split_by_delimiters(raw)
     logging.debug("Split segments (%d): %s", len(segments), segments)
     normalized: list[str] = []
     for segment in segments:
-        if _token_count(segment, tokenizer) <= max_tokens:
+        if _token_count(segment, tokenizer) <= split_budget:
             normalized.append(segment)
             continue
-        normalized.extend(_split_long_segment(segment, tokenizer, max_tokens))
+        normalized.extend(_split_long_segment(segment, tokenizer, split_budget))
 
     chunks: list[str] = []
     current = ""
     for segment in normalized:
         candidate = _merge_with_boundary(current, segment)
-        if _token_count(candidate, tokenizer) <= max_tokens:
+        if _token_count(candidate, tokenizer) <= split_budget:
             current = candidate
             continue
 

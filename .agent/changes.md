@@ -3922,3 +3922,64 @@
 - Ran: uv run test_translation_engine.py --device gpu --auto-download --source-lang eng_Latn --target-lang jpn_Jpan --input .TransTest\test4.txt
 - Verified debug log changed from fused chunk (Switch.Without) to proper boundary (Switch. Without).
 - Verified output now contains translation for the latter sentence (Without further ado...).
+
+**2026-02-06 19:01 (Asia/Taipei) — Prioritize no-split path under token budget**
+
+### Summary
+- Added a fast path to skip sentence splitting when input is already within the token budget.
+
+### Context / Goal
+- Current translation flow always performs delimiter splitting even for short inputs.
+- Reduce unnecessary preprocessing and avoid boundary-related quality regressions when text is <= 512 tokens.
+
+### Changes
+- Added token-count precheck in split_text_by_token_budget.
+- If 	oken_count <= max_tokens, return the original text as a single chunk and skip delimiter splitting.
+- Added debug log to make split/no-split decision observable.
+
+### Files Touched
+- TranslationService/translator_engine.py — Added no-split fast path before delimiter-based segmentation.
+
+### Behavioral Impact
+- Inputs within token budget now translate as a single chunk.
+- Oversized inputs still use existing split logic.
+
+### Risk & Mitigation
+- Risk: Token counting on full text can still be relatively expensive.
+- Mitigation: This replaces broader split processing for in-budget inputs and keeps existing overflow logic unchanged.
+
+### Tests / Verification
+- Ran: uv run test_translation_engine.py --device gpu --auto-download --source-lang eng_Latn --target-lang jpn_Jpan --input .TransTest\\test4.txt
+- Verified debug log: Skip splitting: token_count=78 <= max_tokens=512.
+- Ran a long-text check with small budget (max_tokens=64) and confirmed multi-chunk split still occurs.
+
+**2026-02-06 19:17 (Asia/Taipei) — Use soft split budget for long NLLB inputs**
+
+### Summary
+- Changed chunking policy so long texts are actively split with a soft budget (256) instead of being repacked into one 512-token chunk.
+
+### Context / Goal
+- After enabling no-split mode, long inputs (e.g., ~330 tokens) were still merged into a single chunk and often lost the latter part in translation.
+- Keep short inputs unsplit while forcing stable chunking for longer inputs.
+
+### Changes
+- Introduced soft_no_split_tokens = min(max_tokens, 256) in split_text_by_token_budget.
+- Added explicit split mode when aw_tokens > soft_no_split_tokens.
+- Applied split_budget (256) to segment normalization and final chunk packing, preventing re-merge into one 512-token chunk.
+- Added debug log for split activation and active budgets.
+
+### Files Touched
+- TranslationService/translator_engine.py — Updated split policy and budget usage for long inputs.
+
+### Behavioral Impact
+- Inputs up to 256 tokens remain unsplit.
+- Inputs over 256 tokens are split into multiple chunks (each <= 256 tokens) before translation, reducing tail-drop cases.
+
+### Risk & Mitigation
+- Risk: More chunks can increase latency slightly on long paragraphs.
+- Mitigation: Keep no-split fast path for short inputs and use deterministic split logging for tuning.
+
+### Tests / Verification
+- Ran: uv run test_translation_engine.py --device gpu --auto-download --source-lang eng_Latn --target-lang jpn_Jpan --input .TransTest\\test3.txt with PYTHONUTF8=1.
+- Verified debug log changed to split mode: Enable splitting: token_count=330 > soft_no_split_tokens=256.
+- Verified Final chunks became 2 chunks (not 1), and output includes later-part content.
