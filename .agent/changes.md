@@ -3573,3 +3573,76 @@
 
 ### Tests / Verification
 - 未実施（ビルド再実行が必要）
+
+**2026-02-06 11:14 (Asia/Taipei) — Add CUDA DLL search paths for CTranslate2**
+
+### Summary
+- Added venv CUDA DLL directories to the Windows loader search path before importing CTranslate2.
+
+### Context / Goal
+- Fix runtime failures where `cublas64_12.dll` exists in site-packages but cannot be loaded.
+
+### Changes
+- Added a Windows-only helper to register CUDA-related DLL folders from the `nvidia` package.
+- Ensured the DLL paths are added before importing `ctranslate2`.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — add CUDA DLL directories via `os.add_dll_directory` fallback.
+
+### Behavioral Impact
+- CTranslate2 GPU initialization can find CUDA DLLs shipped inside the venv without relying on global PATH.
+
+### Risk & Mitigation
+- Risk: Missing or unexpected `nvidia` package layout may skip path injection.
+- Mitigation: Fallback preserves existing behavior; no changes on non-Windows platforms.
+
+### Tests / Verification
+- 未実施（手元での再現確認のみ）。
+
+**2026-02-06 11:17 (Asia/Taipei) — Force CUDA DLL dirs into PATH**
+
+### Summary
+- Ensured CUDA DLL directories inside the venv are added to PATH even when add_dll_directory succeeds.
+
+### Context / Goal
+- `cublas64_12.dll` was still not found; some loaders rely on PATH instead of AddDllDirectory.
+
+### Changes
+- Always prepend detected CUDA DLL folders to PATH after registering them.
+
+### Files Touched
+- `TranslationService/translator_engine.py` — add PATH injection alongside DLL directory registration.
+
+### Behavioral Impact
+- DLL loader can resolve CUDA dependencies through PATH when `os.add_dll_directory` is insufficient.
+
+### Risk & Mitigation
+- Risk: PATH grows with repeated imports.
+- Mitigation: The helper runs once per process and uses a small fixed set of directories.
+
+### Tests / Verification
+- 未実施（手元での再現確認のみ）。
+
+**2026-02-06 11:27 (Asia/Taipei) — Add CUDA DLL paths for PaddleOCR**
+
+### Summary
+- Ensured PaddleOCR can find CUDA DLLs shipped inside the venv on Windows.
+
+### Context / Goal
+- Avoid CUDA load failures when DLLs live under `site-packages\nvidia\*\bin`.
+
+### Changes
+- Added Windows-only CUDA DLL path registration before importing `paddle`.
+
+### Files Touched
+- `OcrService/ocr_engine.py` — register CUDA DLL directories via `os.add_dll_directory` and PATH.
+
+### Behavioral Impact
+- PaddleOCR GPU initialization can resolve CUDA DLLs without relying on global PATH.
+
+### Risk & Mitigation
+- Risk: Missing or unexpected `nvidia` package layout may skip path injection.
+- Mitigation: Fallback preserves existing behavior; no changes on non-Windows platforms.
+
+### Tests / Verification
+- 未実施（手元での再現確認のみ）。

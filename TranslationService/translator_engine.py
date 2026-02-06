@@ -6,6 +6,43 @@ import warnings
 from typing import Iterable, List, Optional
 
 
+def _add_cuda_dll_paths() -> None:
+    if os.name != "nt":
+        return
+
+    candidates: list[str] = []
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec("nvidia")
+        if spec and spec.submodule_search_locations:
+            base_dir = list(spec.submodule_search_locations)[0]
+            for sub in ("cublas", "cuda_runtime", "cudnn", "nvjitlink"):
+                candidates.append(os.path.join(base_dir, sub, "bin"))
+    except Exception:
+        return
+
+    if not candidates:
+        return
+
+    seen: set[str] = set()
+    path_entries: list[str] = []
+    for path in candidates:
+        if not path or path in seen or not os.path.isdir(path):
+            continue
+        seen.add(path)
+        path_entries.append(path)
+        try:
+            # WHY: Ensure CUDA DLLs inside the venv are discoverable by Windows loader.
+            os.add_dll_directory(path)
+        except (AttributeError, OSError):
+            pass
+
+    if path_entries:
+        existing = os.environ.get("PATH", "")
+        os.environ["PATH"] = os.pathsep.join(path_entries + [existing] if existing else path_entries)
+
+
 def _ensure_optional_ct2_dirs() -> None:
     if os.name != "nt":
         return
@@ -24,6 +61,7 @@ def _ensure_optional_ct2_dirs() -> None:
     os.makedirs(rocm_core, exist_ok=True)
     os.makedirs(rocm_custom, exist_ok=True)
 
+_add_cuda_dll_paths()
 _ensure_optional_ct2_dirs()
 import ctranslate2
 from huggingface_hub import snapshot_download
