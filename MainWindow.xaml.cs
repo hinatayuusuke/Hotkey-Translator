@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private PipelineOrchestrator? _pipeline;
     private PaddleGrpcHost? _paddleGrpcHost;
     private CTranslate2GrpcHost? _ct2GrpcHost;
+    private LlamaGrpcHost? _llamaGrpcHost;
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private CTranslate2HostConfig? _ct2HostConfig;
+    private LlamaHostConfig? _llamaHostConfig;
     private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
 
     public MainWindow()
@@ -113,6 +115,7 @@ public partial class MainWindow : Window
         var geminiClient = new GeminiClient(_httpClient, _logger);
         var translationProviders = new List<ITranslationProvider>
         {
+            new LlamaGrpcTranslationProvider(_logger),
             new CTranslate2GrpcTranslationProvider(_logger),
             new DeepLTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
@@ -168,6 +171,7 @@ public partial class MainWindow : Window
         _httpClient.Dispose();
         _paddleGrpcHost?.Stop();
         _ct2GrpcHost?.Stop();
+        _llamaGrpcHost?.Stop();
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
@@ -185,7 +189,7 @@ public partial class MainWindow : Window
 
     private async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
-        if (!ShouldLoadPaddle(settings) && !ShouldLoadCTranslate2(settings))
+        if (!ShouldLoadPaddle(settings) && !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
         {
             return false;
         }
@@ -235,6 +239,40 @@ public partial class MainWindow : Window
                     }
                 }
             }
+
+            if (ShouldLoadLlama(settings))
+            {
+                if (_ct2GrpcHost is { IsRunning: true })
+                {
+                    _logger?.Info("Stopping CTranslate2 host to avoid VRAM contention with Llama.");
+                    _ct2GrpcHost.Stop();
+                    _ct2HostConfig = null;
+                }
+
+                _llamaGrpcHost ??= new LlamaGrpcHost(_logger);
+                var config = BuildLlamaHostConfig(settings);
+                if (_llamaGrpcHost is { IsRunning: true })
+                {
+                    if (_llamaHostConfig.HasValue && !_llamaHostConfig.Value.Equals(config))
+                    {
+                        // NOTE: Keep the host resident until restart; apply changes on next launch.
+                        _logger?.Info("Llama settings changed; reload deferred until restart.");
+                    }
+                }
+                else
+                {
+                    SetBusyOverlay(true, "Loading Llama.cpp...");
+                    overlayShown = true;
+                    if (await TryStartLlamaGrpcHostAsync(settings).ConfigureAwait(true))
+                    {
+                        _llamaHostConfig = config;
+                    }
+                    else
+                    {
+                        settingsChanged = true;
+                    }
+                }
+            }
         }
         finally
         {
@@ -255,7 +293,12 @@ public partial class MainWindow : Window
 
     private static bool ShouldLoadCTranslate2(AppSettings settings)
     {
-        return settings.EnableCTranslate2;
+        return settings.EnableCTranslate2 && !settings.EnableLlamaCppTranslation;
+    }
+
+    private static bool ShouldLoadLlama(AppSettings settings)
+    {
+        return settings.EnableLlamaCppTranslation;
     }
 
     private async Task<bool> TryStartPaddleGrpcHostAsync(AppSettings settings)
@@ -293,6 +336,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private async Task<bool> TryStartLlamaGrpcHostAsync(AppSettings settings)
+    {
+        try
+        {
+            await _llamaGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Llama gRPC host failed to start.");
+            _llamaGrpcHost?.Stop();
+            _llamaHostConfig = null;
+            DisableLlamaTranslation(settings);
+            ShowLoadFailure("Failed to load Llama.cpp. The setting has been turned OFF. See the logs for details.");
+            return false;
+        }
+    }
+
     private void DisablePaddleOcr(AppSettings settings)
     {
         settings.OcrEngine = OcrEngineKind.WinRt;
@@ -308,6 +369,18 @@ public partial class MainWindow : Window
         if (EnableCTranslate2Check != null)
         {
             EnableCTranslate2Check.IsChecked = false;
+        }
+        _isApplyingSettings = false;
+        UpdateTranslationStatus(settings);
+    }
+
+    private void DisableLlamaTranslation(AppSettings settings)
+    {
+        settings.EnableLlamaCppTranslation = false;
+        _isApplyingSettings = true;
+        if (EnableLlamaCppCheck != null)
+        {
+            EnableLlamaCppCheck.IsChecked = false;
         }
         _isApplyingSettings = false;
         UpdateTranslationStatus(settings);
@@ -491,6 +564,22 @@ public partial class MainWindow : Window
         PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
         EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
         SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
+        EnableLlamaCppCheck.IsChecked = settings.EnableLlamaCppTranslation;
+        LlamaServerPathBox.Text = settings.LlamaServerPath;
+        LlamaModelPathBox.Text = settings.LlamaModelPath;
+        LlamaHostBox.Text = settings.LlamaHost;
+        LlamaPortBox.Text = settings.LlamaPort.ToString();
+        LlamaContextSizeBox.Text = settings.LlamaContextSize.ToString();
+        LlamaGpuLayersBox.Text = settings.LlamaGpuLayers.ToString();
+        LlamaThreadsBox.Text = settings.LlamaThreads.ToString();
+        LlamaParallelBox.Text = settings.LlamaParallel.ToString();
+        LlamaBatchSizeBox.Text = settings.LlamaBatchSize.ToString();
+        LlamaMaxTokensBox.Text = settings.LlamaMaxTokens.ToString();
+        LlamaTemperatureBox.Text = settings.LlamaTemperature.ToString("0.###");
+        LlamaTopPBox.Text = settings.LlamaTopP.ToString("0.###");
+        LlamaTopKBox.Text = settings.LlamaTopK.ToString();
+        LlamaRepeatPenaltyBox.Text = settings.LlamaRepeatPenalty.ToString("0.###");
+        LlamaSystemPromptBox.Text = settings.LlamaSystemPrompt;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -562,6 +651,9 @@ public partial class MainWindow : Window
 
     private void UpdateTranslationStatus(AppSettings settings)
     {
+        var llamaStatus = settings.EnableLlamaCppTranslation
+            ? (string.IsNullOrWhiteSpace(settings.LlamaModelPath) ? "Llama: model missing" : "Llama: enabled")
+            : "Llama: disabled";
         var ct2Status = settings.EnableCTranslate2 ? "CTranslate2: enabled" : "CTranslate2: disabled";
         var geminiStatus = settings.EnableGemini
             ? (string.IsNullOrWhiteSpace(settings.ApiKey) ? "Gemini: key missing" : "Gemini: enabled")
@@ -569,7 +661,7 @@ public partial class MainWindow : Window
         var deepLStatus = settings.EnableDeepL
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
-        TranslationStatusText.Text = $"Translation status: {ct2Status} | {geminiStatus} | {deepLStatus}";
+        TranslationStatusText.Text = $"Translation status: {llamaStatus} | {ct2Status} | {geminiStatus} | {deepLStatus}";
     }
 
     private static void NormalizeCTranslate2Settings(AppSettings settings)
@@ -581,6 +673,31 @@ public partial class MainWindow : Window
         {
             settings.CTranslate2ModelId = "entai2965/nllb-200-distilled-600M-ctranslate2";
         }
+    }
+
+    private static void NormalizeLlamaSettings(AppSettings settings)
+    {
+        settings.LlamaServerPath = string.IsNullOrWhiteSpace(settings.LlamaServerPath)
+            ? "llama-server"
+            : settings.LlamaServerPath.Trim();
+        settings.LlamaHost = string.IsNullOrWhiteSpace(settings.LlamaHost)
+            ? "127.0.0.1"
+            : settings.LlamaHost.Trim();
+        settings.LlamaPort = settings.LlamaPort <= 0 ? 8088 : settings.LlamaPort;
+        settings.LlamaContextSize = Math.Max(256, settings.LlamaContextSize);
+        settings.LlamaGpuLayers = Math.Max(0, settings.LlamaGpuLayers);
+        settings.LlamaThreads = Math.Max(1, settings.LlamaThreads);
+        settings.LlamaParallel = Math.Max(1, settings.LlamaParallel);
+        settings.LlamaBatchSize = Math.Max(1, settings.LlamaBatchSize);
+        settings.LlamaMaxTokens = Math.Max(1, settings.LlamaMaxTokens);
+        settings.LlamaTemperature = Math.Clamp(settings.LlamaTemperature, 0.0, 2.0);
+        settings.LlamaTopP = Math.Clamp(settings.LlamaTopP, 0.0, 1.0);
+        settings.LlamaTopK = Math.Max(0, settings.LlamaTopK);
+        settings.LlamaRepeatPenalty = Math.Clamp(settings.LlamaRepeatPenalty, 0.5, 2.0);
+        settings.LlamaGrpcHost = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost)
+            ? "127.0.0.1"
+            : settings.LlamaGrpcHost.Trim();
+        settings.LlamaGrpcPort = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
     }
 
     private static string NormalizeCTranslate2Device(string? device)
@@ -615,6 +732,33 @@ public partial class MainWindow : Window
             settings.CTranslate2GrpcProjectDir,
             settings.CTranslate2GrpcUvPath,
             settings.CTranslate2GrpcServerScript);
+    }
+
+    private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
+    {
+        NormalizeLlamaSettings(settings);
+        return new LlamaHostConfig(
+            settings.LlamaServerPath,
+            settings.LlamaModelPath,
+            settings.LlamaHost,
+            settings.LlamaPort,
+            settings.LlamaContextSize,
+            settings.LlamaGpuLayers,
+            settings.LlamaThreads,
+            settings.LlamaParallel,
+            settings.LlamaBatchSize,
+            settings.LlamaMaxTokens,
+            settings.LlamaTemperature,
+            settings.LlamaTopP,
+            settings.LlamaTopK,
+            settings.LlamaRepeatPenalty,
+            settings.LlamaSystemPrompt,
+            settings.LlamaGrpcEndpoint,
+            settings.LlamaGrpcHost,
+            settings.LlamaGrpcPort,
+            settings.LlamaGrpcProjectDir,
+            settings.LlamaGrpcUvPath,
+            settings.LlamaGrpcServerScript);
     }
 
     private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -1106,6 +1250,60 @@ public partial class MainWindow : Window
         settings.EnableCTranslate2 = EnableCTranslate2Check.IsChecked == true;
         settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
         NormalizeCTranslate2Settings(settings);
+        settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
+        settings.LlamaServerPath = LlamaServerPathBox.Text.Trim();
+        settings.LlamaModelPath = LlamaModelPathBox.Text.Trim();
+        settings.LlamaHost = LlamaHostBox.Text.Trim();
+        if (int.TryParse(LlamaPortBox.Text.Trim(), out var llamaPort))
+        {
+            settings.LlamaPort = llamaPort;
+        }
+        if (int.TryParse(LlamaContextSizeBox.Text.Trim(), out var llamaContext))
+        {
+            settings.LlamaContextSize = llamaContext;
+        }
+        if (int.TryParse(LlamaGpuLayersBox.Text.Trim(), out var llamaGpuLayers))
+        {
+            settings.LlamaGpuLayers = llamaGpuLayers;
+        }
+        if (int.TryParse(LlamaThreadsBox.Text.Trim(), out var llamaThreads))
+        {
+            settings.LlamaThreads = llamaThreads;
+        }
+        if (int.TryParse(LlamaParallelBox.Text.Trim(), out var llamaParallel))
+        {
+            settings.LlamaParallel = llamaParallel;
+        }
+        if (int.TryParse(LlamaBatchSizeBox.Text.Trim(), out var llamaBatchSize))
+        {
+            settings.LlamaBatchSize = llamaBatchSize;
+        }
+        if (int.TryParse(LlamaMaxTokensBox.Text.Trim(), out var llamaMaxTokens))
+        {
+            settings.LlamaMaxTokens = llamaMaxTokens;
+        }
+        if (double.TryParse(LlamaTemperatureBox.Text.Trim(), out var llamaTemperature))
+        {
+            settings.LlamaTemperature = llamaTemperature;
+        }
+        if (double.TryParse(LlamaTopPBox.Text.Trim(), out var llamaTopP))
+        {
+            settings.LlamaTopP = llamaTopP;
+        }
+        if (int.TryParse(LlamaTopKBox.Text.Trim(), out var llamaTopK))
+        {
+            settings.LlamaTopK = llamaTopK;
+        }
+        if (double.TryParse(LlamaRepeatPenaltyBox.Text.Trim(), out var llamaRepeatPenalty))
+        {
+            settings.LlamaRepeatPenalty = llamaRepeatPenalty;
+        }
+        settings.LlamaSystemPrompt = LlamaSystemPromptBox.Text;
+        NormalizeLlamaSettings(settings);
+        if (settings.EnableLlamaCppTranslation && settings.EnableCTranslate2)
+        {
+            DisableCTranslate2(settings);
+        }
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -2047,6 +2245,29 @@ public partial class MainWindow : Window
         string Endpoint,
         string Host,
         int Port,
+        string ProjectDir,
+        string UvPath,
+        string ServerScript);
+
+    private readonly record struct LlamaHostConfig(
+        string ServerPath,
+        string ModelPath,
+        string Host,
+        int Port,
+        int ContextSize,
+        int GpuLayers,
+        int Threads,
+        int Parallel,
+        int BatchSize,
+        int MaxTokens,
+        double Temperature,
+        double TopP,
+        int TopK,
+        double RepeatPenalty,
+        string SystemPrompt,
+        string Endpoint,
+        string GrpcHost,
+        int GrpcPort,
         string ProjectDir,
         string UvPath,
         string ServerScript);

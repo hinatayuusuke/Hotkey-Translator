@@ -1,0 +1,14 @@
+﻿[project]
+name = "translationservice-llama"
+version = "0.1.0"
+description = "Llama.cpp translation gRPC service"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "grpcio>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "httpx>=0.27.0",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]

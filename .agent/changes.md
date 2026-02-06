@@ -3646,3 +3646,139 @@
 
 ### Tests / Verification
 - 未実施（手元での再現確認のみ）。
+
+**2026-02-06 12:14 (Asia/Taipei) — Draft Llama.cpp translation engine plan**
+
+### Summary
+- Documented an implementation plan for adding Llama.cpp (HY-MT1.5-1.8B) translation via gRPC-managed HTTP server.
+
+### Context / Goal
+- Provide a concrete plan for integrating llama-server as a new translation engine without fallback.
+
+### Changes
+- Added a new Doc file describing architecture, settings, steps, and risks.
+
+### Files Touched
+- `Doc/LlamaCpp_HY_MT1.5_Translation_Plan.md` — new implementation plan.
+
+### Behavioral Impact
+- No runtime impact (documentation only).
+
+### Risk & Mitigation
+- Risk: Plan assumptions may require adjustment after prototype.
+- Mitigation: Validate with a small POC before full integration.
+
+### Tests / Verification
+- 未実施（ドキュメントのみ）。
+
+**2026-02-06 13:09 (Asia/Taipei) — Note Llama/CT2 env separation**
+
+### Summary
+- Added a requirement to keep Llama and CTranslate2 in separate Python environments.
+
+### Context / Goal
+- Avoid dependency conflicts between Llama.cpp runtime and CTranslate2.
+
+### Changes
+- Documented environment separation in the Llama.cpp translation plan.
+
+### Files Touched
+- `Doc/LlamaCpp_HY_MT1.5_Translation_Plan.md` — add env separation assumption.
+
+### Behavioral Impact
+- No runtime impact (documentation only).
+
+### Risk & Mitigation
+- Risk: Increased setup overhead.
+- Mitigation: Keeps CUDA/Dependency issues isolated per engine.
+
+### Tests / Verification
+- 未実施（ドキュメントのみ）。
+
+**2026-02-06 13:11 (Asia/Taipei) — Expand Llama.cpp translation plan details**
+
+### Summary
+- Expanded the Llama.cpp translation plan with concrete settings, directory layout, and API mapping details.
+
+### Context / Goal
+- Provide implementation-ready guidance for the upcoming Llama translation engine work.
+
+### Changes
+- Added OpenAI-compatible HTTP request mapping details.
+- Added configuration items and a separated environment directory plan.
+- Refined step-by-step implementation outline for Llama integration.
+
+### Files Touched
+- `Doc/LlamaCpp_HY_MT1.5_Translation_Plan.md` — appended detailed integration guidance.
+
+### Behavioral Impact
+- No runtime impact (documentation only).
+
+### Risk & Mitigation
+- Risk: Plan may need adjustment once llama-server command options are finalized.
+- Mitigation: Keep settings centralized so parameters can be tuned without code churn.
+
+### Tests / Verification
+- 未実施（ドキュメントのみ）。
+
+**2026-02-06 13:21 (Asia/Taipei) — Clarify Llama service ownership and request policy**
+
+### Summary
+- Clarified that Llama runs as a separate TranslationServiceLlama and pinned HTTP API/concurrency decisions.
+
+### Context / Goal
+- Resolve open questions from the doc review for implementation readiness.
+
+### Changes
+- Defined `TranslationServiceLlama` as the host service and fixed `/v1/chat/completions` usage with non-streaming responses.
+- Specified model path resolution and single-flight busy handling.
+
+### Files Touched
+- `Doc/LlamaCpp_HY_MT1.5_Translation_Plan.md` — added explicit service ownership and request policy details.
+
+### Behavioral Impact
+- No runtime impact (documentation only).
+
+### Risk & Mitigation
+- Risk: Busy policy may drop rapid updates.
+- Mitigation: OCR pipeline favors fresh frames; latest request can retry on next tick.
+
+### Tests / Verification
+- 未実施（ドキュメントのみ）。
+
+**2026-02-06 13:38 (Asia/Taipei) — Implement Llama.cpp translation engine integration**
+
+### Summary
+- Added a new Llama.cpp gRPC translation service and wired it into the WPF app with settings and exclusive selection.
+
+### Context / Goal
+- Implement the Llama.cpp (HY-MT1.5-1.8B) translation plan with a separate service, UI controls, and no fallback behavior.
+
+### Changes
+- Added `TranslationServiceLlama` (pyproject, proto, server, llama engine) that starts/monitors `llama-server` and exposes gRPC.
+- Added Llama translation provider and gRPC host in WPF, plus settings/UI fields for model/server/params.
+- Enforced Llama-only translation when enabled and prevented CTranslate2 from running concurrently.
+
+### Files Touched
+- `TranslationServiceLlama/pyproject.toml` — new Llama gRPC service environment.
+- `TranslationServiceLlama/translation.proto` — gRPC contract copy.
+- `TranslationServiceLlama/server.py` — gRPC server + llama-server startup/health.
+- `TranslationServiceLlama/llama_engine.py` — HTTP client + single-flight translation logic.
+- `Services/LlamaGrpcHost.cs` — WPF host for the Llama gRPC service.
+- `Services/LlamaGrpcTranslationProvider.cs` — Llama translation provider implementation.
+- `Services/TranslationFallbackService.cs` — Llama-enabled path bypasses fallback.
+- `Models/AppSettings.cs` — Llama settings added.
+- `Models/TranslationProviderNames.cs` — Llama provider name + defaults.
+- `MainWindow.xaml` — Llama translation UI controls.
+- `MainWindow.xaml.cs` — settings handling, host startup, exclusivity, status updates.
+
+### Behavioral Impact
+- When Llama translation is enabled, the app uses only Llama and does not fall back to other providers.
+- CTranslate2 is prevented from running alongside Llama to avoid VRAM contention.
+
+### Risk & Mitigation
+- Risk: Incorrect llama-server path/model path causes startup failure.
+- Mitigation: Startup failures disable Llama and show a load-failure dialog; status text indicates missing model.
+
+### Tests / Verification
+- 未実施（実装のみ）。

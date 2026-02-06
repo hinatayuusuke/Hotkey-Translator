@@ -28,6 +28,36 @@ public sealed class TranslationFallbackService
             return new Dictionary<string, string>();
         }
 
+        if (settings.EnableLlamaCppTranslation)
+        {
+            if (!_providers.TryGetValue(TranslationProviderNames.LlamaCpp, out var llamaProvider))
+            {
+                _logger?.Info("Translation provider skipped: LlamaCpp (not registered).");
+                return new Dictionary<string, string>();
+            }
+
+            if (!llamaProvider.IsEnabled(settings))
+            {
+                _logger?.Info("Translation provider skipped: LlamaCpp (disabled).");
+                return new Dictionary<string, string>();
+            }
+
+            try
+            {
+                _logger?.Info($"Translation provider active: {llamaProvider.Name}.");
+                return await llamaProvider.TranslateAsync(texts, settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, $"Translation provider failed: {llamaProvider.Name}.");
+                return new Dictionary<string, string>();
+            }
+        }
+
         var priority = NormalizePriority(settings);
         foreach (var name in priority)
         {
