@@ -159,12 +159,6 @@ public sealed class LlamaGrpcHost : IDisposable
         startInfo.ArgumentList.Add(settings.LlamaTopK.ToString());
         startInfo.ArgumentList.Add("--repeat-penalty");
         startInfo.ArgumentList.Add(settings.LlamaRepeatPenalty.ToString("0.###"));
-        if (!string.IsNullOrWhiteSpace(settings.LlamaSystemPrompt))
-        {
-            startInfo.ArgumentList.Add("--system-prompt");
-            startInfo.ArgumentList.Add(settings.LlamaSystemPrompt);
-        }
-
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, args) =>
         {

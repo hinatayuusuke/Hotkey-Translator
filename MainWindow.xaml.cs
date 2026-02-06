@@ -579,7 +579,6 @@ public partial class MainWindow : Window
         LlamaTopPBox.Text = settings.LlamaTopP.ToString("0.###");
         LlamaTopKBox.Text = settings.LlamaTopK.ToString();
         LlamaRepeatPenaltyBox.Text = settings.LlamaRepeatPenalty.ToString("0.###");
-        LlamaSystemPromptBox.Text = settings.LlamaSystemPrompt;
         EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
@@ -752,7 +751,6 @@ public partial class MainWindow : Window
             settings.LlamaTopP,
             settings.LlamaTopK,
             settings.LlamaRepeatPenalty,
-            settings.LlamaSystemPrompt,
             settings.LlamaGrpcEndpoint,
             settings.LlamaGrpcHost,
             settings.LlamaGrpcPort,
@@ -1298,7 +1296,6 @@ public partial class MainWindow : Window
         {
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
-        settings.LlamaSystemPrompt = LlamaSystemPromptBox.Text;
         NormalizeLlamaSettings(settings);
         if (settings.EnableLlamaCppTranslation && settings.EnableCTranslate2)
         {
@@ -2264,7 +2261,6 @@ public partial class MainWindow : Window
         double TopP,
         int TopK,
         double RepeatPenalty,
-        string SystemPrompt,
         string Endpoint,
         string GrpcHost,
         int GrpcPort,

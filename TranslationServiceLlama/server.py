@@ -114,7 +114,6 @@ def main() -> int:
     parser.add_argument("--top-p", type=float, default=0.6)
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--repeat-penalty", type=float, default=1.05)
-    parser.add_argument("--system-prompt", default="Translate the following segment into Japanese, without additional explanation.")
     parser.add_argument("--http-timeout", type=float, default=60.0)
     parser.add_argument("--ready-timeout-ms", type=int, default=60000)
     parser.add_argument("--restart-max", type=int, default=3)
@@ -145,7 +144,6 @@ def main() -> int:
     )
 
     request_config = LlamaRequestConfig(
-        system_prompt=args.system_prompt,
         max_tokens=args.max_tokens,
         temperature=args.temperature,
         top_p=args.top_p,

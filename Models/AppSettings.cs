@@ -126,7 +126,6 @@ public sealed class AppSettings
     public double LlamaTopP { get; set; } = 0.6;
     public int LlamaTopK { get; set; } = 20;
     public double LlamaRepeatPenalty { get; set; } = 1.05;
-    public string LlamaSystemPrompt { get; set; } = "Translate the following segment into Japanese, without additional explanation.";
     public bool EnableCTranslate2 { get; set; } = false;
     public string CTranslate2GrpcProjectDir { get; set; } = "TranslationService";
     public string CTranslate2GrpcUvPath { get; set; } = "uv";

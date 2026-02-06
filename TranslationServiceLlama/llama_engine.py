@@ -35,13 +35,15 @@ class LlamaServerConfig:
 
 @dataclass
 class LlamaRequestConfig:
-    system_prompt: str
     max_tokens: int
     temperature: float
     top_p: float
     top_k: int
     repeat_penalty: float
     http_timeout_seconds: float
+
+
+DEFAULT_SYSTEM_PROMPT = "Translate the following segment into {target}. Output translation only."
 
 
 class LlamaServerHost:
@@ -209,7 +211,7 @@ class LlamaTranslator:
         if not self._lock.acquire(blocking=False):
             raise LlamaBusyError("Translator busy")
         try:
-            system_prompt = build_system_prompt(self._request.system_prompt, source_lang, target_lang)
+            system_prompt = build_system_prompt(target_lang)
             outputs: list[str] = []
             for text in texts:
                 payload = {
@@ -235,13 +237,10 @@ class LlamaTranslator:
             self._lock.release()
 
 
-def build_system_prompt(template: str, source_lang: str, target_lang: str) -> str:
-    source_label = resolve_language_label(source_lang)
+def build_system_prompt(target_lang: str) -> str:
     target_label = resolve_language_label(target_lang)
-    prompt = template.strip() if template else ""
-    if not prompt:
-        prompt = "Translate the following segment into {target}. Output translation only."
-    return prompt.format(source=source_label, target=target_label)
+    # WHY: Fixed template avoids UI/user drift while keeping target language alignment.
+    return DEFAULT_SYSTEM_PROMPT.format(target=target_label)
 
 
 def resolve_language_label(language: str) -> str:

@@ -3782,3 +3782,59 @@
 
 ### Tests / Verification
 - 未実施（実装のみ）。
+
+**2026-02-06 13:58 (Asia/Taipei) — Fix Llama system prompt to target language**
+
+### Summary
+- Removed editable system prompt UI and fixed the Llama prompt template to follow the target language.
+
+### Context / Goal
+- Ensure prompt alignment with target language without user-editable drift.
+
+### Changes
+- Removed Llama system prompt UI fields and settings persistence.
+- Hard-coded the Llama system prompt template and linked it to the target language.
+- Dropped the system prompt argument from the Llama gRPC host launch path.
+
+### Files Touched
+- `MainWindow.xaml` — removed Llama system prompt UI.
+- `MainWindow.xaml.cs` — removed prompt bindings and config field.
+- `Models/AppSettings.cs` — removed stored Llama prompt.
+- `TranslationServiceLlama/llama_engine.py` — fixed prompt template by target language.
+- `TranslationServiceLlama/server.py` — removed prompt CLI argument.
+- `Services/LlamaGrpcHost.cs` — removed prompt argument passthrough.
+
+### Behavioral Impact
+- Llama translations always use the fixed template tied to the current target language.
+
+### Risk & Mitigation
+- Risk: Users lose the ability to customize the prompt.
+- Mitigation: Template is stable and language-aware; customization can be reintroduced later if needed.
+
+### Tests / Verification
+- 未実施（実装のみ）。
+
+**2026-02-06 16:08 (Asia/Taipei) — Create Llama binary directory**
+
+### Summary
+- Created a dedicated directory for llama-server binaries used by LlamaServerPath.
+
+### Context / Goal
+- Prepare a stable location for Llama.cpp runtime binaries.
+- Make LlamaServerPath configuration predictable.
+
+### Changes
+- Added Tools/LlamaCpp/bin directory.
+
+### Files Touched
+- Tools/LlamaCpp/bin — new directory for placing llama-server.exe and dependent DLLs.
+
+### Behavioral Impact
+- No runtime behavior change until binaries are placed and LlamaServerPath is configured.
+
+### Risk & Mitigation
+- Risk: Path may still be misconfigured if pointing to a folder instead of executable.
+- Mitigation: Set LlamaServerPath to Tools\\LlamaCpp\\bin\\llama-server.exe.
+
+### Tests / Verification
+- Verified directory creation via Get-ChildItem .\\Tools\\LlamaCpp.
