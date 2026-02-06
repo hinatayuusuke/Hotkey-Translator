@@ -340,7 +340,10 @@ public sealed class PipelineOrchestrator
         }
     }
 
-    public bool TrySetOverlayTextMode(OverlayTextMode mode, out string? reason)
+    public bool TrySetOverlayTextMode(
+        OverlayTextMode mode,
+        out string? reason,
+        bool allowModeUpdateWithoutData = false)
     {
         reason = null;
         if (!_gate.Wait(0))
@@ -353,6 +356,13 @@ public sealed class PipelineOrchestrator
         {
             if (_lastGroupedLines == null || _lastGroupedLines.Count == 0)
             {
+                if (allowModeUpdateWithoutData)
+                {
+                    // WHY: F8/F10 runs should always use translated text once a new overlay is rendered.
+                    _overlayTextMode = mode;
+                    return true;
+                }
+
                 reason = "F11: toggle ignored (no overlay data).";
                 return false;
             }

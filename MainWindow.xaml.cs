@@ -399,6 +399,7 @@ public partial class MainWindow : Window
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
+        EnsureTranslatedOverlayForRunHotkeys();
         if (!_hasRunOnce)
         {
             AppendLog("F8: Run once (first run).");
@@ -412,6 +413,7 @@ public partial class MainWindow : Window
 
     private async void OnForceRunHotkeyPressed(object? sender, EventArgs e)
     {
+        EnsureTranslatedOverlayForRunHotkeys();
         AppendLog("Force run: skip pHash, OCR diff, translation cache.");
         await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true, SkipTranslation: false))
             .ConfigureAwait(true);
@@ -436,6 +438,19 @@ public partial class MainWindow : Window
 
         _overlayTextMode = nextMode;
         AppendLog($"Overlay text mode: {_overlayTextMode}.");
+    }
+
+    private void EnsureTranslatedOverlayForRunHotkeys()
+    {
+        if (_pipeline == null || _overlayTextMode == OverlayTextMode.Translated)
+        {
+            return;
+        }
+
+        if (_pipeline.TrySetOverlayTextMode(OverlayTextMode.Translated, out _, allowModeUpdateWithoutData: true))
+        {
+            _overlayTextMode = OverlayTextMode.Translated;
+        }
     }
 
     private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)

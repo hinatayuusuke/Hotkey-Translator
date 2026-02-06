@@ -70,7 +70,7 @@ public sealed class AppSettings
     public string PaddleGrpcEndpoint { get; set; } = "http://127.0.0.1:50051";
     public string PaddleGrpcHost { get; set; } = "127.0.0.1";
     public int PaddleGrpcPort { get; set; } = 50051;
-    public int PaddleGrpcReadyTimeoutMs { get; set; } = 10000;
+    public int PaddleGrpcReadyTimeoutMs { get; set; } = 120000;
     public int PaddleGrpcRestartMax { get; set; } = 3;
     public int PaddleGrpcRestartWindowSeconds { get; set; } = 30;
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
@@ -133,7 +133,7 @@ public sealed class AppSettings
     public string CTranslate2GrpcEndpoint { get; set; } = "http://127.0.0.1:50061";
     public string CTranslate2GrpcHost { get; set; } = "127.0.0.1";
     public int CTranslate2GrpcPort { get; set; } = 50061;
-    public int CTranslate2GrpcReadyTimeoutMs { get; set; } = 60000;
+    public int CTranslate2GrpcReadyTimeoutMs { get; set; } = 300000;
     public int CTranslate2GrpcRestartMax { get; set; } = 3;
     public int CTranslate2GrpcRestartWindowSeconds { get; set; } = 30;
     public string CTranslate2ModelId { get; set; } = "entai2965/nllb-200-distilled-600M-ctranslate2";

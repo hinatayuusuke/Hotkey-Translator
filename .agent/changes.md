@@ -3983,3 +3983,32 @@
 - Ran: uv run test_translation_engine.py --device gpu --auto-download --source-lang eng_Latn --target-lang jpn_Jpan --input .TransTest\\test3.txt with PYTHONUTF8=1.
 - Verified debug log changed to split mode: Enable splitting: token_count=330 > soft_no_split_tokens=256.
 - Verified Final chunks became 2 chunks (not 1), and output includes later-part content.
+
+**2026-02-06 23:06 (Asia/Taipei) — Force translated overlay on F8/F10 runs**
+
+### Summary
+- F8/F10 実行時にオーバーレイ表示モードを Translated へ自動で戻すようにした。
+
+### Context / Goal
+- F11 で Source 表示へ切り替えた後に F8/F10 を押すと、翻訳実行でも原文表示のままになる。
+- F8/F10 は翻訳実行操作として常に翻訳文表示で始まるようにする。
+
+### Changes
+- F8 (OnHotkeyPressed) と F10 (OnForceRunHotkeyPressed) の先頭で、翻訳表示モードへ復帰させる処理を追加。
+- PipelineOrchestrator.TrySetOverlayTextMode に allowModeUpdateWithoutData を追加し、オーバーレイ未生成時でもモードのみ更新できるようにした（F11 の既存動作は維持）。
+
+### Files Touched
+- MainWindow.xaml.cs — F8/F10 実行前に EnsureTranslatedOverlayForRunHotkeys() を呼び出す処理を追加。
+- Services/PipelineOrchestrator.cs — モード更新APIに任意フラグを追加し、データ未生成時のモード更新を許可。
+
+### Behavioral Impact
+- F8/F10 実行時は常に翻訳文表示モードでオーバーレイが更新される。
+- F11 のトグル仕様とエラーメッセージ動作は従来どおり。
+
+### Risk & Mitigation
+- Risk: 実行直前に表示モードが意図せず戻ることで、F11 での一時確認結果が保持されない。
+- Mitigation: 変更対象を F8/F10 のみへ限定し、通常の F11 トグル経路は変更しない。
+
+### Tests / Verification
+- 実施: dotnet build Hotkey-Translator.csproj -v minimal
+- 結果: 成功（警告 0 / エラー 0）
