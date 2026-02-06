@@ -20,12 +20,10 @@
 - `TranslationServiceLlama\LlamaCpp\` に `llama-server.exe` と関連 DLL を配置する運用。
 - `uv` が利用可能。
 - NVIDIA ドライバーはユーザー環境で事前に導入済み。
-- `mtmd.dll` は llama.cpp ビルド成果物として別途同梱する（`pip` では供給されない）。
 
 ## 4. 現状整理
 - 現在の構成でも `pyproject.toml` に CUDA 依存を追加すれば DLL ファイル自体は `.venv\Lib\site-packages\nvidia\...\bin` に配置可能。
 - ただし `llama-server.exe` は Python の import 解決を使わないため、PATH 注入なしでは DLL を見つけられない。
-- 既存検証では `llama-server.exe` の不足依存として `mtmd.dll` が確認されている。
 
 ## 5. 提案アーキテクチャ
 ### コンポーネント構成
@@ -78,9 +76,6 @@
 - 運用: 依存更新時は `uv lock` 更新を伴う。
 
 ## 9. リスクと緩和策
-- Risk: `mtmd.dll` 未同梱で起動不能。
-- Mitigation: 起動前検証で欠落を即時検出し、同梱不足メッセージを表示。
-
 - Risk: `uv sync` 失敗（ネットワーク/ミラー障害）。
 - Mitigation: リトライ回数とタイムアウトを設定し、失敗原因を UI とログに明示。
 
