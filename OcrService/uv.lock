@@ -742,7 +742,7 @@ requires-dist = [
     { name = "grpcio-tools", specifier = ">=1.76.0" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "paddleocr", extras = ["all"], specifier = ">=3.3.3" },
-    { name = "paddlepaddle-gpu", specifier = "==3.3.0", index = "https://www.paddlepaddle.org.cn/packages/stable/cu118/" },
+    { name = "paddlepaddle-gpu", specifier = "==3.3.0", index = "https://www.paddlepaddle.org.cn/packages/stable/cu126/" },
     { name = "pillow", specifier = ">=12.1.0" },
 ]
 
@@ -844,7 +844,7 @@ all = [
 [[package]]
 name = "paddlepaddle-gpu"
 version = "3.3.0"
-source = { registry = "https://www.paddlepaddle.org.cn/packages/stable/cu118/" }
+source = { registry = "https://www.paddlepaddle.org.cn/packages/stable/cu126/" }
 dependencies = [
     { name = "httpx", marker = "sys_platform == 'win32'" },
     { name = "networkx", marker = "sys_platform == 'win32'" },
@@ -856,7 +856,7 @@ dependencies = [
     { name = "typing-extensions", marker = "sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://paddle-whl.bj.bcebos.com/stable/cu118/paddlepaddle-gpu/paddlepaddle_gpu-3.3.0-cp310-cp310-win_amd64.whl" },
+    { url = "https://paddle-whl.bj.bcebos.com/stable/cu126/paddlepaddle-gpu/paddlepaddle_gpu-3.3.0-cp310-cp310-win_amd64.whl" },
 ]
 
 [[package]]

@@ -16,9 +16,9 @@ dependencies = [
 [tool.uv]
 environments = ["sys_platform == 'win32'"]
 [[tool.uv.index]]
-name = "paddle-cu118"
-url = "https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+name = "paddle-cu126"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu126/"
 explicit = true
 
 [tool.uv.sources]
-paddlepaddle-gpu = { index = "paddle-cu118" }
+paddlepaddle-gpu = { index = "paddle-cu126" }
