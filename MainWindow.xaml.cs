@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -26,6 +27,7 @@ namespace Hotkey_Translator;
 public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService = new();
+    private readonly LlamaModelCatalog _llamaModelCatalog = new();
     private readonly HttpClient _httpClient = new();
     private OverlayWindow? _overlayWindow;
     private OverlayPresenter? _overlayPresenter;
@@ -66,6 +68,7 @@ public partial class MainWindow : Window
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
+    private const string DefaultLlamaModelFileName = "qwen3-1_7b-instruct-q4_k_m.gguf";
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
     private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
@@ -580,6 +583,7 @@ public partial class MainWindow : Window
         EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
         SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
         EnableLlamaCppCheck.IsChecked = settings.EnableLlamaCppTranslation;
+        ReloadLlamaModelOptions(settings);
         LlamaHostBox.Text = settings.LlamaHost;
         LlamaPortBox.Text = settings.LlamaPort.ToString();
         LlamaContextSizeBox.Text = settings.LlamaContextSize.ToString();
@@ -676,6 +680,54 @@ public partial class MainWindow : Window
         TranslationStatusText.Text = $"Translation status: {llamaStatus} | {ct2Status} | {geminiStatus} | {deepLStatus}";
     }
 
+    private void ReloadLlamaModelOptions(AppSettings settings)
+    {
+        if (LlamaModelBox == null)
+        {
+            return;
+        }
+
+        var fallback = NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
+        var selected = _llamaModelCatalog.NormalizeModelFileName(settings.LlamaSelectedModelFileName, fallback);
+        var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames(settings.LlamaGrpcProjectDir);
+        var previousApplyingState = _isApplyingSettings;
+        _isApplyingSettings = true;
+        try
+        {
+            LlamaModelBox.Items.Clear();
+            foreach (var fileName in modelFileNames)
+            {
+                LlamaModelBox.Items.Add(new ComboBoxItem
+                {
+                    Content = fileName,
+                    Tag = fileName
+                });
+            }
+
+            if (!modelFileNames.Contains(selected, StringComparer.OrdinalIgnoreCase))
+            {
+                // WHY: Keep broken selections visible so users can recover from missing model files.
+                LlamaModelBox.Items.Add(new ComboBoxItem
+                {
+                    Content = $"{selected} (missing)",
+                    Tag = selected
+                });
+            }
+
+            SetComboBoxByTag(LlamaModelBox, selected);
+            if (LlamaModelBox.SelectedItem == null && LlamaModelBox.Items.Count > 0)
+            {
+                LlamaModelBox.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _isApplyingSettings = previousApplyingState;
+        }
+
+        settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, fallback);
+    }
+
     private static void NormalizeCTranslate2Settings(AppSettings settings)
     {
         settings.CTranslate2Device = NormalizeCTranslate2Device(settings.CTranslate2Device);
@@ -707,6 +759,16 @@ public partial class MainWindow : Window
             ? "127.0.0.1"
             : settings.LlamaGrpcHost.Trim();
         settings.LlamaGrpcPort = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
+        settings.LlamaSelectedModelFileName = NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
+    }
+
+    private static string NormalizeLlamaModelFileName(string? value)
+    {
+        var fileName = Path.GetFileName((value ?? string.Empty).Trim());
+        return string.IsNullOrWhiteSpace(fileName) ||
+               !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+            ? DefaultLlamaModelFileName
+            : fileName;
     }
 
     private static string NormalizeCTranslate2Device(string? device)
@@ -759,6 +821,7 @@ public partial class MainWindow : Window
             settings.LlamaTopP,
             settings.LlamaTopK,
             settings.LlamaRepeatPenalty,
+            settings.LlamaSelectedModelFileName,
             settings.LlamaGrpcEndpoint,
             settings.LlamaGrpcHost,
             settings.LlamaGrpcPort,
@@ -1106,6 +1169,13 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnReloadLlamaModels(object sender, RoutedEventArgs e)
+    {
+        var settings = _settingsService.Settings;
+        ReloadLlamaModelOptions(settings);
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async void OnSettingLostFocus(object sender, RoutedEventArgs e)
     {
         await SaveSettingsAsync().ConfigureAwait(true);
@@ -1257,6 +1327,7 @@ public partial class MainWindow : Window
         settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
         NormalizeCTranslate2Settings(settings);
         settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
+        settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
         settings.LlamaHost = LlamaHostBox.Text.Trim();
         if (int.TryParse(LlamaPortBox.Text.Trim(), out var llamaPort))
         {
@@ -2265,6 +2336,7 @@ public partial class MainWindow : Window
         double TopP,
         int TopK,
         double RepeatPenalty,
+        string ModelFileName,
         string Endpoint,
         string GrpcHost,
         int GrpcPort,

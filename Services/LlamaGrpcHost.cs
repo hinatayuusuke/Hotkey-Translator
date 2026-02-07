@@ -19,7 +19,8 @@ namespace Hotkey_Translator.Services;
 public sealed class LlamaGrpcHost : IDisposable
 {
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
-    private const string FixedLlamaModelRelativePath = "LlamaCpp\\Models\\qwen3-1_7b-instruct-q4_k_m.gguf";
+    private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
+    private const string DefaultLlamaModelFileName = "qwen3-1_7b-instruct-q4_k_m.gguf";
     private const string ManifestFileName = "model_manifest.json";
     private const string UvSyncStateFileName = ".uv-sync.state";
     private static readonly string[] RequiredNativeFiles =
@@ -44,6 +45,7 @@ public sealed class LlamaGrpcHost : IDisposable
         PropertyNameCaseInsensitive = true
     };
 
+    private readonly LlamaModelCatalog _modelCatalog = new();
     private readonly AppLogger? _logger;
     private readonly object _lock = new();
     private readonly List<DateTimeOffset> _restartHistory = new();
@@ -148,11 +150,18 @@ public sealed class LlamaGrpcHost : IDisposable
         var uvPath = string.IsNullOrWhiteSpace(settings.LlamaGrpcUvPath) ? "uv" : settings.LlamaGrpcUvPath.Trim();
         var host = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim();
         var port = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
-        var paths = ResolveFixedLlamaPaths(projectDir);
+        var selectedModelFileName = _modelCatalog.NormalizeModelFileName(
+            settings.LlamaSelectedModelFileName,
+            DefaultLlamaModelFileName);
+        var paths = ResolveFixedLlamaPaths(projectDir, selectedModelFileName);
 
         await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
         ValidateLlamaNativeFiles(paths.LlamaCppDirectory);
-        await EnsureLlamaModelAsync(paths.ManifestPath, paths.ModelPath, cancellationToken).ConfigureAwait(false);
+        await EnsureLlamaModelAsync(
+            paths.ManifestPath,
+            paths.ModelPath,
+            selectedModelFileName,
+            cancellationToken).ConfigureAwait(false);
 
         var pythonPath = ResolvePythonExecutable(projectDir);
         var nvidiaBinPaths = CollectNvidiaDllBinPaths(projectDir);
@@ -166,7 +175,8 @@ public sealed class LlamaGrpcHost : IDisposable
 
         _logger?.Info("Starting Llama gRPC (llama-server over HTTP).");
         _logger?.Info($"Llama fixed server path: {paths.ServerPath}");
-        _logger?.Info($"Llama fixed model path: {paths.ModelPath}");
+        _logger?.Info($"Llama selected model: {selectedModelFileName}");
+        _logger?.Info($"Llama model path: {paths.ModelPath}");
         _logger?.Info($"Llama runtime python: {pythonPath}");
 
         var startInfo = new ProcessStartInfo
@@ -405,12 +415,18 @@ public sealed class LlamaGrpcHost : IDisposable
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
     }
 
-    private static FixedLlamaPaths ResolveFixedLlamaPaths(string projectDir)
+    private static FixedLlamaPaths ResolveFixedLlamaPaths(string projectDir, string modelFileName)
     {
         var llamaCppDir = Path.Combine(projectDir, "LlamaCpp");
+        var safeModelFileName = Path.GetFileName(modelFileName);
+        if (string.IsNullOrWhiteSpace(safeModelFileName))
+        {
+            safeModelFileName = DefaultLlamaModelFileName;
+        }
+
         return new FixedLlamaPaths(
             Path.Combine(projectDir, FixedLlamaServerRelativePath),
-            Path.Combine(projectDir, FixedLlamaModelRelativePath),
+            Path.Combine(projectDir, FixedLlamaModelsRelativePath, safeModelFileName),
             llamaCppDir,
             Path.Combine(projectDir, ManifestFileName));
     }
@@ -601,8 +617,29 @@ public sealed class LlamaGrpcHost : IDisposable
         return Convert.ToHexString(fingerprintBytes);
     }
 
-    private async Task EnsureLlamaModelAsync(string manifestPath, string modelPath, CancellationToken cancellationToken)
+    private async Task EnsureLlamaModelAsync(
+        string manifestPath,
+        string modelPath,
+        string selectedModelFileName,
+        CancellationToken cancellationToken)
     {
+        if (!string.Equals(selectedModelFileName, DefaultLlamaModelFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            var selectedInfo = new FileInfo(modelPath);
+            if (!selectedInfo.Exists)
+            {
+                throw new FileNotFoundException($"Selected llama model was not found: {modelPath}");
+            }
+
+            if (selectedInfo.Length <= 0)
+            {
+                throw new InvalidDataException($"Selected llama model is empty: {modelPath}");
+            }
+
+            _logger?.Info($"Using user-selected llama model: {modelPath}");
+            return;
+        }
+
         var manifestText = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
         var manifest = JsonSerializer.Deserialize<ModelManifest>(manifestText, ManifestJsonOptions)
             ?? throw new InvalidDataException($"Invalid model manifest: {manifestPath}");

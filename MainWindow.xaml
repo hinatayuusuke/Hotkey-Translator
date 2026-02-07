@@ -467,7 +467,7 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <Separator Margin="0,10,0,8" />
-                                  <TextBlock Text="Local Llama.cpp (Qwen3-1.7B)" FontWeight="SemiBold" />
+                                  <TextBlock Text="Local Llama.cpp (GGUF)" FontWeight="SemiBold" />
                                   <CheckBox x:Name="EnableLlamaCppCheck"
                                             Content="Enable Llama.cpp translation"
                                             Margin="0,6,0,0"
@@ -476,9 +476,14 @@
                                              Foreground="DimGray"
                                              TextWrapping="Wrap"
                                              Margin="0,4,0,0" />
-                                  <TextBlock Text="llama-server / model path are fixed by app"
+                                  <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
                                              Foreground="DimGray"
                                              Margin="0,6,0,0" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="LlamaModelBox" Width="320" SelectionChanged="OnSettingChanged" />
+                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Click="OnReloadLlamaModels" />
+                                  </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaHostBox" Width="120" LostFocus="OnSettingLostFocus" />
