@@ -485,6 +485,11 @@
                                       <Button Content="Reload" Width="70" Margin="8,0,0,0" Click="OnReloadLlamaModels" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <Button Content="Restart Llama.cpp" Width="150" Click="OnRestartLlamaCpp" />
+                                      <Button Content="Stop llama-server" Width="130" Margin="8,0,0,0" Click="OnStopLlamaServer" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaHostBox" Width="120" LostFocus="OnSettingLostFocus" />
                                       <TextBlock Text="Port" Width="40" Margin="8,0,0,0" VerticalAlignment="Center" />

@@ -1176,6 +1176,67 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnRestartLlamaCpp(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            SetBusyOverlay(true, "Restarting Llama.cpp...");
+            _llamaGrpcHost?.Stop();
+            _llamaHostConfig = null;
+
+            // WHY: Manual restart is expected to keep Llama enabled after this action.
+            var previousApplyingState = _isApplyingSettings;
+            _isApplyingSettings = true;
+            EnableLlamaCppCheck.IsChecked = true;
+            _isApplyingSettings = previousApplyingState;
+
+            await SaveSettingsAsync().ConfigureAwait(true);
+            AppendLog("Llama.cpp restarted.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to restart Llama.cpp host.");
+            ShowLoadFailure("Failed to restart Llama.cpp. See the logs for details.");
+        }
+        finally
+        {
+            SetBusyOverlay(false, null);
+        }
+    }
+
+    private async void OnStopLlamaServer(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            _llamaGrpcHost?.Stop();
+            _llamaHostConfig = null;
+
+            // WHY: Keep persisted settings consistent with the explicit stop action.
+            var previousApplyingState = _isApplyingSettings;
+            _isApplyingSettings = true;
+            EnableLlamaCppCheck.IsChecked = false;
+            _isApplyingSettings = previousApplyingState;
+
+            await SaveSettingsAsync().ConfigureAwait(true);
+            AppendLog("llama-server stopped.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to stop llama-server.");
+            ShowLoadFailure("Failed to stop llama-server. See the logs for details.");
+        }
+    }
+
     private async void OnSettingLostFocus(object sender, RoutedEventArgs e)
     {
         await SaveSettingsAsync().ConfigureAwait(true);
