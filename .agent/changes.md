@@ -4295,3 +4295,197 @@
 
 ### Tests / Verification
 - `python -m py_compile TranslationServiceLlama/llama_engine.py` を実行し成功。
+**2026-02-07 16:37 (Asia/Taipei) — Add Llama gRPC block-based smoke test script**
+
+### Summary
+- `TranslationServiceLlama` 向けに、空行でリクエストを分割する翻訳テストスクリプトを追加しました。
+
+### Context / Goal
+- 本番に近い形で、複数テキストを1リクエストにまとめつつ、空行で別リクエストとして Llama 翻訳を検証したい。
+- 既存の CTranslate2 テストスクリプトと同等の使い勝手で、Llama 専用検証を可能にする。
+
+### Changes
+- `TranslationServiceLlama/test_translation_engine.py` を新規追加。
+- `--input` 指定時は UTF-8 ファイルを読み込み、空行でリクエスト分割・非空行を `texts[]` 要素として送信。
+- `Health` 確認後に各リクエストを順次 `Translate` し、入出力・レイテンシ・空結果件数を表示。
+- `--continue-on-error` を追加し、エラー時継続テストを可能化。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — Llama gRPC 用のブロック分割テストCLIを追加。
+
+### Behavioral Impact
+- LlamaCpp 翻訳だけを、ファイル入力ベースで本番に近い単位（空行区切り）で検証できるようになりました。
+
+### Risk & Mitigation
+- Risk: 実運用の OCR 差分・キャッシュ挙動までは再現しない。
+- Mitigation: 本スクリプトは gRPC 翻訳レイヤの切り分け目的に限定し、必要時はアプリ統合テストと併用する。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` でCLI起動確認。
+**2026-02-07 16:43 (Asia/Taipei) — Add device/batch/max_tokens args to Llama test script**
+
+### Summary
+- Llama テストスクリプトに `--device` / `--batch-size` / `--max-tokens` 引数を追加し、指定値を起動へ反映できるようにしました。
+
+### Context / Goal
+- `TranslationServiceLlama/test_translation_engine.py` で、LlamaCpp 翻訳テスト時に実行条件（CPU/GPU、batch、max_tokens）を切り替えたい。
+- 既存の接続テスト用途を維持しつつ、指定時にはローカルサーバ起動で設定値を実適用したい。
+
+### Changes
+- 新規引数を追加: `--device {cpu,gpu}`, `--batch-size`, `--max-tokens`, `--gpu-layers`。
+- `--auto-start-server` とサーバ起動関連引数（`--llama-server`, `--model`, `--llama-host`, `--llama-port`, `--startup-timeout-sec`）を追加。
+- 上記引数が指定された場合、`server.py` をローカル起動して設定を反映した状態でテスト実行するよう実装。
+- 起動ログのポンプ、health 待機、終了時のプロセス停止処理を追加。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — 引数拡張とローカルサーバ自動起動ロジックを追加。
+
+### Behavioral Impact
+- 既存サーバ接続テストに加え、CLI引数で Llama 実行設定を切り替えた再現テストが可能になりました。
+
+### Risk & Mitigation
+- Risk: 指定ポート使用中などでローカル起動に失敗する可能性。
+- Mitigation: health タイムアウトと例外メッセージで失敗理由を明示し、既存サーバ利用モードも継続可能にする。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` で追加引数表示を確認。
+**2026-02-07 16:53 (Asia/Taipei) — Inject CUDA DLL PATH into Llama test auto-start flow**
+
+### Summary
+- `test_translation_engine.py` のローカル起動経路に CUDA DLL PATH 注入を追加し、`llama-server` の DLL 解決失敗を回避するよう修正しました。
+
+### Context / Goal
+- テストスクリプトの `--device` 指定時に自動起動した `llama-server` が `0xC0000135` で即終了していた。
+- アプリ本体 (`LlamaGrpcHost`) と同様に `.venv` 内 NVIDIA DLL を PATH 前置して、同等の起動条件に合わせる。
+
+### Changes
+- `.venv\Lib\site-packages\nvidia\{cuda_runtime,cublas,nvjitlink,cudnn}\bin` を収集する処理を追加。
+- 収集したディレクトリを `subprocess.Popen(..., env=...)` の `PATH` に前置する処理を追加。
+- GPU指定時に `cudart64_12.dll / cublas64_12.dll / cublasLt64_12.dll` の存在を事前検証し、不足時は明示エラーで停止する処理を追加。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — CUDA DLL 収集・検証・PATH 注入ロジックを追加。
+
+### Behavioral Impact
+- `--device gpu` を含むローカル自動起動テストで、DLL不足による即終了の再現を減らし、原因を事前に明示できるようになります。
+
+### Risk & Mitigation
+- Risk: CUDA DLL が未インストール環境では GPU 指定時に即エラー終了する。
+- Mitigation: 失敗理由を不足DLL名つきで表示し、環境修復後に再実行しやすくする。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` 実行成功。
+**2026-02-07 16:58 (Asia/Taipei) — Prevent test script from spawning/retaining extra llama-server processes**
+
+### Summary
+- Llama テスト実行時に追加プロセスが残留してVRAMを占有し続ける問題を防ぐため、起動条件と終了処理を見直しました。
+
+### Context / Goal
+- `test_translation_engine.py` が `--device` 指定だけで自動起動し、毎回 server/llama-server が増える運用になっていた。
+- 中断時や終了時に子プロセス (`llama-server.exe`) が残留しないようにしたい。
+
+### Changes
+- ローカル自動起動は `--auto-start-server` 指定時のみ有効化。
+- `--device/--batch-size/--max-tokens/--gpu-layers` を `--auto-start-server` なしで指定した場合は、明示エラーで終了。
+- Windows では停止時に `taskkill /PID <pid> /T /F` でプロセスツリー全体を終了する処理へ変更。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — 自動起動条件の明確化とプロセスツリー終了処理を追加。
+
+### Behavioral Impact
+- 意図しない追加起動が減り、テスト終了後に `llama-server.exe` が残ってVRAMを占有する事象を抑制します。
+
+### Risk & Mitigation
+- Risk: 既存の手順で `--device` のみ指定していた場合、エラー終了になる。
+- Mitigation: `--auto-start-server` を併用する明示手順へ統一し、既存サーバ利用時は起動オプションを外す。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` 実行成功。
+**2026-02-07 17:09 (Asia/Taipei) — Add optional keep-server mode for Llama test auto-start**
+
+### Summary
+- `--auto-start-server` 利用時に、終了後の自動停止を無効化できる `--keep-server` を追加しました。
+
+### Context / Goal
+- 毎回 `--auto-start-server` で起動して都度終了する運用だと、連続試験時の再起動コストが高い。
+- ただしデフォルト安全性（自動停止）も維持したい。
+
+### Changes
+- 新規引数 `--keep-server` を追加。
+- `--keep-server` は `--auto-start-server` と併用必須にし、単独指定時は明示エラーで終了。
+- 後始末処理を条件分岐し、`--keep-server` 指定時はローカル起動サーバを停止しない。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — keep-server オプションと終了処理分岐を追加。
+
+### Behavioral Impact
+- 既定動作は従来通り「自動起動 + 自動停止」を維持。
+- 明示的に `--keep-server` を付けた場合のみ、テスト終了後もサーバ常駐を継続できます。
+
+### Risk & Mitigation
+- Risk: `--keep-server` 利用後に常駐サーバが残り、VRAM占有やポート競合が発生する可能性。
+- Mitigation: オプトイン化し、必要時のみ利用する。終了時は手動で `taskkill /IM llama-server.exe /F` 等を実行。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` で `--keep-server` 表示を確認。
+**2026-02-07 17:12 (Asia/Taipei) — Roll back keep-server option from Llama test script**
+
+### Summary
+- 直前に追加した `--keep-server` 機能をロールバックし、従来の自動停止動作へ戻しました。
+
+### Context / Goal
+- ユーザー依頼により、最新変更（keep-server 追加）を取り消す必要があった。
+- 既存の安全動作（auto-start 時は終了時に停止）を維持する。
+
+### Changes
+- `--keep-server` 引数定義を削除。
+- `--keep-server` の入力バリデーションを削除。
+- finally 節の停止条件を元に戻し、auto-start したローカルサーバは常に停止する動作へ復帰。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — keep-server 関連コードを削除して前状態へ復帰。
+
+### Behavioral Impact
+- `--auto-start-server` 使用時はテスト終了時にローカルサーバを自動停止します。
+
+### Risk & Mitigation
+- Risk: 連続試験時に毎回起動コストが発生する。
+- Mitigation: 常駐運用が必要な場合は既存サーバ手動起動モード（`--auto-start-server` なし）を利用する。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` で `--keep-server` 非表示を確認。
+**2026-02-07 18:30 (Asia/Taipei) — Add Gemini-like JSON batch send mode to Llama test script**
+
+### Summary
+- `test_translation_engine.py` に、Gemini送信に近い「JSON配列を1回で送る」検証モードを追加しました。
+
+### Context / Goal
+- 現行の gRPC 分割送信と比較し、LlamaCpp でも 1リクエスト JSON バッチ方式を試験できるようにする。
+- 本番送信方式の比較検証を、テストスクリプトだけで完結させる。
+
+### Changes
+- `--send-mode` 引数を追加し、`grpc`（既存）/`llama-json-batch`（新規）を切替可能にした。
+- `llama-json-batch` 用に `/v1/models` ヘルス待機、モデル名解決、`/v1/chat/completions` 送信、JSON抽出/復元処理を追加した。
+- HTTP タイムアウト調整用に `--http-timeout-sec` を追加した。
+- 後始末を補強し、HTTP クライアントと gRPC チャネルを明示クローズするようにした。
+
+### Files Touched
+- `TranslationServiceLlama/test_translation_engine.py` — JSONバッチ送信モード、CLI引数、応答パース、クライアント終了処理を追加。
+
+### Behavioral Impact
+- 既定の `grpc` モード動作は維持。
+- `--send-mode llama-json-batch` 指定時のみ、Llama HTTP API に JSON配列を1回送信する経路で翻訳を試験可能。
+
+### Risk & Mitigation
+- Risk: モデルが厳密JSONで返さない場合、一部出力が空になる可能性。
+- Mitigation: JSONコードフェンス除去とオブジェクト抽出を実装し、配列長不一致時は `source_text` マッピングで復元する。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
+- `uv run test_translation_engine.py --help` で `--send-mode` / `--http-timeout-sec` 表示を確認。
