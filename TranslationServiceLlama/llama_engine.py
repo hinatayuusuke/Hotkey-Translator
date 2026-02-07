@@ -1,10 +1,12 @@
-﻿import logging
+﻿import json
+import logging
+import math
 import os
 import subprocess
 import threading
 import time
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 import httpx
 
@@ -213,36 +215,243 @@ class LlamaTranslator:
         if not self._lock.acquire(blocking=False):
             raise LlamaBusyError("Translator busy")
         try:
-            system_prompt = build_system_prompt(target_lang)
-            outputs: list[str] = []
-            for text in texts:
-                payload = {
-                    "model": os.path.basename(self._host._config.model_path),
-                    "messages": [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": text},
-                    ],
-                    "temperature": self._request.temperature,
-                    "top_p": self._request.top_p,
-                    "top_k": self._request.top_k,
-                    "repeat_penalty": self._request.repeat_penalty,
-                    "max_tokens": self._request.max_tokens,
-                    "stream": False,
-                }
-                resp = self._client.post("/v1/chat/completions", json=payload)
-                resp.raise_for_status()
-                data = resp.json()
-                output = extract_response_text(data)
-                outputs.append(output)
+            sentences = [text if text is not None else "" for text in texts]
+            if not sentences:
+                return []
+
+            stats = {"http_calls": 0, "splits": 0}
+            outputs = self._translate_with_adaptive_split(sentences, source_lang, target_lang, depth=0, stats=stats)
+            logging.info(
+                "Llama batch translation done: items=%d http_calls=%d splits=%d",
+                len(sentences),
+                stats["http_calls"],
+                stats["splits"],
+            )
             return outputs
         finally:
             self._lock.release()
+
+    def _translate_with_adaptive_split(
+        self,
+        texts: List[str],
+        source_lang: str,
+        target_lang: str,
+        depth: int,
+        stats: dict[str, int],
+    ) -> List[str]:
+        if not texts:
+            return []
+
+        split_reason = self._resolve_split_reason(texts, source_lang, target_lang)
+        if split_reason and len(texts) > 1:
+            stats["splits"] += 1
+            logging.info(
+                "Split batch before request: items=%d depth=%d reason=%s",
+                len(texts),
+                depth,
+                split_reason,
+            )
+            left, right = split_texts_evenly(texts)
+            return (
+                self._translate_with_adaptive_split(left, source_lang, target_lang, depth + 1, stats)
+                + self._translate_with_adaptive_split(right, source_lang, target_lang, depth + 1, stats)
+            )
+
+        try:
+            return self._translate_batch_once(texts, source_lang, target_lang, stats)
+        except Exception as exc:
+            if len(texts) <= 1:
+                # WHY: Preserve positional contract even when a single request fails.
+                logging.warning(
+                    "Single-item translation failed; returning empty output: depth=%d reason=%s",
+                    depth,
+                    exc,
+                )
+                return [""]
+
+            stats["splits"] += 1
+            logging.warning(
+                "Batch translation failed; retry with split: items=%d depth=%d reason=%s",
+                len(texts),
+                depth,
+                exc,
+            )
+            left, right = split_texts_evenly(texts)
+            return (
+                self._translate_with_adaptive_split(left, source_lang, target_lang, depth + 1, stats)
+                + self._translate_with_adaptive_split(right, source_lang, target_lang, depth + 1, stats)
+            )
+
+    def _translate_batch_once(
+        self,
+        texts: List[str],
+        source_lang: str,
+        target_lang: str,
+        stats: dict[str, int],
+    ) -> List[str]:
+        system_prompt = build_batch_system_prompt(source_lang, target_lang)
+        user_prompt = build_batch_user_prompt(texts)
+        payload = {
+            "model": os.path.basename(self._host._config.model_path),
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": self._request.temperature,
+            "top_p": self._request.top_p,
+            "top_k": self._request.top_k,
+            "repeat_penalty": self._request.repeat_penalty,
+            "max_tokens": self._request.max_tokens,
+            "stream": False,
+        }
+
+        stats["http_calls"] += 1
+        response = self._client.post("/v1/chat/completions", json=payload)
+        response.raise_for_status()
+        data = response.json()
+
+        content = extract_response_text(data)
+        parsed = parse_batch_translation_content(content, len(texts))
+        if parsed is not None:
+            return parsed
+
+        if len(texts) == 1:
+            return [content]
+        raise ValueError("batch response is not valid JSON for multi-item translation")
+
+    def _resolve_split_reason(self, texts: List[str], source_lang: str, target_lang: str) -> str | None:
+        if len(texts) <= 1:
+            return None
+
+        system_prompt = build_batch_system_prompt(source_lang, target_lang)
+        user_prompt = build_batch_user_prompt(texts)
+        estimated_prompt_tokens = estimate_token_count(system_prompt) + estimate_token_count(user_prompt)
+
+        input_budget = resolve_input_token_budget(self._host._config.context_size, self._request.max_tokens)
+        if estimated_prompt_tokens > input_budget:
+            return f"estimated_prompt_tokens({estimated_prompt_tokens}) > input_budget({input_budget})"
+
+        batch_budget = max(128, self._host._config.batch_size)
+        if estimated_prompt_tokens > batch_budget:
+            return f"estimated_prompt_tokens({estimated_prompt_tokens}) > batch_size({batch_budget})"
+
+        return None
 
 
 def build_system_prompt(target_lang: str) -> str:
     target_label = resolve_language_label(target_lang)
     # WHY: Fixed template avoids UI/user drift while keeping target language alignment.
     return DEFAULT_SYSTEM_PROMPT.format(target=target_label)
+
+
+def build_batch_system_prompt(source_lang: str, target_lang: str) -> str:
+    source_label = resolve_language_label(source_lang)
+    target_label = resolve_language_label(target_lang)
+    return (
+        "Role: Game Localization Expert. "
+        f"Translate each input from {source_label} to {target_label}. "
+        "Return JSON only."
+    )
+
+
+def build_batch_user_prompt(texts: List[str]) -> str:
+    indexed_texts = [{"index": i, "text": text} for i, text in enumerate(texts)]
+    input_json = json.dumps(indexed_texts, ensure_ascii=False)
+    return (
+        "Rules:\n"
+        "1. Keep array length and order exactly.\n"
+        "2. Keep numbers/units/symbols unless obvious OCR typo.\n"
+        "3. Output exactly this JSON schema:\n"
+        '{"translations":[{"index":0,"translated_text":"..."}]}\n'
+        f"Input: {input_json}"
+    )
+
+
+def resolve_input_token_budget(context_size: int, max_tokens: int) -> int:
+    context_limit = max(512, context_size)
+    output_budget = max(64, max_tokens)
+    reserve = max(64, min(512, output_budget // 2))
+    # WHY: Keep headroom for chat wrapper and sampling artifacts to reduce overflow retries.
+    return max(128, context_limit - output_budget - reserve)
+
+
+def estimate_token_count(text: str) -> int:
+    if not text:
+        return 0
+    # NOTE: llama.cpp tokenizer is not available here; use a conservative char-based estimate.
+    return max(1, math.ceil(len(text) / 3.5))
+
+
+def split_texts_evenly(texts: List[str]) -> tuple[List[str], List[str]]:
+    if len(texts) <= 1:
+        return texts, []
+    pivot = max(1, len(texts) // 2)
+    return texts[:pivot], texts[pivot:]
+
+
+def parse_batch_translation_content(content: str, expected_count: int) -> List[str] | None:
+    payload = parse_json_object_from_text(content)
+    if payload is None:
+        return None
+
+    translations = payload.get("translations")
+    if not isinstance(translations, list):
+        return None
+
+    outputs = ["" for _ in range(expected_count)]
+    index_hits = 0
+    for item in translations:
+        if not isinstance(item, dict):
+            continue
+        index = item.get("index")
+        translated_text = item.get("translated_text")
+        if not isinstance(index, int) or not isinstance(translated_text, str):
+            continue
+        if index < 0 or index >= expected_count:
+            continue
+        outputs[index] = translated_text.strip()
+        index_hits += 1
+
+    if index_hits > 0:
+        return outputs
+
+    if len(translations) != expected_count:
+        return None
+
+    for i, item in enumerate(translations):
+        if not isinstance(item, dict):
+            return None
+        translated_text = item.get("translated_text")
+        if not isinstance(translated_text, str):
+            return None
+        outputs[i] = translated_text.strip()
+
+    return outputs
+
+
+def parse_json_object_from_text(content: str) -> dict[str, Any] | None:
+    if not content:
+        return None
+
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3:
+            text = "\n".join(lines[1:-1]).strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start < 0 or end <= start:
+        return None
+
+    try:
+        parsed = json.loads(text[start : end + 1])
+    except json.JSONDecodeError:
+        return None
+
+    if not isinstance(parsed, dict):
+        return None
+    return parsed
 
 
 def resolve_language_label(language: str) -> str:

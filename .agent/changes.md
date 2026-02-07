@@ -4489,3 +4489,63 @@
 ### Tests / Verification
 - `python -m py_compile TranslationServiceLlama/test_translation_engine.py` 実行成功。
 - `uv run test_translation_engine.py --help` で `--send-mode` / `--http-timeout-sec` 表示を確認。
+**2026-02-07 18:55 (Asia/Taipei) — Add plan for downstream single-HTTP batching in Llama engine**
+
+### Summary
+- `llama_engine.py` の下流HTTPを原則1回化するための実装案を `Doc/` に新規作成しました。
+
+### Context / Goal
+- 現在は gRPC 1回でも下流HTTPが item 数だけ発生するため、往復回数を減らす設計方針を明確化する必要があった。
+- UI制限超過時のみ分割する条件付きバッチ戦略を文書化する。
+
+### Changes
+- 新規ドキュメント `Doc/LlamaCpp_DownstreamHttp_Batch_Request_Plan.md` を追加。
+- 実装案テンプレートに沿って、ゴール/非ゴール、設計、手順、リスク、DoD を整理。
+- `index` ベース復元、JSON崩れ時フォールバック、上限超過時分割方針を明記。
+
+### Files Touched
+- `Doc/LlamaCpp_DownstreamHttp_Batch_Request_Plan.md` — 下流HTTP一括送信化の実装計画書を新規作成。
+
+### Behavioral Impact
+- 実コード変更は未実施。挙動変更はありません。
+
+### Risk & Mitigation
+- Risk: 計画書のみで実装未着手のため、実運用改善は未反映。
+- Mitigation: 次ステップで計画に基づき `TranslationServiceLlama/llama_engine.py` を段階実装する。
+
+### Tests / Verification
+- ドキュメント内容を UTF-8 で書き出し、`Get-Content -Encoding UTF8` で確認。
+**2026-02-07 19:07 (Asia/Taipei) — Implement downstream single-HTTP batch translation in llama_engine**
+
+### Summary
+- `TranslationServiceLlama/llama_engine.py` を実装し、複数入力を原則1回の下流HTTPで送信し、制約超過時のみ分割送信するように変更しました。
+
+### Context / Goal
+- gRPC では1リクエストでも、下流 `chat/completions` が入力件数分発生していた。
+- 下流HTTP往復回数を削減しつつ、UI設定上限を超えるケースのみ安全に分割する必要があった。
+
+### Changes
+- `LlamaTranslator.translate()` を一括送信ベースの `adaptive split` フローへ置換。
+- 一括送信用のプロンプト生成（index付き入力JSON）と JSON パース処理を追加。
+- `index` ベースで出力復元し、順序・件数の整合を維持するようにした。
+- 推定トークン数と `context_size/max_tokens/batch_size` に基づく分割判定を追加。
+- 一括失敗時は自動2分割で再試行し、単一要素失敗時は空文字で位置整合を維持するフォールバックを追加。
+- 実行ログに `items/http_calls/splits` を追加し、下流呼び出し回数を追跡可能にした。
+
+### Files Touched
+- `TranslationServiceLlama/llama_engine.py` — 下流HTTP一括送信、制約ベース分割、JSON復元、ログ強化を実装。
+
+### Behavioral Impact
+- 複数テキスト入力時、通常は下流 `POST /v1/chat/completions` が1回になります。
+- 制約超過見込みまたは応答不正時のみ分割して複数回送信します。
+- 応答パース失敗時の耐障害性が向上し、要素順序・件数の不整合を起こしにくくなります。
+
+### Risk & Mitigation
+- Risk: 文字数ベースのトークン推定が実トークンと乖離する場合、分割判定が過不足になる可能性。
+- Mitigation: 下流失敗時に自動分割再試行するフォールバックを実装し、推定誤差を吸収。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/llama_engine.py` 実行成功。
+- `python -m py_compile TranslationServiceLlama/server.py` 実行成功。
+- `uv run test_translation_engine.py --help` 実行成功（回帰なし確認）。
+- `uv run -` で `parse_batch_translation_content` の簡易実行確認（`['A', 'B']` を確認）。
