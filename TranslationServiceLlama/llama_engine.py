@@ -272,7 +272,7 @@ class LlamaTranslator:
 
             stats["splits"] += 1
             logging.warning(
-                "Batch translation failed; retry with split: items=%d depth=%d reason=%s",
+                "split_fallback: items=%d depth=%d reason=%s",
                 len(texts),
                 depth,
                 exc,
@@ -290,9 +290,12 @@ class LlamaTranslator:
         target_lang: str,
         stats: dict[str, int],
     ) -> List[str]:
+        if len(texts) == 1:
+            return self._translate_single_plain(texts[0], target_lang, stats)
+
         system_prompt = build_batch_system_prompt(source_lang, target_lang)
         user_prompt = build_batch_user_prompt(texts)
-        payload = {
+        base_payload = {
             "model": os.path.basename(self._host._config.model_path),
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -305,20 +308,63 @@ class LlamaTranslator:
             "max_tokens": self._request.max_tokens,
             "stream": False,
         }
+        schema_error: Exception | None = None
+        schema_payload = {
+            **base_payload,
+            # WHY: Keep the first attempt strict/short to reduce breakage with small models.
+            "response_format": build_short_json_schema_response_format(),
+        }
+        try:
+            content = self._post_chat_completion(schema_payload, stats)
+            parsed, rescued = parse_batch_translation_content_resilient(content, len(texts))
+            if parsed is not None:
+                if rescued:
+                    logging.info("parser_rescue_success: stage=schema items=%d", len(texts))
+                logging.info("schema_success: items=%d rescued=%s", len(texts), rescued)
+                return parsed
+            schema_error = ValueError("schema response is not valid JSON")
+        except Exception as exc:
+            schema_error = exc
+            logging.warning("schema request failed; retry with grammar: items=%d reason=%s", len(texts), exc)
 
+        grammar_payload = {
+            **base_payload,
+            "grammar": build_short_json_grammar(),
+        }
+        content = self._post_chat_completion(grammar_payload, stats)
+        parsed, rescued = parse_batch_translation_content_resilient(content, len(texts))
+        if parsed is not None:
+            if rescued:
+                logging.info("parser_rescue_success: stage=grammar items=%d", len(texts))
+            logging.info("grammar_fallback_success: items=%d rescued=%s", len(texts), rescued)
+            return parsed
+
+        raise ValueError(f"batch response is not valid JSON after grammar fallback: {schema_error}")
+
+    def _translate_single_plain(self, text: str, target_lang: str, stats: dict[str, int]) -> List[str]:
+        payload = {
+            "model": os.path.basename(self._host._config.model_path),
+            "messages": [
+                {"role": "system", "content": build_system_prompt(target_lang)},
+                {"role": "user", "content": text},
+            ],
+            "temperature": self._request.temperature,
+            "top_p": self._request.top_p,
+            "top_k": self._request.top_k,
+            "repeat_penalty": self._request.repeat_penalty,
+            "max_tokens": self._request.max_tokens,
+            "stream": False,
+        }
+        content = self._post_chat_completion(payload, stats)
+        logging.info("plain_single_success: chars=%d", len(content))
+        return [content]
+
+    def _post_chat_completion(self, payload: dict[str, Any], stats: dict[str, int]) -> str:
         stats["http_calls"] += 1
         response = self._client.post("/v1/chat/completions", json=payload)
         response.raise_for_status()
         data = response.json()
-
-        content = extract_response_text(data)
-        parsed = parse_batch_translation_content(content, len(texts))
-        if parsed is not None:
-            return parsed
-
-        if len(texts) == 1:
-            return [content]
-        raise ValueError("batch response is not valid JSON for multi-item translation")
+        return extract_response_text(data)
 
     def _resolve_split_reason(self, texts: List[str], source_lang: str, target_lang: str) -> str | None:
         if len(texts) <= 1:
@@ -349,22 +395,72 @@ def build_batch_system_prompt(source_lang: str, target_lang: str) -> str:
     source_label = resolve_language_label(source_lang)
     target_label = resolve_language_label(target_lang)
     return (
-        "Role: Game Localization Expert. "
-        f"Translate each input from {source_label} to {target_label}. "
-        "Return JSON only."
+        "You are a translation function. "
+        f"Translate from {source_label} to {target_label}. "
+        'Output MUST be JSON with schema {"t":[{"i":0,"x":"..."}]}. '
+        "Use only keys t, i, x. "
+        "Keep array length and order exactly. "
+        "Keep numbers/units/symbols unless an obvious OCR typo."
     )
 
 
 def build_batch_user_prompt(texts: List[str]) -> str:
-    indexed_texts = [{"index": i, "text": text} for i, text in enumerate(texts)]
-    input_json = json.dumps(indexed_texts, ensure_ascii=False)
+    indexed_texts = [{"i": i, "s": text} for i, text in enumerate(texts)]
+    input_json = json.dumps({"items": indexed_texts}, ensure_ascii=False, separators=(",", ":"))
     return (
-        "Rules:\n"
-        "1. Keep array length and order exactly.\n"
-        "2. Keep numbers/units/symbols unless obvious OCR typo.\n"
-        "3. Output exactly this JSON schema:\n"
-        '{"translations":[{"index":0,"translated_text":"..."}]}\n'
-        f"Input: {input_json}"
+        "Translate each items[i].s to target language.\n"
+        "Return one-line JSON only. Do not translate keys.\n"
+        f"Input JSON: {input_json}"
+    )
+
+
+def build_batch_json_schema_response_format() -> dict[str, Any]:
+    # COMPAT: Keep old function name because callers/tests may still import this symbol.
+    return build_short_json_schema_response_format()
+
+
+def build_short_json_schema_response_format() -> dict[str, Any]:
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "translations_short_v1",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "t": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "i": {"type": "integer"},
+                                "x": {"type": "string"},
+                            },
+                            "required": ["i", "x"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["t"],
+                "additionalProperties": False,
+            },
+        },
+    }
+
+
+def build_short_json_grammar() -> str:
+    # WHY: Keep grammar minimal so generation remains feasible for small models.
+    return (
+        'root ::= ws obj ws\n'
+        'obj ::= "{" ws "\\"t\\"" ws ":" ws "[" ws items? ws "]" ws "}"\n'
+        "items ::= item (ws \",\" ws item)*\n"
+        'item ::= "{" ws "\\"i\\"" ws ":" ws int ws "," ws "\\"x\\"" ws ":" ws str ws "}"\n'
+        "int ::= \"-\"? digit digit*\n"
+        'str ::= "\\"" char* "\\""\n'
+        'char ::= [^"\\\\\\x00-\\x1F] | "\\\\" (["\\\\/bfnrt] | "u" hex hex hex hex)\n'
+        "digit ::= [0-9]\n"
+        "hex ::= [0-9a-fA-F]\n"
+        "ws ::= [ \\t\\n\\r]*\n"
     )
 
 
@@ -391,21 +487,34 @@ def split_texts_evenly(texts: List[str]) -> tuple[List[str], List[str]]:
 
 
 def parse_batch_translation_content(content: str, expected_count: int) -> List[str] | None:
-    payload = parse_json_object_from_text(content)
-    if payload is None:
-        return None
+    parsed, _ = parse_batch_translation_content_resilient(content, expected_count)
+    return parsed
 
-    translations = payload.get("translations")
+
+def parse_batch_translation_content_resilient(content: str, expected_count: int) -> tuple[List[str] | None, bool]:
+    payload, rescued = parse_json_object_from_text_resilient(content)
+    if payload is None:
+        return None, False
+
+    translations = payload.get("t")
     if not isinstance(translations, list):
-        return None
+        translations = payload.get("translations")
+    if not isinstance(translations, list):
+        return None, rescued
 
     outputs = ["" for _ in range(expected_count)]
     index_hits = 0
     for item in translations:
         if not isinstance(item, dict):
             continue
-        index = item.get("index")
-        translated_text = item.get("translated_text")
+        index = item.get("i")
+        if not isinstance(index, int):
+            index = item.get("index")
+
+        translated_text = item.get("x")
+        if not isinstance(translated_text, str):
+            translated_text = item.get("translated_text")
+
         if not isinstance(index, int) or not isinstance(translated_text, str):
             continue
         if index < 0 or index >= expected_count:
@@ -414,45 +523,141 @@ def parse_batch_translation_content(content: str, expected_count: int) -> List[s
         index_hits += 1
 
     if index_hits > 0:
-        return outputs
+        return outputs, rescued
 
     if len(translations) != expected_count:
-        return None
+        return None, rescued
 
     for i, item in enumerate(translations):
         if not isinstance(item, dict):
-            return None
-        translated_text = item.get("translated_text")
+            return None, rescued
+
+        translated_text = item.get("x")
         if not isinstance(translated_text, str):
-            return None
+            translated_text = item.get("translated_text")
+        if not isinstance(translated_text, str):
+            return None, rescued
         outputs[i] = translated_text.strip()
 
-    return outputs
+    return outputs, rescued
 
 
 def parse_json_object_from_text(content: str) -> dict[str, Any] | None:
+    payload, _ = parse_json_object_from_text_resilient(content)
+    return payload
+
+
+def parse_json_object_from_text_resilient(content: str) -> tuple[dict[str, Any] | None, bool]:
     if not content:
+        return None, False
+
+    cleaned = strip_markdown_code_fence(content.strip())
+    if not cleaned:
+        return None, False
+
+    candidates: list[tuple[str, bool]] = []
+    seen: set[str] = set()
+
+    def add_candidate(text: str, rescued: bool) -> None:
+        candidate = text.strip()
+        if not candidate or candidate in seen:
+            return
+        seen.add(candidate)
+        candidates.append((candidate, rescued))
+
+    add_candidate(cleaned, False)
+
+    bounded = extract_first_balanced_json_object(cleaned)
+    if bounded:
+        add_candidate(bounded, True)
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        add_candidate(cleaned[start : end + 1], True)
+
+    for candidate, rescued in list(candidates):
+        normalized_lines = candidate.replace("\r\n", "\n").replace("\r", "\n")
+        add_candidate(normalized_lines, rescued or normalized_lines != candidate)
+        escaped_line_breaks = normalized_lines.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+        add_candidate(escaped_line_breaks, rescued or escaped_line_breaks != candidate)
+        trimmed = trim_trailing_extra_closing_braces(normalized_lines)
+        add_candidate(trimmed, rescued or trimmed != candidate)
+
+    for candidate, rescued in candidates:
+        parsed = parse_json_object_candidate(candidate)
+        if parsed is not None:
+            return parsed, rescued
+
+    return None, False
+
+
+def parse_json_object_candidate(candidate: str) -> dict[str, Any] | None:
+    value: Any = candidate
+    for _ in range(3):
+        if not isinstance(value, str):
+            return None
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            value = value.strip()
+            continue
         return None
+    return None
 
-    text = content.strip()
-    if text.startswith("```"):
-        lines = text.splitlines()
-        if len(lines) >= 3:
-            text = "\n".join(lines[1:-1]).strip()
 
+def strip_markdown_code_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if len(lines) >= 3:
+        return "\n".join(lines[1:-1]).strip()
+    return text
+
+
+def extract_first_balanced_json_object(text: str) -> str | None:
     start = text.find("{")
-    end = text.rfind("}")
-    if start < 0 or end <= start:
+    if start < 0:
         return None
 
-    try:
-        parsed = json.loads(text[start : end + 1])
-    except json.JSONDecodeError:
-        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+            continue
 
-    if not isinstance(parsed, dict):
-        return None
-    return parsed
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+            continue
+        if ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    return None
+
+
+def trim_trailing_extra_closing_braces(text: str) -> str:
+    candidate = text.strip()
+    while candidate.endswith("}") and candidate.count("}") > candidate.count("{"):
+        candidate = candidate[:-1].rstrip()
+    return candidate
 
 
 def resolve_language_label(language: str) -> str:
