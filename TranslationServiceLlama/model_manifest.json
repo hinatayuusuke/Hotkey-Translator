@@ -1,6 +1,6 @@
 {
   "filename": "qwen3-1_7b-instruct-q4_k_m.gguf",
-  "download_url": "https://huggingface.co/Cactus-Compute/Qwen3-1.7B-Instruct-GGUF/resolve/609e0516ca5cabcc2d946e1ea099adb3938f7dd9/Qwen3-1.7B-Q4_K_M.gguf?download=true",
-  "sha256": "d2385f587be3933bf22cba6ff6f1c8de9c18e0f4145f9b726f0f5800b5f94dc0",
-  "size_bytes": 1282439264
+  "download_url": "https://huggingface.co/leuconoe/Qwen3-1.7B-Instruct-GGUF/resolve/9fee0122393fb529efb990c77381864702bad47d/Qwen3-1.7B-Q4_K_M-Instruct.gguf?download=true",
+  "sha256": "b047d6617eba56dcfa3357566b06807f54b15816faf6182aabd12d7e2378e537",
+  "size_bytes": 1282439360
 }

@@ -4243,3 +4243,55 @@
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し成功（0 errors, 0 warnings）。
 - 実環境でのモデルDL/llama-server 起動の結合確認は未実施（ネットワーク・GPU依存のため）。
+**2026-02-07 16:16 (Asia/Taipei) — Switch model manifest to public Instruct URL**
+
+### Summary
+- Llama モデルの取得先を、匿名ダウンロード可能な公開URLへ切り替えました。
+
+### Context / Goal
+- 既存のモデルURLで `401 Unauthorized` が発生し、起動時の自動DLが失敗していた。
+- トークン不要で取得できる配布元へ変更し、初期化失敗を解消する。
+
+### Changes
+- `TranslationServiceLlama/model_manifest.json` の `download_url` を `leuconoe/Qwen3-1.7B-Instruct-GGUF` の commit 固定URLへ変更。
+- 同ファイルの `sha256` と `size_bytes` を公開APIの値に更新。
+
+### Files Touched
+- `TranslationServiceLlama/model_manifest.json` — 公開URL・ハッシュ・サイズを更新。
+
+### Behavioral Impact
+- 起動時のモデル自動ダウンロードが、認証不要のURLで実行されるようになります。
+
+### Risk & Mitigation
+- Risk: 将来URLが無効化される可能性。
+- Mitigation: revision固定URLを採用し、失敗時は `model_manifest.json` の差し替えで復旧可能にする。
+
+### Tests / Verification
+- `curl -L -I` で更新URLが `HTTP 200` を返すことを確認。
+- アプリ実行でのエンドツーエンド確認は未実施。
+**2026-02-07 16:25 (Asia/Taipei) — Fix llama-server log decoding to avoid cp932 crash**
+
+### Summary
+- `llama_engine.py` の subprocess ログ読み取りで UTF-8 + replace を指定し、`UnicodeDecodeError` を回避しました。
+
+### Context / Goal
+- `llama-server` の出力を cp932 として読んだ際に `UnicodeDecodeError` が発生し、pump スレッドが落ちていた。
+- 即効対応として、ログ読取のデコード失敗で処理全体が止まらないようにする。
+
+### Changes
+- `subprocess.Popen(..., text=True)` に `encoding="utf-8"` と `errors="replace"` を追加。
+- 不正バイトは置換文字で扱い、行読み取りループが継続するように変更。
+
+### Files Touched
+- `TranslationServiceLlama/llama_engine.py` — Popen のデコード設定を追加。
+
+### Behavioral Impact
+- `cp932` 由来のデコード例外でログスレッドが停止しにくくなり、起動待機中の安定性が向上します。
+- 一部ログ文字は `�` に置換される可能性があります。
+
+### Risk & Mitigation
+- Risk: UTF-8 以外の出力で文字化けが残る可能性。
+- Mitigation: `errors="replace"` によりクラッシュは回避し、必要なら次段でバイナリ読み＋多段デコードへ拡張可能。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama/llama_engine.py` を実行し成功。
