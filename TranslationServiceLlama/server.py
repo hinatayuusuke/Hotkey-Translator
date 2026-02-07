@@ -1,6 +1,7 @@
 ﻿import argparse
 import logging
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -168,8 +169,21 @@ def main() -> int:
     grpc_server.add_insecure_port(f"{args.host}:{args.port}")
     grpc_server.start()
     logging.info("Translation gRPC listening on %s:%s", args.host, args.port)
-    grpc_server.wait_for_termination()
-    return 0
+
+    def request_shutdown(signum, _frame):
+        logging.info("Signal received (%s); stopping Translation gRPC.", signum)
+        grpc_server.stop(grace=2)
+
+    signal.signal(signal.SIGINT, request_shutdown)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, request_shutdown)
+
+    try:
+        grpc_server.wait_for_termination()
+        return 0
+    finally:
+        # WHY: Ensure child llama-server is terminated when gRPC host process exits.
+        host.stop()
 
 
 if __name__ == "__main__":

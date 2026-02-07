@@ -122,6 +122,7 @@ class LlamaServerHost:
             bufsize=1,
         )
         self._process = proc
+        logging.info("llama-server pid=%d", proc.pid)
 
         def pump(pipe, label: str) -> None:
             if pipe is None:

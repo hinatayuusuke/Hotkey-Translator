@@ -51,6 +51,8 @@ public sealed class LlamaGrpcHost : IDisposable
     private CancellationTokenSource? _monitorCts;
     private Task? _monitorTask;
     private bool _stopping;
+    private int? _trackedLlamaServerPid;
+    private string? _trackedLlamaServerPath;
 
     public LlamaGrpcHost(AppLogger? logger = null)
     {
@@ -116,6 +118,15 @@ public sealed class LlamaGrpcHost : IDisposable
             _process?.Dispose();
             _process = null;
         }
+
+        // WHY: If the parent process has already exited unexpectedly, llama-server can remain orphaned.
+        // Track and terminate the child process explicitly as a shutdown fallback.
+        TryKillTrackedLlamaServer();
+
+        lock (_lock)
+        {
+            _trackedLlamaServerPid = null;
+        }
     }
 
     public void Dispose()
@@ -143,16 +154,24 @@ public sealed class LlamaGrpcHost : IDisposable
         ValidateLlamaNativeFiles(paths.LlamaCppDirectory);
         await EnsureLlamaModelAsync(paths.ManifestPath, paths.ModelPath, cancellationToken).ConfigureAwait(false);
 
+        var pythonPath = ResolvePythonExecutable(projectDir);
         var nvidiaBinPaths = CollectNvidiaDllBinPaths(projectDir);
         ValidateCudaRuntime(nvidiaBinPaths);
+
+        lock (_lock)
+        {
+            _trackedLlamaServerPath = Path.GetFullPath(paths.ServerPath);
+            _trackedLlamaServerPid = null;
+        }
 
         _logger?.Info("Starting Llama gRPC (llama-server over HTTP).");
         _logger?.Info($"Llama fixed server path: {paths.ServerPath}");
         _logger?.Info($"Llama fixed model path: {paths.ModelPath}");
+        _logger?.Info($"Llama runtime python: {pythonPath}");
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = uvPath,
+            FileName = pythonPath,
             WorkingDirectory = projectDir,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -161,10 +180,6 @@ public sealed class LlamaGrpcHost : IDisposable
         };
         startInfo.Environment["PATH"] = BuildProcessPath(nvidiaBinPaths);
 
-        startInfo.ArgumentList.Add("run");
-        startInfo.ArgumentList.Add("--project");
-        startInfo.ArgumentList.Add(projectDir);
-        startInfo.ArgumentList.Add("python");
         startInfo.ArgumentList.Add(scriptPath);
         startInfo.ArgumentList.Add("--host");
         startInfo.ArgumentList.Add(host);
@@ -203,6 +218,7 @@ public sealed class LlamaGrpcHost : IDisposable
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
+                TryTrackLlamaServerPid(args.Data);
                 _logger?.Info($"[LlamaGrpc] {args.Data}");
             }
         };
@@ -210,6 +226,7 @@ public sealed class LlamaGrpcHost : IDisposable
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
+                TryTrackLlamaServerPid(args.Data);
                 _logger?.Info($"[LlamaGrpc] {args.Data}");
             }
         };
@@ -473,6 +490,18 @@ public sealed class LlamaGrpcHost : IDisposable
             : $"{string.Join(";", uniqueBins)};{currentPath}";
     }
 
+    private static string ResolvePythonExecutable(string projectDir)
+    {
+        var relative = OperatingSystem.IsWindows() ? Path.Combine(".venv", "Scripts", "python.exe") : Path.Combine(".venv", "bin", "python");
+        var path = Path.Combine(projectDir, relative);
+        if (!File.Exists(path))
+        {
+            throw new FileNotFoundException($"Llama runtime python not found: {path}");
+        }
+
+        return path;
+    }
+
     private async Task EnsurePythonRuntimeAsync(string projectDir, string uvPath, CancellationToken cancellationToken)
     {
         var pyprojectPath = Path.Combine(projectDir, "pyproject.toml");
@@ -711,6 +740,149 @@ public sealed class LlamaGrpcHost : IDisposable
         catch
         {
             // Ignore kill failures on cancellation.
+        }
+    }
+
+    private void TryTrackLlamaServerPid(string line)
+    {
+        const string marker = "llama-server pid=";
+        var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var start = index + marker.Length;
+        var end = start;
+        while (end < line.Length && char.IsDigit(line[end]))
+        {
+            end++;
+        }
+
+        if (end <= start)
+        {
+            return;
+        }
+
+        if (!int.TryParse(line[start..end], out var pid))
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            _trackedLlamaServerPid = pid;
+        }
+
+        _logger?.Info($"Tracked llama-server pid: {pid}");
+    }
+
+    private void TryKillTrackedLlamaServer()
+    {
+        int? trackedPid;
+        string? trackedPath;
+        lock (_lock)
+        {
+            trackedPid = _trackedLlamaServerPid;
+            trackedPath = _trackedLlamaServerPath;
+        }
+
+        if (trackedPid.HasValue && TryKillLlamaProcessByPid(trackedPid.Value, trackedPath))
+        {
+            return;
+        }
+
+        TryKillLlamaProcessByPath(trackedPath);
+    }
+
+    private bool TryKillLlamaProcessByPid(int pid, string? trackedPath)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited)
+            {
+                return true;
+            }
+
+            if (!IsExpectedLlamaServerProcess(process, trackedPath))
+            {
+                _logger?.Info($"Skip PID {pid} because it does not match tracked llama-server executable.");
+                return false;
+            }
+
+            _logger?.Info($"Force-killing tracked llama-server PID {pid}.");
+            process.Kill(true);
+            process.WaitForExit(2000);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            // Process already exited.
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Info($"Failed to kill tracked llama-server PID {pid}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void TryKillLlamaProcessByPath(string? trackedPath)
+    {
+        if (string.IsNullOrWhiteSpace(trackedPath))
+        {
+            return;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(trackedPath);
+        foreach (var process in Process.GetProcessesByName(name))
+        {
+            var pid = process.Id;
+            try
+            {
+                using (process)
+                {
+                    if (process.HasExited || !IsExpectedLlamaServerProcess(process, trackedPath))
+                    {
+                        continue;
+                    }
+
+                    _logger?.Info($"Force-killing residual llama-server PID {process.Id}.");
+                    process.Kill(true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Info($"Failed to kill residual llama-server PID {pid}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool IsExpectedLlamaServerProcess(Process process, string? trackedPath)
+    {
+        if (string.IsNullOrWhiteSpace(trackedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var executable = process.MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(executable))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                Path.GetFullPath(executable),
+                Path.GetFullPath(trackedPath),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
