@@ -4094,3 +4094,152 @@
 
 ### Tests / Verification
 - 未実施（設計ドキュメント更新のみ）。
+
+**2026-02-07 15:33 (Asia/Taipei) — Add model auto-download paths to Llama CUDA plan**
+
+### Summary
+- Llama CUDA 自動セットアップ計画に、モデル自動ダウンロードと保存先パスを追加した。
+
+### Context / Goal
+- 初回起動時の手動モデル配置をなくし、Llama 起動失敗を減らしたい。
+- 指定パス TranslationServiceLlama\\LlamaCpp / TranslationServiceLlama\\LlamaCpp\\Models を計画へ明示する。
+
+### Changes
+- ドキュメント題名を CUDA DLL + Model Auto-Download に拡張。
+- モデル自動取得（不足時ダウンロード、.tmp 受信後 rename）をフローへ追加。
+- 保存先を TranslationServiceLlama\\LlamaCpp\\Models に固定して明記。
+- API案に EnsureLlamaModelAsync() を追加。
+- リスクに「モデルDL中断時の不完全ファイル」を追加し、緩和策を明記。
+- DoD に「初回起動でモデル自動配置」を追加。
+
+### Files Touched
+- Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md — モデル自動ダウンロード仕様と保存先パスを反映。
+
+### Behavioral Impact
+- ドキュメント更新のみ。アプリ実行挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: モデル取得仕様が実装と先行して差異が出る可能性。
+- Mitigation: パス・手順・検証条件をDoDまで具体化し、実装時の受け入れ基準を固定した。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
+
+**2026-02-07 15:35 (Asia/Taipei) — Pin Llama auto-download model to qwen3-1_7b-instruct-q4_k_m.gguf**
+
+### Summary
+- Llama 自動ダウンロード計画の対象モデルを qwen3-1_7b-instruct-q4_k_m.gguf に固定した。
+
+### Context / Goal
+- 利用予定モデルが確定したため、汎用 <model>.gguf 記述ではなく実際のモデル名で計画を具体化する。
+- 実装時の保存先/検証条件の解釈ブレを防ぐ。
+
+### Changes
+- 前提・シーケンス・API説明・バリデーション・実装手順・DoD の各節で対象モデル名を qwen3-1_7b-instruct-q4_k_m.gguf に統一。
+- モデル存在確認・不足時DL・初回配置確認の記述を具体名ベースに更新。
+
+### Files Touched
+- Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md — モデル名を qwen3-1_7b-instruct-q4_k_m.gguf に固定して更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。アプリ実行挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: 今後モデルを変更する際にドキュメント更新漏れが起きる。
+- Mitigation: モデル変更時は本計画の対象モデル名とDoDを同時更新する運用を明記して管理する。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
+
+**2026-02-07 15:41 (Asia/Taipei) — Incorporate self-review recommendations into Llama auto-download plan**
+
+### Summary
+- Llama 自動セットアップ計画へ、自己レビュー指摘（供給源固定・モデルパス上書き・DoD強化）を反映した。
+
+### Context / Goal
+- モデル取得元未定義、LlamaModelPath 不整合、検証不足のリスクを解消したい。
+- 運用時の再現性と安全性を高めるため、仕様を具体化する。
+
+### Changes
+- model_manifest.json を新設してモデルURL/revision/SHA256 を固定管理する方針を追加。
+- LlamaModelPath を管理パスへ上書きする運用を明記（ユーザー指定より管理値優先）。
+- uv sync の実行条件を「初回または lock/manifest 変更時のみ」に限定。
+- モデルDL時の .tmp + rename + SHA256 検証を必須化。
+- DoD を強化し、/v1/models の 200 応答と翻訳API最小1ケース成功を追加。
+
+### Files Touched
+- Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md — 自己レビュー推奨事項を反映して更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。アプリ実行挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: 実装時にマニフェスト管理と設定上書き仕様の整合が崩れる可能性。
+- Mitigation: API案・実装手順・DoDを同じ前提（管理パス優先）に統一して明記した。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
+
+**2026-02-07 15:51 (Asia/Taipei) — Fix Llama paths as non-editable and remove UI path controls in plan**
+
+### Summary
+- Llama の LlamaServerPath / LlamaModelPath を固定運用にし、UIから削除する方針を計画へ反映した。
+
+### Context / Goal
+- モデル/サーバーパスをユーザー編集可能にすると、自動取得モデルと実行実体がずれて不具合が起きやすい。
+- 固定パス運用に統一し、配布・サポート・再現性を高める。
+
+### Changes
+- 概要・ゴールに「固定パス運用」「ユーザー編集不可」を明記。
+- 非ゴールに「LlamaServerPath / LlamaModelPath の編集機能維持」を追加。
+- 前提に固定パス（TranslationServiceLlama\\LlamaCpp\\llama-server.exe / ...\\Models\\qwen3-1_7b-instruct-q4_k_m.gguf）を明記。
+- シーケンス/内部API/実装手順を「上書き」から「固定パス使用・設定読み取り廃止」へ更新。
+- 影響範囲に MainWindow.xaml / MainWindow.xaml.cs のパス入力UI削除を追加。
+- 既存設定無視による混乱リスクと緩和策（告知・UI削除）を追記。
+
+### Files Touched
+- Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md — パス固定化とUI削除方針を反映して更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。アプリ実行挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: 既存ユーザーが設定値が反映されないことに戸惑う。
+- Mitigation: リリースノートとUIの明示削除で「固定パス運用」へ誘導する。
+
+### Tests / Verification
+- 未実施（設計ドキュメント更新のみ）。
+**2026-02-07 16:02 (Asia/Taipei) — Implement fixed Llama paths and model auto-download**
+
+### Summary
+- Llama の実行パスを固定化し、モデル自動ダウンロードと CUDA 依存検証を実装しました。
+
+### Context / Goal
+- `Doc/TranslationServiceLlama_CUDA_DLL_AutoDownload_Plan.md` の内容をコードへ反映する。
+- `LlamaServerPath` / `LlamaModelPath` の可変設定を廃止し、起動失敗要因を減らす。
+
+### Changes
+- `LlamaGrpcHost` に起動前処理を追加（`uv sync` ガード、固定パス解決、ネイティブ必須ファイル検証、モデルDL+SHA256検証、CUDA DLL PATH 注入）。
+- `TranslationServiceLlama/model_manifest.json` を新規追加し、`qwen3-1_7b-instruct-q4_k_m.gguf` の取得元とハッシュを固定。
+- `TranslationServiceLlama/pyproject.toml` に CUDA 関連依存を追加。
+- UI から `LlamaServerPath` / `LlamaModelPath` 入力を削除し、`AppSettings` から当該設定を削除。
+
+### Files Touched
+- `Services/LlamaGrpcHost.cs` — 固定パス運用、`uv sync` 実行条件管理、モデル自動DL、SHA256検証、CUDA DLL 検証、PATH 前置を実装。
+- `TranslationServiceLlama/model_manifest.json` — モデルファイル名/URL/SHA256/サイズを定義（新規）。
+- `TranslationServiceLlama/pyproject.toml` — CUDA 12 系 Python 依存を追加。
+- `Models/AppSettings.cs` — `LlamaServerPath` / `LlamaModelPath` プロパティを削除。
+- `MainWindow.xaml` — Llama の path 入力UIを削除し固定運用の説明文へ変更。
+- `MainWindow.xaml.cs` — path 入出力と正規化処理を削除、Llama 設定比較レコードを更新。
+
+### Behavioral Impact
+- Llama 起動時は常に `TranslationServiceLlama\LlamaCpp\llama-server.exe` と `TranslationServiceLlama\LlamaCpp\Models\qwen3-1_7b-instruct-q4_k_m.gguf` を使用します。
+- 初回またはランタイム定義変更時のみ `uv sync` を実行し、モデル未配置時は自動ダウンロードします。
+
+### Risk & Mitigation
+- Risk: モデル配布元変更やネットワーク障害で自動DLが失敗する可能性。
+- Mitigation: `model_manifest.json` 固定 + SHA256 検証 + 失敗時例外で原因を明示。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し成功（0 errors, 0 warnings）。
+- 実環境でのモデルDL/llama-server 起動の結合確認は未実施（ネットワーク・GPU依存のため）。

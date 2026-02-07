@@ -8,6 +8,11 @@ dependencies = [
     "grpcio>=1.76.0",
     "grpcio-tools>=1.76.0",
     "httpx>=0.27.0",
+
+    "nvidia-cuda-runtime-cu12; sys_platform == 'win32'",
+    "nvidia-cublas-cu12; sys_platform == 'win32'",
+    "nvidia-cudnn-cu12; sys_platform == 'win32'",
+    "nvidia-nvjitlink-cu12; sys_platform == 'win32'",
 ]
 
 [tool.uv]

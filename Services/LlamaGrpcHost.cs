@@ -2,6 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
+using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
@@ -12,6 +18,32 @@ namespace Hotkey_Translator.Services;
 
 public sealed class LlamaGrpcHost : IDisposable
 {
+    private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
+    private const string FixedLlamaModelRelativePath = "LlamaCpp\\Models\\qwen3-1_7b-instruct-q4_k_m.gguf";
+    private const string ManifestFileName = "model_manifest.json";
+    private const string UvSyncStateFileName = ".uv-sync.state";
+    private static readonly string[] RequiredNativeFiles =
+    {
+        "llama-server.exe",
+        "llama.dll",
+        "ggml.dll",
+        "ggml-base.dll",
+        "ggml-cpu.dll",
+        "ggml-cuda.dll",
+        "mtmd.dll",
+    };
+    private static readonly string[] RequiredCudaDllNames =
+    {
+        "cudart64_12.dll",
+        "cublas64_12.dll",
+        "cublasLt64_12.dll",
+    };
+    private static readonly HttpClient DownloadClient = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private static readonly JsonSerializerOptions ManifestJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     private readonly AppLogger? _logger;
     private readonly object _lock = new();
     private readonly List<DateTimeOffset> _restartHistory = new();
@@ -45,7 +77,7 @@ public sealed class LlamaGrpcHost : IDisposable
             }
         }
 
-        StartProcess(settings);
+        await StartProcessAsync(settings, cancellationToken).ConfigureAwait(false);
         await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
         EnsureMonitor(settings);
     }
@@ -92,7 +124,7 @@ public sealed class LlamaGrpcHost : IDisposable
         _monitorCts?.Dispose();
     }
 
-    private void StartProcess(AppSettings settings)
+    private async Task StartProcessAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var projectDir = ResolveDirectory(settings.LlamaGrpcProjectDir);
         var script = string.IsNullOrWhiteSpace(settings.LlamaGrpcServerScript) ? "server.py" : settings.LlamaGrpcServerScript.Trim();
@@ -105,12 +137,18 @@ public sealed class LlamaGrpcHost : IDisposable
         var uvPath = string.IsNullOrWhiteSpace(settings.LlamaGrpcUvPath) ? "uv" : settings.LlamaGrpcUvPath.Trim();
         var host = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim();
         var port = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
-        var llamaServer = string.IsNullOrWhiteSpace(settings.LlamaServerPath) ? "llama-server" : settings.LlamaServerPath.Trim();
-        var modelPath = string.IsNullOrWhiteSpace(settings.LlamaModelPath)
-            ? "Models\\HY-MT1.5-1.8B-Q4_K_M.gguf"
-            : settings.LlamaModelPath.Trim();
+        var paths = ResolveFixedLlamaPaths(projectDir);
+
+        await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
+        ValidateLlamaNativeFiles(paths.LlamaCppDirectory);
+        await EnsureLlamaModelAsync(paths.ManifestPath, paths.ModelPath, cancellationToken).ConfigureAwait(false);
+
+        var nvidiaBinPaths = CollectNvidiaDllBinPaths(projectDir);
+        ValidateCudaRuntime(nvidiaBinPaths);
 
         _logger?.Info("Starting Llama gRPC (llama-server over HTTP).");
+        _logger?.Info($"Llama fixed server path: {paths.ServerPath}");
+        _logger?.Info($"Llama fixed model path: {paths.ModelPath}");
 
         var startInfo = new ProcessStartInfo
         {
@@ -121,6 +159,7 @@ public sealed class LlamaGrpcHost : IDisposable
             UseShellExecute = false,
             CreateNoWindow = true
         };
+        startInfo.Environment["PATH"] = BuildProcessPath(nvidiaBinPaths);
 
         startInfo.ArgumentList.Add("run");
         startInfo.ArgumentList.Add("--project");
@@ -132,9 +171,9 @@ public sealed class LlamaGrpcHost : IDisposable
         startInfo.ArgumentList.Add("--port");
         startInfo.ArgumentList.Add(port.ToString());
         startInfo.ArgumentList.Add("--llama-server");
-        startInfo.ArgumentList.Add(llamaServer);
+        startInfo.ArgumentList.Add(paths.ServerPath);
         startInfo.ArgumentList.Add("--model");
-        startInfo.ArgumentList.Add(modelPath);
+        startInfo.ArgumentList.Add(paths.ModelPath);
         startInfo.ArgumentList.Add("--llama-host");
         startInfo.ArgumentList.Add(settings.LlamaHost);
         startInfo.ArgumentList.Add("--llama-port");
@@ -280,7 +319,7 @@ public sealed class LlamaGrpcHost : IDisposable
 
             try
             {
-                StartProcess(settings);
+                await StartProcessAsync(settings, cancellationToken).ConfigureAwait(false);
                 await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
@@ -347,5 +386,352 @@ public sealed class LlamaGrpcHost : IDisposable
         }
 
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+    }
+
+    private static FixedLlamaPaths ResolveFixedLlamaPaths(string projectDir)
+    {
+        var llamaCppDir = Path.Combine(projectDir, "LlamaCpp");
+        return new FixedLlamaPaths(
+            Path.Combine(projectDir, FixedLlamaServerRelativePath),
+            Path.Combine(projectDir, FixedLlamaModelRelativePath),
+            llamaCppDir,
+            Path.Combine(projectDir, ManifestFileName));
+    }
+
+    private void ValidateLlamaNativeFiles(string llamaCppDir)
+    {
+        var missing = new List<string>();
+        foreach (var fileName in RequiredNativeFiles)
+        {
+            var path = Path.Combine(llamaCppDir, fileName);
+            if (!File.Exists(path))
+            {
+                missing.Add(path);
+            }
+        }
+
+        if (missing.Count > 0)
+        {
+            throw new FileNotFoundException(
+                $"Required llama.cpp native files are missing:{Environment.NewLine}{string.Join(Environment.NewLine, missing)}");
+        }
+    }
+
+    private static IReadOnlyList<string> CollectNvidiaDllBinPaths(string projectDir)
+    {
+        var sitePackages = Path.Combine(projectDir, ".venv", "Lib", "site-packages", "nvidia");
+        var bins = new List<string>();
+        foreach (var package in new[] { "cuda_runtime", "cublas", "nvjitlink", "cudnn" })
+        {
+            var bin = Path.Combine(sitePackages, package, "bin");
+            if (Directory.Exists(bin))
+            {
+                bins.Add(bin);
+            }
+        }
+
+        return bins;
+    }
+
+    private void ValidateCudaRuntime(IReadOnlyList<string> nvidiaBinPaths)
+    {
+        if (nvidiaBinPaths.Count == 0)
+        {
+            throw new DirectoryNotFoundException(
+                "CUDA runtime directories were not found under TranslationServiceLlama/.venv. Run `uv sync` and retry.");
+        }
+
+        var missingDlls = new List<string>();
+        foreach (var dllName in RequiredCudaDllNames)
+        {
+            if (!nvidiaBinPaths.Any(bin => File.Exists(Path.Combine(bin, dllName))))
+            {
+                missingDlls.Add(dllName);
+            }
+        }
+
+        if (missingDlls.Count > 0)
+        {
+            throw new FileNotFoundException(
+                $"Required CUDA DLLs are missing from .venv:{Environment.NewLine}{string.Join(Environment.NewLine, missingDlls)}");
+        }
+    }
+
+    private static string BuildProcessPath(IReadOnlyList<string> nvidiaBinPaths)
+    {
+        var uniqueBins = nvidiaBinPaths
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var currentPath = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        if (uniqueBins.Length == 0)
+        {
+            return currentPath;
+        }
+
+        return string.IsNullOrWhiteSpace(currentPath)
+            ? string.Join(";", uniqueBins)
+            : $"{string.Join(";", uniqueBins)};{currentPath}";
+    }
+
+    private async Task EnsurePythonRuntimeAsync(string projectDir, string uvPath, CancellationToken cancellationToken)
+    {
+        var pyprojectPath = Path.Combine(projectDir, "pyproject.toml");
+        var manifestPath = Path.Combine(projectDir, ManifestFileName);
+        if (!File.Exists(pyprojectPath))
+        {
+            throw new FileNotFoundException($"pyproject.toml not found: {pyprojectPath}");
+        }
+
+        if (!File.Exists(manifestPath))
+        {
+            throw new FileNotFoundException($"Model manifest not found: {manifestPath}");
+        }
+
+        var fingerprint = BuildRuntimeFingerprint(projectDir, pyprojectPath, manifestPath);
+        var statePath = Path.Combine(projectDir, UvSyncStateFileName);
+        var venvPath = Path.Combine(projectDir, ".venv");
+        if (Directory.Exists(venvPath) && File.Exists(statePath))
+        {
+            var cachedFingerprint = (await File.ReadAllTextAsync(statePath, cancellationToken).ConfigureAwait(false)).Trim();
+            if (string.Equals(cachedFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                _logger?.Info("Skip uv sync: runtime fingerprint unchanged.");
+                return;
+            }
+        }
+
+        _logger?.Info("Running uv sync for TranslationServiceLlama runtime.");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = uvPath,
+            WorkingDirectory = projectDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("sync");
+        startInfo.ArgumentList.Add("--project");
+        startInfo.ArgumentList.Add(projectDir);
+
+        using var process = new Process { StartInfo = startInfo };
+        var output = new StringBuilder();
+        var errors = new StringBuilder();
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                output.AppendLine(args.Data);
+                _logger?.Info($"[Llama uv] {args.Data}");
+            }
+        };
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                errors.AppendLine(args.Data);
+                _logger?.Info($"[Llama uv] {args.Data}");
+            }
+        };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Failed to start uv sync.");
+        }
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"uv sync failed with exit code {process.ExitCode}.{Environment.NewLine}{errors}{output}");
+        }
+
+        await File.WriteAllTextAsync(statePath, fingerprint, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string BuildRuntimeFingerprint(string projectDir, string pyprojectPath, string manifestPath)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(ComputeFileSha256(pyprojectPath));
+        var lockPath = Path.Combine(projectDir, "uv.lock");
+        builder.AppendLine(File.Exists(lockPath) ? ComputeFileSha256(lockPath) : "<missing-uv-lock>");
+        builder.AppendLine(ComputeFileSha256(manifestPath));
+        var fingerprintBytes = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
+        return Convert.ToHexString(fingerprintBytes);
+    }
+
+    private async Task EnsureLlamaModelAsync(string manifestPath, string modelPath, CancellationToken cancellationToken)
+    {
+        var manifestText = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
+        var manifest = JsonSerializer.Deserialize<ModelManifest>(manifestText, ManifestJsonOptions)
+            ?? throw new InvalidDataException($"Invalid model manifest: {manifestPath}");
+        if (string.IsNullOrWhiteSpace(manifest.Filename) ||
+            string.IsNullOrWhiteSpace(manifest.DownloadUrl) ||
+            string.IsNullOrWhiteSpace(manifest.Sha256))
+        {
+            throw new InvalidDataException($"Model manifest is missing required fields: {manifestPath}");
+        }
+
+        var expectedFileName = manifest.Filename.Trim();
+        var actualFileName = Path.GetFileName(modelPath);
+        if (!string.Equals(expectedFileName, actualFileName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Model manifest filename mismatch. Expected '{actualFileName}', got '{expectedFileName}'.");
+        }
+
+        if (TryValidateModel(modelPath, manifest, out _))
+        {
+            _logger?.Info($"Llama model is ready: {modelPath}");
+            return;
+        }
+
+        var modelDir = Path.GetDirectoryName(modelPath) ?? throw new InvalidOperationException("Model directory is invalid.");
+        Directory.CreateDirectory(modelDir);
+        var lockPath = $"{modelPath}.lock";
+        await using var lockHandle = await AcquireExclusiveLockAsync(lockPath, cancellationToken).ConfigureAwait(false);
+
+        // WHY: Another process may complete the download while we waited on the lock.
+        if (TryValidateModel(modelPath, manifest, out _))
+        {
+            _logger?.Info($"Llama model became ready while waiting for lock: {modelPath}");
+            return;
+        }
+
+        var tempPath = $"{modelPath}.tmp";
+        if (File.Exists(tempPath))
+        {
+            File.Delete(tempPath);
+        }
+
+        _logger?.Info($"Downloading model: {manifest.DownloadUrl}");
+        using var response = await DownloadClient.GetAsync(
+            manifest.DownloadUrl,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+        await using (var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
+        await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+        {
+            await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (!TryValidateModel(tempPath, manifest, out var reason))
+        {
+            File.Delete(tempPath);
+            throw new InvalidDataException($"Downloaded model validation failed: {reason}");
+        }
+
+        File.Move(tempPath, modelPath, true);
+        _logger?.Info($"Model download complete: {modelPath}");
+    }
+
+    private static bool TryValidateModel(string modelPath, ModelManifest manifest, out string reason)
+    {
+        reason = string.Empty;
+        if (!File.Exists(modelPath))
+        {
+            reason = "missing file";
+            return false;
+        }
+
+        var info = new FileInfo(modelPath);
+        if (info.Length <= 0)
+        {
+            reason = "empty file";
+            return false;
+        }
+
+        if (manifest.SizeBytes is > 0 && info.Length != manifest.SizeBytes.Value)
+        {
+            reason = $"size mismatch (expected {manifest.SizeBytes.Value}, actual {info.Length})";
+            return false;
+        }
+
+        var actualSha = ComputeFileSha256(modelPath);
+        if (!string.Equals(actualSha, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            reason = $"sha256 mismatch (expected {manifest.Sha256}, actual {actualSha})";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static string ComputeFileSha256(string path)
+    {
+        using var stream = File.OpenRead(path);
+        var hash = SHA256.HashData(stream);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static async Task<FileStream> AcquireExclusiveLockAsync(string lockPath, CancellationToken cancellationToken)
+    {
+        var deadline = DateTimeOffset.UtcNow.AddMinutes(10);
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            try
+            {
+                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            }
+            catch (IOException)
+            {
+                if (DateTimeOffset.UtcNow >= deadline)
+                {
+                    throw new TimeoutException($"Timed out waiting for lock: {lockPath}");
+                }
+
+                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+        }
+        catch
+        {
+            // Ignore kill failures on cancellation.
+        }
+    }
+
+    private readonly record struct FixedLlamaPaths(
+        string ServerPath,
+        string ModelPath,
+        string LlamaCppDirectory,
+        string ManifestPath);
+
+    private sealed class ModelManifest
+    {
+        [JsonPropertyName("filename")]
+        public string Filename { get; init; } = string.Empty;
+
+        [JsonPropertyName("download_url")]
+        public string DownloadUrl { get; init; } = string.Empty;
+
+        [JsonPropertyName("sha256")]
+        public string Sha256 { get; init; } = string.Empty;
+
+        [JsonPropertyName("size_bytes")]
+        public long? SizeBytes { get; init; }
     }
 }

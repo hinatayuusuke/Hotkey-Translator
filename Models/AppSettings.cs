@@ -112,8 +112,6 @@ public sealed class AppSettings
     public int LlamaGrpcReadyTimeoutMs { get; set; } = 60000;
     public int LlamaGrpcRestartMax { get; set; } = 3;
     public int LlamaGrpcRestartWindowSeconds { get; set; } = 30;
-    public string LlamaServerPath { get; set; } = "LlamaCpp\\llama-server.exe";
-    public string LlamaModelPath { get; set; } = "Models\\HY-MT1.5-1.8B-Q4_K_M.gguf";
     public string LlamaHost { get; set; } = "127.0.0.1";
     public int LlamaPort { get; set; } = 8088;
     public int LlamaContextSize { get; set; } = 4096;

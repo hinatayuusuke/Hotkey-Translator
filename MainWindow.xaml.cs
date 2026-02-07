@@ -580,8 +580,6 @@ public partial class MainWindow : Window
         EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
         SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
         EnableLlamaCppCheck.IsChecked = settings.EnableLlamaCppTranslation;
-        LlamaServerPathBox.Text = settings.LlamaServerPath;
-        LlamaModelPathBox.Text = settings.LlamaModelPath;
         LlamaHostBox.Text = settings.LlamaHost;
         LlamaPortBox.Text = settings.LlamaPort.ToString();
         LlamaContextSizeBox.Text = settings.LlamaContextSize.ToString();
@@ -666,7 +664,7 @@ public partial class MainWindow : Window
     private void UpdateTranslationStatus(AppSettings settings)
     {
         var llamaStatus = settings.EnableLlamaCppTranslation
-            ? (string.IsNullOrWhiteSpace(settings.LlamaModelPath) ? "Llama: model missing" : "Llama: enabled")
+            ? "Llama: enabled"
             : "Llama: disabled";
         var ct2Status = settings.EnableCTranslate2 ? "CTranslate2: enabled" : "CTranslate2: disabled";
         var geminiStatus = settings.EnableGemini
@@ -691,9 +689,6 @@ public partial class MainWindow : Window
 
     private static void NormalizeLlamaSettings(AppSettings settings)
     {
-        settings.LlamaServerPath = string.IsNullOrWhiteSpace(settings.LlamaServerPath)
-            ? "LlamaCpp\\llama-server.exe"
-            : settings.LlamaServerPath.Trim();
         settings.LlamaHost = string.IsNullOrWhiteSpace(settings.LlamaHost)
             ? "127.0.0.1"
             : settings.LlamaHost.Trim();
@@ -752,8 +747,6 @@ public partial class MainWindow : Window
     {
         NormalizeLlamaSettings(settings);
         return new LlamaHostConfig(
-            settings.LlamaServerPath,
-            settings.LlamaModelPath,
             settings.LlamaHost,
             settings.LlamaPort,
             settings.LlamaContextSize,
@@ -1264,8 +1257,6 @@ public partial class MainWindow : Window
         settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
         NormalizeCTranslate2Settings(settings);
         settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
-        settings.LlamaServerPath = LlamaServerPathBox.Text.Trim();
-        settings.LlamaModelPath = LlamaModelPathBox.Text.Trim();
         settings.LlamaHost = LlamaHostBox.Text.Trim();
         if (int.TryParse(LlamaPortBox.Text.Trim(), out var llamaPort))
         {
@@ -2262,8 +2253,6 @@ public partial class MainWindow : Window
         string ServerScript);
 
     private readonly record struct LlamaHostConfig(
-        string ServerPath,
-        string ModelPath,
         string Host,
         int Port,
         int ContextSize,
