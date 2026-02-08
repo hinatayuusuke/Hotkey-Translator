@@ -24,6 +24,12 @@ public sealed class AppSettings
     public CaptureProviderKind PreferredCaptureProvider { get; set; } = CaptureProviderKind.Gdi;
     public bool EnableWgcCapture { get; set; } = true;
     public bool EnableDxgiCapture { get; set; } = true;
+    public bool EnableFixedCaptureWindow { get; set; } = false;
+    public long FixedCaptureWindowHandle { get; set; }
+    public int FixedCaptureWindowProcessId { get; set; }
+    public string FixedCaptureWindowProcessName { get; set; } = string.Empty;
+    public string FixedCaptureWindowClassName { get; set; } = string.Empty;
+    public string FixedCaptureWindowTitle { get; set; } = string.Empty;
     public int BlackFrameThreshold { get; set; } = 3;
     public double BlackLumaThreshold { get; set; } = 16.0;
     public double BlackVarianceThreshold { get; set; } = 8.0;
@@ -93,6 +99,10 @@ public sealed class AppSettings
     public string HotkeyForceRunModifiers { get; set; } = "None";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
+    public string HotkeyLockCaptureWindowKey { get; set; } = "F12";
+    public string HotkeyLockCaptureWindowModifiers { get; set; } = "None";
+    public string HotkeyUnlockCaptureWindowKey { get; set; } = "F12";
+    public string HotkeyUnlockCaptureWindowModifiers { get; set; } = "Shift";
     public string SourceLanguage { get; set; } = "en";
     public string TargetLanguage { get; set; } = "ja";
     public string StyleId { get; set; } = "default";

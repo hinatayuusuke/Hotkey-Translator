@@ -13,23 +13,23 @@ public sealed class GdiCaptureProvider : ICaptureProvider
 
     public bool IsEnabled(AppSettings settings) => true;
 
-    public bool TryGetBounds(CaptureMode mode, out Rect bounds)
+    public bool TryGetBounds(CaptureRequest request, out Rect bounds)
     {
-        bounds = mode switch
+        bounds = request.Mode switch
         {
-            CaptureMode.ActiveWindow => GetActiveWindowBounds() ?? GetVirtualScreenBounds(),
+            CaptureMode.ActiveWindow => GetActiveWindowBounds(ResolveActiveWindowHandle(request)) ?? GetVirtualScreenBounds(),
             _ => GetVirtualScreenBounds()
         };
 
         return bounds.Width > 0 && bounds.Height > 0;
     }
 
-    public bool TryCapture(CaptureMode mode, out CaptureFrame frame, out string? error)
+    public bool TryCapture(CaptureRequest request, out CaptureFrame frame, out string? error)
     {
         error = null;
         frame = null!;
 
-        if (!TryGetBounds(mode, out var bounds))
+        if (!TryGetBounds(request, out var bounds))
         {
             error = "Failed to resolve capture bounds.";
             return false;
@@ -72,9 +72,19 @@ public sealed class GdiCaptureProvider : ICaptureProvider
         return new Rect(left, top, width, height);
     }
 
-    private static Rect? GetActiveWindowBounds()
+    private static IntPtr ResolveActiveWindowHandle(CaptureRequest request)
     {
-        var hwnd = GetForegroundWindow();
+        var configured = request.ResolveWindowHandle(GetForegroundWindow());
+        if (configured != IntPtr.Zero && IsWindow(configured))
+        {
+            return configured;
+        }
+
+        return GetForegroundWindow();
+    }
+
+    private static Rect? GetActiveWindowBounds(IntPtr hwnd)
+    {
         if (hwnd == IntPtr.Zero)
         {
             return null;
@@ -108,6 +118,9 @@ public sealed class GdiCaptureProvider : ICaptureProvider
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);

@@ -31,18 +31,18 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         return settings.EnableWgcCapture && GraphicsCaptureSession.IsSupported();
     }
 
-    public bool TryGetBounds(CaptureMode mode, out Rect bounds)
+    public bool TryGetBounds(CaptureRequest request, out Rect bounds)
     {
-        bounds = mode switch
+        bounds = request.Mode switch
         {
-            CaptureMode.ActiveWindow => GetActiveWindowBounds() ?? Rect.Empty,
+            CaptureMode.ActiveWindow => GetActiveWindowBounds(ResolveActiveWindowHandle(request)) ?? Rect.Empty,
             _ => GetPrimaryMonitorBounds()
         };
 
         return bounds.Width > 0 && bounds.Height > 0;
     }
 
-    public bool TryCapture(CaptureMode mode, out CaptureFrame frame, out string? error)
+    public bool TryCapture(CaptureRequest request, out CaptureFrame frame, out string? error)
     {
         frame = null!;
         error = null;
@@ -56,14 +56,14 @@ public sealed class WgcCaptureProvider : ICaptureProvider
                 return false;
             }
 
-            var item = CreateCaptureItem(mode);
+            var item = CreateCaptureItem(request);
             if (item is null)
             {
                 error = "Failed to create GraphicsCaptureItem.";
                 return false;
             }
 
-            if (!TryGetBounds(mode, out var bounds))
+            if (!TryGetBounds(request, out var bounds))
             {
                 error = "Failed to resolve capture bounds.";
                 return false;
@@ -152,7 +152,7 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         return (d3dDevice, winrtDevice);
     }
 
-    private GraphicsCaptureItem? CreateCaptureItem(CaptureMode mode)
+    private GraphicsCaptureItem? CreateCaptureItem(CaptureRequest request)
     {
         try
         {
@@ -162,9 +162,9 @@ public sealed class WgcCaptureProvider : ICaptureProvider
             var interop = factoryRef.AsInterface<IGraphicsCaptureItemInterop>();
             var itemIid = GraphicsCaptureItemInterfaceGuid;
 
-            if (mode == CaptureMode.ActiveWindow)
+            if (request.Mode == CaptureMode.ActiveWindow)
             {
-                var hwnd = GetForegroundWindow();
+                var hwnd = ResolveActiveWindowHandle(request);
                 if (hwnd == IntPtr.Zero) return null;
                 _logger.Info("WGC: creating capture item for window.");
                 var itemPtr = interop.CreateForWindow(hwnd, ref itemIid);
@@ -204,9 +204,19 @@ public sealed class WgcCaptureProvider : ICaptureProvider
         return MarshalInterface<IDirect3DDevice>.FromAbi(devicePtr);
     }
 
-    private static Rect? GetActiveWindowBounds()
+    private static IntPtr ResolveActiveWindowHandle(CaptureRequest request)
     {
-        var hwnd = GetForegroundWindow();
+        var configured = request.ResolveWindowHandle(GetForegroundWindow());
+        if (configured != IntPtr.Zero && IsWindow(configured))
+        {
+            return configured;
+        }
+
+        return GetForegroundWindow();
+    }
+
+    private static Rect? GetActiveWindowBounds(IntPtr hwnd)
+    {
         if (hwnd == IntPtr.Zero)
         {
             return null;
@@ -246,6 +256,9 @@ public sealed class WgcCaptureProvider : ICaptureProvider
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);

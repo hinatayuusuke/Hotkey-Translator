@@ -4858,3 +4858,47 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - python -m py_compile TranslationServiceLlama/llama_engine.py TranslationServiceLlama/server.py 実行成功。
 - 実行時テストは未実施（このシェル環境に httpx が未導入のためローカル実行確認は未実施）。
+
+**2026-02-08 15:54 (Asia/Taipei) — Fixed capture window hotkey lock/unlock 実装**
+
+### Summary
+- ActiveWindow をホットキーで固定/解除できる固定キャプチャ機能を実装しました。
+
+### Context / Goal
+- OCR対象がフォーカス移動で変わるため、任意ウィンドウを固定して継続キャプチャしたい。
+- 固定対象が無効化された場合でも処理を止めず、通常 ActiveWindow へ安全に戻したい。
+
+### Changes
+- 固定対象メタデータ（HWND/PID/Process/Class/Title）と固定/解除ホットキー設定を AppSettings に追加。
+- WindowBindingService を新規追加し、フォアグラウンド固定・再探索・解除を実装。
+- ICaptureProvider を CaptureRequest ベースへ拡張し、固定 HWND を各 Provider（WGC/DXGI/GDI）へ伝搬。
+- CaptureManager に固定対象解決と無効時フォールバック（ActiveWindow）ログを追加。
+- Hotkeys 設定UIに Lock/Unlock を追加し、MainWindow のホットキー登録導線へ統合。
+- 既存ホットキー競合の懸念に対して、登録前の重複検証を追加。
+
+### Files Touched
+- Models/AppSettings.cs — 固定対象と固定/解除ホットキーの設定項目を追加。
+- Models/CaptureRequest.cs — Provider へ渡すキャプチャ要求モデルを新規追加。
+- Models/FixedCaptureWindowSpec.cs — 固定対象ウィンドウ情報モデルを新規追加。
+- Services/WindowBindingService.cs — 固定対象の取得・再探索・解除ロジックを新規実装。
+- Services/ICaptureProvider.cs — TryGetBounds/TryCapture を CaptureRequest 受け取りへ変更。
+- Services/CaptureManager.cs — 固定対象解決、無効時フォールバック、状態ログを追加。
+- Services/WgcCaptureProvider.cs — CaptureRequest.TargetWindowHandle 対応を追加。
+- Services/DxgiDuplicationProvider.cs — CaptureRequest.TargetWindowHandle 対応を追加。
+- Services/GdiCaptureProvider.cs — CaptureRequest.TargetWindowHandle 対応を追加。
+- MainWindow.xaml — Hotkeys 設定に Lock/Unlock 行を追加。
+- MainWindow.xaml.cs — Lock/Unlock ホットキー配線、設定同期、競合検証、イベント処理を追加。
+
+### Behavioral Impact
+- CaptureMode=ActiveWindow かつ固定有効時、F12（既定）で現在フォーカス中ウィンドウを固定可能。
+- Shift+F12（既定）で固定解除し、通常 ActiveWindow キャプチャへ復帰。
+- 固定対象が無効な場合は処理を継続したまま ActiveWindow へ自動フォールバック。
+
+### Risk & Mitigation
+- Risk: PID/Class/Title が重複する環境で再探索誤一致の可能性。
+- Mitigation: PID優先で厳密一致し、識別情報が空の場合は再探索せずフォールバックする。
+- Risk: ホットキー重複で登録失敗する可能性。
+- Mitigation: 登録前に重複を検出し、既存ホットキーを維持したままエラーログを出す。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。

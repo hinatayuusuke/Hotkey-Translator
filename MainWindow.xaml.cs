@@ -28,6 +28,7 @@ public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService = new();
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
+    private readonly WindowBindingService _windowBindingService = new();
     private readonly HttpClient _httpClient = new();
     private OverlayWindow? _overlayWindow;
     private OverlayPresenter? _overlayPresenter;
@@ -41,6 +42,8 @@ public partial class MainWindow : Window
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
     private HotkeyManager? _ocrOnlyHotkeyManager;
+    private HotkeyManager? _lockCaptureWindowHotkeyManager;
+    private HotkeyManager? _unlockCaptureWindowHotkeyManager;
     private PhashService? _phashService;
     private DispatcherTimer? _autoHideTimer;
     private bool _autoHideTickInProgress;
@@ -145,7 +148,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(_settingsService.Settings);
         InitializeAutoHideWatcher(_settingsService.Settings);
-        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text.");
+        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F12: lock/unlock capture window.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -158,6 +161,8 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        _lockCaptureWindowHotkeyManager?.Dispose();
+        _unlockCaptureWindowHotkeyManager?.Dispose();
         _autoHideBaselineCts?.Cancel();
         _autoHideBaselineCts?.Dispose();
         if (_autoHideTimer != null)
@@ -441,6 +446,34 @@ public partial class MainWindow : Window
 
         _overlayTextMode = nextMode;
         AppendLog($"Overlay text mode: {_overlayTextMode}.");
+    }
+
+    private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
+    {
+        var settings = _settingsService.Settings;
+        if (_windowBindingService.TryBindForegroundWindow(settings, out var spec, out var reason))
+        {
+            AppendLog(
+                $"Capture window locked: hwnd=0x{spec.Hwnd:X} pid={spec.ProcessId} class=\"{spec.ClassName}\" title=\"{spec.WindowTitle}\".");
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+            return;
+        }
+
+        AppendLog($"Capture window lock failed: {reason ?? "unknown"}.");
+    }
+
+    private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
+    {
+        var settings = _settingsService.Settings;
+        if (!settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowHandle == 0)
+        {
+            AppendLog("Capture window lock already cleared.");
+            return;
+        }
+
+        _windowBindingService.ClearBinding(settings);
+        AppendLog("Capture window unlocked.");
+        await _settingsService.SaveAsync().ConfigureAwait(true);
     }
 
     private void EnsureTranslatedOverlayForRunHotkeys()
@@ -886,11 +919,15 @@ public partial class MainWindow : Window
         SetHotkeyKey(HotkeyToggleOverlayKeyBox, settings.HotkeyToggleOverlayKey);
         SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
         SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
+        SetHotkeyKey(HotkeyLockCaptureWindowKeyBox, settings.HotkeyLockCaptureWindowKey);
+        SetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox, settings.HotkeyUnlockCaptureWindowKey);
 
         SetHotkeyModifiers(settings.HotkeyRunOnceModifiers, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
         SetHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
         SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
         SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        SetHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
+        SetHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
     }
 
     private void ApplyHotkeySettingsFromUi(AppSettings settings)
@@ -903,6 +940,10 @@ public partial class MainWindow : Window
         settings.HotkeyForceRunModifiers = GetHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
         settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
         settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        settings.HotkeyLockCaptureWindowKey = GetHotkeyKey(HotkeyLockCaptureWindowKeyBox);
+        settings.HotkeyLockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
+        settings.HotkeyUnlockCaptureWindowKey = GetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox);
+        settings.HotkeyUnlockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
     }
 
     private static bool IsCustomSelected(ComboBox comboBox)
@@ -1514,6 +1555,8 @@ public partial class MainWindow : Window
         HotkeyToggleOverlayKeyBox.ItemsSource = keys;
         HotkeyForceRunKeyBox.ItemsSource = keys;
         HotkeyOcrOnlyKeyBox.ItemsSource = keys;
+        HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
+        HotkeyUnlockCaptureWindowKeyBox.ItemsSource = keys;
     }
 
     private static IReadOnlyList<string> BuildHotkeyKeyOptions()
@@ -1563,7 +1606,9 @@ public partial class MainWindow : Window
             AppendLog($"Hotkey updated: RunOnce={FormatHotkey(config.RunOnceKey, config.RunOnceModifiers)}, " +
                       $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
-                      $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}.");
+                      $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
+                      $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
+                      $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}.");
         }
         else
         {
@@ -1577,9 +1622,17 @@ public partial class MainWindow : Window
         HotkeyManager? toggle = null;
         HotkeyManager? forceRun = null;
         HotkeyManager? ocrOnly = null;
+        HotkeyManager? lockCaptureWindow = null;
+        HotkeyManager? unlockCaptureWindow = null;
 
         try
         {
+            if (TryValidateDuplicateHotkeys(config, out var validationError))
+            {
+                _logger?.Error($"Failed to register hotkeys: {validationError}");
+                return false;
+            }
+
             runOnce = new HotkeyManager(this, config.RunOnceKey, config.RunOnceModifiers, id: 1);
             runOnce.HotkeyPressed += OnHotkeyPressed;
             runOnce.Register();
@@ -1595,6 +1648,14 @@ public partial class MainWindow : Window
             ocrOnly = new HotkeyManager(this, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4);
             ocrOnly.HotkeyPressed += OnOcrOnlyHotkeyPressed;
             ocrOnly.Register();
+
+            lockCaptureWindow = new HotkeyManager(this, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 5);
+            lockCaptureWindow.HotkeyPressed += OnLockCaptureWindowHotkeyPressed;
+            lockCaptureWindow.Register();
+
+            unlockCaptureWindow = new HotkeyManager(this, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 6);
+            unlockCaptureWindow.HotkeyPressed += OnUnlockCaptureWindowHotkeyPressed;
+            unlockCaptureWindow.Register();
         }
         catch (Exception ex)
         {
@@ -1602,6 +1663,8 @@ public partial class MainWindow : Window
             toggle?.Dispose();
             forceRun?.Dispose();
             ocrOnly?.Dispose();
+            lockCaptureWindow?.Dispose();
+            unlockCaptureWindow?.Dispose();
             _logger?.Error(ex, "Failed to register hotkeys.");
             return false;
         }
@@ -1610,12 +1673,36 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        _lockCaptureWindowHotkeyManager?.Dispose();
+        _unlockCaptureWindowHotkeyManager?.Dispose();
 
         _hotkeyManager = runOnce;
         _overlayToggleHotkeyManager = toggle;
         _forceRunHotkeyManager = forceRun;
         _ocrOnlyHotkeyManager = ocrOnly;
+        _lockCaptureWindowHotkeyManager = lockCaptureWindow;
+        _unlockCaptureWindowHotkeyManager = unlockCaptureWindow;
         return true;
+    }
+
+    private static bool TryValidateDuplicateHotkeys(HotkeyConfig config, out string? error)
+    {
+        error = null;
+        var map = new Dictionary<(Key Key, ModifierKeys Modifiers), string>();
+        foreach (var binding in config.GetBindings())
+        {
+            var key = (binding.Key, binding.Modifiers);
+            if (map.TryGetValue(key, out var existing))
+            {
+                // WHY: Duplicate global shortcuts fail registration unpredictably; reject early with a clear reason.
+                error = $"{existing} and {binding.Name} share {FormatHotkey(binding.Key, binding.Modifiers)}.";
+                return true;
+            }
+
+            map[key] = binding.Name;
+        }
+
+        return false;
     }
 
     private static HotkeyConfig BuildHotkeyConfigFromSettings(AppSettings settings)
@@ -1628,7 +1715,11 @@ public partial class MainWindow : Window
             ParseKey(settings.HotkeyForceRunKey, Key.F10),
             ParseModifiers(settings.HotkeyForceRunModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
-            ParseModifiers(settings.HotkeyOcrOnlyModifiers));
+            ParseModifiers(settings.HotkeyOcrOnlyModifiers),
+            ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F12),
+            ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
+            ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F12),
+            ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers));
     }
 
     private static Key ParseKey(string value, Key fallback)
@@ -2413,8 +2504,22 @@ public partial class MainWindow : Window
         Key ForceRunKey,
         ModifierKeys ForceRunModifiers,
         Key OcrOnlyKey,
-        ModifierKeys OcrOnlyModifiers)
+        ModifierKeys OcrOnlyModifiers,
+        Key LockCaptureWindowKey,
+        ModifierKeys LockCaptureWindowModifiers,
+        Key UnlockCaptureWindowKey,
+        ModifierKeys UnlockCaptureWindowModifiers)
     {
+        public readonly IEnumerable<(string Name, Key Key, ModifierKeys Modifiers)> GetBindings()
+        {
+            yield return ("Run once", RunOnceKey, RunOnceModifiers);
+            yield return ("Toggle overlay", ToggleOverlayKey, ToggleOverlayModifiers);
+            yield return ("Force run", ForceRunKey, ForceRunModifiers);
+            yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
+            yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
+            yield return ("Unlock window", UnlockCaptureWindowKey, UnlockCaptureWindowModifiers);
+        }
+
         public static HotkeyConfig Default => new(
             Key.F8,
             ModifierKeys.None,
@@ -2423,6 +2528,10 @@ public partial class MainWindow : Window
             Key.F10,
             ModifierKeys.None,
             Key.F11,
-            ModifierKeys.None);
+            ModifierKeys.None,
+            Key.F12,
+            ModifierKeys.None,
+            Key.F12,
+            ModifierKeys.Shift);
     }
 }

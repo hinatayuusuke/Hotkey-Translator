@@ -46,11 +46,11 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         }
     }
 
-    public bool TryGetBounds(CaptureMode mode, out Rect bounds)
+    public bool TryGetBounds(CaptureRequest request, out Rect bounds)
     {
-        if (mode == CaptureMode.ActiveWindow)
+        if (request.Mode == CaptureMode.ActiveWindow)
         {
-            bounds = GetActiveWindowBounds() ?? Rect.Empty;
+            bounds = GetActiveWindowBounds(ResolveActiveWindowHandle(request)) ?? Rect.Empty;
             return bounds.Width > 0 && bounds.Height > 0;
         }
 
@@ -58,7 +58,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         return bounds.Width > 0 && bounds.Height > 0;
     }
 
-    public bool TryCapture(CaptureMode mode, out CaptureFrame frame, out string? error)
+    public bool TryCapture(CaptureRequest request, out CaptureFrame frame, out string? error)
     {
         frame = null!;
         error = null;
@@ -66,7 +66,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         try
         {
             var captureTarget = ResolveCaptureTarget(
-                mode,
+                request,
                 out var monitorBounds,
                 out var windowBounds,
                 out var monitorHandle,
@@ -80,10 +80,10 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
             if (_debugLogEnabled)
             {
-                var windowInfo = mode == CaptureMode.ActiveWindow
+                var windowInfo = request.Mode == CaptureMode.ActiveWindow
                     ? $"hwnd=0x{windowHandle.ToInt64():X} title=\"{GetWindowTitle(windowHandle)}\" process=\"{GetWindowProcessName(windowHandle)}\""
                     : "hwnd=<screen>";
-                DebugLog($"Capture start mode={mode} resident={_residentEnabled} {windowInfo}");
+                DebugLog($"Capture start mode={request.Mode} resident={_residentEnabled} {windowInfo}");
                 DebugLog($"Monitor handle=0x{monitorHandle.ToInt64():X} monitorBounds={FormatRect(monitorBounds)} windowBounds={FormatRect(windowBounds)} targetBounds={FormatRect(targetBounds)}");
             }
 
@@ -93,7 +93,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                 {
                     ResetSession("DXGI not selected; using transient session.");
                     using var transientSession = CreateSession(monitorHandle);
-                    return TryCaptureWithSession(transientSession, mode, monitorBounds, windowBounds, targetBounds, false, out frame, out error);
+                    return TryCaptureWithSession(transientSession, request, monitorBounds, windowBounds, targetBounds, false, out frame, out error);
                 }
 
                 if (!EnsureResidentSession(monitorHandle, out var session, out error))
@@ -101,7 +101,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                     return false;
                 }
 
-                return TryCaptureWithSession(session, mode, monitorBounds, windowBounds, targetBounds, true, out frame, out error);
+                return TryCaptureWithSession(session, request, monitorBounds, windowBounds, targetBounds, true, out frame, out error);
             }
         }
         catch (Exception ex)
@@ -113,7 +113,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
     }
 
     private static bool ResolveCaptureTarget(
-        CaptureMode mode,
+        CaptureRequest request,
         out Rect monitorBounds,
         out Rect windowBounds,
         out IntPtr monitorHandle,
@@ -126,15 +126,15 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         targetBounds = Rect.Empty;
         windowHandle = IntPtr.Zero;
 
-        if (mode == CaptureMode.ActiveWindow)
+        if (request.Mode == CaptureMode.ActiveWindow)
         {
-            windowHandle = GetForegroundWindow();
+            windowHandle = ResolveActiveWindowHandle(request);
             if (windowHandle == IntPtr.Zero)
             {
                 return false;
             }
 
-            var bounds = GetActiveWindowBounds();
+            var bounds = GetActiveWindowBounds(windowHandle);
             if (bounds is null)
             {
                 return false;
@@ -221,7 +221,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
     private bool TryCaptureWithSession(
         DxgiResidentSession session,
-        CaptureMode mode,
+        CaptureRequest request,
         Rect monitorBounds,
         Rect windowBounds,
         Rect targetBounds,
@@ -291,7 +291,7 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                     session.Context.CopyResource(session.Staging!, texture);
                     var bitmap = CopyToBitmap(session.Context, session.Staging!);
 
-                    if (mode == CaptureMode.ActiveWindow)
+                    if (request.Mode == CaptureMode.ActiveWindow)
                     {
                         var intersect = Rect.Intersect(windowBounds, monitorBounds);
                         if (intersect.IsEmpty)
@@ -449,9 +449,19 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
         return bitmap;
     }
 
-    private static Rect? GetActiveWindowBounds()
+    private static IntPtr ResolveActiveWindowHandle(CaptureRequest request)
     {
-        var hwnd = GetForegroundWindow();
+        var configured = request.ResolveWindowHandle(GetForegroundWindow());
+        if (configured != IntPtr.Zero && IsWindow(configured))
+        {
+            return configured;
+        }
+
+        return GetForegroundWindow();
+    }
+
+    private static Rect? GetActiveWindowBounds(IntPtr hwnd)
+    {
         if (hwnd == IntPtr.Zero)
         {
             return null;
@@ -683,6 +693,9 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder lpString, int nMaxCount);

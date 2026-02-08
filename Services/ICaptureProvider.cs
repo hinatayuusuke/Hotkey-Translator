@@ -9,7 +9,7 @@ public interface ICaptureProvider
 
     bool IsEnabled(AppSettings settings);
 
-    bool TryGetBounds(CaptureMode mode, out Rect bounds);
+    bool TryGetBounds(CaptureRequest request, out Rect bounds);
 
-    bool TryCapture(CaptureMode mode, out CaptureFrame frame, out string? error);
+    bool TryCapture(CaptureRequest request, out CaptureFrame frame, out string? error);
 }

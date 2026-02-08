@@ -578,6 +578,20 @@
                                     <CheckBox x:Name="HotkeyOcrOnlyAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
                                     <CheckBox x:Name="HotkeyOcrOnlyShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Lock window" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyLockCaptureWindowKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyLockCaptureWindowCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyLockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyLockCaptureWindowShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Unlock window" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyUnlockCaptureWindowKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyUnlockCaptureWindowCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyUnlockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyUnlockCaptureWindowShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
                                 <TextBlock Text="Note: Win key is not supported." Foreground="DimGray" Margin="0,8,0,0" />
                             </StackPanel>
                         </StackPanel>
