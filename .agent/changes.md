@@ -4967,3 +4967,36 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
+**2026-02-08 17:00 (Asia/Taipei) — キャプチャ右下ローディングスピナー実装**
+
+### Summary
+- OCR実行中にキャプチャ（またはROI）右下へ追従するスピナーを追加し、完了/失敗時に必ず消えるようにしました。
+
+### Context / Goal
+- 実行開始からオーバーレイ更新完了までの処理中状態を、キャプチャ領域の近傍で即時に視認したい。
+- 既存の `OverlayCanvas.Opacity` 制御を壊さず、スピナーだけ独立レイヤで制御したい。
+
+### Changes
+- `OverlayWindow` にスピナー表示/非表示APIと回転アニメーション制御を実装。
+- `OverlayPresenter` に `ShowLoadingSpinner` / `HideLoadingSpinner` を追加し、Screen座標からDIP変換を統一。
+- `RunOnceAsync` の開始時にスピナー表示、`finally` で確実に非表示化する連動を追加。
+- ROIが無効・不正な場合はキャプチャ矩形をアンカーにフォールバックするようにした。
+- Overlay無効化経路（`Hide`）でもスピナーを強制非表示にするガードを追加。
+
+### Files Touched
+- `UI/OverlayWindow.xaml` — スピナー描画レイヤー（`SpinnerCanvas`）と回転用要素を追加。
+- `UI/OverlayWindow.xaml.cs` — スピナー表示/非表示、位置計算、回転アニメーション開始/停止を追加。
+- `Services/OverlayPresenter.cs` — スピナー表示APIを追加し、非表示時の残留防止を実装。
+- `MainWindow.xaml.cs` — 実行開始/終了時のスピナー連動、アンカー矩形解決と例外時フォールバックを追加。
+
+### Behavioral Impact
+- 実行開始直後からキャプチャ対象右下にスピナーが表示され、処理終了時に自動で消えます。
+- ROI有効時はROI右下、ROI無効または不正時はキャプチャ領域右下に表示されます。
+- オーバーレイ本文のOpacity制御とは独立してスピナーが動作し、Overlay無効化時は同時に消えます。
+
+### Risk & Mitigation
+- Risk: 座標変換失敗や境界取得失敗でスピナー処理が本処理に影響する可能性。
+- Mitigation: スピナー表示/非表示を例外ガードし、失敗してもOCR実行フローを継続。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。

@@ -21,5 +21,25 @@
                            TextWrapping="Wrap" />
             </Border>
         </Canvas>
+        <Canvas x:Name="SpinnerCanvas">
+            <Grid x:Name="SpinnerContainer"
+                  Width="24"
+                  Height="24"
+                  Visibility="Collapsed"
+                  RenderTransformOrigin="0.5,0.5">
+                <Grid.RenderTransform>
+                    <RotateTransform x:Name="SpinnerRotateTransform" />
+                </Grid.RenderTransform>
+                <Ellipse Stroke="#44FFFFFF"
+                         StrokeThickness="2"
+                         Fill="Transparent" />
+                <Path Stroke="#E6FFFFFF"
+                      StrokeThickness="2.5"
+                      StrokeStartLineCap="Round"
+                      StrokeEndLineCap="Round"
+                      Data="M 12,2 A 10,10 0 0 1 22,12"
+                      Fill="Transparent" />
+            </Grid>
+        </Canvas>
     </Grid>
 </Window>

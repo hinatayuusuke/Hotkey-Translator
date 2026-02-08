@@ -53,6 +53,7 @@ public sealed class OverlayPresenter
         {
             // WHY: Keep the window resident to avoid DWM flash; only toggle overlay visibility.
             _window.UpdateItems(Array.Empty<OverlayItem>());
+            _window.HideLoadingSpinner();
             _window.SetOverlayVisibility(false);
             Hidden?.Invoke();
         });
@@ -115,6 +116,28 @@ public sealed class OverlayPresenter
         InvokeOnUi("OverlayToast", measureRender: false, () =>
         {
             _window.ShowToast(text, anchor);
+        });
+    }
+
+    public void ShowLoadingSpinner(Rect anchor)
+    {
+        if (!_isEnabled)
+        {
+            return;
+        }
+
+        InvokeOnUi("OverlaySpinnerShow", measureRender: false, () =>
+        {
+            var anchorDip = anchor.IsEmpty ? Rect.Empty : DpiHelper.ScreenRectToWindowDip(_window, anchor);
+            _window.ShowLoadingSpinner(anchorDip);
+        });
+    }
+
+    public void HideLoadingSpinner()
+    {
+        InvokeOnUi("OverlaySpinnerHide", measureRender: false, () =>
+        {
+            _window.HideLoadingSpinner();
         });
     }
 

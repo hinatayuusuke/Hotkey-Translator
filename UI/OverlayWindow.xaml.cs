@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
@@ -31,6 +32,9 @@ public partial class OverlayWindow : Window
     private const int ToastMinIntervalMs = 500;
     private const double ToastMargin = 12.0;
     private const double ToastMaxWidth = 260.0;
+    private const double SpinnerSize = 24.0;
+    private const double SpinnerMargin = 12.0;
+    private static readonly Duration SpinnerRotationDuration = new(TimeSpan.FromMilliseconds(900));
     private readonly DispatcherTimer _toastTimer;
     private DateTime _lastToastAtUtc = DateTime.MinValue;
 
@@ -113,6 +117,43 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
     }
 
+    public void ShowLoadingSpinner(Rect anchorDipRect)
+    {
+        if (SpinnerContainer == null || SpinnerRotateTransform == null)
+        {
+            return;
+        }
+
+        var target = anchorDipRect.IsEmpty
+            ? new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight))
+            : anchorDipRect;
+        var spinnerWidth = SpinnerContainer.Width > 0 ? SpinnerContainer.Width : SpinnerSize;
+        var spinnerHeight = SpinnerContainer.Height > 0 ? SpinnerContainer.Height : SpinnerSize;
+        var left = target.X + target.Width - spinnerWidth - SpinnerMargin;
+        var top = target.Y + target.Height - spinnerHeight - SpinnerMargin;
+        var maxLeft = Math.Max(SpinnerMargin, Math.Max(0, ActualWidth) - spinnerWidth - SpinnerMargin);
+        var maxTop = Math.Max(SpinnerMargin, Math.Max(0, ActualHeight) - spinnerHeight - SpinnerMargin);
+        left = Math.Clamp(left, SpinnerMargin, maxLeft);
+        top = Math.Clamp(top, SpinnerMargin, maxTop);
+
+        Canvas.SetLeft(SpinnerContainer, left);
+        Canvas.SetTop(SpinnerContainer, top);
+        SpinnerContainer.Visibility = Visibility.Visible;
+        SpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, BuildSpinnerAnimation());
+    }
+
+    public void HideLoadingSpinner()
+    {
+        if (SpinnerContainer == null || SpinnerRotateTransform == null)
+        {
+            return;
+        }
+
+        SpinnerRotateTransform.BeginAnimation(RotateTransform.AngleProperty, null);
+        SpinnerRotateTransform.Angle = 0;
+        SpinnerContainer.Visibility = Visibility.Collapsed;
+    }
+
     public void ShowToast(string text, Rect anchor)
     {
         if (ToastContainer == null || ToastText == null)
@@ -164,6 +205,7 @@ public partial class OverlayWindow : Window
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
         UpdateBounds();
+        HideLoadingSpinner();
     }
 
     private void OnToastTimerTick(object? sender, EventArgs e)
@@ -332,6 +374,14 @@ public partial class OverlayWindow : Window
         var clamped = Math.Clamp(opacity, 0.0, 1.0);
         var alpha = (byte)Math.Round(clamped * 255.0);
         return new SolidColorBrush(Color.FromArgb(alpha, solid.Color.R, solid.Color.G, solid.Color.B));
+    }
+
+    private static DoubleAnimation BuildSpinnerAnimation()
+    {
+        return new DoubleAnimation(0, 360, SpinnerRotationDuration)
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
     }
 
     private const int GwlExStyle = -20;

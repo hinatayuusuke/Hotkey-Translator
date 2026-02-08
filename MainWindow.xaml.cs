@@ -545,6 +545,7 @@ public partial class MainWindow : Window
             return;
         }
 
+        var settings = _settingsService.Settings;
         var isFirstRun = !_hasRunOnce;
         _hasRunOnce = true;
         EnableOverlay();
@@ -552,12 +553,14 @@ public partial class MainWindow : Window
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
         SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
+        ShowLoadingSpinnerForRun(settings);
         try
         {
             await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
         }
         finally
         {
+            HideLoadingSpinnerForRun();
             SetBusyOverlay(false, null);
             Interlocked.Exchange(ref _runInProgress, 0);
             _translationOverlayCts?.Cancel();
@@ -582,6 +585,60 @@ public partial class MainWindow : Window
         {
             BusyOverlayText.Text = message;
         }
+    }
+
+    private void ShowLoadingSpinnerForRun(AppSettings settings)
+    {
+        if (_overlayPresenter == null || _captureManager == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _overlayPresenter.ShowLoadingSpinner(ResolveSpinnerAnchorScreenRect(settings));
+        }
+        catch (Exception ex)
+        {
+            // WHY: Spinner must never block OCR execution even if coordinate conversion fails.
+            _logger?.Error(ex, "Failed to show capture loading spinner.");
+        }
+    }
+
+    private void HideLoadingSpinnerForRun()
+    {
+        if (_overlayPresenter == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _overlayPresenter.HideLoadingSpinner();
+        }
+        catch (Exception ex)
+        {
+            // WHY: Hide failures should not prevent cleanup paths from completing.
+            _logger?.Error(ex, "Failed to hide capture loading spinner.");
+        }
+    }
+
+    private Rect ResolveSpinnerAnchorScreenRect(AppSettings settings)
+    {
+        if (_captureManager == null)
+        {
+            return Rect.Empty;
+        }
+
+        var captureBounds = _captureManager.GetCaptureBounds(settings);
+        if (captureBounds.IsEmpty)
+        {
+            return Rect.Empty;
+        }
+
+        var roiOrCapture = GetRoiBounds(settings, captureBounds);
+        // WHY: When ROI is invalid/outside the frame, keep spinner anchored to the capture target.
+        return roiOrCapture.IsEmpty ? captureBounds : roiOrCapture;
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
