@@ -99,9 +99,9 @@ public sealed class AppSettings
     public string HotkeyForceRunModifiers { get; set; } = "None";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
-    public string HotkeyLockCaptureWindowKey { get; set; } = "F12";
+    public string HotkeyLockCaptureWindowKey { get; set; } = "F7";
     public string HotkeyLockCaptureWindowModifiers { get; set; } = "None";
-    public string HotkeyUnlockCaptureWindowKey { get; set; } = "F12";
+    public string HotkeyUnlockCaptureWindowKey { get; set; } = "F7";
     public string HotkeyUnlockCaptureWindowModifiers { get; set; } = "Shift";
     public string SourceLanguage { get; set; } = "en";
     public string TargetLanguage { get; set; } = "ja";

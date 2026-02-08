@@ -89,30 +89,32 @@ public partial class MainWindow : Window
         _logger = new AppLogger(AppendLog);
         InitializeLogBuffer();
         await _settingsService.LoadAsync().ConfigureAwait(true);
-        ApplySettingsToUi(_settingsService.Settings);
+        var settings = _settingsService.Settings;
+        var settingsChanged = NormalizeHotkeySettings(settings);
+        ApplySettingsToUi(settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
-        var settingsChanged = await EnsureResourceHostsAsync(_settingsService.Settings).ConfigureAwait(true);
+        settingsChanged |= await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
         {
             await _settingsService.SaveAsync().ConfigureAwait(true);
         }
 
         _overlayWindow = new OverlayWindow();
-        _overlayWindow.ApplyStyle(_settingsService.Settings);
+        _overlayWindow.ApplyStyle(settings);
         _overlayPresenter = new OverlayPresenter(_overlayWindow, _logger);
         _overlayPresenter.Shown += OnOverlayShown;
         _overlayPresenter.Hidden += OnOverlayHidden;
         _overlayPresenter.Updated += OnOverlayUpdated;
-        _overlayPresenter.UpdatePerfLogging(_settingsService.Settings.EnableOcrPerfLog && _settingsService.Settings.EnableLogging,
-            _settingsService.Settings.OcrPerfLogThresholdMs);
+        _overlayPresenter.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging,
+            settings.OcrPerfLogThresholdMs);
         _overlayPresenter.Show();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
         _captureManager = new CaptureManager(frameGate, _logger);
         var ocrEngine = new OcrEngine(_httpClient, _logger);
-        var ocrDiff = new OcrDiffService { IouThreshold = _settingsService.Settings.OcrIouThreshold };
+        var ocrDiff = new OcrDiffService { IouThreshold = settings.OcrIouThreshold };
         _phashService = new PhashService();
         var normalization = new NormalizationService();
         var ocrPreprocess = new OcrPreprocessService();
@@ -146,9 +148,9 @@ public partial class MainWindow : Window
         _pipeline.TranslationStarted += OnTranslationStarted;
         _pipeline.TranslationCompleted += OnTranslationCompleted;
 
-        InitializeHotkeys(_settingsService.Settings);
-        InitializeAutoHideWatcher(_settingsService.Settings);
-        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F12: lock/unlock capture window.");
+        InitializeHotkeys(settings);
+        InitializeAutoHideWatcher(settings);
+        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -793,6 +795,42 @@ public partial class MainWindow : Window
             : settings.LlamaGrpcHost.Trim();
         settings.LlamaGrpcPort = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
         settings.LlamaSelectedModelFileName = NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
+    }
+
+    private static bool NormalizeHotkeySettings(AppSettings settings)
+    {
+        var changed = false;
+        var lockKey = (settings.HotkeyLockCaptureWindowKey ?? string.Empty).Trim();
+        var lockModifiers = ParseModifiers(settings.HotkeyLockCaptureWindowModifiers);
+        var unlockKey = (settings.HotkeyUnlockCaptureWindowKey ?? string.Empty).Trim();
+        var unlockModifiers = ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers);
+
+        if (string.IsNullOrWhiteSpace(lockKey))
+        {
+            settings.HotkeyLockCaptureWindowKey = "F7";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(unlockKey))
+        {
+            settings.HotkeyUnlockCaptureWindowKey = "F7";
+            changed = true;
+        }
+
+        // COMPAT: Legacy defaults (F12 / Shift+F12) are migrated to F7 to avoid common overlay/debug-tool conflicts.
+        if (lockKey.Equals("F12", StringComparison.OrdinalIgnoreCase) &&
+            lockModifiers == ModifierKeys.None &&
+            unlockKey.Equals("F12", StringComparison.OrdinalIgnoreCase) &&
+            unlockModifiers == ModifierKeys.Shift)
+        {
+            settings.HotkeyLockCaptureWindowKey = "F7";
+            settings.HotkeyLockCaptureWindowModifiers = "None";
+            settings.HotkeyUnlockCaptureWindowKey = "F7";
+            settings.HotkeyUnlockCaptureWindowModifiers = "Shift";
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static string NormalizeLlamaModelFileName(string? value)
@@ -1584,12 +1622,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var fallback = HotkeyConfig.Default;
-        if (TryRegisterHotkeys(fallback))
-        {
-            _currentHotkeyConfig = fallback;
-            AppendLog("Hotkey fallback applied due to registration failure.");
-        }
+        _currentHotkeyConfig = null;
+        AppendLog("Some hotkeys failed to register. Available hotkeys remain active.");
     }
 
     private void TryUpdateHotkeys(AppSettings settings)
@@ -1612,97 +1646,97 @@ public partial class MainWindow : Window
         }
         else
         {
-            AppendLog("Hotkey update failed; keeping previous hotkeys.");
+            AppendLog("Some hotkeys failed to update. Other hotkeys remain active.");
         }
     }
 
     private bool TryRegisterHotkeys(HotkeyConfig config)
     {
-        HotkeyManager? runOnce = null;
-        HotkeyManager? toggle = null;
-        HotkeyManager? forceRun = null;
-        HotkeyManager? ocrOnly = null;
-        HotkeyManager? lockCaptureWindow = null;
-        HotkeyManager? unlockCaptureWindow = null;
+        var allSucceeded = true;
+        var seen = new HashSet<(Key Key, ModifierKeys Modifiers)>();
+        allSucceeded &= TryApplyHotkeyBinding(ref _hotkeyManager, config.RunOnceKey, config.RunOnceModifiers, id: 1, OnHotkeyPressed, "RunOnce", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _overlayToggleHotkeyManager, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2, OnToggleOverlayHotkeyPressed, "ToggleOverlay", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _forceRunHotkeyManager, config.ForceRunKey, config.ForceRunModifiers, id: 3, OnForceRunHotkeyPressed, "ForceRun", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 5, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 6, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
+        return allSucceeded;
+    }
 
-        try
+    private bool TryApplyHotkeyBinding(
+        ref HotkeyManager? slot,
+        Key key,
+        ModifierKeys modifiers,
+        int id,
+        EventHandler handler,
+        string name,
+        ISet<(Key Key, ModifierKeys Modifiers)> seen)
+    {
+        var binding = (key, modifiers);
+        if (!seen.Add(binding))
         {
-            if (TryValidateDuplicateHotkeys(config, out var validationError))
-            {
-                _logger?.Error($"Failed to register hotkeys: {validationError}");
-                return false;
-            }
-
-            runOnce = new HotkeyManager(this, config.RunOnceKey, config.RunOnceModifiers, id: 1);
-            runOnce.HotkeyPressed += OnHotkeyPressed;
-            runOnce.Register();
-
-            toggle = new HotkeyManager(this, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2);
-            toggle.HotkeyPressed += OnToggleOverlayHotkeyPressed;
-            toggle.Register();
-
-            forceRun = new HotkeyManager(this, config.ForceRunKey, config.ForceRunModifiers, id: 3);
-            forceRun.HotkeyPressed += OnForceRunHotkeyPressed;
-            forceRun.Register();
-
-            ocrOnly = new HotkeyManager(this, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4);
-            ocrOnly.HotkeyPressed += OnOcrOnlyHotkeyPressed;
-            ocrOnly.Register();
-
-            lockCaptureWindow = new HotkeyManager(this, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 5);
-            lockCaptureWindow.HotkeyPressed += OnLockCaptureWindowHotkeyPressed;
-            lockCaptureWindow.Register();
-
-            unlockCaptureWindow = new HotkeyManager(this, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 6);
-            unlockCaptureWindow.HotkeyPressed += OnUnlockCaptureWindowHotkeyPressed;
-            unlockCaptureWindow.Register();
-        }
-        catch (Exception ex)
-        {
-            runOnce?.Dispose();
-            toggle?.Dispose();
-            forceRun?.Dispose();
-            ocrOnly?.Dispose();
-            lockCaptureWindow?.Dispose();
-            unlockCaptureWindow?.Dispose();
-            _logger?.Error(ex, "Failed to register hotkeys.");
+            _logger?.Error($"Failed to register hotkey ({name}: {FormatHotkey(key, modifiers)}). Duplicate binding in settings.");
             return false;
         }
 
-        _hotkeyManager?.Dispose();
-        _overlayToggleHotkeyManager?.Dispose();
-        _forceRunHotkeyManager?.Dispose();
-        _ocrOnlyHotkeyManager?.Dispose();
-        _lockCaptureWindowHotkeyManager?.Dispose();
-        _unlockCaptureWindowHotkeyManager?.Dispose();
-
-        _hotkeyManager = runOnce;
-        _overlayToggleHotkeyManager = toggle;
-        _forceRunHotkeyManager = forceRun;
-        _ocrOnlyHotkeyManager = ocrOnly;
-        _lockCaptureWindowHotkeyManager = lockCaptureWindow;
-        _unlockCaptureWindowHotkeyManager = unlockCaptureWindow;
-        return true;
-    }
-
-    private static bool TryValidateDuplicateHotkeys(HotkeyConfig config, out string? error)
-    {
-        error = null;
-        var map = new Dictionary<(Key Key, ModifierKeys Modifiers), string>();
-        foreach (var binding in config.GetBindings())
+        if (slot is not null && slot.Key == key && slot.Modifiers == modifiers)
         {
-            var key = (binding.Key, binding.Modifiers);
-            if (map.TryGetValue(key, out var existing))
-            {
-                // WHY: Duplicate global shortcuts fail registration unpredictably; reject early with a clear reason.
-                error = $"{existing} and {binding.Name} share {FormatHotkey(binding.Key, binding.Modifiers)}.";
-                return true;
-            }
-
-            map[key] = binding.Name;
+            return true;
         }
 
+        HotkeyManager? previous = slot;
+        slot = null;
+        previous?.Dispose();
+
+        if (TryCreateHotkeyManager(key, modifiers, id, handler, out var manager, out var registerError))
+        {
+            slot = manager;
+            return true;
+        }
+
+        _logger?.Error($"Failed to register hotkey ({name}: {FormatHotkey(key, modifiers)}). {registerError?.Message}");
+        if (previous is null)
+        {
+            return false;
+        }
+
+        // WHY: Failed updates should not disable unrelated operations; rollback keeps prior binding active.
+        if (TryCreateHotkeyManager(previous.Key, previous.Modifiers, id, handler, out var restored, out var rollbackError))
+        {
+            slot = restored;
+            _logger?.Info($"Hotkey rollback applied for {name}: {FormatHotkey(previous.Key, previous.Modifiers)}.");
+            return false;
+        }
+
+        _logger?.Error($"Failed to restore previous hotkey ({name}). {rollbackError?.Message}");
         return false;
+    }
+
+    private bool TryCreateHotkeyManager(
+        Key key,
+        ModifierKeys modifiers,
+        int id,
+        EventHandler handler,
+        out HotkeyManager? manager,
+        out Exception? error)
+    {
+        manager = null;
+        error = null;
+        try
+        {
+            var created = new HotkeyManager(this, key, modifiers, id);
+            created.HotkeyPressed += handler;
+            created.Register();
+            manager = created;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            manager?.Dispose();
+            manager = null;
+            error = ex;
+            return false;
+        }
     }
 
     private static HotkeyConfig BuildHotkeyConfigFromSettings(AppSettings settings)
@@ -1716,9 +1750,9 @@ public partial class MainWindow : Window
             ParseModifiers(settings.HotkeyForceRunModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
             ParseModifiers(settings.HotkeyOcrOnlyModifiers),
-            ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F12),
+            ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
             ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
-            ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F12),
+            ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F7),
             ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers));
     }
 
@@ -2529,9 +2563,9 @@ public partial class MainWindow : Window
             ModifierKeys.None,
             Key.F11,
             ModifierKeys.None,
-            Key.F12,
+            Key.F7,
             ModifierKeys.None,
-            Key.F12,
+            Key.F7,
             ModifierKeys.Shift);
     }
 }

@@ -15,11 +15,15 @@ public sealed class HotkeyManager : IDisposable
     private readonly uint _modifiers;
     private readonly uint _virtualKey;
     private HwndSource? _source;
+    public Key Key { get; }
+    public ModifierKeys Modifiers { get; }
 
     public HotkeyManager(Window window, Key key, ModifierKeys modifiers, int id = 1)
     {
         _window = window;
         _id = id;
+        Key = key;
+        Modifiers = modifiers;
         _modifiers = (uint)modifiers;
         _virtualKey = (uint)KeyInterop.VirtualKeyFromKey(key);
     }

@@ -4902,3 +4902,35 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
+
+**2026-02-08 16:09 (Asia/Taipei) — ホットキー登録失敗の波及防止とF7既定化**
+
+### Summary
+- 固定/解除ホットキー既定を F7 系へ変更し、1件登録失敗が他ホットキーへ波及しないよう修正しました。
+
+### Context / Goal
+- F12 系が外部アプリと競合し、RegisterHotKey 失敗時に全ホットキー無効化が発生していた。
+- 失敗時は該当ホットキーのみ失敗扱いとし、他ホットキーを継続利用可能にしたい。
+
+### Changes
+- 固定/解除ホットキーの既定を F7 / Shift+F7 に変更。
+- 旧既定（F12 / Shift+F12）を起動時に F7 系へ自動移行する正規化処理を追加。
+- ホットキー登録を個別適用方式へ変更し、失敗時はそのホットキーのみロールバックする実装に変更。
+- 登録失敗ログに失敗理由（例外メッセージ）を出力するよう改善。
+- 初期化時の全体フォールバック再登録を廃止し、二重失敗ログと全体無効化を回避。
+
+### Files Touched
+- Models/AppSettings.cs — Lock/Unlock の既定値を F7 / Shift+F7 に変更。
+- Services/HotkeyManager.cs — 現在バインド情報（Key/Modifiers）の参照プロパティを追加。
+- MainWindow.xaml.cs — Hotkey正規化、個別登録・失敗時ロールバック、失敗ログ改善、起動メッセージ更新を実装。
+
+### Behavioral Impact
+- あるホットキーの登録失敗時でも、他の登録済みホットキーは有効なまま維持される。
+- 旧 F12 既定設定で保存済みでも、起動時に F7 系へ移行される。
+
+### Risk & Mitigation
+- Risk: 設定上で重複キーを指定した場合、一部ホットキーのみ無効になる可能性。
+- Mitigation: 重複検知ログを出し、失敗ホットキーのみロールバックして他ホットキーを維持する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
