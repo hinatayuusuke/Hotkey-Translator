@@ -99,6 +99,8 @@ public sealed class AppSettings
     public string HotkeyForceRunModifiers { get; set; } = "None";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
+    public string HotkeySelectRoiKey { get; set; } = "F6";
+    public string HotkeySelectRoiModifiers { get; set; } = "None";
     public string HotkeyLockCaptureWindowKey { get; set; } = "F7";
     public string HotkeyLockCaptureWindowModifiers { get; set; } = "None";
     public string HotkeyUnlockCaptureWindowKey { get; set; } = "F7";

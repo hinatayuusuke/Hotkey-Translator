@@ -4934,3 +4934,36 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
+
+**2026-02-08 16:21 (Asia/Taipei) — ROI選択ホットキー追加（F6既定）**
+
+### Summary
+- ROI選択をホットキーから起動できるようにし、既存ホットキー設定UIへ統合しました。
+
+### Context / Goal
+- ROI再設定をマウス移動なしで素早く呼び出せるようにしたい。
+- 既存のホットキー登録方式（失敗しても他キーへ波及しない）に合わせて追加したい。
+
+### Changes
+- AppSettings に HotkeySelectRoiKey / HotkeySelectRoiModifiers を追加（既定 F6 / None）。
+- Hotkeys設定UIに Select ROI 行を追加し、他ホットキーと同じ保存導線へ統合。
+- MainWindow に ROIホットキーイベントを追加し、既存 ROI選択処理を SelectRoiAsync() として共通化。
+- ホットキー登録処理に SelectRoi バインディング（id=5）を追加し、既存個別登録/ロールバック方式で運用。
+- 起動時ログに ROIホットキー案内（F6）を追記。
+
+### Files Touched
+- Models/AppSettings.cs — ROI選択ホットキー設定を追加。
+- MainWindow.xaml — Hotkeysセクションに Select ROI の Key/Modifiers 入力を追加。
+- MainWindow.xaml.cs — 設定反映、登録配線、実行ハンドラ、正規化を追加。
+
+### Behavioral Impact
+- F6（既定）で ROI選択ウィンドウを直接開ける。
+- 他ホットキー同様、UIでキー/修飾キーの変更と保存が可能。
+- ROIホットキーの登録失敗時も、他ホットキーは継続利用できる。
+
+### Risk & Mitigation
+- Risk: 他アプリと F6 が競合すると ROIホットキーだけ無効になる可能性。
+- Mitigation: 失敗時ログを出しつつ、他ホットキーを維持する個別登録方式を維持。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。

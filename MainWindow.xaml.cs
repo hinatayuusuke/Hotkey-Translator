@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
     private HotkeyManager? _ocrOnlyHotkeyManager;
+    private HotkeyManager? _selectRoiHotkeyManager;
     private HotkeyManager? _lockCaptureWindowHotkeyManager;
     private HotkeyManager? _unlockCaptureWindowHotkeyManager;
     private PhashService? _phashService;
@@ -150,7 +151,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
-        AppendLog("Ready. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
+        AppendLog("Ready. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -163,6 +164,7 @@ public partial class MainWindow : Window
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        _selectRoiHotkeyManager?.Dispose();
         _lockCaptureWindowHotkeyManager?.Dispose();
         _unlockCaptureWindowHotkeyManager?.Dispose();
         _autoHideBaselineCts?.Cancel();
@@ -478,6 +480,11 @@ public partial class MainWindow : Window
         await _settingsService.SaveAsync().ConfigureAwait(true);
     }
 
+    private async void OnSelectRoiHotkeyPressed(object? sender, EventArgs e)
+    {
+        await SelectRoiAsync().ConfigureAwait(true);
+    }
+
     private void EnsureTranslatedOverlayForRunHotkeys()
     {
         if (_pipeline == null || _overlayTextMode == OverlayTextMode.Translated)
@@ -578,6 +585,11 @@ public partial class MainWindow : Window
     }
 
     private async void OnSelectRoi(object sender, RoutedEventArgs e)
+    {
+        await SelectRoiAsync().ConfigureAwait(true);
+    }
+
+    private async Task SelectRoiAsync()
     {
         if (_captureManager == null)
         {
@@ -800,10 +812,17 @@ public partial class MainWindow : Window
     private static bool NormalizeHotkeySettings(AppSettings settings)
     {
         var changed = false;
+        var selectRoiKey = (settings.HotkeySelectRoiKey ?? string.Empty).Trim();
         var lockKey = (settings.HotkeyLockCaptureWindowKey ?? string.Empty).Trim();
         var lockModifiers = ParseModifiers(settings.HotkeyLockCaptureWindowModifiers);
         var unlockKey = (settings.HotkeyUnlockCaptureWindowKey ?? string.Empty).Trim();
         var unlockModifiers = ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers);
+
+        if (string.IsNullOrWhiteSpace(selectRoiKey))
+        {
+            settings.HotkeySelectRoiKey = "F6";
+            changed = true;
+        }
 
         if (string.IsNullOrWhiteSpace(lockKey))
         {
@@ -957,6 +976,7 @@ public partial class MainWindow : Window
         SetHotkeyKey(HotkeyToggleOverlayKeyBox, settings.HotkeyToggleOverlayKey);
         SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
         SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
+        SetHotkeyKey(HotkeySelectRoiKeyBox, settings.HotkeySelectRoiKey);
         SetHotkeyKey(HotkeyLockCaptureWindowKeyBox, settings.HotkeyLockCaptureWindowKey);
         SetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox, settings.HotkeyUnlockCaptureWindowKey);
 
@@ -964,6 +984,7 @@ public partial class MainWindow : Window
         SetHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
         SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
         SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        SetHotkeyModifiers(settings.HotkeySelectRoiModifiers, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
         SetHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
         SetHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
     }
@@ -978,6 +999,8 @@ public partial class MainWindow : Window
         settings.HotkeyForceRunModifiers = GetHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
         settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
         settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        settings.HotkeySelectRoiKey = GetHotkeyKey(HotkeySelectRoiKeyBox);
+        settings.HotkeySelectRoiModifiers = GetHotkeyModifiers(HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
         settings.HotkeyLockCaptureWindowKey = GetHotkeyKey(HotkeyLockCaptureWindowKeyBox);
         settings.HotkeyLockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
         settings.HotkeyUnlockCaptureWindowKey = GetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox);
@@ -1593,6 +1616,7 @@ public partial class MainWindow : Window
         HotkeyToggleOverlayKeyBox.ItemsSource = keys;
         HotkeyForceRunKeyBox.ItemsSource = keys;
         HotkeyOcrOnlyKeyBox.ItemsSource = keys;
+        HotkeySelectRoiKeyBox.ItemsSource = keys;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
         HotkeyUnlockCaptureWindowKeyBox.ItemsSource = keys;
     }
@@ -1641,6 +1665,7 @@ public partial class MainWindow : Window
                       $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
+                      $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
                       $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}.");
         }
@@ -1658,8 +1683,9 @@ public partial class MainWindow : Window
         allSucceeded &= TryApplyHotkeyBinding(ref _overlayToggleHotkeyManager, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2, OnToggleOverlayHotkeyPressed, "ToggleOverlay", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _forceRunHotkeyManager, config.ForceRunKey, config.ForceRunModifiers, id: 3, OnForceRunHotkeyPressed, "ForceRun", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 5, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 6, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _selectRoiHotkeyManager, config.SelectRoiKey, config.SelectRoiModifiers, id: 5, OnSelectRoiHotkeyPressed, "SelectRoi", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 6, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 7, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
         return allSucceeded;
     }
 
@@ -1750,6 +1776,8 @@ public partial class MainWindow : Window
             ParseModifiers(settings.HotkeyForceRunModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
             ParseModifiers(settings.HotkeyOcrOnlyModifiers),
+            ParseKey(settings.HotkeySelectRoiKey, Key.F6),
+            ParseModifiers(settings.HotkeySelectRoiModifiers),
             ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
             ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
             ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F7),
@@ -2539,6 +2567,8 @@ public partial class MainWindow : Window
         ModifierKeys ForceRunModifiers,
         Key OcrOnlyKey,
         ModifierKeys OcrOnlyModifiers,
+        Key SelectRoiKey,
+        ModifierKeys SelectRoiModifiers,
         Key LockCaptureWindowKey,
         ModifierKeys LockCaptureWindowModifiers,
         Key UnlockCaptureWindowKey,
@@ -2550,6 +2580,7 @@ public partial class MainWindow : Window
             yield return ("Toggle overlay", ToggleOverlayKey, ToggleOverlayModifiers);
             yield return ("Force run", ForceRunKey, ForceRunModifiers);
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
+            yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
             yield return ("Unlock window", UnlockCaptureWindowKey, UnlockCaptureWindowModifiers);
         }
@@ -2562,6 +2593,8 @@ public partial class MainWindow : Window
             Key.F10,
             ModifierKeys.None,
             Key.F11,
+            ModifierKeys.None,
+            Key.F6,
             ModifierKeys.None,
             Key.F7,
             ModifierKeys.None,
