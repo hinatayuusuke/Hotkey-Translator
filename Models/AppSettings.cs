@@ -97,6 +97,8 @@ public sealed class AppSettings
     public string HotkeyToggleOverlayModifiers { get; set; } = "None";
     public string HotkeyForceRunKey { get; set; } = "F10";
     public string HotkeyForceRunModifiers { get; set; } = "None";
+    public string HotkeyForceGeminiStrictKey { get; set; } = "F10";
+    public string HotkeyForceGeminiStrictModifiers { get; set; } = "Shift";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
     public string HotkeySelectRoiKey { get; set; } = "F6";

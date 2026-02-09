@@ -10,11 +10,16 @@ using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services;
 
-public readonly record struct ForceRunOptions(bool SkipPhash, bool SkipOcrDiff, bool SkipTranslationCache, bool SkipTranslation)
+public readonly record struct ForceRunOptions(
+    bool SkipPhash,
+    bool SkipOcrDiff,
+    bool SkipTranslationCache,
+    bool SkipTranslation,
+    bool ForceGeminiStrict = false)
 {
     public static ForceRunOptions None => new(false, false, false, false);
 
-    public bool IsEnabled => SkipPhash || SkipOcrDiff || SkipTranslationCache || SkipTranslation;
+    public bool IsEnabled => SkipPhash || SkipOcrDiff || SkipTranslationCache || SkipTranslation || ForceGeminiStrict;
 }
 
 public sealed class PipelineOrchestrator
@@ -134,7 +139,8 @@ public sealed class PipelineOrchestrator
                 else
                 {
                     _logger.Info($"Force run: skip pHash={options.SkipPhash}, skip OCR diff={options.SkipOcrDiff}, " +
-                                 $"skip translation cache={options.SkipTranslationCache}, skip translation={options.SkipTranslation}.");
+                                 $"skip translation cache={options.SkipTranslationCache}, skip translation={options.SkipTranslation}, " +
+                                 $"force gemini strict={options.ForceGeminiStrict}.");
                 }
             }
 
@@ -283,6 +289,7 @@ public sealed class PipelineOrchestrator
                             groupedLines,
                             changedLines,
                             settings,
+                            options,
                             options.SkipTranslationCache,
                             cancellationToken)
                         .ConfigureAwait(false);
@@ -428,6 +435,7 @@ public sealed class PipelineOrchestrator
         IReadOnlyList<OcrLine> lines,
         IReadOnlyList<OcrLine> changedLines,
         AppSettings settings,
+        ForceRunOptions options,
         bool skipTranslationCache,
         CancellationToken cancellationToken)
     {
@@ -480,7 +488,7 @@ public sealed class PipelineOrchestrator
         IReadOnlyDictionary<string, string> results;
         try
         {
-            results = await _translationService.TranslateAsync(pendingTexts, settings, cancellationToken).ConfigureAwait(false);
+            results = await _translationService.TranslateAsync(pendingTexts, settings, options, cancellationToken).ConfigureAwait(false);
         }
         finally
         {

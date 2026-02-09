@@ -574,6 +574,13 @@
                                     <CheckBox x:Name="HotkeyForceRunShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Force Gemini (strict)" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyForceGeminiStrictKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyForceGeminiStrictCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyForceGeminiStrictAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyForceGeminiStrictShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Overlay text" Width="120" VerticalAlignment="Center" />
                                     <ComboBox x:Name="HotkeyOcrOnlyKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
                                     <CheckBox x:Name="HotkeyOcrOnlyCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />

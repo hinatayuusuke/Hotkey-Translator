@@ -41,6 +41,7 @@ public partial class MainWindow : Window
     private HotkeyManager? _hotkeyManager;
     private HotkeyManager? _overlayToggleHotkeyManager;
     private HotkeyManager? _forceRunHotkeyManager;
+    private HotkeyManager? _forceGeminiStrictHotkeyManager;
     private HotkeyManager? _ocrOnlyHotkeyManager;
     private HotkeyManager? _selectRoiHotkeyManager;
     private HotkeyManager? _lockCaptureWindowHotkeyManager;
@@ -155,7 +156,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
-        AppendLog("Ready. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
+        AppendLog("Ready. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -167,6 +168,7 @@ public partial class MainWindow : Window
         _hotkeyManager?.Dispose();
         _overlayToggleHotkeyManager?.Dispose();
         _forceRunHotkeyManager?.Dispose();
+        _forceGeminiStrictHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
         _selectRoiHotkeyManager?.Dispose();
         _lockCaptureWindowHotkeyManager?.Dispose();
@@ -433,6 +435,19 @@ public partial class MainWindow : Window
         EnsureTranslatedOverlayForRunHotkeys();
         AppendLog("Force run: skip pHash, OCR diff, translation cache.");
         await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true, SkipTranslation: false))
+            .ConfigureAwait(true);
+    }
+
+    private async void OnForceGeminiStrictHotkeyPressed(object? sender, EventArgs e)
+    {
+        EnsureTranslatedOverlayForRunHotkeys();
+        AppendLog("Force Gemini strict run: skip pHash, OCR diff, translation cache.");
+        await RunOnceAsync(new ForceRunOptions(
+                SkipPhash: true,
+                SkipOcrDiff: true,
+                SkipTranslationCache: true,
+                SkipTranslation: false,
+                ForceGeminiStrict: true))
             .ConfigureAwait(true);
     }
 
@@ -880,11 +895,24 @@ public partial class MainWindow : Window
     private static bool NormalizeHotkeySettings(AppSettings settings)
     {
         var changed = false;
+        var forceGeminiStrictKey = (settings.HotkeyForceGeminiStrictKey ?? string.Empty).Trim();
         var selectRoiKey = (settings.HotkeySelectRoiKey ?? string.Empty).Trim();
         var lockKey = (settings.HotkeyLockCaptureWindowKey ?? string.Empty).Trim();
         var lockModifiers = ParseModifiers(settings.HotkeyLockCaptureWindowModifiers);
         var unlockKey = (settings.HotkeyUnlockCaptureWindowKey ?? string.Empty).Trim();
         var unlockModifiers = ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers);
+
+        if (string.IsNullOrWhiteSpace(forceGeminiStrictKey))
+        {
+            settings.HotkeyForceGeminiStrictKey = "F10";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyForceGeminiStrictModifiers))
+        {
+            settings.HotkeyForceGeminiStrictModifiers = "Shift";
+            changed = true;
+        }
 
         if (string.IsNullOrWhiteSpace(selectRoiKey))
         {
@@ -1043,6 +1071,7 @@ public partial class MainWindow : Window
         SetHotkeyKey(HotkeyRunOnceKeyBox, settings.HotkeyRunOnceKey);
         SetHotkeyKey(HotkeyToggleOverlayKeyBox, settings.HotkeyToggleOverlayKey);
         SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
+        SetHotkeyKey(HotkeyForceGeminiStrictKeyBox, settings.HotkeyForceGeminiStrictKey);
         SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
         SetHotkeyKey(HotkeySelectRoiKeyBox, settings.HotkeySelectRoiKey);
         SetHotkeyKey(HotkeyLockCaptureWindowKeyBox, settings.HotkeyLockCaptureWindowKey);
@@ -1051,6 +1080,7 @@ public partial class MainWindow : Window
         SetHotkeyModifiers(settings.HotkeyRunOnceModifiers, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
         SetHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
         SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        SetHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
         SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
         SetHotkeyModifiers(settings.HotkeySelectRoiModifiers, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
         SetHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
@@ -1065,6 +1095,8 @@ public partial class MainWindow : Window
         settings.HotkeyToggleOverlayModifiers = GetHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
         settings.HotkeyForceRunKey = GetHotkeyKey(HotkeyForceRunKeyBox);
         settings.HotkeyForceRunModifiers = GetHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        settings.HotkeyForceGeminiStrictKey = GetHotkeyKey(HotkeyForceGeminiStrictKeyBox);
+        settings.HotkeyForceGeminiStrictModifiers = GetHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
         settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
         settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
         settings.HotkeySelectRoiKey = GetHotkeyKey(HotkeySelectRoiKeyBox);
@@ -1684,6 +1716,7 @@ public partial class MainWindow : Window
         HotkeyRunOnceKeyBox.ItemsSource = keys;
         HotkeyToggleOverlayKeyBox.ItemsSource = keys;
         HotkeyForceRunKeyBox.ItemsSource = keys;
+        HotkeyForceGeminiStrictKeyBox.ItemsSource = keys;
         HotkeyOcrOnlyKeyBox.ItemsSource = keys;
         HotkeySelectRoiKeyBox.ItemsSource = keys;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
@@ -1733,6 +1766,7 @@ public partial class MainWindow : Window
             AppendLog($"Hotkey updated: RunOnce={FormatHotkey(config.RunOnceKey, config.RunOnceModifiers)}, " +
                       $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
+                      $"ForceGeminiStrict={FormatHotkey(config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers)}, " +
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
@@ -1751,10 +1785,11 @@ public partial class MainWindow : Window
         allSucceeded &= TryApplyHotkeyBinding(ref _hotkeyManager, config.RunOnceKey, config.RunOnceModifiers, id: 1, OnHotkeyPressed, "RunOnce", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _overlayToggleHotkeyManager, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2, OnToggleOverlayHotkeyPressed, "ToggleOverlay", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _forceRunHotkeyManager, config.ForceRunKey, config.ForceRunModifiers, id: 3, OnForceRunHotkeyPressed, "ForceRun", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 4, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _selectRoiHotkeyManager, config.SelectRoiKey, config.SelectRoiModifiers, id: 5, OnSelectRoiHotkeyPressed, "SelectRoi", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 6, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 7, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _forceGeminiStrictHotkeyManager, config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, id: 4, OnForceGeminiStrictHotkeyPressed, "ForceGeminiStrict", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 5, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _selectRoiHotkeyManager, config.SelectRoiKey, config.SelectRoiModifiers, id: 6, OnSelectRoiHotkeyPressed, "SelectRoi", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 7, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 8, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
         return allSucceeded;
     }
 
@@ -1843,6 +1878,8 @@ public partial class MainWindow : Window
             ParseModifiers(settings.HotkeyToggleOverlayModifiers),
             ParseKey(settings.HotkeyForceRunKey, Key.F10),
             ParseModifiers(settings.HotkeyForceRunModifiers),
+            ParseKey(settings.HotkeyForceGeminiStrictKey, Key.F10),
+            ParseModifiers(settings.HotkeyForceGeminiStrictModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
             ParseModifiers(settings.HotkeyOcrOnlyModifiers),
             ParseKey(settings.HotkeySelectRoiKey, Key.F6),
@@ -2634,6 +2671,8 @@ public partial class MainWindow : Window
         ModifierKeys ToggleOverlayModifiers,
         Key ForceRunKey,
         ModifierKeys ForceRunModifiers,
+        Key ForceGeminiStrictKey,
+        ModifierKeys ForceGeminiStrictModifiers,
         Key OcrOnlyKey,
         ModifierKeys OcrOnlyModifiers,
         Key SelectRoiKey,
@@ -2648,6 +2687,7 @@ public partial class MainWindow : Window
             yield return ("Run once", RunOnceKey, RunOnceModifiers);
             yield return ("Toggle overlay", ToggleOverlayKey, ToggleOverlayModifiers);
             yield return ("Force run", ForceRunKey, ForceRunModifiers);
+            yield return ("Force Gemini (strict)", ForceGeminiStrictKey, ForceGeminiStrictModifiers);
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
@@ -2661,6 +2701,8 @@ public partial class MainWindow : Window
             ModifierKeys.None,
             Key.F10,
             ModifierKeys.None,
+            Key.F10,
+            ModifierKeys.Shift,
             Key.F11,
             ModifierKeys.None,
             Key.F6,

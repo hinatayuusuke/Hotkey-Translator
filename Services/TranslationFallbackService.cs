@@ -21,10 +21,49 @@ public sealed class TranslationFallbackService
     public async Task<IReadOnlyDictionary<string, string>> TranslateAsync(
         IReadOnlyList<string> texts,
         AppSettings settings,
+        ForceRunOptions options,
         CancellationToken cancellationToken)
     {
         if (texts.Count == 0)
         {
+            return new Dictionary<string, string>();
+        }
+
+        if (options.ForceGeminiStrict)
+        {
+            // WHY: Strict hotkey requests a Gemini-only attempt for this run and must not fall back to other providers.
+            if (!_providers.TryGetValue(TranslationProviderNames.Gemini, out var geminiProvider))
+            {
+                _logger?.Info("Translation provider skipped[forced strict]: Gemini (not registered).");
+                return new Dictionary<string, string>();
+            }
+
+            if (!geminiProvider.IsEnabled(settings))
+            {
+                _logger?.Info("Translation provider skipped[forced strict]: Gemini (disabled).");
+                return new Dictionary<string, string>();
+            }
+
+            try
+            {
+                _logger?.Info("Translation provider active[forced strict]: Gemini.");
+                var result = await geminiProvider.TranslateAsync(texts, settings, cancellationToken).ConfigureAwait(false);
+                if (result.Count > 0)
+                {
+                    return result;
+                }
+
+                _logger?.Info("Translation provider returned empty result[forced strict]: Gemini.");
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "Translation provider failed[forced strict]: Gemini.");
+            }
+
             return new Dictionary<string, string>();
         }
 

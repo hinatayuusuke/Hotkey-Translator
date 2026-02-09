@@ -5071,3 +5071,90 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+**2026-02-09 13:51 (Asia/Taipei) — Gemini Strict計画書の現状仕様整合修正**
+
+### Summary
+- Doc/Gemini_Force_Strict_UI_Hotkey_Plan.md の失敗時挙動記述を現状仕様（原文フォールバック）に揃えた。
+
+### Context / Goal
+- 直前反映後に残っていた文言差分（概要・DoD）を、現状実装方針と一致させる。
+- Strict時の「プロバイダフォールバックなし」と「最終表示の原文フォールバック」を同時に明確化する。
+
+### Changes
+- 概要の失敗時説明を、空返却後に原文表示へフォールバックする記述へ修正。
+- DoDのStrict失敗条件を、追加プロバイダ不使用 + 原文フォールバック明記へ修正。
+
+### Files Touched
+- Doc/Gemini_Force_Strict_UI_Hotkey_Plan.md — 失敗時挙動に関する文言を現状仕様に合わせて更新。
+
+### Behavioral Impact
+- 実装計画の受け取り方が統一され、Strict失敗時の期待挙動（原文表示）が明確になった。
+
+### Risk & Mitigation
+- Risk: 計画書と実装の解釈ズレにより、Strict失敗時挙動の認識差が残る。
+- Mitigation: 概要とDoDの両方に同一方針を明記し、レビュー時の判断基準を固定化した。
+
+### Tests / Verification
+- 未実施（ドキュメント修正のみのため）。
+**2026-02-09 13:55 (Asia/Taipei) — Gemini Strict計画書のHotkey専用化**
+
+### Summary
+- Gemini Force Strict 計画を UI併用案から Hotkey専用案へ変更した。
+
+### Context / Goal
+- 運用方針を「UI側を消してホットキーのみ」に一本化する。
+- 計画書の構成要素（概要/設計/DoD）を新方針に整合させる。
+
+### Changes
+- タイトルと概要を「Hotkey専用」に更新。
+- UI常時トグル前提（設定項目・フロー・DoD）を削除。
+- 実行判定を effectiveForce = options.ForceGeminiStrict に更新。
+- 影響範囲とリスク緩和文言をHotkey専用運用へ調整。
+
+### Files Touched
+- Doc/Gemini_Force_Strict_UI_Hotkey_Plan.md — UI併用記述を削除し、Hotkey専用設計へ全面更新。
+
+### Behavioral Impact
+- 計画上、Gemini Strictは Shift+F10 ワンショット実行時のみ有効化される前提になった。
+
+### Risk & Mitigation
+- Risk: UI常時強制を期待する読み手との認識差が生じる。
+- Mitigation: 非ゴールに「UIトグル常時固定は提供しない」を明記し、DoDもHotkey前提に統一した。
+
+### Tests / Verification
+- 未実施（ドキュメント修正のみのため）。
+**2026-02-09 14:10 (Asia/Taipei) — Gemini Strict Hotkey専用実装**
+
+### Summary
+- Gemini Strict を Shift+F10 のワンショットHotkeyとして実装し、Strict時はGemini単独実行で追加フォールバックしない経路を追加した。
+
+### Context / Goal
+- Doc/Gemini_Force_Strict_UI_Hotkey_Plan.md の Hotkey専用方針に沿って、UI常時トグルなしで Gemini 固定実行を可能にする。
+- 既存の通常実行（優先度フォールバック）には影響を与えない形で、ワンショット強制実行のみを追加する。
+
+### Changes
+- Hotkeys UIに Force Gemini (strict) 行を追加し、設定の読み書き/登録/更新ログまで接続。
+- AppSettings に HotkeyForceGeminiStrictKey/Modifiers を追加（既定 F10 + Shift）。
+- MainWindow に OnForceGeminiStrictHotkeyPressed を追加し、ForceRunOptions へ ForceGeminiStrict=true を付与して実行。
+- ForceRunOptions に ForceGeminiStrict フラグを追加し、Pipeline から翻訳サービスへ伝播。
+- TranslationFallbackService に Strict分岐を追加し、Gemini単独実行・失敗時空返却（追加プロバイダへフォールバックしない）を実装。
+
+### Files Touched
+- MainWindow.xaml — Hotkeysパネルへ Force Gemini (strict) のKey/Modifier入力行を追加。
+- MainWindow.xaml.cs — 新Hotkeyのイベント/登録/設定反映/既定補完/起動ログ/Dispose処理を追加。
+- Models/AppSettings.cs — Gemini Strict専用Hotkey設定プロパティを追加。
+- Services/PipelineOrchestrator.cs — ForceRunOptions 拡張と翻訳実行オプション伝播を実装。
+- Services/TranslationFallbackService.cs — ForceGeminiStrict 時のGemini単独実行分岐を追加。
+
+### Behavioral Impact
+- Shift+F10 実行時のみ Gemini Strict が有効になり、Gemini失敗時は追加フォールバックせず空返却となる。
+- 非Strict実行（通常F8/F10）は従来どおり TranslationPriority 順のフォールバック挙動を維持する。
+
+### Risk & Mitigation
+- Risk: Shift+F10 が他ホットキー設定と衝突すると登録に失敗する可能性。
+- Mitigation: 既存の重複検知と個別ロールバック機構 (TryApplyHotkeyBinding) を利用し、他ホットキーへの波及を防止。
+- Risk: Strict時にGeminiが無効/障害の場合、翻訳結果が空になりやすい。
+- Mitigation: Strict専用ログ（skipped/active/empty/failed）を追加し、原因追跡を容易化。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
