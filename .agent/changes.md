@@ -5190,3 +5190,99 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` は実行中プロセスによるファイルロックで失敗（`Hotkey-Translator.exe/.dll` が使用中）。
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build\"` は成功（0 errors / 0 warnings）。
+**2026-02-09 15:12 (Asia/Taipei) — SceneChange AutoTranslate計画の排他・間隔共用方針反映**
+
+### Summary
+- `Doc/SceneChange_AutoTranslate_Plan.md` に「Auto-hide/Auto-translate排他」と「`SceneChangeWatchIntervalMs` のクールダウン共用」方針を反映した。
+
+### Context / Goal
+- AutoTranslateの追加にあたり、設定項目を増やさず既存監視設定を流用したい。
+- Auto-hide と Auto-translate の競合を避け、同時ON不可の明確仕様にしたい。
+
+### Changes
+- `SceneChangeAutoTranslateCooldownMs` の案を削除し、`SceneChangeWatchIntervalMs` 共用へ変更。
+- Auto-hide/Auto-translate の排他（同時ON不可）と自動補正ルールを追加。
+- 実装手順・リスク・DoDを排他仕様と間隔共用仕様に合わせて更新。
+
+### Files Touched
+- `Doc/SceneChange_AutoTranslate_Plan.md` — 設定設計、判定ルール、手順、リスク、DoDを方針に合わせて更新。
+
+### Behavioral Impact
+- 計画上、シーン変化モードは Auto-hide か Auto-translate のどちらか一方のみ有効となる。
+- 再発火抑止は新規設定ではなく `SceneChangeWatchIntervalMs` を使用する前提になった。
+
+### Risk & Mitigation
+- Risk: 既存の同時ON想定と計画仕様が不一致になる可能性。
+- Mitigation: 排他補正（保存時/起動時）の明記とDoD追加でレビュー観点を固定化した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-09 18:15 (Asia/Taipei) — SceneChange AutoTranslate計画にOverlay非依存監視方針を反映**
+
+### Summary
+- `Doc/SceneChange_AutoTranslate_Plan.md` に「Auto-translate は Overlay 表示状態に依存しない（非表示時も監視継続）」方針を反映した。
+
+### Context / Goal
+- Auto-translate の有効範囲を明確化し、実装時の解釈ぶれを防ぐ。
+- 既存 watcher 流用時に `overlayVisible` 条件へ引きずられない仕様をドキュメントで固定する。
+
+### Changes
+- 前提・仮定に「Auto-translate は Overlay 非表示時も監視継続」を追加。
+- 実行判定ルールに「Auto-translate 有効時は `overlayVisible` で監視停止しない」を追加。
+- 実装手順に watcher 起動条件の拡張（Auto-translate 時は `overlayVisible` 非依存）を追記。
+- リスク/DoDに Overlay 非表示時の監視継続に関する項目を追加。
+
+### Files Touched
+- `Doc/SceneChange_AutoTranslate_Plan.md` — 有効範囲・判定ルール・実装手順・リスク・DoDをOverlay非依存仕様へ更新。
+
+### Behavioral Impact
+- 計画上、Auto-translate は Overlay の表示状態に関係なくシーン変化監視と起動判定を行う前提になった。
+
+### Risk & Mitigation
+- Risk: Overlay 非表示中にも自動翻訳が走る挙動を利用者が想定しない可能性。
+- Mitigation: UI説明とログで「Overlay 表示状態に依存しない」ことを明示する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-09 18:23 (Asia/Taipei) — SceneChange AutoTranslate実装（既存watcher流用）**
+
+### Summary
+- `Enable auto-hide on scene change` の既存 watcher を流用し、排他モードの `Enable auto-translate on scene change` を実装した。
+
+### Context / Goal
+- シーン変化検知パイプラインを再利用し、検知後アクションを Auto-hide / Auto-translate で切り替える。
+- Auto-hide と Auto-translate は同時ON不可、旧設定で両ONなら Auto-hide 優先に統一する。
+- Auto-translate は Overlay 表示状態に依存せず、非表示時も監視継続する。
+
+### Changes
+- `AppSettings` に `EnableSceneChangeAutoTranslate` を追加。
+- Scene Change UIを `Scene Change Automation` へ更新し、`Enable auto-translate on scene change` を追加。
+- `OnSettingChanged` / `SaveSettingsAsync` に排他制御を追加（相互ON時は片方を自動OFF）。
+- 起動時の旧設定補正として `NormalizeSceneChangeModeSettings` を追加（両ON時は Auto-hide 優先）。
+- watcher 起動条件を `AutoTranslate || (AutoHide && overlayVisible)` に拡張。
+- `OnAutoHideTick` で検知時アクションを分岐:
+  - Auto-hide: 従来どおり Overlay 非表示
+  - Auto-translate: UIスレッドへ起動要求をキュー投入
+- Auto-translate 起動キュー処理を追加:
+  - 実行中 (`_runInProgress`) はログして破棄
+  - `SceneChangeWatchIntervalMs` 共用クールダウンで連打抑止
+  - 実行は `RunOnceAsync(ForceRunOptions.None)` 経路に統一
+
+### Files Touched
+- `Models/AppSettings.cs` — `EnableSceneChangeAutoTranslate` 設定を追加。
+- `MainWindow.xaml` — Scene Change設定UIに Auto-translate トグルと説明文を追加。
+- `MainWindow.xaml.cs` — 排他補正、watcher起動条件拡張、Auto-translate 起動キュー、監視分岐を実装。
+
+### Behavioral Impact
+- Scene Change モードは Auto-hide / Auto-translate の排他運用になる。
+- Auto-translate 有効時は Overlay 非表示でも監視と自動翻訳判定が継続される。
+- 検知時の自動翻訳起動は UI スレッドで実行され、実行中は安全に破棄される。
+
+### Risk & Mitigation
+- Risk: Auto-translate 非表示監視により、意図しないタイミングで自動翻訳が走る可能性。
+- Mitigation: UI説明文と詳細ログ（triggered / cooldown skip / running skip）で挙動を明示。
+- Risk: 旧設定で両ONのまま残っている場合に挙動が不定になる可能性。
+- Mitigation: 起動時に自動正規化し、Auto-hide 優先で固定化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-autotranslate\"` 実行成功（0 errors / 0 warnings）。

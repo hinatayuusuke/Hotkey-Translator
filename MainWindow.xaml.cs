@@ -53,6 +53,7 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _autoHideBaselineCts;
     private bool _autoHideBaselinePending;
     private int _autoHideBaselineVersion;
+    private DateTime _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
     private CancellationTokenSource? _translationOverlayCts;
@@ -93,6 +94,7 @@ public partial class MainWindow : Window
         await _settingsService.LoadAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
         var settingsChanged = NormalizeHotkeySettings(settings);
+        settingsChanged |= NormalizeSceneChangeModeSettings(settings);
         if (settings.EnableCTranslate2)
         {
             settings.EnableCTranslate2 = false;
@@ -757,6 +759,7 @@ public partial class MainWindow : Window
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
         EnableOverlayFontStabilizationCheck.IsChecked = settings.EnableOverlayFontStabilization;
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
+        EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
         SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
         SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
@@ -946,6 +949,18 @@ public partial class MainWindow : Window
         }
 
         return changed;
+    }
+
+    private static bool NormalizeSceneChangeModeSettings(AppSettings settings)
+    {
+        if (!settings.EnableSceneChangeAutoHide || !settings.EnableSceneChangeAutoTranslate)
+        {
+            return false;
+        }
+
+        // COMPAT: Legacy settings may have both enabled; keep auto-hide as the fixed priority.
+        settings.EnableSceneChangeAutoTranslate = false;
+        return true;
     }
 
     private static string NormalizeLlamaModelFileName(string? value)
@@ -1375,6 +1390,19 @@ public partial class MainWindow : Window
 
     private async void OnSettingChanged(object sender, RoutedEventArgs e)
     {
+        if (ReferenceEquals(sender, EnableSceneChangeAutoHideCheck) &&
+            EnableSceneChangeAutoHideCheck.IsChecked == true &&
+            EnableSceneChangeAutoTranslateCheck.IsChecked == true)
+        {
+            EnableSceneChangeAutoTranslateCheck.IsChecked = false;
+        }
+        else if (ReferenceEquals(sender, EnableSceneChangeAutoTranslateCheck) &&
+                 EnableSceneChangeAutoTranslateCheck.IsChecked == true &&
+                 EnableSceneChangeAutoHideCheck.IsChecked == true)
+        {
+            EnableSceneChangeAutoHideCheck.IsChecked = false;
+        }
+
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
@@ -1668,6 +1696,13 @@ public partial class MainWindow : Window
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
         settings.EnableOverlayFontStabilization = EnableOverlayFontStabilizationCheck.IsChecked == true;
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
+        settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslateCheck.IsChecked == true;
+        var normalizedSceneChangeMode = NormalizeSceneChangeModeSettings(settings);
+        if (normalizedSceneChangeMode)
+        {
+            EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
+            EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
+        }
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
@@ -2015,7 +2050,8 @@ public partial class MainWindow : Window
 
     private void UpdateSceneChangeControls(AppSettings settings)
     {
-        if (EnableSceneChangeAutoHideCheck == null || EnableSceneChangeTextWeightedCheck == null ||
+        if (EnableSceneChangeAutoHideCheck == null || EnableSceneChangeAutoTranslateCheck == null ||
+            EnableSceneChangeTextWeightedCheck == null ||
             SceneChangeThresholdSlider == null || SceneChangeThresholdValue == null ||
             SceneChangeWatchIntervalSlider == null || SceneChangeWatchIntervalValue == null ||
             SceneChangeWatchPhashSlider == null || SceneChangeWatchPhashValue == null)
@@ -2023,18 +2059,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        var enabled = settings.EnableSceneChangeAutoHide;
-        EnableSceneChangeTextWeightedCheck.IsEnabled = enabled;
-        SceneChangeThresholdSlider.IsEnabled = enabled;
-        SceneChangeThresholdValue.Foreground = enabled
+        var sceneWatcherEnabled = settings.EnableSceneChangeAutoHide || settings.EnableSceneChangeAutoTranslate;
+        EnableSceneChangeTextWeightedCheck.IsEnabled = settings.EnableSceneChangeAutoHide;
+        SceneChangeThresholdSlider.IsEnabled = sceneWatcherEnabled;
+        SceneChangeThresholdValue.Foreground = sceneWatcherEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
-        SceneChangeWatchIntervalSlider.IsEnabled = enabled;
-        SceneChangeWatchIntervalValue.Foreground = enabled
+        SceneChangeWatchIntervalSlider.IsEnabled = sceneWatcherEnabled;
+        SceneChangeWatchIntervalValue.Foreground = sceneWatcherEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
-        SceneChangeWatchPhashSlider.IsEnabled = enabled;
-        SceneChangeWatchPhashValue.Foreground = enabled
+        SceneChangeWatchPhashSlider.IsEnabled = sceneWatcherEnabled;
+        SceneChangeWatchPhashValue.Foreground = sceneWatcherEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
     }
@@ -2061,7 +2097,7 @@ public partial class MainWindow : Window
     private void OnOverlayHidden()
     {
         _overlayVisible = false;
-        StopAutoHideWatcher();
+        UpdateAutoHideWatcher(_settingsService.Settings);
     }
 
     private void OnOverlayUpdated()
@@ -2074,10 +2110,6 @@ public partial class MainWindow : Window
         _autoHideTimer = new DispatcherTimer(DispatcherPriority.Background);
         _autoHideTimer.Tick += OnAutoHideTick;
         UpdateAutoHideWatcher(settings);
-        if (_overlayVisible)
-        {
-            ScheduleAutoHideBaselineReset();
-        }
     }
 
     private void UpdateAutoHideWatcher(AppSettings settings)
@@ -2087,7 +2119,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!settings.EnableSceneChangeAutoHide || !_overlayVisible)
+        if (!ShouldWatchSceneChanges(settings))
         {
             StopAutoHideWatcher();
             return;
@@ -2099,6 +2131,11 @@ public partial class MainWindow : Window
         {
             _autoHideTimer.Start();
         }
+
+        if (!_autoHideBaselinePending && !_autoHideLastHash.HasValue)
+        {
+            ScheduleAutoHideBaselineReset();
+        }
     }
 
     private void StopAutoHideWatcher()
@@ -2108,6 +2145,7 @@ public partial class MainWindow : Window
             _autoHideTimer.Stop();
         }
 
+        _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
         ClearAutoHideBaseline();
     }
 
@@ -2127,7 +2165,7 @@ public partial class MainWindow : Window
     private void ScheduleAutoHideBaselineReset()
     {
         var settings = _settingsService.Settings;
-        if (!_overlayVisible || !settings.EnableSceneChangeAutoHide || _captureManager == null || _phashService == null)
+        if (!ShouldWatchSceneChanges(settings) || _captureManager == null || _phashService == null)
         {
             return;
         }
@@ -2205,7 +2243,7 @@ public partial class MainWindow : Window
         }
 
         var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoHide || !_overlayVisible || _autoHideBaselinePending || !_autoHideLastHash.HasValue)
+        if (!ShouldWatchSceneChanges(settings) || _autoHideBaselinePending || !_autoHideLastHash.HasValue)
         {
             return;
         }
@@ -2256,12 +2294,19 @@ public partial class MainWindow : Window
 
                     if (diff >= threshold)
                     {
-                        Dispatcher.Invoke(() =>
+                        if (settings.EnableSceneChangeAutoHide)
                         {
-                            _overlayEnabled = false;
-                            _overlayPresenter?.SetEnabled(false);
-                            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
-                        });
+                            Dispatcher.Invoke(() =>
+                            {
+                                _overlayEnabled = false;
+                                _overlayPresenter?.SetEnabled(false);
+                                AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
+                            });
+                        }
+                        else if (settings.EnableSceneChangeAutoTranslate)
+                        {
+                            Dispatcher.BeginInvoke(new Action(() => QueueSceneChangeAutoTranslate(diff, threshold)));
+                        }
                     }
 
                     if (baselineVersion == _autoHideBaselineVersion)
@@ -2284,12 +2329,50 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            _logger?.Error(ex, "Auto-hide watcher failed.");
+            _logger?.Error(ex, "Scene-change watcher failed.");
         }
         finally
         {
             _autoHideTickInProgress = false;
         }
+    }
+
+    private bool ShouldWatchSceneChanges(AppSettings settings)
+    {
+        if (settings.EnableSceneChangeAutoTranslate)
+        {
+            return true;
+        }
+
+        return settings.EnableSceneChangeAutoHide && _overlayVisible;
+    }
+
+    private void QueueSceneChangeAutoTranslate(int diff, int threshold)
+    {
+        var settings = _settingsService.Settings;
+        if (!settings.EnableSceneChangeAutoTranslate)
+        {
+            return;
+        }
+
+        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        var now = DateTime.UtcNow;
+        if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
+            (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
+        {
+            AppendLog($"Scene change auto-translate skipped: cooldown ({cooldownMs} ms).");
+            return;
+        }
+
+        if (Volatile.Read(ref _runInProgress) == 1)
+        {
+            AppendLog("Scene change auto-translate skipped: OCR already running.");
+            return;
+        }
+
+        _lastSceneChangeAutoTranslateRequestUtc = now;
+        AppendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
+        _ = RunOnceAsync(ForceRunOptions.None);
     }
 
     private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)

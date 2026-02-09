@@ -351,8 +351,10 @@
                                 <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0" Click="OnSettingChanged" />
 
                                 <Separator Margin="0,12,0,8" />
-                                <TextBlock Text="Scene Change Auto-hide" FontWeight="SemiBold" />
+                                <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
                                 <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0" Click="OnSettingChanged" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
