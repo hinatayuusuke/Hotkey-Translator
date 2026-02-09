@@ -1,6 +1,6 @@
 {
-  "filename": "qwen3-1_7b-instruct-q4_k_m.gguf",
-  "download_url": "https://huggingface.co/leuconoe/Qwen3-1.7B-Instruct-GGUF/resolve/9fee0122393fb529efb990c77381864702bad47d/Qwen3-1.7B-Q4_K_M-Instruct.gguf?download=true",
-  "sha256": "b047d6617eba56dcfa3357566b06807f54b15816faf6182aabd12d7e2378e537",
-  "size_bytes": 1282439360
+  "filename": "HY-MT1.5-1.8B-Q8_0.gguf",
+  "download_url": "https://huggingface.co/tencent/HY-MT1.5-1.8B-GGUF/resolve/main/HY-MT1.5-1.8B-Q8_0.gguf?download=true",
+  "sha256": "6789b06d0902f2f5312c0e1703d56ccbddfcfb6c653d22519b7c720f7db9a98e",
+  "size_bytes": 1908528288
 }

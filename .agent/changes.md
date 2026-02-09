@@ -5000,3 +5000,36 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+**2026-02-09 11:43 (Asia/Taipei) — Llamaデフォルト自動ダウンロードモデルをHY-MT1.5-1.8B-Q8_0へ変更**
+
+### Summary
+- Llama.cpp のデフォルト自動ダウンロード対象を `HY-MT1.5-1.8B-Q8_0.gguf` に切り替えた。
+
+### Context / Goal
+- 既定モデルを `qwen3-1_7b-instruct-q4_k_m.gguf` から、指定された `HY-MT1.5-1.8B-Q8_0.gguf` に置き換えたい。
+- 「設定変更のみ」では自動DL対象にならないため、デフォルト名と manifest をコード上で一致させる必要がある。
+
+### Changes
+- `model_manifest.json` の `filename` / `download_url` / `sha256` / `size_bytes` を HY-MT1.5-1.8B-Q8_0 に更新。
+- C# 側のデフォルトモデル名定数を新モデル名へ更新。
+- `AppSettings` の既定 `LlamaSelectedModelFileName` を新モデル名へ更新。
+- Python テストの既定モデルパスを新モデル名へ更新。
+
+### Files Touched
+- `TranslationServiceLlama/model_manifest.json` — 自動DL先URLと検証値（SHA256/サイズ）を新モデルに更新。
+- `Services/LlamaGrpcHost.cs` — `DefaultLlamaModelFileName` を `HY-MT1.5-1.8B-Q8_0.gguf` に更新。
+- `MainWindow.xaml.cs` — UI側フォールバック既定モデル名を新モデルに更新。
+- `Models/AppSettings.cs` — `LlamaSelectedModelFileName` の既定値を新モデルに更新。
+- `TranslationServiceLlama/test_translation_engine.py` — テスト既定モデルパスを新モデル名へ更新。
+
+### Behavioral Impact
+- Llama有効時、既定選択モデルが `HY-MT1.5-1.8B-Q8_0.gguf` になり、未配置時は manifest URL から自動DLされる。
+- 既存の自動検証（SHA256/サイズ）フローは維持される。
+
+### Risk & Mitigation
+- Risk: `resolve/main` URL は upstream 更新の影響を受けうる。
+- Mitigation: SHA256/サイズ検証で改変を検知し、不一致時は起動時に明示エラーで停止する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+- `uv run --project TranslationServiceLlama pytest TranslationServiceLlama/test_translation_engine.py` は `pytest` 未導入のため未実施。

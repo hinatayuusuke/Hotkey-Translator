@@ -136,7 +136,7 @@ public sealed class AppSettings
     public double LlamaTopP { get; set; } = 0.6;
     public int LlamaTopK { get; set; } = 20;
     public double LlamaRepeatPenalty { get; set; } = 1.05;
-    public string LlamaSelectedModelFileName { get; set; } = "qwen3-1_7b-instruct-q4_k_m.gguf";
+    public string LlamaSelectedModelFileName { get; set; } = "HY-MT1.5-1.8B-Q8_0.gguf";
     public bool EnableCTranslate2 { get; set; } = false;
     public string CTranslate2GrpcProjectDir { get; set; } = "TranslationService";
     public string CTranslate2GrpcUvPath { get; set; } = "uv";

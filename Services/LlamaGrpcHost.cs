@@ -20,7 +20,7 @@ public sealed class LlamaGrpcHost : IDisposable
 {
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
     private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
-    private const string DefaultLlamaModelFileName = "qwen3-1_7b-instruct-q4_k_m.gguf";
+    private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const string ManifestFileName = "model_manifest.json";
     private const string UvSyncStateFileName = ".uv-sync.state";
     private static readonly string[] RequiredNativeFiles =

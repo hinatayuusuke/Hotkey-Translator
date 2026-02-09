@@ -72,7 +72,7 @@ public partial class MainWindow : Window
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
-    private const string DefaultLlamaModelFileName = "qwen3-1_7b-instruct-q4_k_m.gguf";
+    private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
     private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
