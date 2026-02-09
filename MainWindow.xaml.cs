@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     private HotkeyManager? _forceRunHotkeyManager;
     private HotkeyManager? _forceGeminiStrictHotkeyManager;
     private HotkeyManager? _ocrOnlyHotkeyManager;
+    private HotkeyManager? _sceneAutoTranslateToggleHotkeyManager;
     private HotkeyManager? _selectRoiHotkeyManager;
     private HotkeyManager? _lockCaptureWindowHotkeyManager;
     private HotkeyManager? _unlockCaptureWindowHotkeyManager;
@@ -158,7 +159,7 @@ public partial class MainWindow : Window
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
-        AppendLog("Ready. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
+        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -172,6 +173,7 @@ public partial class MainWindow : Window
         _forceRunHotkeyManager?.Dispose();
         _forceGeminiStrictHotkeyManager?.Dispose();
         _ocrOnlyHotkeyManager?.Dispose();
+        _sceneAutoTranslateToggleHotkeyManager?.Dispose();
         _selectRoiHotkeyManager?.Dispose();
         _lockCaptureWindowHotkeyManager?.Dispose();
         _unlockCaptureWindowHotkeyManager?.Dispose();
@@ -472,6 +474,36 @@ public partial class MainWindow : Window
 
         _overlayTextMode = nextMode;
         AppendLog($"Overlay text mode: {_overlayTextMode}.");
+    }
+
+    private async void OnToggleSceneAutoTranslateHotkeyPressed(object? sender, EventArgs e)
+    {
+        var settings = _settingsService.Settings;
+        var nextEnabled = !settings.EnableSceneChangeAutoTranslate;
+        settings.EnableSceneChangeAutoTranslate = nextEnabled;
+        if (nextEnabled)
+        {
+            settings.EnableSceneChangeAutoHide = false;
+        }
+
+        _isApplyingSettings = true;
+        if (EnableSceneChangeAutoTranslateCheck != null)
+        {
+            EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
+        }
+
+        if (EnableSceneChangeAutoHideCheck != null)
+        {
+            EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
+        }
+        _isApplyingSettings = false;
+
+        UpdateSceneChangeControls(settings);
+        UpdateAutoHideWatcher(settings);
+        AppendLog(nextEnabled
+            ? "Scene change auto-translate enabled (F5). Auto-hide disabled."
+            : "Scene change auto-translate disabled (F5).");
+        await _settingsService.SaveAsync().ConfigureAwait(true);
     }
 
     private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
@@ -899,6 +931,7 @@ public partial class MainWindow : Window
     {
         var changed = false;
         var forceGeminiStrictKey = (settings.HotkeyForceGeminiStrictKey ?? string.Empty).Trim();
+        var toggleSceneAutoTranslateKey = (settings.HotkeyToggleSceneAutoTranslateKey ?? string.Empty).Trim();
         var selectRoiKey = (settings.HotkeySelectRoiKey ?? string.Empty).Trim();
         var lockKey = (settings.HotkeyLockCaptureWindowKey ?? string.Empty).Trim();
         var lockModifiers = ParseModifiers(settings.HotkeyLockCaptureWindowModifiers);
@@ -914,6 +947,18 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(settings.HotkeyForceGeminiStrictModifiers))
         {
             settings.HotkeyForceGeminiStrictModifiers = "Shift";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(toggleSceneAutoTranslateKey))
+        {
+            settings.HotkeyToggleSceneAutoTranslateKey = "F5";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyToggleSceneAutoTranslateModifiers))
+        {
+            settings.HotkeyToggleSceneAutoTranslateModifiers = "None";
             changed = true;
         }
 
@@ -1088,6 +1133,7 @@ public partial class MainWindow : Window
         SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
         SetHotkeyKey(HotkeyForceGeminiStrictKeyBox, settings.HotkeyForceGeminiStrictKey);
         SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
+        SetHotkeyKey(HotkeyToggleSceneAutoTranslateKeyBox, settings.HotkeyToggleSceneAutoTranslateKey);
         SetHotkeyKey(HotkeySelectRoiKeyBox, settings.HotkeySelectRoiKey);
         SetHotkeyKey(HotkeyLockCaptureWindowKeyBox, settings.HotkeyLockCaptureWindowKey);
         SetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox, settings.HotkeyUnlockCaptureWindowKey);
@@ -1097,6 +1143,7 @@ public partial class MainWindow : Window
         SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
         SetHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
         SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        SetHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers, HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
         SetHotkeyModifiers(settings.HotkeySelectRoiModifiers, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
         SetHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
         SetHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
@@ -1114,6 +1161,8 @@ public partial class MainWindow : Window
         settings.HotkeyForceGeminiStrictModifiers = GetHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
         settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
         settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        settings.HotkeyToggleSceneAutoTranslateKey = GetHotkeyKey(HotkeyToggleSceneAutoTranslateKeyBox);
+        settings.HotkeyToggleSceneAutoTranslateModifiers = GetHotkeyModifiers(HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
         settings.HotkeySelectRoiKey = GetHotkeyKey(HotkeySelectRoiKeyBox);
         settings.HotkeySelectRoiModifiers = GetHotkeyModifiers(HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
         settings.HotkeyLockCaptureWindowKey = GetHotkeyKey(HotkeyLockCaptureWindowKeyBox);
@@ -1753,6 +1802,7 @@ public partial class MainWindow : Window
         HotkeyForceRunKeyBox.ItemsSource = keys;
         HotkeyForceGeminiStrictKeyBox.ItemsSource = keys;
         HotkeyOcrOnlyKeyBox.ItemsSource = keys;
+        HotkeyToggleSceneAutoTranslateKeyBox.ItemsSource = keys;
         HotkeySelectRoiKeyBox.ItemsSource = keys;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
         HotkeyUnlockCaptureWindowKeyBox.ItemsSource = keys;
@@ -1803,6 +1853,7 @@ public partial class MainWindow : Window
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
                       $"ForceGeminiStrict={FormatHotkey(config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers)}, " +
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
+                      $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
                       $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}.");
@@ -1822,6 +1873,7 @@ public partial class MainWindow : Window
         allSucceeded &= TryApplyHotkeyBinding(ref _forceRunHotkeyManager, config.ForceRunKey, config.ForceRunModifiers, id: 3, OnForceRunHotkeyPressed, "ForceRun", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _forceGeminiStrictHotkeyManager, config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, id: 4, OnForceGeminiStrictHotkeyPressed, "ForceGeminiStrict", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 5, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
+        allSucceeded &= TryApplyHotkeyBinding(ref _sceneAutoTranslateToggleHotkeyManager, config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, id: 9, OnToggleSceneAutoTranslateHotkeyPressed, "SceneAutoTranslate", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _selectRoiHotkeyManager, config.SelectRoiKey, config.SelectRoiModifiers, id: 6, OnSelectRoiHotkeyPressed, "SelectRoi", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 7, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
         allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 8, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
@@ -1917,6 +1969,8 @@ public partial class MainWindow : Window
             ParseModifiers(settings.HotkeyForceGeminiStrictModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
             ParseModifiers(settings.HotkeyOcrOnlyModifiers),
+            ParseKey(settings.HotkeyToggleSceneAutoTranslateKey, Key.F5),
+            ParseModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers),
             ParseKey(settings.HotkeySelectRoiKey, Key.F6),
             ParseModifiers(settings.HotkeySelectRoiModifiers),
             ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
@@ -2758,6 +2812,8 @@ public partial class MainWindow : Window
         ModifierKeys ForceGeminiStrictModifiers,
         Key OcrOnlyKey,
         ModifierKeys OcrOnlyModifiers,
+        Key ToggleSceneAutoTranslateKey,
+        ModifierKeys ToggleSceneAutoTranslateModifiers,
         Key SelectRoiKey,
         ModifierKeys SelectRoiModifiers,
         Key LockCaptureWindowKey,
@@ -2772,6 +2828,7 @@ public partial class MainWindow : Window
             yield return ("Force run", ForceRunKey, ForceRunModifiers);
             yield return ("Force Gemini (strict)", ForceGeminiStrictKey, ForceGeminiStrictModifiers);
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
+            yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
             yield return ("Unlock window", UnlockCaptureWindowKey, UnlockCaptureWindowModifiers);
@@ -2787,6 +2844,8 @@ public partial class MainWindow : Window
             Key.F10,
             ModifierKeys.Shift,
             Key.F11,
+            ModifierKeys.None,
+            Key.F5,
             ModifierKeys.None,
             Key.F6,
             ModifierKeys.None,

@@ -5286,3 +5286,36 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-autotranslate\"` 実行成功（0 errors / 0 warnings）。
+**2026-02-09 18:43 (Asia/Taipei) — 自動翻訳トグルホットキー（F5）を追加**
+
+### Summary
+- シーン変化Auto-translateをホットキーでON/OFFできるようにし、デフォルト割り当てを `F5` に追加した。
+
+### Context / Goal
+- UI操作なしで、運用中に自動翻訳モードを即時切替できるようにする。
+- 既存のホットキー設定・保存・再登録フローに統合し、設定永続化まで一貫して動作させる。
+
+### Changes
+- `AppSettings` に `HotkeyToggleSceneAutoTranslateKey/Modifiers` を追加し、デフォルトを `F5` / `None` に設定。
+- Hotkeys設定UIに `Scene auto-translate` のキー/修飾キー行を追加。
+- `MainWindow` に `OnToggleSceneAutoTranslateHotkeyPressed` を追加し、押下ごとに `EnableSceneChangeAutoTranslate` をトグル。
+- Auto-translate をONにする際は排他仕様に従って Auto-hide をOFF化し、UI表示・watcher状態・設定保存を即時反映。
+- ホットキー正規化、UI反映、保存、再登録、ログ出力、`HotkeyConfig` の定義に新ホットキーを組み込み。
+
+### Files Touched
+- `Models/AppSettings.cs` — Scene auto-translateトグル用ホットキー設定項目を追加。
+- `MainWindow.xaml` — Hotkeysセクションへ `Scene auto-translate` の入力行を追加。
+- `MainWindow.xaml.cs` — ホットキー管理フィールド/ハンドラ/設定反映/登録処理/既定値/ログ文言を更新。
+
+### Behavioral Impact
+- デフォルト `F5` でシーン変化Auto-translateをON/OFF可能。
+- `F5` でONにした場合、排他制御により Auto-hide は自動でOFFになる。
+- 切替結果は即時に監視パイプラインへ反映され、設定ファイルへ永続化される。
+
+### Risk & Mitigation
+- Risk: ユーザーが `F5` を別用途に割り当てると重複登録で片方が有効化されない可能性。
+- Mitigation: 既存の重複検知・ロールバック処理を流用し、失敗時はログで可視化。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-hotkey-f5\"` を実行。
+- 結果: 成功（0 errors / 0 warnings）。

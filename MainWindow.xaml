@@ -590,6 +590,13 @@
                                     <CheckBox x:Name="HotkeyOcrOnlyShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Scene auto-translate" Width="120" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="HotkeyToggleSceneAutoTranslateKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
+                                    <CheckBox x:Name="HotkeyToggleSceneAutoTranslateCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyToggleSceneAutoTranslateAlt" Content="Alt" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                    <CheckBox x:Name="HotkeyToggleSceneAutoTranslateShift" Content="Shift" Margin="6,0,0,0" Click="OnSettingChanged" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Select ROI" Width="120" VerticalAlignment="Center" />
                                     <ComboBox x:Name="HotkeySelectRoiKeyBox" Width="80" SelectionChanged="OnHotkeySelectionChanged" />
                                     <CheckBox x:Name="HotkeySelectRoiCtrl" Content="Ctrl" Margin="8,0,0,0" Click="OnSettingChanged" />

@@ -102,6 +102,8 @@ public sealed class AppSettings
     public string HotkeyForceGeminiStrictModifiers { get; set; } = "Shift";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
+    public string HotkeyToggleSceneAutoTranslateKey { get; set; } = "F5";
+    public string HotkeyToggleSceneAutoTranslateModifiers { get; set; } = "None";
     public string HotkeySelectRoiKey { get; set; } = "F6";
     public string HotkeySelectRoiModifiers { get; set; } = "None";
     public string HotkeyLockCaptureWindowKey { get; set; } = "F7";
