@@ -755,7 +755,7 @@ public partial class MainWindow : Window
         OverlayFontSizeSlider.Value = settings.OverlayFontSize;
         OverlayBackgroundOpacitySlider.Value = settings.OverlayBackgroundOpacity;
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
-        EnableOverlayShortLineShrinkCheck.IsChecked = settings.EnableOverlayShortLineShrink;
+        EnableOverlayFontStabilizationCheck.IsChecked = settings.EnableOverlayFontStabilization;
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
         SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
@@ -1666,7 +1666,7 @@ public partial class MainWindow : Window
         settings.OverlayFontSize = Math.Round(OverlayFontSizeSlider.Value, 1);
         settings.OverlayBackgroundOpacity = Math.Round(OverlayBackgroundOpacitySlider.Value, 2);
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
-        settings.EnableOverlayShortLineShrink = EnableOverlayShortLineShrinkCheck.IsChecked == true;
+        settings.EnableOverlayFontStabilization = EnableOverlayFontStabilizationCheck.IsChecked == true;
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;

@@ -53,7 +53,7 @@ public sealed class AppSettings
     public int OcrTwoPassHighThreshold { get; set; } = 180;
     public bool OcrTwoPassPreferAuto { get; set; } = true;
     public bool EnableFixedRoiOverlay { get; set; } = false;
-    public bool EnableOverlayShortLineShrink { get; set; } = true;
+    public bool EnableOverlayFontStabilization { get; set; } = true;
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
     public double SceneChangeThreshold { get; set; } = 0.2;

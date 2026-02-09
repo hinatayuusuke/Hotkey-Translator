@@ -5158,3 +5158,35 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
+**2026-02-09 14:57 (Asia/Taipei) — Overlay安定化設定の名称・文言整理**
+
+### Summary
+- OCR設定の旧名称 `Shrink overlay for 1–2 lines` を、実際の挙動に合わせて `Stabilize overlay font size` へ更新した。
+
+### Context / Goal
+- 現在の実装は「1-2行限定の縮小」ではなく、フォントサイズの安定化（量子化/ヒステリシス）を制御している。
+- UI文言・設定名・参照コードを実態と一致させ、誤解を減らす。
+
+### Changes
+- 設定モデルの主キー名を `EnableOverlayFontStabilization` に変更。
+- 旧キー `EnableOverlayShortLineShrink` は読み込み互換のために受け口を残した。
+- Settings UIのチェックボックス名と表示文言を `Stabilize overlay font size` に変更。
+- MainWindow と OverlayWindow の参照を新設定名へ更新。
+
+### Files Touched
+- `Models/AppSettings.cs` — `EnableOverlayFontStabilization` 追加、旧キーの互換デシリアライズ受け口を追加。
+- `MainWindow.xaml` — OCR設定チェックボックス文言/名前を新名称へ変更。
+- `MainWindow.xaml.cs` — 設定読込/保存で新設定名を参照するよう更新。
+- `UI/OverlayWindow.xaml.cs` — スタイル適用時に新設定名を参照するよう更新。
+
+### Behavioral Impact
+- 機能挙動は維持され、表示文言と設定名だけが実態に一致する形へ整理された。
+- 既存の `settings.json` にある旧キー値は読み込み時に新設定へ移行される。
+
+### Risk & Mitigation
+- Risk: 設定名変更により既存設定の読み込み互換が崩れる可能性。
+- Mitigation: 旧キー専用の互換プロパティを用意し、既存値を新キーへマッピングした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` は実行中プロセスによるファイルロックで失敗（`Hotkey-Translator.exe/.dll` が使用中）。
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build\"` は成功（0 errors / 0 warnings）。

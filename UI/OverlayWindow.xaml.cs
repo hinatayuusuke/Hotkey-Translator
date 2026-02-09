@@ -55,7 +55,7 @@ public partial class OverlayWindow : Window
         var background = ParseBrush(settings.OverlayBackground, new SolidColorBrush(Color.FromArgb(136, 0, 0, 0)));
         _background = ApplyOverlayOpacity(background, settings.OverlayBackgroundOpacity);
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
-        _enableFontStabilization = settings.EnableOverlayShortLineShrink;
+        _enableFontStabilization = settings.EnableOverlayFontStabilization;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
