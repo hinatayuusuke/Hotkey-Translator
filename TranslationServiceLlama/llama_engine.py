@@ -668,8 +668,10 @@ def resolve_language_label(language: str) -> str:
         return "Japanese"
     if key.startswith("en") or key.startswith("eng"):
         return "English"
-    if key.startswith("zh") or key.startswith("zho"):
+    if key.startswith("zh-Hans") or key.startswith("zho"):
         return "Chinese"
+    if key.startswith("zh-Hant") or key.startswith("zho"):
+        return "Traditional Chinese"
     if key.startswith("ko") or key.startswith("kor"):
         return "Korean"
     if key.startswith("ru") or key.startswith("rus"):
