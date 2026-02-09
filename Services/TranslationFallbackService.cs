@@ -28,61 +28,33 @@ public sealed class TranslationFallbackService
             return new Dictionary<string, string>();
         }
 
-        if (settings.EnableLlamaCppTranslation)
-        {
-            if (!_providers.TryGetValue(TranslationProviderNames.LlamaCpp, out var llamaProvider))
-            {
-                _logger?.Info("Translation provider skipped: LlamaCpp (not registered).");
-                return new Dictionary<string, string>();
-            }
-
-            if (!llamaProvider.IsEnabled(settings))
-            {
-                _logger?.Info("Translation provider skipped: LlamaCpp (disabled).");
-                return new Dictionary<string, string>();
-            }
-
-            try
-            {
-                _logger?.Info($"Translation provider active: {llamaProvider.Name}.");
-                return await llamaProvider.TranslateAsync(texts, settings, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger?.Error(ex, $"Translation provider failed: {llamaProvider.Name}.");
-                return new Dictionary<string, string>();
-            }
-        }
-
         var priority = NormalizePriority(settings);
-        foreach (var name in priority)
+        _logger?.Info($"Translation provider order: {string.Join(" > ", priority)}.");
+        for (var i = 0; i < priority.Count; i++)
         {
+            var name = priority[i];
             if (!_providers.TryGetValue(name, out var provider))
             {
-                _logger?.Info($"Translation provider skipped: {name} (not registered).");
+                _logger?.Info($"Translation provider skipped[{i + 1}/{priority.Count}]: {name} (not registered).");
                 continue;
             }
 
             if (!provider.IsEnabled(settings))
             {
-                _logger?.Info($"Translation provider skipped: {provider.Name} (disabled).");
+                _logger?.Info($"Translation provider skipped[{i + 1}/{priority.Count}]: {provider.Name} (disabled).");
                 continue;
             }
 
             try
             {
-                _logger?.Info($"Translation provider active: {provider.Name}.");
+                _logger?.Info($"Translation provider active[{i + 1}/{priority.Count}]: {provider.Name}.");
                 var result = await provider.TranslateAsync(texts, settings, cancellationToken).ConfigureAwait(false);
                 if (result.Count > 0)
                 {
                     return result;
                 }
 
-                _logger?.Info($"Translation provider returned empty result: {provider.Name}.");
+                _logger?.Info($"Translation provider returned empty result[{i + 1}/{priority.Count}]: {provider.Name}.");
             }
             catch (OperationCanceledException)
             {
@@ -90,7 +62,7 @@ public sealed class TranslationFallbackService
             }
             catch (Exception ex)
             {
-                _logger?.Error(ex, $"Translation provider failed: {provider.Name}.");
+                _logger?.Error(ex, $"Translation provider failed[{i + 1}/{priority.Count}]: {provider.Name}.");
             }
         }
 
@@ -99,12 +71,18 @@ public sealed class TranslationFallbackService
 
     private static IReadOnlyList<string> NormalizePriority(AppSettings settings)
     {
+        var allowed = new HashSet<string>(TranslationProviderNames.Defaults, StringComparer.OrdinalIgnoreCase);
         var ordered = new List<string>();
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var current = settings.TranslationPriority ?? new List<string>();
         foreach (var name in current)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (!allowed.Contains(name))
             {
                 continue;
             }

@@ -450,21 +450,23 @@
                                   <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
                                   <TextBlock x:Name="TranslationStatusText" Text="Translation status: unknown" Foreground="DimGray" Margin="0,6,0,6" />
                                   <Separator Margin="0,8,0,8" />
-                                  <TextBlock Text="Local NLLB200 (CTranslate2)" FontWeight="SemiBold" />
-                                  <CheckBox x:Name="EnableCTranslate2Check"
-                                            Content="Enable CTranslate2 translation"
-                                            Margin="0,6,0,0"
-                                            Click="OnSettingChanged" />
-                                  <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap"
-                                             Margin="0,4,0,0" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Device" Width="120" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="CTranslate2DeviceBox" Width="120" SelectionChanged="OnSettingChanged">
-                                          <ComboBoxItem Content="CPU" Tag="cpu" />
-                                          <ComboBoxItem Content="GPU" Tag="gpu" />
-                                      </ComboBox>
+                                  <StackPanel Visibility="Collapsed">
+                                      <TextBlock Text="Local NLLB200 (CTranslate2)" FontWeight="SemiBold" />
+                                      <CheckBox x:Name="EnableCTranslate2Check"
+                                                Content="Enable CTranslate2 translation"
+                                                Margin="0,6,0,0"
+                                                Click="OnSettingChanged" />
+                                      <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
+                                                 Foreground="DimGray"
+                                                 TextWrapping="Wrap"
+                                                 Margin="0,4,0,0" />
+                                      <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                          <TextBlock Text="Device" Width="120" VerticalAlignment="Center" />
+                                          <ComboBox x:Name="CTranslate2DeviceBox" Width="120" SelectionChanged="OnSettingChanged">
+                                              <ComboBoxItem Content="CPU" Tag="cpu" />
+                                              <ComboBoxItem Content="GPU" Tag="gpu" />
+                                          </ComboBox>
+                                      </StackPanel>
                                   </StackPanel>
                                   <Separator Margin="0,10,0,8" />
                                   <TextBlock Text="Local Llama.cpp (GGUF)" FontWeight="SemiBold" />

@@ -5033,3 +5033,41 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
 - `uv run --project TranslationServiceLlama pytest TranslationServiceLlama/test_translation_engine.py` は `pytest` 未導入のため未実施。
+**2026-02-09 13:39 (Asia/Taipei) — TranslationPriority準拠化とCTranslate2/GoogleWeb整理の実装**
+
+### Summary
+- Llama固定分岐を廃止して優先度順選択へ統一し、CTranslate2/GoogleWeb を優先度UIと実行経路から整理した。
+
+### Context / Goal
+- `TranslationPriority` に従って翻訳エンジンを選択するようにし、Llama有効時の固定実行を解消したい。
+- CTranslate2/GoogleWeb を段階廃止する前提で、既定優先度とUI表示を `LlamaCpp, Gemini, DeepL` に揃えたい。
+
+### Changes
+- `TranslationFallbackService` の Llama直行分岐を削除し、優先度ループへ一本化。
+- 優先度正規化で `TranslationProviderNames.Defaults` 以外（CTranslate2/GoogleWeb含む旧値）を除外。
+- 既定優先度を `LlamaCpp, Gemini, DeepL` に変更。
+- MainWindow の翻訳プロバイダ登録から CTranslate2 を除外。
+- CTranslate2 は設定ロード/保存時に常にOFFへ寄せ、ホスト起動判定を常時 false 化。
+- Translation status から CTranslate2 表示を除外。
+- Translation設定UIの CTranslate2 ブロックを `Visibility="Collapsed"` として非表示化。
+
+### Files Touched
+- `Services/TranslationFallbackService.cs` — Llama固定分岐削除、優先度順ログ強化、許可プロバイダのみ正規化。
+- `Models/TranslationProviderNames.cs` — 既定優先度を `LlamaCpp, Gemini, DeepL` へ更新。
+- `MainWindow.xaml.cs` — CTranslate2プロバイダ除外、CTranslate2無効化、優先度正規化フィルタ、状態表示更新。
+- `MainWindow.xaml` — CTranslate2 設定UIを非表示化。
+
+### Behavioral Impact
+- Llama有効でも翻訳選択は常に `TranslationPriority` 順で行われる。
+- 既定優先度は `LlamaCpp > Gemini > DeepL` となる。
+- UI上で CTranslate2 は操作不可（非表示）となり、翻訳実行経路でも使用されない。
+- 旧設定に残る CTranslate2/GoogleWeb は優先度正規化で除外される。
+
+### Risk & Mitigation
+- Risk: 既存の「Llama有効なら必ずLlama」期待と挙動差が出る。
+- Mitigation: 優先度順を明示するログを追加し、選択順が追跡可能な状態にした。
+- Risk: 旧設定に CTranslate2 が残ると意図しない挙動が起こる可能性。
+- Mitigation: 読み込み時に `EnableCTranslate2=false` へ補正し、起動判定も常時無効化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。

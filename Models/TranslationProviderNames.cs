@@ -8,5 +8,5 @@ public static class TranslationProviderNames
     public const string DeepL = "DeepL";
     public const string GoogleWeb = "GoogleWeb";
 
-    public static readonly string[] Defaults = { LlamaCpp, CTranslate2, Gemini, DeepL, GoogleWeb };
+    public static readonly string[] Defaults = { LlamaCpp, Gemini, DeepL };
 }

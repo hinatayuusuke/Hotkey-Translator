@@ -92,6 +92,11 @@ public partial class MainWindow : Window
         await _settingsService.LoadAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
         var settingsChanged = NormalizeHotkeySettings(settings);
+        if (settings.EnableCTranslate2)
+        {
+            settings.EnableCTranslate2 = false;
+            settingsChanged = true;
+        }
         ApplySettingsToUi(settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
@@ -125,7 +130,6 @@ public partial class MainWindow : Window
         var translationProviders = new List<ITranslationProvider>
         {
             new LlamaGrpcTranslationProvider(_logger),
-            new CTranslate2GrpcTranslationProvider(_logger),
             new DeepLTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
         };
@@ -305,7 +309,8 @@ public partial class MainWindow : Window
 
     private static bool ShouldLoadCTranslate2(AppSettings settings)
     {
-        return settings.EnableCTranslate2 && !settings.EnableLlamaCppTranslation;
+        // WHY: CTranslate2 translation path is retired; keep host disabled even if legacy settings remain.
+        return false;
     }
 
     private static bool ShouldLoadLlama(AppSettings settings)
@@ -684,8 +689,15 @@ public partial class MainWindow : Window
         SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
         EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
         PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
-        EnableCTranslate2Check.IsChecked = settings.EnableCTranslate2;
-        SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
+        settings.EnableCTranslate2 = false;
+        if (EnableCTranslate2Check != null)
+        {
+            EnableCTranslate2Check.IsChecked = false;
+        }
+        if (CTranslate2DeviceBox != null)
+        {
+            SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
+        }
         EnableLlamaCppCheck.IsChecked = settings.EnableLlamaCppTranslation;
         ReloadLlamaModelOptions(settings);
         LlamaHostBox.Text = settings.LlamaHost;
@@ -774,14 +786,13 @@ public partial class MainWindow : Window
         var llamaStatus = settings.EnableLlamaCppTranslation
             ? "Llama: enabled"
             : "Llama: disabled";
-        var ct2Status = settings.EnableCTranslate2 ? "CTranslate2: enabled" : "CTranslate2: disabled";
         var geminiStatus = settings.EnableGemini
             ? (string.IsNullOrWhiteSpace(settings.ApiKey) ? "Gemini: key missing" : "Gemini: enabled")
             : "Gemini: disabled";
         var deepLStatus = settings.EnableDeepL
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
-        TranslationStatusText.Text = $"Translation status: {llamaStatus} | {ct2Status} | {geminiStatus} | {deepLStatus}";
+        TranslationStatusText.Text = $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus}";
     }
 
     private void ReloadLlamaModelOptions(AppSettings settings)
@@ -1242,6 +1253,7 @@ public partial class MainWindow : Window
     private void ApplyTranslationPriority(AppSettings settings)
     {
         var ordered = NormalizeTranslationPriority(settings);
+        settings.TranslationPriority = ordered.ToList();
         _translationPriority.Clear();
         foreach (var name in ordered)
         {
@@ -1266,12 +1278,18 @@ public partial class MainWindow : Window
 
     private static List<string> NormalizeTranslationPriority(AppSettings settings)
     {
+        var allowed = new HashSet<string>(TranslationProviderNames.Defaults, StringComparer.OrdinalIgnoreCase);
         var ordered = new List<string>();
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var current = settings.TranslationPriority ?? new List<string>();
         foreach (var name in current)
         {
             if (string.IsNullOrWhiteSpace(name))
+            {
+                continue;
+            }
+
+            if (!allowed.Contains(name))
             {
                 continue;
             }
@@ -1543,9 +1561,7 @@ public partial class MainWindow : Window
         settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
-        settings.EnableCTranslate2 = EnableCTranslate2Check.IsChecked == true;
-        settings.CTranslate2Device = GetSelectedTag(CTranslate2DeviceBox, "cpu");
-        NormalizeCTranslate2Settings(settings);
+        settings.EnableCTranslate2 = false;
         settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
         settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
         settings.LlamaHost = LlamaHostBox.Text.Trim();
@@ -1594,10 +1610,6 @@ public partial class MainWindow : Window
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
         NormalizeLlamaSettings(settings);
-        if (settings.EnableLlamaCppTranslation && settings.EnableCTranslate2)
-        {
-            DisableCTranslate2(settings);
-        }
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
