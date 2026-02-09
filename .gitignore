@@ -17,6 +17,8 @@ TranslationServiceLlama/LlamaCpp/
 .env
 TranslationService/models/
 docignore/
+.venv/
+.uv-sync.state
 
 # User-specific files
 *.rsuser
