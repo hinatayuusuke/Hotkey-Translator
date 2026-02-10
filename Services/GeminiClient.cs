@@ -73,7 +73,7 @@ public sealed class GeminiClient
             },
             generationConfig = new
             {
-                temperature = 0.2,
+                temperature = 0.7,
                 // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
                 maxOutputTokens = 4096,
                 responseMimeType = "application/json",
@@ -220,11 +220,9 @@ public sealed class GeminiClient
         var inputJson = JsonSerializer.Serialize(texts);
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
         return $@"Translate each input text into {targetLanguage}.
-Rules:
-1. Return JSON only with this exact schema: {{""translations"":[""""]}}.
-2. Keep array length and order exactly the same as input.
-3. Do not include markdown, explanations, or extra keys.
-Input: {inputJson}";
+            Output must be in UTF-8 characters; do not use Unicode escape sequences like \uXXXX.
+            Keep the same array length and order as the input.
+            Input: {inputJson}";
     }
 
     private static string ResolveGeminiLanguageName(string? language)
