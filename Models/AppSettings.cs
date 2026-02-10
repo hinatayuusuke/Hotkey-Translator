@@ -14,6 +14,21 @@ public enum CaptureProviderMode
     Fixed
 }
 
+public enum VerticalModeOverride
+{
+    // COMPAT: Persisted to settings.json; keep numeric values stable.
+    Auto = 0,
+    Horizontal = 1,
+    Vertical = 2
+}
+
+public enum VerticalColumnOrder
+{
+    // COMPAT: Persisted to settings.json; keep numeric values stable.
+    RightToLeft = 0,
+    LeftToRight = 1
+}
+
 public sealed class AppSettings
 {
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
@@ -98,6 +113,11 @@ public sealed class AppSettings
     public double RowMergeMaxGapRatio { get; set; } = 1.25;
     public double RowMergeHardBreakRatio { get; set; } = 1.25;
     public int RowMergeNeighborCount { get; set; } = 24;
+    public bool EnableVerticalMerge { get; set; } = true;
+    public bool VerticalModeAutoDetect { get; set; } = true;
+    public VerticalModeOverride VerticalModeOverride { get; set; } = VerticalModeOverride.Vertical;
+    public VerticalColumnOrder VerticalColumnOrder { get; set; } = VerticalColumnOrder.RightToLeft;
+    public double VerticalGapRatio { get; set; } = 1.25;
     public string HotkeyRunOnceKey { get; set; } = "F8";
     public string HotkeyRunOnceModifiers { get; set; } = "None";
     public string HotkeyToggleOverlayKey { get; set; } = "F9";

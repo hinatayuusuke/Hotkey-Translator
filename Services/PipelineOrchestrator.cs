@@ -554,10 +554,21 @@ public sealed class PipelineOrchestrator
             return Array.Empty<OverlayItem>();
         }
 
-        var ordered = groupedLines
-            .OrderBy(line => line.Rect.Y)
-            .ThenBy(line => line.Rect.X)
-            .ToList();
+        List<OcrLine> ordered;
+        if (settings.VerticalModeOverride == VerticalModeOverride.Vertical)
+        {
+            // WHY: Fixed-ROI combined overlay must follow vertical reading order when vertical mode is explicitly forced.
+            ordered = settings.VerticalColumnOrder == VerticalColumnOrder.LeftToRight
+                ? groupedLines.OrderBy(line => line.Rect.X).ThenBy(line => line.Rect.Y).ToList()
+                : groupedLines.OrderByDescending(line => line.Rect.X).ThenBy(line => line.Rect.Y).ToList();
+        }
+        else
+        {
+            ordered = groupedLines
+                .OrderBy(line => line.Rect.Y)
+                .ThenBy(line => line.Rect.X)
+                .ToList();
+        }
 
         var lines = new List<string>(ordered.Count);
         foreach (var line in ordered)

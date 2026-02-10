@@ -5590,3 +5590,165 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみのため）。
+**2026-02-10 16:39 (Asia/Taipei) — 縦書き判定込みOCR実装案を更新**
+
+### Summary
+- Doc/Ocr_Vertical_Writing_Merge_Plan.md を、ロールバック後の現状を前提にした縦書き判定込みの実装案へ更新。
+
+### Context / Goal
+- 縦書き時にオーバレイと翻訳順が左列先頭になる問題の原因を、現行コード前提で再定義する。
+- 書字方向判定（Horizontal/Vertical/Unknown）を含む実装手順をDocとして明文化する。
+
+### Changes
+- ロールバック後の現状整理（Y->X 固定整列、groupedLines の共通利用）を追記。
+- 縦書き判定の導入方針（言語ゲート、Unknownフォールバック、縦書き2-stage）を具体化。
+- 設定追加案、実装ステップ、リスク/緩和策、DoDを現状仕様に合わせて再構成。
+
+### Files Touched
+- Doc/Ocr_Vertical_Writing_Merge_Plan.md — 縦書き判定込みの実装案に全面更新。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装着手時の判断基準と変更範囲が明確化された。
+
+### Risk & Mitigation
+- Risk: 実装前のため、閾値の妥当性は未検証。
+- Mitigation: DoDにフォールバック条件と回帰確認を明記し、実装時に検証可能な形へ整理した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-10 16:40 (Asia/Taipei) — 縦書き判定案を新規Docとして作成**
+
+### Summary
+- 縦書き判定込みOCR実装案を既存ファイル更新ではなく新規Docとして作成し、既存Docは元状態へ戻した。
+
+### Context / Goal
+- 既存計画書の上書きではなく、新規ファイルで実装案を管理したい。
+- 既存ドキュメント資産を保持したまま、改訂案を別紙化する。
+
+### Changes
+- Doc/Ocr_Vertical_Writing_Merge_Plan_v2.md を新規作成（縦書き判定込みの実装案内容）。
+- Doc/Ocr_Vertical_Writing_Merge_Plan.md はHEAD時点の内容へ復元。
+
+### Files Touched
+- Doc/Ocr_Vertical_Writing_Merge_Plan_v2.md — 新規作成（改訂版実装案）。
+- Doc/Ocr_Vertical_Writing_Merge_Plan.md — 既存版を復元。
+
+### Behavioral Impact
+- 実装コードへの影響なし。Doc運用が「既存保持 + 新規案追加」に変更された。
+
+### Risk & Mitigation
+- Risk: どちらが最新版か混同する可能性。
+- Mitigation: ファイル名に 2 を付与し、レビュー対象を明示する。
+
+### Tests / Verification
+- git status --short と git diff -- Doc/Ocr_Vertical_Writing_Merge_Plan.md Doc/Ocr_Vertical_Writing_Merge_Plan_v2.md で差分を確認。
+**2026-02-10 16:47 (Asia/Taipei) — Ocr縦書き判定と縦書き2段結合を実装**
+
+### Summary
+- Doc/Ocr_Vertical_Writing_Merge_Plan_v2.md の方針に沿って、縦書き判定と縦書き用結合/並び順を OcrLineGrouper に実装した。
+
+### Context / Goal
+- WinRT縦書きOCRで、非固定ROI時の表示順と翻訳順が左列先頭になる課題があった。
+- groupedLines の生成順を縦書き基準（右列→左列、列内は上→下）へ分岐可能にする。
+
+### Changes
+- AppSettings に縦書き制御用の最小設定を追加（Enable/AutoDetect/Override/ColumnOrder/GapRatio）。
+- OcrLineGrouper に書字方向判定（Horizontal/Vertical/Unknown）を追加し、ja/zh* 言語ゲートで自動判定を有効化。
+- 判定結果に応じて、横書き既存パスと縦書き2段結合パス（同一列トークン結合 + 列順整列）を分岐。
+- 縦書き時の結合規則として、X中心差+幅比の同一列判定、Yギャップ閾値と強制ブレークを追加。
+
+### Files Touched
+- Models/AppSettings.cs — VerticalModeOverride / VerticalColumnOrder enum と縦書き関連設定を追加。
+- Services/OcrLineGrouper.cs — 書字方向判定、言語ゲート、縦書き2段結合、縦書き順序整列を実装。
+
+### Behavioral Impact
+- SourceLanguage が ja / zh* で縦書き優勢と判定された場合、groupedLines が縦書き順序で出力される。
+- 非固定ROIオーバレイ表示順と翻訳投入順が同じ groupedLines を使うため、縦書き順序が両方に反映される。
+- 判定が不確実（Unknown）または対象外言語の場合は横書きパスへフォールバックする。
+
+### Risk & Mitigation
+- Risk: 自動判定が混在レイアウトで誤る可能性。
+- Mitigation: 優勢比判定で Unknown に落とし、横書きへフォールバック。さらに VerticalModeOverride で手動固定可能。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln は実行中EXEロックで失敗（Hotkey-Translator.exe 使用中）。
+- dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-vertical-v2\" でビルド成功（0 warning / 0 error）。
+**2026-02-10 17:27 (Asia/Taipei) — 固定ROI表示順をVertical固定に対応**
+
+### Summary
+- 固定ROIオーバレイの結合表示順を、VerticalModeOverride=Vertical 時に縦書き順へ切り替える処理を追加。
+
+### Context / Goal
+- 検証目的として、まず固定ROIモードで表示順のみ正しくなるかを確認したい。
+- 非固定ROIや結合ロジック本体は触らず、固定ROI経路だけを最小変更する。
+
+### Changes
+- BuildOverlayItems(...) の固定ROI経路に分岐を追加。
+- VerticalModeOverride=Vertical の場合、VerticalColumnOrder に従って X優先（右→左または左→右）+ Y昇順 で並べる。
+- それ以外は従来どおり Y->X ソートを維持。
+
+### Files Touched
+- Services/PipelineOrchestrator.cs — 固定ROI時の表示順ソートを縦書き固定対応に変更。
+
+### Behavioral Impact
+- EnableFixedRoiOverlay=true かつ VerticalModeOverride=Vertical のとき、固定ROIの1ボックス結合表示が縦書き列順で連結される。
+- 非固定ROI表示と他モードの挙動は変更なし。
+
+### Risk & Mitigation
+- Risk: VerticalModeOverride=Auto の縦書きケースでは固定ROI経路は従来順のまま。
+- Mitigation: 今回は検証目的の最小変更として限定し、必要なら次段でAuto時も書字方向を反映する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-fixedroi-order\" を実行し、0 warning / 0 error を確認。
+**2026-02-10 17:57 (Asia/Taipei) — ReadingUnit導入の縦書き実装案を新規作成**
+
+### Summary
+- 非固定ROI表示順修正と縦書き翻訳送信改善を目的に、ReadingUnit導入案を新規Docとして追加した。
+
+### Context / Goal
+- 固定ROIは改善したが、非固定ROIと翻訳送信単位は縦書きで課題が残っている。
+- Llama単件plain経路を維持しつつ、表示順と翻訳送信を同一単位で整える設計を明文化する。
+
+### Changes
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md を新規作成。
+- ReadingUnitモデル、Builder、Pipeline反映、UnitIdマッピング、Llama単件/複数件方針を定義。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — ReadingUnit導入を軸にした実装計画を新規追加。
+
+### Behavioral Impact
+- コード挙動の変更はなし。次実装フェーズの設計判断基準が追加された。
+
+### Risk & Mitigation
+- Risk: 計画のみで閾値の妥当性は未検証。
+- Mitigation: DoDに検証観点（順序、送信粒度、Llama単件/複数件経路）を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-10 18:00 (Asia/Taipei) — ReadingUnit計画に固定ROI統一方針を追記**
+
+### Summary
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md に、固定ROIも内部的にReadingUnitを使う方針を追記した。
+
+### Context / Goal
+- 固定ROIだけ別経路にすると順序不一致が再発しやすいため、表示/翻訳単位を統一したい。
+- 見た目の1ボックス表示は維持しつつ、内部処理はReadingUnitへ一本化する。
+
+### Changes
+- 概要に「固定ROIもReadingUnitを利用、描画のみ1ボックス集約」を追加。
+- データフローに固定ROIの連結描画ステップを追加。
+- 実装手順に固定ROI経路のReadingUnit統一ステップを追加。
+- DoDに固定ROI順序の検証項目を追加。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — 固定ROIのReadingUnit統一方針を追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装方針として固定/非固定ROIの整合性要件が明確化された。
+
+### Risk & Mitigation
+- Risk: 計画上の統一により実装影響範囲が拡大する可能性。
+- Mitigation: Step分割（まず表示、次に翻訳）を維持し、段階的に導入する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
