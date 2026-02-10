@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -487,6 +488,7 @@ public sealed class PipelineOrchestrator
 
         _logger.Info($"Translation pending: {pending.Count} items.");
         var pendingTexts = pending.Select(item => item.SourceText).ToList();
+        _logger.Info(BuildTranslationPayloadLog(pending));
         TranslationStarted?.Invoke();
         IReadOnlyDictionary<string, string> results;
         try
@@ -665,6 +667,98 @@ public sealed class PipelineOrchestrator
         }
 
         return changedUnitIds;
+    }
+
+    private static string BuildTranslationPayloadLog(IReadOnlyList<PendingTranslation> pending)
+    {
+        const int maxPreviewItems = 10;
+        const int maxPreviewChars = 180;
+
+        var builder = new StringBuilder();
+        builder.Append("Translation request payload preview: ");
+        var previewCount = Math.Min(maxPreviewItems, pending.Count);
+        for (var i = 0; i < previewCount; i++)
+        {
+            var item = pending[i];
+            var (leadingSpaces, trailingSpaces, maxConsecutiveSpaces) = GetSpaceStats(item.SourceText);
+            var textPreview = ToVisiblePreview(item.SourceText, maxPreviewChars, out var truncated);
+            if (i > 0)
+            {
+                builder.Append(" | ");
+            }
+
+            // WHY: Make spacing and line breaks explicit to diagnose vertical reading-unit text shaping before translation.
+            builder.Append(
+                $"unit={item.UnitId}, len={item.SourceText.Length}, leadSp={leadingSpaces}, trailSp={trailingSpaces}, maxSpRun={maxConsecutiveSpaces}, text=\"{textPreview}");
+            if (truncated)
+            {
+                builder.Append("...(truncated)");
+            }
+            builder.Append('"');
+        }
+
+        if (pending.Count > previewCount)
+        {
+            builder.Append($" | ... {pending.Count - previewCount} more item(s)");
+        }
+
+        return builder.ToString();
+    }
+
+    private static (int Leading, int Trailing, int MaxRun) GetSpaceStats(string text)
+    {
+        var leading = 0;
+        while (leading < text.Length && text[leading] == ' ')
+        {
+            leading++;
+        }
+
+        var trailing = 0;
+        var trailingIndex = text.Length - 1;
+        while (trailingIndex >= 0 && text[trailingIndex] == ' ')
+        {
+            trailing++;
+            trailingIndex--;
+        }
+
+        var maxRun = 0;
+        var currentRun = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == ' ')
+            {
+                currentRun++;
+                if (currentRun > maxRun)
+                {
+                    maxRun = currentRun;
+                }
+            }
+            else
+            {
+                currentRun = 0;
+            }
+        }
+
+        return (leading, trailing, maxRun);
+    }
+
+    private static string ToVisiblePreview(string text, int maxChars, out bool truncated)
+    {
+        var escaped = text
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal)
+            .Replace(" ", "<sp>", StringComparison.Ordinal);
+
+        if (escaped.Length <= maxChars)
+        {
+            truncated = false;
+            return escaped;
+        }
+
+        truncated = true;
+        return escaped[..maxChars];
     }
 
     private sealed record PendingTranslation(int UnitId, string SourceText, string Normalized, string CacheKey);

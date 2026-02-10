@@ -5900,3 +5900,32 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-readingunit-2\"` を実行し、0 warning / 0 error を確認。
 
+**2026-02-10 19:07 (Asia/Taipei) — 翻訳送信ペイロード可視化ログの追加**
+
+### Summary
+- 縦書き時の翻訳送信テキスト検証のため、翻訳実行直前の送信内容プレビューをログ出力するようにした。
+
+### Context / Goal
+- 送信テキストに不要なスペースが混入しているかを実データで確認したい。
+- 目視しにくい空白・改行を可視化して原因切り分けを進める。
+
+### Changes
+- `PipelineOrchestrator.ResolveTranslationsAsync` の翻訳呼び出し直前に、送信予定 `pending` の詳細ログを追加。
+- ログには `UnitId`、文字長、先頭/末尾スペース数、連続スペース最大長を出力。
+- プレビュー文字列は `\r` `\n` `\t` をエスケープし、半角スペースを `<sp>` へ置換して可視化。
+- 過大ログを避けるため、最大件数（10件）・最大文字数（180文字）で打ち切り。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — 翻訳送信ペイロード可視化ログと補助メソッドを追加。
+
+### Behavioral Impact
+- 翻訳結果自体のロジックは不変で、ログ出力のみ増える。
+- ログ有効時に翻訳送信テキストの空白/改行状態を追跡できる。
+
+### Risk & Mitigation
+- Risk: OCR原文がログに多く出力され、ログ量が増える。
+- Mitigation: プレビュー件数と文字数を上限で制限し、詳細は必要最小限に抑える。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-translation-payload-log\"` を実行し、0 warning / 0 error を確認。
+
