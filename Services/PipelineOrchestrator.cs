@@ -32,6 +32,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrPreprocessService _ocrPreprocessService;
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
     private readonly OcrLineGrouper _lineGrouper;
+    private readonly ReadingUnitBuilder _readingUnitBuilder;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
     private readonly TranslationFallbackService _translationService;
@@ -42,8 +43,8 @@ public sealed class PipelineOrchestrator
     private readonly Dictionary<string, string> _lastTranslations = new(StringComparer.Ordinal);
     private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
-    private IReadOnlyList<OcrLine>? _lastGroupedLines;
-    private Dictionary<string, string> _lastOverlayTranslations = new(StringComparer.Ordinal);
+    private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
+    private Dictionary<int, string> _lastOverlayTranslations = new();
     private Rect _lastOverlayRoiScreen;
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
@@ -88,6 +89,7 @@ public sealed class PipelineOrchestrator
         _ocrPreprocessService = ocrPreprocessService;
         _ocrPreprocessCoordinator = new OcrPreprocessCoordinator(_ocrEngine, _ocrPreprocessService, new OcrCandidateScorer(), _logger);
         _lineGrouper = lineGrouper;
+        _readingUnitBuilder = new ReadingUnitBuilder();
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
         _translationService = translationService;
@@ -256,13 +258,14 @@ public sealed class PipelineOrchestrator
 
                 var groupStopwatch = Stopwatch.StartNew();
                 var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+                var readingUnits = _readingUnitBuilder.Build(groupedLines, settings).ToList();
                 groupStopwatch.Stop();
                 if (perfEnabled)
                 {
                     groupMs = groupStopwatch.ElapsedMilliseconds;
                 }
-                _logger.Info($"OCR grouped: {groupedLines.Count} lines in {groupStopwatch.ElapsedMilliseconds} ms.");
-                if (groupedLines.Count == 0)
+                _logger.Info($"OCR grouped: {groupedLines.Count} lines, {readingUnits.Count} reading units in {groupStopwatch.ElapsedMilliseconds} ms.");
+                if (readingUnits.Count == 0)
                 {
                     _logger.Info("OCR returned no lines.");
                     _overlayPresenter.ClearOverlay();
@@ -272,22 +275,23 @@ public sealed class PipelineOrchestrator
 
                 Stopwatch? diffStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
+                var changedUnitIds = ResolveChangedUnitIds(readingUnits, groupedLines, changedLines, options.SkipOcrDiff);
                 if (perfEnabled && diffStopwatch != null)
                 {
                     diffStopwatch.Stop();
                     diffMs = diffStopwatch.ElapsedMilliseconds;
                 }
-                _logger.Info($"OCR diff: {changedLines.Count} changed of {groupedLines.Count} total.");
-                Dictionary<string, string> translations;
+                _logger.Info($"OCR diff: {changedLines.Count} changed lines, {changedUnitIds.Count} changed units of {readingUnits.Count} total.");
+                Dictionary<int, string> translations;
                 if (options.SkipTranslation)
                 {
-                    translations = new Dictionary<string, string>(StringComparer.Ordinal);
+                    translations = new Dictionary<int, string>();
                 }
                 else
                 {
                     translations = await ResolveTranslationsAsync(
-                            groupedLines,
-                            changedLines,
+                            readingUnits,
+                            changedUnitIds,
                             settings,
                             options,
                             options.SkipTranslationCache,
@@ -295,10 +299,10 @@ public sealed class PipelineOrchestrator
                         .ConfigureAwait(false);
                 }
 
-                _lastGroupedLines = groupedLines.ToList();
-                _lastOverlayTranslations = new Dictionary<string, string>(translations, StringComparer.Ordinal);
+                _lastReadingUnits = readingUnits.ToList();
+                _lastOverlayTranslations = new Dictionary<int, string>(translations);
                 _lastOverlayRoiScreen = roiScreen;
-                var overlayItems = BuildOverlayItems(groupedLines, translations, roiScreen, settings, _overlayTextMode);
+                var overlayItems = BuildOverlayItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
                 _lastOverlayItems = overlayItems;
                 Stopwatch? overlayStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
                 _overlayPresenter.Update(overlayItems);
@@ -361,7 +365,7 @@ public sealed class PipelineOrchestrator
 
         try
         {
-            if (_lastGroupedLines == null || _lastGroupedLines.Count == 0)
+            if (_lastReadingUnits == null || _lastReadingUnits.Count == 0)
             {
                 if (allowModeUpdateWithoutData)
                 {
@@ -376,7 +380,7 @@ public sealed class PipelineOrchestrator
 
             _overlayTextMode = mode;
             var overlayItems = BuildOverlayItems(
-                _lastGroupedLines,
+                _lastReadingUnits,
                 _lastOverlayTranslations,
                 _lastOverlayRoiScreen,
                 _settingsService.Settings,
@@ -431,22 +435,21 @@ public sealed class PipelineOrchestrator
         _ = _settingsService.SaveAsync();
     }
 
-    private async Task<Dictionary<string, string>> ResolveTranslationsAsync(
-        IReadOnlyList<OcrLine> lines,
-        IReadOnlyList<OcrLine> changedLines,
+    private async Task<Dictionary<int, string>> ResolveTranslationsAsync(
+        IReadOnlyList<ReadingUnit> units,
+        IReadOnlySet<int> changedUnitIds,
         AppSettings settings,
         ForceRunOptions options,
         bool skipTranslationCache,
         CancellationToken cancellationToken)
     {
-        var translations = new Dictionary<string, string>(StringComparer.Ordinal);
-        var changedSet = skipTranslationCache ? new HashSet<OcrLine>(lines) : new HashSet<OcrLine>(changedLines);
+        var translations = new Dictionary<int, string>();
         var pending = new List<PendingTranslation>();
         var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var line in lines)
+        foreach (var unit in units)
         {
-            var normalized = _normalizationService.Normalize(line.Text);
+            var normalized = _normalizationService.Normalize(unit.Text);
             if (string.IsNullOrWhiteSpace(normalized))
             {
                 continue;
@@ -458,27 +461,27 @@ public sealed class PipelineOrchestrator
                 var cached = await _cacheRepository.TryGetAsync(key, cancellationToken).ConfigureAwait(false);
                 if (!string.IsNullOrWhiteSpace(cached))
                 {
-                    translations[line.Text] = cached;
+                    translations[unit.Id] = cached;
                     _lastTranslations[normalized] = cached;
                     continue;
                 }
 
                 if (_lastTranslations.TryGetValue(normalized, out var last))
                 {
-                    translations[line.Text] = last;
+                    translations[unit.Id] = last;
                     continue;
                 }
             }
 
-            if (changedSet.Contains(line) && pendingNormalized.Add(normalized))
+            if (changedUnitIds.Contains(unit.Id) && pendingNormalized.Add(normalized))
             {
-                pending.Add(new PendingTranslation(line.Text, normalized, key));
+                pending.Add(new PendingTranslation(unit.Id, unit.Text, normalized, key));
             }
         }
 
         if (pending.Count == 0)
         {
-            _logger.Info($"Translation skipped: no pending items (changed {changedLines.Count}, total {lines.Count}).");
+            _logger.Info($"Translation skipped: no pending items (changed {changedUnitIds.Count}, total {units.Count}).");
             return translations;
         }
 
@@ -503,7 +506,7 @@ public sealed class PipelineOrchestrator
 
             await _cacheRepository.SaveAsync(item.CacheKey, translated, cancellationToken).ConfigureAwait(false);
             _lastTranslations[item.Normalized] = translated;
-            translations[item.SourceText] = translated;
+            translations[item.UnitId] = translated;
         }
 
         if (skipTranslationCache)
@@ -511,12 +514,12 @@ public sealed class PipelineOrchestrator
             return translations;
         }
 
-        foreach (var line in lines)
+        foreach (var unit in units)
         {
-            var normalized = _normalizationService.Normalize(line.Text);
+            var normalized = _normalizationService.Normalize(unit.Text);
             if (_lastTranslations.TryGetValue(normalized, out var translated))
             {
-                translations[line.Text] = translated;
+                translations[unit.Id] = translated;
             }
         }
 
@@ -524,56 +527,39 @@ public sealed class PipelineOrchestrator
     }
 
     private static string GetOverlayText(
-        string sourceText,
-        Dictionary<string, string> translations,
-        int lineCount,
+        ReadingUnit unit,
+        Dictionary<int, string> translations,
         OverlayTextMode mode)
     {
-        var text = mode == OverlayTextMode.Translated && translations.TryGetValue(sourceText, out var translated)
+        var text = mode == OverlayTextMode.Translated && translations.TryGetValue(unit.Id, out var translated)
             ? translated
-            : sourceText;
-        return NormalizeOverlayText(text, lineCount);
+            : unit.Text;
+        return NormalizeOverlayText(text, unit.LineCount);
     }
 
     private static IReadOnlyList<OverlayItem> BuildOverlayItems(
-        IReadOnlyList<OcrLine> groupedLines,
-        Dictionary<string, string> translations,
+        IReadOnlyList<ReadingUnit> readingUnits,
+        Dictionary<int, string> translations,
         Rect roiScreen,
         AppSettings settings,
         OverlayTextMode mode)
     {
         if (!settings.EnableFixedRoiOverlay)
         {
-            return groupedLines
-                .Select(line => new OverlayItem(GetOverlayText(line.Text, translations, line.LineCount, mode), line.Rect, line.LineCount, line.LineHeight))
+            return readingUnits
+                .Select(unit => new OverlayItem(GetOverlayText(unit, translations, mode), unit.Rect, unit.LineCount, unit.LineHeight))
                 .ToList();
         }
 
-        if (groupedLines.Count == 0)
+        if (readingUnits.Count == 0)
         {
             return Array.Empty<OverlayItem>();
         }
 
-        List<OcrLine> ordered;
-        if (settings.VerticalModeOverride == VerticalModeOverride.Vertical)
+        var lines = new List<string>(readingUnits.Count);
+        foreach (var unit in readingUnits)
         {
-            // WHY: Fixed-ROI combined overlay must follow vertical reading order when vertical mode is explicitly forced.
-            ordered = settings.VerticalColumnOrder == VerticalColumnOrder.LeftToRight
-                ? groupedLines.OrderBy(line => line.Rect.X).ThenBy(line => line.Rect.Y).ToList()
-                : groupedLines.OrderByDescending(line => line.Rect.X).ThenBy(line => line.Rect.Y).ToList();
-        }
-        else
-        {
-            ordered = groupedLines
-                .OrderBy(line => line.Rect.Y)
-                .ThenBy(line => line.Rect.X)
-                .ToList();
-        }
-
-        var lines = new List<string>(ordered.Count);
-        foreach (var line in ordered)
-        {
-            var text = GetOverlayText(line.Text, translations, line.LineCount, mode);
+            var text = GetOverlayText(unit, translations, mode);
             if (!string.IsNullOrWhiteSpace(text))
             {
                 lines.Add(text);
@@ -581,8 +567,8 @@ public sealed class PipelineOrchestrator
         }
 
         var combined = lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
-        var lineCount = Math.Max(1, ordered.Sum(line => Math.Max(1, line.LineCount)));
-        var lineHeights = ordered.Select(line => line.LineHeight).Where(height => height > 0).ToList();
+        var lineCount = Math.Max(1, readingUnits.Sum(unit => Math.Max(1, unit.LineCount)));
+        var lineHeights = readingUnits.Select(unit => unit.LineHeight).Where(height => height > 0).ToList();
         var lineHeight = lineHeights.Count > 0 ? lineHeights.Average() : 0;
 
         return new[] { new OverlayItem(combined, roiScreen, lineCount, lineHeight) };
@@ -643,5 +629,43 @@ public sealed class PipelineOrchestrator
         return string.Join(Environment.NewLine, head.Append(tail));
     }
 
-    private sealed record PendingTranslation(string SourceText, string Normalized, string CacheKey);
+    private static HashSet<int> ResolveChangedUnitIds(
+        IReadOnlyList<ReadingUnit> units,
+        IReadOnlyList<OcrLine> groupedLines,
+        IReadOnlyList<OcrLine> changedLines,
+        bool skipOcrDiff)
+    {
+        if (skipOcrDiff)
+        {
+            return units.Select(unit => unit.Id).ToHashSet();
+        }
+
+        if (changedLines.Count == 0)
+        {
+            return new HashSet<int>();
+        }
+
+        var changedLineSet = new HashSet<OcrLine>(changedLines);
+        var changedUnitIds = new HashSet<int>();
+        foreach (var unit in units)
+        {
+            foreach (var sourceIndex in unit.SourceIndices)
+            {
+                if (sourceIndex < 0 || sourceIndex >= groupedLines.Count)
+                {
+                    continue;
+                }
+
+                if (changedLineSet.Contains(groupedLines[sourceIndex]))
+                {
+                    changedUnitIds.Add(unit.Id);
+                    break;
+                }
+            }
+        }
+
+        return changedUnitIds;
+    }
+
+    private sealed record PendingTranslation(int UnitId, string SourceText, string Normalized, string CacheKey);
 }

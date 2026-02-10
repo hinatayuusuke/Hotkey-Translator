@@ -115,7 +115,7 @@ public sealed class AppSettings
     public int RowMergeNeighborCount { get; set; } = 24;
     public bool EnableVerticalMerge { get; set; } = true;
     public bool VerticalModeAutoDetect { get; set; } = true;
-    public VerticalModeOverride VerticalModeOverride { get; set; } = VerticalModeOverride.Vertical;
+    public VerticalModeOverride VerticalModeOverride { get; set; } = VerticalModeOverride.Auto;
     public VerticalColumnOrder VerticalColumnOrder { get; set; } = VerticalColumnOrder.RightToLeft;
     public double VerticalGapRatio { get; set; } = 1.25;
     public string HotkeyRunOnceKey { get; set; } = "F8";

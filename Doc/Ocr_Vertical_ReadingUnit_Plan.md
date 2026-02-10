@@ -33,13 +33,15 @@
 - `ReadingUnit`（新規レコード）
 - `ReadingUnitBuilder`（新規サービス）
 - `PipelineOrchestrator`（`groupedLines -> readingUnits` 変換利用）
+- `OcrLineGrouper`（順序と結合の正本）
 - データフロー:
 1. OCR -> `groupedLines`（既存）
-2. `ReadingUnitBuilder.Build(groupedLines, settings)`（新規）
-3. 横書き/縦書きともに非固定ROI表示は `readingUnits` 順で描画
-4. 固定ROI表示は `readingUnits` を同順でテキスト連結し、1ボックスに集約して描画
-5. 翻訳投入は `readingUnits.Text` 配列
-6. 翻訳結果は `UnitId` 基準で保持し、表示に反映
+2. `OcrLineGrouper` が順序・結合済み `groupedLines` を確定（唯一の正本）
+3. `ReadingUnitBuilder.Build(groupedLines, settings)` で `ReadingUnit` 化（再クラスタ/再連結はしない）
+4. 横書き/縦書きともに非固定ROI表示は `readingUnits` 順で描画（再ソート禁止）
+5. 固定ROI表示は `readingUnits` を同順でテキスト連結し、1ボックスに集約して描画（再ソート禁止）
+6. 翻訳投入は `readingUnits.Text` 配列を順序保持で送信
+7. 翻訳結果は `UnitId` 基準で保持し、表示に反映
 - 既存パターン整合:
 - 翻訳プロバイダ I/F（`IReadOnlyList<string> texts`）は維持し、送信元のみ `ReadingUnit` に変更する。
 
@@ -50,6 +52,28 @@
 - 新規サービス:
 - `Services/ReadingUnitBuilder.cs`
 - `Build(IReadOnlyList<OcrLine> groupedLines, AppSettings settings): IReadOnlyList<ReadingUnit>`
+- 役割制約（MUST）:
+- `ReadingUnitBuilder` は `groupedLines` を順序どおり写像するのみ（ID付与・Rect/Text転記）。
+- `ReadingUnitBuilder` での再クラスタ化・再連結・再ソートは禁止。
+- 判定/連結/順序の責務は `OcrLineGrouper` 側に集約する。
+- 判定・連結ルール（横書き）:
+- 同じ行候補:
+- `|centerY(a)-centerY(b)| <= minHeight * RowMergeYCenterToleranceRatio`
+- `minHeight/maxHeight >= RowMergeHeightRatioMin`
+- 連結可否（隣接のみ判定）:
+- `gapX <= minHeight * RowMergeMaxGapRatio` で連結
+- `gapX > minHeight * RowMergeHardBreakRatio` で強制非連結
+- 判定・連結ルール（縦書き）:
+- 同じ列候補:
+- `|centerX(a)-centerX(b)| <= minWidth * VerticalColumnCenterToleranceRatio`
+- `minWidth/maxWidth >= VerticalColumnWidthRatioMin`
+- 最低限の水平オーバーラップを満たす場合のみ同列候補に採用
+- 連結可否（隣接のみ判定）:
+- `gapY <= minWidth * VerticalGapRatio` で連結
+- `gapY > minWidth * VerticalGapRatio * K2` で強制非連結（`K2` は 1.5 目安）
+- しきい値の公開方針:
+- `VerticalGapRatio` は `AppSettings` 公開値を利用する。
+- `VerticalColumnCenterToleranceRatio` / `VerticalColumnWidthRatioMin` / `K2` は初期段階では `OcrLineGrouper` 内部定数として保持し、検証結果次第で設定公開を判断する。
 - 横書き構築ポリシー:
 - 原則は1行=1 `ReadingUnit`（既存行結合結果を尊重）
 - 必要時のみ既存横書き2-stageの結果をそのまま単位化し、追加の過結合はしない
@@ -62,15 +86,13 @@
 
 7. **実装手順（ステップ分割）**
 - Step 1: `ReadingUnit` と `ReadingUnitBuilder` を追加。
-- Step 2: `ReadingUnitBuilder` に縦書き構築を実装。
-- 列クラスタ化: X中心差 + 幅比 + 最低限の水平オーバーラップガード
-- 列内並び: Y昇順
-- 列順: `VerticalColumnOrder`（既定 `RightToLeft`）
-- 連結: 縦書きは原則スペースなし、横書きは既存スペース連結
-- Step 2-1: `ReadingUnitBuilder` に横書き構築を実装（1行=1単位を基本）。
-- Step 3: 非固定ROI表示を `groupedLines` から `readingUnits` に切替（横/縦共通）。
-- Step 3-1: 固定ROI表示も `readingUnits` を入力にし、最終段のみ1ボックス結合描画へ統一。
-- Step 4: 翻訳投入・キャッシュ・前回翻訳参照を `ReadingUnit` 基準に切替。
+- Step 2: `OcrLineGrouper` を結合/順序の正本として確定し、必要な縦書き判定閾値のみ調整。
+- Step 2-1: `ReadingUnitBuilder` は `groupedLines` を順序保持で `ReadingUnit` に写像（再判定なし）。
+- Step 3: 非固定ROI表示を `groupedLines` から `readingUnits` に切替（横/縦共通、再ソートなし）。
+- Step 3-1: 固定ROI表示も `readingUnits` を入力にし、同順で1ボックス結合描画へ統一（再ソートなし）。
+- 横書き固定ROIの互換要件:
+- `OcrLineGrouper` が横書き時に `Y->X` 順を返すことを前提に、固定ROIでも従来の視覚順を維持する。
+- Step 4: 翻訳投入・キャッシュ・前回翻訳参照を `ReadingUnit` 基準に切替（送信順保持）。
 - pendingは `UnitId` を保持し、同文重複でもユニット単位で復元可能にする。
 - Step 5: `OverlayTextMode.Translated` の参照先を `UnitId` 辞書へ切替。
 - Step 6: ログ追加（`readingUnits.Count`, `vertical/horizontal`, `pendingCount`）。
@@ -78,7 +100,8 @@
 
 8. **非機能要件チェック**
 - 性能:
-- `ReadingUnitBuilder` は既存と同程度の近傍判定コストに収める。
+- `ReadingUnitBuilder` は順序保持の写像中心とし、追加コストを `O(n)` 程度に抑える。
+- 近傍判定コストの増加は `OcrLineGrouper` 側の閾値調整範囲に限定する。
 - セキュリティ:
 - 外部I/O変更なし（翻訳先API形式は既存と同一）。
 - 可観測性:
@@ -90,7 +113,9 @@
 
 9. **リスクと緩和策**
 - Risk: ReadingUnitの過結合で意味単位が崩れる。
-- Mitigation: 列分離ガード（X差 + overlap）を導入し、過結合時は段階的に閾値を調整。
+- Mitigation: 判定ロジックを `OcrLineGrouper` に一本化し、閾値調整も同一箇所で実施する。
+- Risk: 後段で再ソートすると表示順と翻訳順が再び不一致になる。
+- Mitigation: `ReadingUnitBuilder`/描画側で再ソート禁止を明文化し、テストで順序一致を検証する。
 - Risk: 同文重複で翻訳マッピングが崩れる。
 - Mitigation: テキストキー依存を減らし、`UnitId` で表示反映する。
 - Risk: 単件比率の増加でLlama batchガード経路が使われにくくなる。
@@ -107,7 +132,10 @@
 - [ ] 非固定ROIで縦書き表示順が右列→左列になる
 - [ ] 横書きでも ReadingUnit ベースで表示順/翻訳送信順が一致する
 - [ ] 固定ROIでも ReadingUnit 順で連結され、縦書き時の結合表示順が正しい
-- [ ] 縦書き翻訳送信件数が細切れOCR枠数より減り、意味単位で送信される
+- [ ] `ReadingUnitBuilder` が `groupedLines` と同順で出力し、再ソートしない
+- [ ] 翻訳送信件数の比較は「最終的に翻訳へ送信する内容（送信直前件数）」を基準に行う
+- [ ] 同一フレーム比較で `After(ReadingUnit送信件数) <= Before(現行送信件数)` を満たす
+- [ ] 縦書き代表ケースで `After < Before` を確認し、細切れ送信が実際に減る
 - [ ] `readingUnits.Count==1` でLlama単件plain経路が維持される
 - [ ] `readingUnits.Count>=2` でLlama batch JSON/schema+grammar経路が維持される
 - [ ] 同文重複ケースで翻訳表示が崩れない（`UnitId` 反映）

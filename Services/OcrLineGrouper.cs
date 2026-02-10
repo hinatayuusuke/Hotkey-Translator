@@ -12,6 +12,7 @@ public sealed class OcrLineGrouper
     private const int VerticalDetectMinSamples = 2;
     private const double VerticalColumnCenterToleranceRatio = 0.55;
     private const double VerticalColumnWidthRatioMin = 0.55;
+    private const double VerticalColumnOverlapRatioMin = 0.10;
     private const double VerticalHardBreakMultiplier = 1.5;
 
     private enum WritingMode
@@ -388,7 +389,13 @@ public sealed class OcrLineGrouper
         }
 
         var widthRatio = minWidth / maxWidth;
-        return widthRatio >= VerticalColumnWidthRatioMin;
+        if (widthRatio < VerticalColumnWidthRatioMin)
+        {
+            return false;
+        }
+
+        var overlapWidth = Math.Max(0, Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left));
+        return (overlapWidth / minWidth) >= VerticalColumnOverlapRatioMin;
     }
 
     private static bool ShouldMergeAdjacentTokens(Rect left, Rect right, AppSettings settings)

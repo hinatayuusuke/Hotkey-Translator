@@ -5781,3 +5781,122 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+**2026-02-10 18:12 (Asia/Taipei) — ReadingUnit計画に同一行/同一列の判定式を追記**
+
+### Summary
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md に、同じ行/同じ列の判定条件と連結条件を具体式で追記した。
+
+### Context / Goal
+- 「どうやって同じ行だと判定して連結するか」を実装前に明確化したい。
+- 横書き/縦書きの判定基準と強制ブレーク条件をDoc上で参照可能にする。
+
+### Changes
+- インターフェース設計セクションに横書き/縦書きの判定・連結ルールを追加。
+- 横書き: centerY 差、高さ比、gapX 判定、ハードブレーク条件を明記。
+- 縦書き: centerX 差、幅比、オーバーラップガード、gapY 判定、ハードブレーク条件を明記。
+- 実装手順に「隣接のみ判定」「連結時の連結文字規則」を追記。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — 判定式と連結条件の明文化を追加。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装時の判定基準が明確化された。
+
+### Risk & Mitigation
+- Risk: しきい値の初期値が実データに合わない可能性。
+- Mitigation: Docにハードブレーク条件を明記し、検証時に段階調整しやすくした。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-10 18:19 (Asia/Taipei) — ReadingUnit計画へGrouper正本方針を反映**
+
+### Summary
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md を、順序/結合の責務を OcrLineGrouper に一本化する方針へ更新した。
+
+### Context / Goal
+- ReadingUnit側で再判定/再連結すると、現行 OcrLineGrouper と重複・衝突のリスクがある。
+- 縦書き表示順修正を安全に進めるため、責務分離を明確化する。
+
+### Changes
+- アーキテクチャに「OcrLineGrouper を順序/結合の正本」と明記。
+- データフローを「groupedLines確定 -> ReadingUnitは順序保持写像」に変更。
+- ReadingUnitBuilder のMUST制約として再クラスタ/再連結/再ソート禁止を追記。
+- 実装手順を再構成し、閾値調整は OcrLineGrouper 側で実施する方針に変更。
+- リスク/DoDに順序不一致防止（再ソート禁止）の検証項目を追加。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — Grouper正本方針、責務分離、順序保持要件を追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装時の重複・衝突回避方針が明確化された。
+
+### Risk & Mitigation
+- Risk: 後段で再ソートや再連結を入れると順序不一致が再発する。
+- Mitigation: Docに禁止事項を明記し、DoDで順序一致を必須確認にした。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-10 18:30 (Asia/Taipei) — ReadingUnit計画の自己レビュー指摘を反映**
+
+### Summary
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md に、送信件数比較基準と残り3項目（しきい値公開方針/固定ROI互換/性能記述）を反映した。
+
+### Context / Goal
+- 自己レビューで挙がった曖昧点を解消し、実装時の解釈ブレを減らす。
+- とくに「件数比較の基準」を翻訳送信直前の実データ基準で明確化する。
+
+### Changes
+- DoDに「比較対象は最終的に翻訳へ送信する内容（送信直前件数）」を明記。
+- DoDに After <= Before と、縦書き代表ケースで After < Before の確認条件を追加。
+- VerticalGapRatio は設定公開、他の縦書きしきい値は内部定数維持の方針を追記。
+- 固定ROI横書き互換（OcrLineGrouper の Y->X 前提維持）を実装手順へ追記。
+- 性能記述を「ReadingUnitBuilderは写像中心で O(n)」へ更新し、近傍判定はGrouper側責務に整理。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — 自己レビュー指摘反映（DoD/設定方針/互換要件/性能記述）。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装時の評価基準と責務分離が明確になった。
+
+### Risk & Mitigation
+- Risk: 内部定数のままでは調整に再ビルドが必要。
+- Mitigation: 検証結果を見て必要時に設定公開へ段階移行する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-10 18:42 (Asia/Taipei) — ReadingUnit導入による縦書き表示順/翻訳投入の統一実装**
+
+### Summary
+- `Doc/Ocr_Vertical_ReadingUnit_Plan.md` 方針に合わせて、表示と翻訳の単位を `ReadingUnit` 基準へ移行した。
+
+### Context / Goal
+- 非固定ROIで縦書き時の表示順と翻訳送信順がズレる問題を解消したい。
+- `groupedLines` 直結依存を外し、同一データ単位で表示/翻訳を扱えるようにする。
+
+### Changes
+- `ReadingUnit` モデルと `ReadingUnitBuilder` を新規追加し、`groupedLines` から順序保持で `ReadingUnit` を生成。
+- `PipelineOrchestrator` を `ReadingUnit` 基準に変更し、翻訳結果保持を `Dictionary<int, string>`（`UnitId` キー）へ移行。
+- OCR差分結果を `ReadingUnit` 単位へマッピングする `ResolveChangedUnitIds` を追加。
+- オーバーレイ生成（固定ROI/非固定ROI）を `ReadingUnit` 入力へ統一し、後段の再ソートを行わない構成に変更。
+- 縦書き同一列候補の誤結合を抑えるため、`OcrLineGrouper` に最小水平オーバーラップ判定を追加。
+- `VerticalModeOverride` 既定値を `Auto` に戻し、通常運用の自動判別前提へ整合。
+
+### Files Touched
+- `Models/ReadingUnit.cs` — `ReadingUnit` レコードを新規追加。
+- `Services/ReadingUnitBuilder.cs` — `groupedLines` を順序保持で `ReadingUnit` 化するビルダーを新規追加。
+- `Services/PipelineOrchestrator.cs` — 表示/翻訳パイプラインを `ReadingUnit` 基準へ置換、翻訳辞書キーを `UnitId` 化。
+- `Services/OcrLineGrouper.cs` — 縦書き同一列候補に最小水平オーバーラップのガードを追加。
+- `Models/AppSettings.cs` — `VerticalModeOverride` 既定値を `Auto` に変更。
+
+### Behavioral Impact
+- 非固定ROI/固定ROIとも、オーバーレイ表示と翻訳反映が同じ `ReadingUnit` 順序に揃う。
+- 同一原文が複数ユニットで出ても、`UnitId` ベースで表示反映されるためマッピング崩れが起きにくくなる。
+- `VerticalModeOverride` の既定動作は `Auto`（自動判別）になる。
+
+### Risk & Mitigation
+- Risk: `ReadingUnitBuilder` は現状1:1写像のため、細切れOCRを完全に減らす効果は `OcrLineGrouper` 側品質に依存する。
+- Mitigation: 判定・結合ロジック責務を `OcrLineGrouper` に集約し、必要なしきい値調整を同箇所で実施できる構成を維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-readingunit-2\"` を実行し、0 warning / 0 error を確認。
+
