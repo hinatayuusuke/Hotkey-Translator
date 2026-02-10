@@ -5319,3 +5319,31 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-hotkey-f5\"` を実行。
 - 結果: 成功（0 errors / 0 warnings）。
+**2026-02-10 10:38 (Asia/Taipei) — ROI選択時の自動有効化を実装**
+
+### Summary
+- `Select ROI` 確定時に `EnableRoi` を自動でONにし、UIチェック状態も同期するようにした。
+
+### Context / Goal
+- ROIを選択したのに有効化漏れで反映されない、という運用ミスを減らす。
+- ユーザー操作（F6/ボタン）後に即時有効な状態へそろえる。
+
+### Changes
+- `SelectRoiAsync` 内で ROI確定時に `settings.EnableRoi = true` を適用。
+- `EnableRoiCheck` をプログラム側でONへ同期。
+- 既存ログに加えて、無効→有効へ変わったときのみ `ROI enabled automatically.` を出力。
+
+### Files Touched
+- `MainWindow.xaml.cs` — ROI確定時の設定反映処理を更新し、自動有効化・UI同期・補助ログを追加。
+
+### Behavioral Impact
+- ROI選択を確定すると、ROIは自動的に有効化される。
+- 以前のように ROIだけ更新されて `EnableRoi=false` のまま残る状態は発生しにくくなる。
+
+### Risk & Mitigation
+- Risk: ROIを保存だけして無効のまま保持したい運用には合わない。
+- Mitigation: 必要なら従来どおり `Enable ROI` を手動でOFFに戻せる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-roi-auto-enable\"` を実行。
+- 結果: 成功（0 errors / 0 warnings）。

@@ -712,10 +712,25 @@ public partial class MainWindow : Window
         var result = selector.ShowDialog();
         if (result == true && selector.SelectedRect is { } rect)
         {
-            _settingsService.Settings.Roi = SerializableRect.FromRect(rect);
-            _settingsService.Settings.NormalizedRoi = selector.SelectedNormalizedRect;
-            UpdateRoiStatus(_settingsService.Settings);
+            var settings = _settingsService.Settings;
+            settings.Roi = SerializableRect.FromRect(rect);
+            settings.NormalizedRoi = selector.SelectedNormalizedRect;
+            var roiWasDisabled = !settings.EnableRoi;
+            settings.EnableRoi = true;
+            if (EnableRoiCheck != null)
+            {
+                _isApplyingSettings = true;
+                EnableRoiCheck.IsChecked = true;
+                _isApplyingSettings = false;
+            }
+
+            UpdateRoiStatus(settings);
             await _settingsService.SaveAsync().ConfigureAwait(true);
+            if (roiWasDisabled)
+            {
+                AppendLog("ROI enabled automatically.");
+            }
+
             AppendLog("ROI updated.");
         }
     }
