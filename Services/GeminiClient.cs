@@ -150,12 +150,66 @@ public sealed class GeminiClient
     private static string BuildPrompt(IReadOnlyList<string> texts, AppSettings settings)
     {
         var inputJson = JsonSerializer.Serialize(texts, JsonOptions);
-        return $@"Role: Game Localization Expert. Translate array from {settings.SourceLanguage} to {settings.TargetLanguage}.
+        var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
+        return $@"Role: Game Localization Expert. Translate array to {targetLanguage}.
             Rules:
             1. Fix OCR errors (e.g., 'L0adin9'->'Loading') but keep graphical noise unchanged.
             2. Tone: Concise for UI, natural for Dialogue.
             3. Output only JSON. Maintain exact array length and order.
             Input: {inputJson}";
+    }
+
+    private static string ResolveGeminiLanguageName(string? language)
+    {
+        var normalized = (language ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "Japanese";
+        }
+
+        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
+        {
+            return "English";
+        }
+
+        if (normalized.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Japanese";
+        }
+
+        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Russian";
+        }
+
+        if (IsTraditionalChinese(normalized))
+        {
+            return "Traditional Chinese";
+        }
+
+        if (IsSimplifiedChinese(normalized))
+        {
+            return "Simplified Chinese";
+        }
+
+        return normalized;
+    }
+
+    private static bool IsTraditionalChinese(string language)
+    {
+        return language.Equals("zh-TW", StringComparison.OrdinalIgnoreCase)
+               || language.Equals("zh-HK", StringComparison.OrdinalIgnoreCase)
+               || language.Equals("zh-MO", StringComparison.OrdinalIgnoreCase)
+               || language.Equals("zh-Hant", StringComparison.OrdinalIgnoreCase)
+               || language.StartsWith("zh-Hant-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsSimplifiedChinese(string language)
+    {
+        return language.Equals("zh-CN", StringComparison.OrdinalIgnoreCase)
+               || language.Equals("zh-SG", StringComparison.OrdinalIgnoreCase)
+               || language.Equals("zh-Hans", StringComparison.OrdinalIgnoreCase)
+               || language.StartsWith("zh-Hans-", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string? ExtractJsonText(string rawResponse)

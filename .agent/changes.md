@@ -6077,3 +6077,30 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
 
+**2026-02-10 22:16 (Asia/Taipei) — Geminiターゲット言語名マッピング実装（主要5言語）**
+
+### Summary
+- Geminiプロンプトのターゲット言語を主要5言語で人間可読な言語名へ変換する実装を追加しました。
+
+### Context / Goal
+- `ja` / `zh-TW` のような言語ID指定より、Geminiが解釈しやすい言語名指定へ寄せたい。
+- 対象は指定の主要言語（英語、日本語、繁体中国語、簡体中国語、ロシア語）に限定したい。
+
+### Changes
+- `Services/GeminiClient.cs` の `BuildPrompt` で `settings.TargetLanguage` を直接使う方式をやめ、言語名解決メソッド経由に変更。
+- 主要5言語向けのマッピングを追加（`en`/`ja`/`ru`/`zh-Hant系`/`zh-Hans系`）。
+- 対象外のコードは既存値フォールバックとし、未知言語で挙動を壊さないようにした。
+
+### Files Touched
+- `Services/GeminiClient.cs` — Geminiプロンプトのターゲット言語名解決ロジックを追加。
+
+### Behavioral Impact
+- Geminiへの指示文で、ターゲット言語が言語IDではなく言語名（例: `Japanese`, `Traditional Chinese`）として送信される。
+- 指定の主要5言語は安定した表記に正規化される。
+
+### Risk & Mitigation
+- Risk: 主要5言語以外の言語コードはそのまま文字列出力され、期待どおりの表記でない可能性。
+- Mitigation: 対象外はフォールバックで互換維持し、必要時にマッピング対象を追加拡張できる構造にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
