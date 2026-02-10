@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
@@ -112,12 +113,20 @@ public sealed class GeminiClient
         using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
         requestStopwatch.Stop();
         _logger?.Info($"Gemini HTTP {(int)response.StatusCode} {response.ReasonPhrase} in {requestStopwatch.ElapsedMilliseconds} ms.");
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        await WriteGeminiRawResponseAsync(
+                body,
+                settings.GeminiModel,
+                texts.Count,
+                requestStopwatch.ElapsedMilliseconds,
+                (int)response.StatusCode,
+                cancellationToken)
+            .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
             return new Dictionary<string, string>();
         }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
         _logger?.Info($"Gemini response body length: {body.Length} chars.");
         var jsonText = ExtractJsonText(body);
         if (string.IsNullOrWhiteSpace(jsonText))
@@ -140,6 +149,45 @@ public sealed class GeminiClient
             }
         }
         return translations;
+    }
+
+    private async Task WriteGeminiRawResponseAsync(
+        string body,
+        string? modelName,
+        int itemCount,
+        long latencyMs,
+        int statusCode,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var root = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Hotkey-Translator",
+                "debug",
+                "gemini");
+            Directory.CreateDirectory(root);
+
+            var filePath = Path.Combine(
+                root,
+                $"gemini_response_{DateTimeOffset.UtcNow:yyyyMMdd_HHmmss_fff}.txt");
+            var builder = new StringBuilder();
+            builder.AppendLine($"utc={DateTimeOffset.UtcNow:O}");
+            builder.AppendLine($"model={modelName ?? string.Empty}");
+            builder.AppendLine($"status={statusCode}");
+            builder.AppendLine($"latency_ms={latencyMs}");
+            builder.AppendLine($"items={itemCount}");
+            builder.AppendLine("---");
+            builder.Append(body);
+
+            await File.WriteAllTextAsync(filePath, builder.ToString(), Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+            _logger?.Info($"Gemini raw response saved: {filePath}");
+        }
+        catch (Exception ex)
+        {
+            // WHY: Debug dump failures must not interrupt translation flow.
+            _logger?.Info($"Gemini raw response dump failed: {ex.Message}");
+        }
     }
 
     private static string BuildEndpoint(AppSettings settings)
