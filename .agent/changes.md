@@ -6167,3 +6167,31 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors）。
 - 実行中プロセスが Hotkey-Translator.exe をロックしていたため、apphostコピーでMSB3026警告は発生（既知の実行中ビルド警告）。
+
+**2026-02-11 03:43 (Asia/Taipei) — GeminiプロンプトJSONの非ASCIIエスケープ無効化**
+
+### Summary
+- BuildPromptの入力JSON生成を、非ASCII文字を`\uXXXX`へエスケープしない設定に変更しました。
+
+### Context / Goal
+- Gemini向けプロンプトでUnicodeエスケープを減らし、多言語文字列をそのまま渡したい。
+- 変更範囲を最小化し、既存フローやスキーマ制約は維持したい。
+
+### Changes
+- `Services/GeminiClient.cs` に `PromptJsonOptions` を追加し、`JavaScriptEncoder.UnsafeRelaxedJsonEscaping` を設定。
+- `BuildPrompt` の `JsonSerializer.Serialize(texts)` を `JsonSerializer.Serialize(texts, PromptJsonOptions)` へ変更。
+- 既存の翻訳処理、レスポンスパース、フォールバックロジックは未変更。
+
+### Files Touched
+- `Services/GeminiClient.cs` — BuildPrompt用JSONシリアライズ設定を非ASCII非エスケープに変更。
+
+### Behavioral Impact
+- Geminiプロンプト中の入力配列で、日本語・繁体字などがUnicodeエスケープではなくUTF-8文字として渡される。
+- それ以外の通信仕様・戻り値契約には影響しない。
+
+### Risk & Mitigation
+- Risk: `UnsafeRelaxedJsonEscaping` により、プロンプトJSONの可読文字が増える。
+- Mitigation: 対象はプロンプト本文のみで、外部APIのJSONボディ構造・スキーマは既存どおり維持する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。

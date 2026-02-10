@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text.Encodings.Web;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -17,6 +18,10 @@ public sealed class GeminiClient
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+    private static readonly JsonSerializerOptions PromptJsonOptions = new()
+    {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
     private readonly HttpClient _httpClient;
@@ -217,7 +222,7 @@ public sealed class GeminiClient
 
     private static string BuildPrompt(IReadOnlyList<string> texts, AppSettings settings)
     {
-        var inputJson = JsonSerializer.Serialize(texts);
+        var inputJson = JsonSerializer.Serialize(texts, PromptJsonOptions);
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
         return $@"Translate each input text into {targetLanguage}.
             Output must be in UTF-8 characters; do not use Unicode escape sequences like \uXXXX.
