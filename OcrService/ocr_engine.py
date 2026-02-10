@@ -118,7 +118,7 @@ class PaddleOcrEngine:
             # "text_det_thresh": 0.35,
             # "text_det_box_thresh": 0.70,
             # "text_det_unclip_ratio": 1.1,
-            "text_rec_score_thresh": 0.80,
+            "text_rec_score_thresh": 0.70,
         }
 
         # model_dir を使う場合は PaddleOCR 3.x の仕様に沿ってください。

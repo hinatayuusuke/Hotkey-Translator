@@ -5501,3 +5501,92 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `python -m py_compile OcrService/ocr_engine.py` を実行。
 - 結果: 成功（文法エラーなし）。
+**2026-02-10 15:38 (Asia/Taipei) — OCR縦書き対応の実装案ドキュメントを追加**
+
+### Summary
+- 書字方向判定と縦書き結合分岐を中心にした実装案を `Doc/` に新規追加した。
+
+### Context / Goal
+- 縦書きでの読み順崩れ・誤結合を減らすため、結合パイプラインを横書き/縦書きで分岐する方針を整理する。
+- 初期実装は 1+2+3+4（方向判定、2系統結合、縦書き判定式、読み順明示）に限定する。
+
+### Changes
+- 新規ドキュメント `Doc/Ocr_Vertical_Writing_Merge_Plan.md` を作成。
+- 以下を明記:
+  - 書字方向判定（Horizontal / Vertical / Unknown + fallback）
+  - 横書き/縦書き2系統結合
+  - 縦書き判定式（同一列判定、Yギャップ、強制ブレーク）
+  - 縦書き読み順（右→左、上→下）
+  - 最小設定候補と段階導入方針
+
+### Files Touched
+- `Doc/Ocr_Vertical_Writing_Merge_Plan.md` — OCR縦書き対応の実装案を追加。
+
+### Behavioral Impact
+- 実装前の計画文書が追加され、今後の実装範囲と段階導入方針が明確化された。
+
+### Risk & Mitigation
+- Risk: 方向判定と縦書き結合の閾値調整が難航する可能性。
+- Mitigation: 不確実時は横書きフォールバックを維持し、初期スコープを 1+2+3+4 に限定する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみのため）。
+**2026-02-10 15:46 (Asia/Taipei) — 縦書き実装案に判定安定化と優先順位を追記**
+
+### Summary
+- `Doc/Ocr_Vertical_Writing_Merge_Plan.md` に、推奨1〜3（クラスタ単位判定・安定化ルール・設定優先順位）を反映した。
+
+### Context / Goal
+- 混在ページでの破綻を防ぐため、全体一律判定ではなくクラスタ単位判定を明確化する。
+- 実装時のぶれを防ぐため、方向判定しきい値と設定優先順位を文書で固定する。
+
+### Changes
+- データフローを「クラスタ作成 -> クラスタ単位方向判定」に更新。
+- 新規内部メソッド案に `ResolveWritingModeForCluster(...)` を追加。
+- 方向判定の内部定数として `minSampleCount` / `dominanceRatio` / `hysteresisMargin` を追記。
+- 実装手順に判定安定化（優勢比・ヒステリシス）ステップを追加。
+- 互換性セクションに設定優先順位（`EnableLineMerge` / `EnableTwoStageLineMerge` / `EnableVerticalMerge`）を明記。
+- DoDに「Unknown落ち」「揺れ抑制」の確認項目を追加。
+
+### Files Touched
+- `Doc/Ocr_Vertical_Writing_Merge_Plan.md` — 方向判定戦略、安定化条件、設定優先順位、DoDを更新。
+
+### Behavioral Impact
+- ドキュメント上で実装判断基準が具体化され、混在ケースとモード揺れへの対処方針が明確化された。
+
+### Risk & Mitigation
+- Risk: 判定閾値の初期値次第で Unknown 判定が増え、縦書き分岐が効きにくくなる可能性。
+- Mitigation: `Unknown -> 横書きフォールバック` を維持し、検証ケースで閾値を段階調整する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-10 15:50 (Asia/Taipei) — 縦書き計画に言語ゲート（ja/zh限定）を反映**
+
+### Summary
+- `Doc/Ocr_Vertical_Writing_Merge_Plan.md` に、縦書き自動判定を `ja` / `zh*` のみに限定する方針を追記した。
+
+### Context / Goal
+- 実運用での誤判定を減らすため、縦書き判定対象言語を絞る。
+- 例外ケース対応のため、手動上書きモードを設計へ含める。
+
+### Changes
+- 前提・仮定に「`ja` / `zh*` 以外は横書き固定」を追加。
+- データフローに言語ゲート手順を追加。
+- 新規内部メソッド案に `ShouldEnableVerticalDetectionForLanguage(...)` を追加。
+- 設定候補に `VerticalModeOverride: Auto | Horizontal | Vertical` を追加。
+- 実装手順に言語ゲート実装ステップを追加。
+- 設定優先順位へ `VerticalModeOverride` と `ja/zh限定Auto` の分岐を明記。
+- DoDに「`ja` / `zh*` 以外は横書き固定」確認項目を追加。
+
+### Files Touched
+- `Doc/Ocr_Vertical_Writing_Merge_Plan.md` — 言語ゲート方針、優先順位、DoDを更新。
+
+### Behavioral Impact
+- ドキュメント上で縦書き判定適用範囲が明確化され、英語等での誤判定リスクを抑える方針になった。
+
+### Risk & Mitigation
+- Risk: 日本語・中国語以外で縦書きが必要なケースを取りこぼす可能性。
+- Mitigation: `VerticalModeOverride` による手動上書きを設計へ含めた。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
