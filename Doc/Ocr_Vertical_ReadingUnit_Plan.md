@@ -2,6 +2,7 @@
 
 1. **概要（1-3行）**
 - 非固定ROIの表示順と翻訳送信単位を `OcrLine` 直結から `ReadingUnit` 単位へ切り替える。
+- 横書き/縦書きの両方で `ReadingUnit` を共通利用し、モード差分による順序不一致を防ぐ。
 - 縦書き時は `ReadingUnit` を「列順（右→左）・列内（上→下）」で構築し、表示と翻訳の順序を一致させる。
 - 固定ROIも内部では同じ `ReadingUnit` を使い、最終描画のみ1ボックス集約にする。
 - Llama.cpp の単件入力は既存どおり plain 単文経路を維持し、JSON構造化ガードとの衝突を避ける。
@@ -9,6 +10,7 @@
 2. **ゴール / 非ゴール**
 - ゴール:
 - 非固定ROIで縦書き表示順が正しくなる（右列→左列）。
+- 横書きでも表示順/翻訳送信/表示反映の単位が `ReadingUnit` で統一される。
 - 翻訳送信が細切れOCR枠ではなく、縦書きの意味単位（ReadingUnit）になる。
 - 表示順と翻訳順が同じデータ構造（ReadingUnit）に統一される。
 - 非ゴール:
@@ -34,7 +36,7 @@
 - データフロー:
 1. OCR -> `groupedLines`（既存）
 2. `ReadingUnitBuilder.Build(groupedLines, settings)`（新規）
-3. 非固定ROI表示は `readingUnits` 順で描画
+3. 横書き/縦書きともに非固定ROI表示は `readingUnits` 順で描画
 4. 固定ROI表示は `readingUnits` を同順でテキスト連結し、1ボックスに集約して描画
 5. 翻訳投入は `readingUnits.Text` 配列
 6. 翻訳結果は `UnitId` 基準で保持し、表示に反映
@@ -48,6 +50,9 @@
 - 新規サービス:
 - `Services/ReadingUnitBuilder.cs`
 - `Build(IReadOnlyList<OcrLine> groupedLines, AppSettings settings): IReadOnlyList<ReadingUnit>`
+- 横書き構築ポリシー:
+- 原則は1行=1 `ReadingUnit`（既存行結合結果を尊重）
+- 必要時のみ既存横書き2-stageの結果をそのまま単位化し、追加の過結合はしない
 - 既存改修:
 - `PipelineOrchestrator.ResolveTranslationsAsync(...)` を `ReadingUnit` 対応へ変更
 - 翻訳保持辞書を `Dictionary<int, string>`（`UnitId -> translated`）中心へ変更
@@ -62,7 +67,8 @@
 - 列内並び: Y昇順
 - 列順: `VerticalColumnOrder`（既定 `RightToLeft`）
 - 連結: 縦書きは原則スペースなし、横書きは既存スペース連結
-- Step 3: 非固定ROI表示を `groupedLines` から `readingUnits` に切替。
+- Step 2-1: `ReadingUnitBuilder` に横書き構築を実装（1行=1単位を基本）。
+- Step 3: 非固定ROI表示を `groupedLines` から `readingUnits` に切替（横/縦共通）。
 - Step 3-1: 固定ROI表示も `readingUnits` を入力にし、最終段のみ1ボックス結合描画へ統一。
 - Step 4: 翻訳投入・キャッシュ・前回翻訳参照を `ReadingUnit` 基準に切替。
 - pendingは `UnitId` を保持し、同文重複でもユニット単位で復元可能にする。
@@ -79,6 +85,7 @@
 - `groupedLines -> readingUnits` の件数変化をログに出す。
 - 互換性:
 - `VerticalModeOverride` が `Horizontal/Auto` の場合は既存横書き優先を維持。
+- 横書きは1行=1 `ReadingUnit` を基本とし、既存の見た目を崩さない。
 - Llama単件経路は維持し、既存ガード方針を壊さない。
 
 9. **リスクと緩和策**
@@ -98,6 +105,7 @@
 
 11. **Definition of Done（完了条件）**
 - [ ] 非固定ROIで縦書き表示順が右列→左列になる
+- [ ] 横書きでも ReadingUnit ベースで表示順/翻訳送信順が一致する
 - [ ] 固定ROIでも ReadingUnit 順で連結され、縦書き時の結合表示順が正しい
 - [ ] 縦書き翻訳送信件数が細切れOCR枠数より減り、意味単位で送信される
 - [ ] `readingUnits.Count==1` でLlama単件plain経路が維持される

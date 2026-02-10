@@ -5752,3 +5752,32 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+**2026-02-10 18:03 (Asia/Taipei) — ReadingUnit計画に横書き統一方針を追記**
+
+### Summary
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md に、横書きもReadingUnitを共通利用する方針を反映した。
+
+### Context / Goal
+- 縦書きだけをReadingUnit化すると、横書きとの経路差分で順序不一致の再発リスクが残る。
+- 固定/非固定・横/縦で同一単位を使う設計方針を明確化する。
+
+### Changes
+- 概要に「横書き/縦書きのReadingUnit共通利用」を追記。
+- Goalに「横書きの表示/翻訳単位統一」を追加。
+- データフローを横/縦共通のReadingUnit表示順へ修正。
+- インターフェース設計に横書き構築ポリシー（1行=1単位基本）を追加。
+- 実装手順に横書きReadingUnit構築ステップを追加。
+- 非機能要件とDoDに横書き統一検証項目を追加。
+
+### Files Touched
+- Doc/Ocr_Vertical_ReadingUnit_Plan.md — 横書きReadingUnit統一方針を追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし。実装時の単位統一ルールが明確化された。
+
+### Risk & Mitigation
+- Risk: 横書き側まで対象拡張することで実装範囲が増える。
+- Mitigation: 横書きは1行=1単位を基本とし、既存見た目を維持する段階導入とする。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
