@@ -5929,3 +5929,151 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-translation-payload-log\"` を実行し、0 warning / 0 error を確認。
 
+**2026-02-10 19:59 (Asia/Taipei) — 書字方向の双方向試行スコア選択プランを新規作成**
+
+### Summary
+- `Auto + ja/zh` 限定で Horizontal/Vertical の両結果を採点して選択する実装案を `Doc/` に新規作成した。
+
+### Context / Goal
+- 現状課題の「縦書き/横書き判定精度」を改善するため、単一判定ではなく結果品質ベースで選択する方針を整理する。
+- 性能影響を抑えるため、対象条件を `VerticalModeOverride=Auto` かつ `ja/zh` に限定する。
+
+### Changes
+- 双方向試行（Horizontal/Vertical両実行）とスコア選択の設計を記載。
+- 採点要素として 1文字ユニット比率 / 不自然空白率 / 矩形ばらつき を明記。
+- 実装手順、ログ要件、リスクと緩和策、DoD を明記。
+
+### Files Touched
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` — 双方向スコア選択方式の新規実装案を追加。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: しきい値・重み設計が不適切だと誤判定が残る。
+- Mitigation: 判定ログ（scoreH/scoreV/selected）を必須化し、段階調整可能な設計にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-10 20:01 (Asia/Taipei) — 双方向判定プランから旧単純判定を除外**
+
+### Summary
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` を更新し、近傍 dx/dy の旧単純判定を主判定・補助判定の両方から除外する方針へ修正した。
+
+### Context / Goal
+- 旧単純判定は精度面でノイズになりやすく、双方向スコア選択の一貫性を崩す。
+- 判定根拠を「最終生成物の品質スコア」に一本化する。
+
+### Changes
+- 概要で「旧単純判定を補助用途へ降格」記述を削除し、「完全除外」へ変更。
+- データフローのタイブレーク記述を旧判定依存から、決定的ルール（言語優先・ヒステリシス）へ変更。
+- 実装手順の Step 4 を「旧判定を使わないタイブレーク」へ変更。
+- リスク緩和の同点対策を、旧判定参照からヒステリシス方式へ変更。
+- DoD に「旧単純判定を主/補助とも使用しない」チェック項目を追加。
+
+### Files Touched
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` — 旧単純判定除外方針とタイブレーク方針を更新。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 同点ケースのタイブレークが新ルール設計に依存する。
+- Mitigation: ヒステリシスとスコア差分閾値を明記し、判定ログで調整可能にする。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-10 20:06 (Asia/Taipei) — 双方向判定プランに文字ブロック縦横比スコアを追加**
+
+### Summary
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` に、OCR文字ブロックの縦横比を使う `BlockAspectScore` を採点要素として追加した。
+
+### Context / Goal
+- 書字方向判定の安定性を上げるため、幾何特徴（矩形の縦長/横長）をスコアに取り込みたい。
+- 単一指標依存を避けつつ、最終品質スコアの識別力を高める。
+
+### Changes
+- 採点要素に `BlockAspectScore`（`Rect.Height/Rect.Width`）を追加。
+- 縦仮説は縦長比率、横仮説は横長比率で加点する方針を追記。
+- 小面積ノイズ枠への対策（重み減衰/除外）を追記。
+- 総合スコア式を 3指標から 4指標へ更新し、初期重み例を更新。
+- 実装手順に `BlockAspectScore` 実装ステップを追加。
+- リスク/緩和策とDoDを4指標前提へ更新。
+
+### Files Touched
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` — `BlockAspectScore` と関連方針を追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 記号・ルビ・小サイズ文字が縦横比指標を汚染する。
+- Mitigation: 面積下限フィルタや重み減衰の適用を計画に明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-10 20:15 (Asia/Taipei) — 双方向判定プランを旧判定完全撤去方針へ更新**
+
+### Summary
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` を更新し、旧単純判定の完全撤去と言語優先タイブレーク廃止を反映した。
+
+### Context / Goal
+- 旧単純判定を残すとノイズとして誤判定原因になるため、主/補助ともに除外したい。
+- タイブレークでの言語優先を外し、再現性の高い決定ロジックに統一したい。
+
+### Changes
+- 旧単純判定（近傍 dx/dy）を主判定・補助判定の両方から除外する方針へ明確化。
+- `Auto + 非ja/zh` の挙動を Horizontal 固定へ明文化（旧判定不使用）。
+- タイブレークを言語優先からヒステリシスのみ（差分閾値 + 前回モード維持）へ変更。
+- 4指標スコアの実装定義を追加（0..1正規化、欠損時0.5中立、重み再配分なし）。
+- `BlockAspectScore` の面積フィルタ初期値（`rect.Area < max(16, medianArea*0.15)` 除外）を追加。
+- DoDに精度検証条件（縦20/横20ケース）と性能条件（`groupMs` 増分中央値 +10ms以内）を追加。
+
+### Files Touched
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` — 旧判定完全撤去・タイブレーク・受け入れ基準を更新。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: Auto+非ja/zh を Horizontal 固定にすると一部レイアウトで縦書き検出機会が減る。
+- Mitigation: 対象範囲を明確化し、必要時は別タスクで非ja/zh向け双方向化を段階導入する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-10 20:18 (Asia/Taipei) — 書字方向モードのUI選択方針をプランへ反映**
+
+### Summary
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` に `Auto / Vertical / Horizontal` のUI選択方針を追加した。
+
+### Context / Goal
+- 書字方向モードをユーザーが明示的に切り替えられるようにし、運用時の調整容易性を上げたい。
+- 設定値の永続化不整合を防ぐため、UI値とenum値の対応を明確化したい。
+
+### Changes
+- ゴールに「UIで Auto / Vertical / Horizontal を明示選択可能」を追加。
+- インターフェース設計に `VerticalModeOverride` のUI公開方針を追加。
+- enum値との 1:1 対応（`Auto=0`, `Horizontal=1`, `Vertical=2`）を明記。
+- 不正値読み込み時の `Auto` フォールバックと警告ログ方針を追加。
+- 実装手順に Settings UI 追加（Step 0）を追加。
+- リスクに「UI表示名と永続値不整合」を追加し、緩和策を明記。
+- 影響範囲に Settings の View/ViewModel 変更候補を追記。
+- DoDに「UIで選択・保存・再読込できる」確認項目を追加。
+
+### Files Touched
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` — 書字方向モードのUI設計・DoDを追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: UI値と永続値の不整合で意図しないモードが適用される。
+- Mitigation: enum対応を固定化し、未知値は `Auto` フォールバック + 警告ログで吸収する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
