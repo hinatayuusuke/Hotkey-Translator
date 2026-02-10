@@ -5347,3 +5347,71 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-roi-auto-enable\"` を実行。
 - 結果: 成功（0 errors / 0 warnings）。
+**2026-02-10 11:23 (Asia/Taipei) — OCR二段階LineMerge計画を方針更新**
+
+### Summary
+- `Doc/Ocr_LineMerge_TwoStage_Plan.md` を、指定の3方針（Stage Aスペース結合・新方式優先・隣接判定+強制ブレーク）に合わせて更新した。
+
+### Context / Goal
+- 同一行結合の目的と後段改行ロジックの整合を明確化する。
+- 別カラム誤結合を抑えるため、Stage A の判定戦略を具体化する。
+
+### Changes
+- Stage A の結合を「同一行クラスタ + X隣接のみ」に修正。
+- Stage A 出力仕様として「テキストはスペース連結」「`lineCount=1`」を明記。
+- `gapX > minHeight * K` の強制ブレーク条件を判定式へ追加。
+- 互換性方針を「基本は新方式優先、旧方式は明示OFF時のみ」に更新。
+- DoD に `7. 本文` 形式（`7.\n本文` 回避）の確認項目を追加。
+
+### Files Touched
+- `Doc/Ocr_LineMerge_TwoStage_Plan.md` — Stage A/B仕様、判定式、実装手順、互換性方針、DoDを更新。
+
+### Behavioral Impact
+- ドキュメント上の実装方針が、現行パイプラインとの整合性を保った内容に明確化された。
+
+### Risk & Mitigation
+- Risk: Stage A 閾値の調整幅が増え、初期チューニングが必要。
+- Mitigation: 強制ブレークと隣接限定を先に固定し、閾値は再現ケースで段階調整する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-10 11:44 (Asia/Taipei) — OCR LineMerge二段階化を実装**
+
+### Summary
+- `Doc/Ocr_LineMerge_TwoStage_Plan.md` に沿って、LineMerge を Stage A（同一行）→ Stage B（縦結合）の2段階方式に実装した。
+
+### Context / Goal
+- `7.` のような同一行トークン分離を改善し、後段ロジックとの整合（同一行は1行扱い）を取る。
+- 誤結合を抑えるため、Stage A は全結合ではなく同一行クラスタ内の隣接判定に限定する。
+
+### Changes
+- `AppSettings` に 2段階LineMerge用設定を追加。
+  - `EnableTwoStageLineMerge`（既定: true）
+  - `RowMergeYCenterToleranceRatio` / `RowMergeHeightRatioMin` / `RowMergeMaxGapRatio` / `RowMergeHardBreakRatio` / `RowMergeNeighborCount`
+- `OcrLineGrouper` を段階分離:
+  - Stage A: `MergeSameRowTokens`（同一行クラスタ化 + X隣接のみ結合）
+  - Stage B: `MergeVerticalLines`（既存の `PassesAlignmentGate` + `IsMergeableByCost` を継続）
+- Stage A の出力仕様を実装:
+  - テキスト連結はスペース (`" "`)。
+  - `lineCount=1` 固定。
+- 列分離ガードを実装:
+  - `gapX > minHeight * RowMergeHardBreakRatio` なら必ず非結合。
+- 互換フォールバックを実装:
+  - `EnableTwoStageLineMerge=false` なら旧方式（縦結合のみ）を使用。
+
+### Files Touched
+- `Models/AppSettings.cs` — 2段階LineMerge関連の設定項目を追加。
+- `Services/OcrLineGrouper.cs` — Stage A/Stage B 分離、隣接判定、強制ブレーク、フォールバックを実装。
+
+### Behavioral Impact
+- 既定では新方式（2段階）が有効となり、同一行トークンの結合精度が改善される。
+- Stage Aで結合された行は1行扱いになるため、`7.\n本文` ではなく `7. 本文` になりやすい。
+- 旧方式は `EnableTwoStageLineMerge=false` で再現可能。
+
+### Risk & Mitigation
+- Risk: Stage A 閾値次第で結合漏れ/誤結合が起こる可能性。
+- Mitigation: 同一行候補判定に加えて隣接限定 + hard-break を導入し、過結合を抑制。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-line-merge-twostage\"` を実行。
+- 結果: 成功（0 errors / 0 warnings）。

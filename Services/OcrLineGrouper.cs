@@ -15,11 +15,67 @@ public sealed class OcrLineGrouper
             return lines;
         }
 
-        var ordered = lines
-            .OrderBy(line => line.Rect.Y)
-            .ThenBy(line => line.Rect.X)
-            .ToList();
+        var ordered = OrderLines(lines);
+        if (!settings.EnableTwoStageLineMerge)
+        {
+            return MergeVerticalLines(ordered, settings);
+        }
 
+        var stageAResult = MergeSameRowTokens(ordered, settings);
+        return MergeVerticalLines(stageAResult, settings);
+    }
+
+    private static IReadOnlyList<OcrLine> MergeSameRowTokens(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    {
+        if (lines.Count <= 1)
+        {
+            return lines;
+        }
+
+        var rowClusters = BuildRowClusters(lines, settings);
+        var rowGroups = BuildGroups(lines, rowClusters);
+        var merged = new List<OcrLine>(lines.Count);
+        foreach (var rowGroup in rowGroups)
+        {
+            var orderedRow = rowGroup
+                .OrderBy(line => line.Rect.X)
+                .ThenBy(line => line.Rect.Y)
+                .ToList();
+
+            if (orderedRow.Count == 1)
+            {
+                merged.Add(BuildMergedLineFromGroup(orderedRow, " ", forceLineCountOne: true, sortByXThenY: true));
+                continue;
+            }
+
+            var adjacencyUnion = new UnionFind(orderedRow.Count);
+            for (var i = 0; i < orderedRow.Count - 1; i++)
+            {
+                if (ShouldMergeAdjacentTokens(orderedRow[i].Rect, orderedRow[i + 1].Rect, settings))
+                {
+                    adjacencyUnion.Union(i, i + 1);
+                }
+            }
+
+            var adjacencyGroups = BuildGroups(orderedRow, adjacencyUnion);
+            foreach (var group in adjacencyGroups)
+            {
+                // WHY: Stage A merges tokens in the same visual row, so downstream must treat the result as a single line.
+                merged.Add(BuildMergedLineFromGroup(group, " ", forceLineCountOne: true, sortByXThenY: true));
+            }
+        }
+
+        return OrderLines(merged);
+    }
+
+    private static IReadOnlyList<OcrLine> MergeVerticalLines(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    {
+        if (lines.Count <= 1)
+        {
+            return lines;
+        }
+
+        var ordered = OrderLines(lines);
         var unionFind = new UnionFind(ordered.Count);
         var neighborCount = Math.Max(1, settings.MergeNeighborCount);
 
@@ -64,29 +120,133 @@ public sealed class OcrLineGrouper
                 .ThenBy(line => line.Rect.X)
                 .ToList();
 
-            var unionRect = sortedGroup[0].Rect;
-            var minConfidence = sortedGroup[0].Confidence;
-            for (var i = 1; i < sortedGroup.Count; i++)
-            {
-                unionRect = Rect.Union(unionRect, sortedGroup[i].Rect);
-                minConfidence = Math.Min(minConfidence, sortedGroup[i].Confidence);
-            }
-
-            var lineCount = sortedGroup.Count;
-            var lineHeight = GetMedianLineHeight(sortedGroup);
-            if (lineHeight <= 0 && lineCount > 0 && unionRect.Height > 0)
-            {
-                lineHeight = unionRect.Height / lineCount;
-            }
-
-            var text = string.Join(Environment.NewLine, sortedGroup.Select(line => line.Text));
-            merged.Add(new OcrLine(text, unionRect, minConfidence, lineCount, lineHeight));
+            merged.Add(BuildMergedLineFromGroup(sortedGroup, Environment.NewLine, forceLineCountOne: false, sortByXThenY: false));
         }
 
-        return merged
+        return OrderLines(merged);
+    }
+
+    private static UnionFind BuildRowClusters(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    {
+        var unionFind = new UnionFind(lines.Count);
+        var neighborCount = Math.Max(1, settings.RowMergeNeighborCount);
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var a = lines[i];
+            for (var offset = 1; offset <= neighborCount && i + offset < lines.Count; offset++)
+            {
+                var b = lines[i + offset];
+                if (!IsSameRowCandidate(a.Rect, b.Rect, settings))
+                {
+                    continue;
+                }
+
+                unionFind.Union(i, i + offset);
+            }
+        }
+
+        return unionFind;
+    }
+
+    private static bool IsSameRowCandidate(Rect a, Rect b, AppSettings settings)
+    {
+        var minHeight = Math.Min(a.Height, b.Height);
+        var maxHeight = Math.Max(a.Height, b.Height);
+        if (minHeight <= 0 || maxHeight <= 0)
+        {
+            return false;
+        }
+
+        var centerDiff = Math.Abs(GetCenterY(a) - GetCenterY(b));
+        if (centerDiff > minHeight * settings.RowMergeYCenterToleranceRatio)
+        {
+            return false;
+        }
+
+        var heightRatio = minHeight / maxHeight;
+        return heightRatio >= settings.RowMergeHeightRatioMin;
+    }
+
+    private static bool ShouldMergeAdjacentTokens(Rect left, Rect right, AppSettings settings)
+    {
+        var minHeight = Math.Min(left.Height, right.Height);
+        if (minHeight <= 0)
+        {
+            return false;
+        }
+
+        var gapX = Math.Max(0, right.Left - left.Right);
+        if (gapX > minHeight * settings.RowMergeHardBreakRatio)
+        {
+            return false;
+        }
+
+        return gapX <= minHeight * settings.RowMergeMaxGapRatio;
+    }
+
+    private static List<List<OcrLine>> BuildGroups(IReadOnlyList<OcrLine> lines, UnionFind unionFind)
+    {
+        var groups = new Dictionary<int, List<(int Index, OcrLine Line)>>();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var root = unionFind.Find(i);
+            if (!groups.TryGetValue(root, out var group))
+            {
+                group = new List<(int, OcrLine)>();
+                groups[root] = group;
+            }
+
+            group.Add((i, lines[i]));
+        }
+
+        return groups.Values
+            .Select(group => group.OrderBy(item => item.Index).Select(item => item.Line).ToList())
+            .OrderBy(group => group[0].Rect.Y)
+            .ThenBy(group => group[0].Rect.X)
+            .ToList();
+    }
+
+    private static OcrLine BuildMergedLineFromGroup(
+        IReadOnlyList<OcrLine> group,
+        string separator,
+        bool forceLineCountOne,
+        bool sortByXThenY)
+    {
+        var sortedGroup = group
+            .OrderBy(line => sortByXThenY ? line.Rect.X : line.Rect.Y)
+            .ThenBy(line => sortByXThenY ? line.Rect.Y : line.Rect.X)
+            .ToList();
+
+        var unionRect = sortedGroup[0].Rect;
+        var minConfidence = sortedGroup[0].Confidence;
+        for (var i = 1; i < sortedGroup.Count; i++)
+        {
+            unionRect = Rect.Union(unionRect, sortedGroup[i].Rect);
+            minConfidence = Math.Min(minConfidence, sortedGroup[i].Confidence);
+        }
+
+        var lineCount = forceLineCountOne ? 1 : sortedGroup.Count;
+        var lineHeight = GetMedianLineHeight(sortedGroup);
+        if (lineHeight <= 0 && lineCount > 0 && unionRect.Height > 0)
+        {
+            lineHeight = unionRect.Height / lineCount;
+        }
+
+        var text = string.Join(separator, sortedGroup.Select(line => line.Text));
+        return new OcrLine(text, unionRect, minConfidence, lineCount, lineHeight);
+    }
+
+    private static List<OcrLine> OrderLines(IEnumerable<OcrLine> lines)
+    {
+        return lines
             .OrderBy(line => line.Rect.Y)
             .ThenBy(line => line.Rect.X)
             .ToList();
+    }
+
+    private static double GetCenterY(Rect rect)
+    {
+        return rect.Top + (rect.Height / 2.0);
     }
 
     private static bool PassesAlignmentGate(Rect a, Rect b, double overlapRatioThreshold)
