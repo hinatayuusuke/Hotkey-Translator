@@ -5444,3 +5444,60 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `python -m py_compile OcrService/ocr_engine.py` を実行。
 - 結果: 成功（文法エラーなし）。
+**2026-02-10 13:38 (Asia/Taipei) — PaddleOCRの検出しきい値パラメータを追加**
+
+### Summary
+- PaddleOCR v3系推奨の `text_det_thresh` と `text_det_box_thresh` をOCRエンジン初期化引数に追加した。
+
+### Context / Goal
+- 検出ボックスの低信頼ノイズを抑え、オーバレイの不要な「釣り」や過大ボックスを減らす。
+- 旧 `det_db_*` ではなく v3系の推奨キー名で反映する。
+
+### Changes
+- `OcrService/ocr_engine.py` の `PaddleOCR(**kwargs)` に以下を追加:
+  - `text_det_thresh = 0.35`
+  - `text_det_box_thresh = 0.70`
+- `OcrService/cpu_ocr_engine.py` にも同設定を追加し、GPU/CPU挙動を揃えた。
+
+### Files Touched
+- `OcrService/ocr_engine.py` — PaddleOCR初期化引数へ検出しきい値2項目を追加。
+- `OcrService/cpu_ocr_engine.py` — 同様のしきい値2項目を追加。
+
+### Behavioral Impact
+- 検出の採択がやや厳しくなり、低信頼ボックスが減る方向に動作する。
+- その反面、淡い/小さい文字が一部欠落する可能性がある。
+
+### Risk & Mitigation
+- Risk: しきい値引き上げにより取りこぼしが増える可能性。
+- Mitigation: 値は過度に上げず中程度（0.35/0.70）で開始し、必要に応じて再調整する。
+
+### Tests / Verification
+- `python -m py_compile OcrService/ocr_engine.py OcrService/cpu_ocr_engine.py` を実行。
+- 結果: 成功（文法エラーなし）。
+**2026-02-10 13:56 (Asia/Taipei) — PaddleOCR座標補正を検証用に一時OFF**
+
+### Summary
+- `OcrService/ocr_engine.py` のパディング戻し補正を検証用に一時的に無効化した。
+
+### Context / Goal
+- 全体が左上へずれる症状が、`-padding` 補正の過適用かを切り分ける。
+- 補正ロジックを維持したまま、ON/OFF比較を素早く行える状態にする。
+
+### Changes
+- `recognize()` 内の `_restore_boxes_after_padding(...)` 呼び出し条件を一時的に無効化。
+- 変更箇所に検証目的である旨の `NOTE` コメントを追加。
+
+### Files Touched
+- `OcrService/ocr_engine.py` — unpadding適用行を一時OFF化（検証用）。
+
+### Behavioral Impact
+- PaddleOCR返却座標に対して `-padding` 補正を行わない挙動になる。
+- 返却座標が既に元画像基準なら、左上ずれが改善する可能性がある。
+
+### Risk & Mitigation
+- Risk: 返却座標がpad後基準の環境では、逆に右下へずれる可能性。
+- Mitigation: 検証目的の一時変更として扱い、結果確認後に恒久策（auto判定等）へ移行する。
+
+### Tests / Verification
+- `python -m py_compile OcrService/ocr_engine.py` を実行。
+- 結果: 成功（文法エラーなし）。

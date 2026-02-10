@@ -113,6 +113,12 @@ class PaddleOcrEngine:
             "use_textline_orientation": bool(use_textline_orientation),
             "text_detection_model_name": text_detection_model_name,
             "text_recognition_model_name": rec_model_name,
+            # NOTE: v3系の推奨パラメータ名。旧 det_db_* は非推奨。
+            # WHY: Raise thresholds slightly to reduce low-confidence boxes that tend to drift visually.
+            # "text_det_thresh": 0.35,
+            # "text_det_box_thresh": 0.70,
+            # "text_det_unclip_ratio": 1.1,
+            "text_rec_score_thresh": 0.80,
         }
 
         # model_dir を使う場合は PaddleOCR 3.x の仕様に沿ってください。
@@ -143,6 +149,7 @@ class PaddleOcrEngine:
         #print(repr(result))
         #print("=== RAW OCR RESULT END ===")
         lines = self._parse_v5_predict_result(result)
+        # NOTE: Temporarily disable unpadding to verify whether OCR output is already in original-image coordinates.
         if padding_px > 0 and lines:
             lines = self._restore_boxes_after_padding(lines, padding_px, original_width, original_height)
         return json.dumps({"lines": lines}, ensure_ascii=False)

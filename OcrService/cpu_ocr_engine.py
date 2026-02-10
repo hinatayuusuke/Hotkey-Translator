@@ -70,6 +70,10 @@ class PaddleOcrEngine:
             # 明示的にモデルを固定（将来のデフォルト変更に備える）
             "text_detection_model_name": det_name,
             "text_recognition_model_name": rec_name,
+            # NOTE: v3系の推奨パラメータ名。旧 det_db_* は非推奨。
+            # WHY: Keep behavior aligned with GPU path to suppress low-confidence detection boxes.
+            "text_det_thresh": 0.35,
+            "text_det_box_thresh": 0.70,
         }
 
         # model_dir を使う場合の注意:
