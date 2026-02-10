@@ -80,21 +80,13 @@ public sealed class GeminiClient
                 responseSchema = new
                 {
                     type = "object",
+                    required = new[] { "translations" },
                     properties = new
                     {
                         translations = new
                         {
                             type = "array",
-                            items = new
-                            {
-                                type = "object",
-                                properties = new
-                                {
-                                    source_text = new { type = "string" },
-                                    translated_text = new { type = "string" }
-                                },
-                                required = new[] { "source_text", "translated_text" }
-                            }
+                            items = new { type = "string" }
                         }
                     }
                 },
@@ -107,47 +99,73 @@ public sealed class GeminiClient
         };
 
         var payload = JsonSerializer.Serialize(requestBody, JsonOptions);
-        _logger?.Info($"Gemini request prepared: {texts.Count} items, {payload.Length} chars.");
         using var content = new StringContent(payload, Encoding.UTF8, "application/json");
         var requestStopwatch = Stopwatch.StartNew();
         using var response = await _httpClient.PostAsync(endpoint, content, cancellationToken).ConfigureAwait(false);
         requestStopwatch.Stop();
-        _logger?.Info($"Gemini HTTP {(int)response.StatusCode} {response.ReasonPhrase} in {requestStopwatch.ElapsedMilliseconds} ms.");
+        _logger?.Info($"Gemini HTTP: status={(int)response.StatusCode}, latency_ms={requestStopwatch.ElapsedMilliseconds}, count_in={texts.Count}.");
         var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-        await WriteGeminiRawResponseAsync(
-                body,
-                settings.GeminiModel,
-                texts.Count,
-                requestStopwatch.ElapsedMilliseconds,
-                (int)response.StatusCode,
-                cancellationToken)
-            .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
+            await WriteGeminiRawResponseAsync(
+                    body,
+                    settings.GeminiModel,
+                    texts.Count,
+                    requestStopwatch.ElapsedMilliseconds,
+                    (int)response.StatusCode,
+                    "http_error",
+                    cancellationToken)
+                .ConfigureAwait(false);
             return new Dictionary<string, string>();
         }
 
-        _logger?.Info($"Gemini response body length: {body.Length} chars.");
         var jsonText = ExtractJsonText(body);
         if (string.IsNullOrWhiteSpace(jsonText))
         {
             _logger?.Info("Gemini response missing JSON text.");
+            await WriteGeminiRawResponseAsync(
+                    body,
+                    settings.GeminiModel,
+                    texts.Count,
+                    requestStopwatch.ElapsedMilliseconds,
+                    (int)response.StatusCode,
+                    "missing_json_text",
+                    cancellationToken)
+                .ConfigureAwait(false);
             return new Dictionary<string, string>();
         }
 
-        _logger?.Info($"Gemini response JSON text length: {jsonText.Length} chars.");
-        var translations = ParseTranslations(jsonText);
-        _logger?.Info($"Gemini translations parsed: {translations.Count}.");
-        if (translations.Count > 0)
+        if (!TryParseTranslations(jsonText, out var parsedTranslations))
         {
-            for (var i = 0; i < texts.Count; i++)
-            {
-                if (translations.TryGetValue(texts[i], out var translated))
-                {
-                    _logger?.Info($"Gemini translation length[{i}]: {translated.Length} chars.");
-                }
-            }
+            _logger?.Info("Gemini response parse failed.");
+            await WriteGeminiRawResponseAsync(
+                    body,
+                    settings.GeminiModel,
+                    texts.Count,
+                    requestStopwatch.ElapsedMilliseconds,
+                    (int)response.StatusCode,
+                    "parse_failed",
+                    cancellationToken)
+                .ConfigureAwait(false);
+            return new Dictionary<string, string>();
         }
+
+        var translations = RemapByIndex(texts, parsedTranslations);
+        _logger?.Info($"Gemini translation counts: in={texts.Count}, out_raw={parsedTranslations.Count}, out_mapped={translations.Count}.");
+        if (parsedTranslations.Count < texts.Count)
+        {
+            // WHY: Short output means partial apply risk; preserve raw payload for postmortem.
+            await WriteGeminiRawResponseAsync(
+                    body,
+                    settings.GeminiModel,
+                    texts.Count,
+                    requestStopwatch.ElapsedMilliseconds,
+                    (int)response.StatusCode,
+                    "count_mismatch_short",
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         return translations;
     }
 
@@ -157,6 +175,7 @@ public sealed class GeminiClient
         int itemCount,
         long latencyMs,
         int statusCode,
+        string reason,
         CancellationToken cancellationToken)
     {
         try
@@ -177,6 +196,7 @@ public sealed class GeminiClient
             builder.AppendLine($"status={statusCode}");
             builder.AppendLine($"latency_ms={latencyMs}");
             builder.AppendLine($"items={itemCount}");
+            builder.AppendLine($"reason={reason}");
             builder.AppendLine("---");
             builder.Append(body);
 
@@ -197,14 +217,14 @@ public sealed class GeminiClient
 
     private static string BuildPrompt(IReadOnlyList<string> texts, AppSettings settings)
     {
-        var inputJson = JsonSerializer.Serialize(texts, JsonOptions);
+        var inputJson = JsonSerializer.Serialize(texts);
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
-        return $@"Role: Game Localization Expert. Translate array to {targetLanguage}.
-            Rules:
-            1. Fix OCR errors (e.g., 'L0adin9'->'Loading') but keep graphical noise unchanged.
-            2. Tone: Concise for UI, natural for Dialogue.
-            3. Output only JSON. Maintain exact array length and order.
-            Input: {inputJson}";
+        return $@"Translate each input text into {targetLanguage}.
+Rules:
+1. Return JSON only with this exact schema: {{""translations"":[""""]}}.
+2. Keep array length and order exactly the same as input.
+3. Do not include markdown, explanations, or extra keys.
+Input: {inputJson}";
     }
 
     private static string ResolveGeminiLanguageName(string? language)
@@ -290,26 +310,65 @@ public sealed class GeminiClient
         }
     }
 
-    private static IReadOnlyDictionary<string, string> ParseTranslations(string jsonText)
+    private static bool TryParseTranslations(string jsonText, out List<string> translations)
     {
+        translations = new List<string>();
         try
         {
             using var doc = JsonDocument.Parse(jsonText);
-            if (!doc.RootElement.TryGetProperty("translations", out var translations))
+            if (!doc.RootElement.TryGetProperty("translations", out var translationsElement)
+                || translationsElement.ValueKind != JsonValueKind.Array)
             {
-                return new Dictionary<string, string>();
+                return false;
             }
 
-            return translations.EnumerateArray()
-                .Select(item => new TranslationItem(
-                    item.GetProperty("source_text").GetString() ?? string.Empty,
-                    item.GetProperty("translated_text").GetString() ?? string.Empty))
-                .Where(item => !string.IsNullOrWhiteSpace(item.SourceText))
-                .ToDictionary(item => item.SourceText, item => item.TranslatedText, StringComparer.Ordinal);
+            foreach (var item in translationsElement.EnumerateArray())
+            {
+                if (item.ValueKind == JsonValueKind.String)
+                {
+                    translations.Add(item.GetString() ?? string.Empty);
+                    continue;
+                }
+
+                // COMPAT: Accept legacy object response during rollout and extract translated_text.
+                if (item.ValueKind == JsonValueKind.Object
+                    && item.TryGetProperty("translated_text", out var translatedElement)
+                    && translatedElement.ValueKind == JsonValueKind.String)
+                {
+                    translations.Add(translatedElement.GetString() ?? string.Empty);
+                    continue;
+                }
+
+                translations.Add(string.Empty);
+            }
+
+            return true;
         }
         catch
         {
-            return new Dictionary<string, string>();
+            translations = new List<string>();
+            return false;
         }
+    }
+
+    private static IReadOnlyDictionary<string, string> RemapByIndex(
+        IReadOnlyList<string> sourceTexts,
+        IReadOnlyList<string> translatedTexts)
+    {
+        var mapped = new Dictionary<string, string>(StringComparer.Ordinal);
+        var limit = Math.Min(sourceTexts.Count, translatedTexts.Count);
+        for (var i = 0; i < limit; i++)
+        {
+            var translated = translatedTexts[i];
+            if (string.IsNullOrWhiteSpace(translated))
+            {
+                continue;
+            }
+
+            // WHY: Provider interface is keyed by source text; duplicate keys intentionally keep the latest value.
+            mapped[sourceTexts[i]] = translated;
+        }
+
+        return mapped;
     }
 }

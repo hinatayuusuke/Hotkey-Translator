@@ -6104,3 +6104,66 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+**2026-02-11 01:24 (Asia/Taipei) — Geminiレスポンス全文のTXTダンプ追加**
+
+### Summary
+- Gemini APIの返却内容（raw body）をデバッグ用に全文 `.txt` 保存する処理を追加しました。
+
+### Context / Goal
+- Geminiの返却形式崩れや空応答を追跡できるように、実際に返ってきた本文を後から確認したい。
+- 成功/失敗レスポンスを含めて、通信結果を再現可能にしたい。
+
+### Changes
+- `Services/GeminiClient.cs` にレスポンス本文の保存処理 `WriteGeminiRawResponseAsync` を追加。
+- Gemini HTTP応答受信後、ステータス判定前に raw body を UTF-8 で保存するフローを追加。
+- 保存先を `%AppData%\Hotkey-Translator\debug\gemini` とし、時刻ベースファイル名で衝突を回避。
+- 保存失敗時は翻訳処理を止めないよう、例外を握りつぶしてログのみ出すガードを追加。
+
+### Files Touched
+- `Services/GeminiClient.cs` — raw response のTXT保存機能を追加。
+
+### Behavioral Impact
+- Gemini呼び出しごとにデバッグTXTが生成され、返却本文を全文確認できるようになる。
+- 応答が失敗ステータスでも本文が保存されるため、障害解析がしやすくなる。
+
+### Risk & Mitigation
+- Risk: デバッグファイルが増加し、ディスク使用量が増える。
+- Mitigation: 保存先を専用ディレクトリに限定し、運用で定期削除しやすい構造にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+
+**2026-02-11 02:20 (Asia/Taipei) — Gemini配列順マッピング実装**
+
+### Summary
+- Gemini翻訳を配列順ベースに切り替え、GeminiClient 内で 	exts[i] -> translations[i] 再マップして辞書契約を維持しました。
+
+### Context / Goal
+- source_text 一致依存を外し、Gemini翻訳成功時の取りこぼしを減らしたい。
+- 既存の IReadOnlyDictionary<string,string> 契約を維持して他プロバイダへの影響を避けたい。
+
+### Changes
+- Services/GeminiClient.cs の esponseSchema を {"translations":["..."]} へ最小化。
+- パース処理を配列ベースへ変更し、TryParseTranslations で順序保持リストを取得。
+- RemapByIndex を追加し、min(texts.Count, translations.Count) の先頭N部分適用で辞書に再マップ。
+- 空要素は辞書へ入れず原文フォールバックに倒す仕様を実装。
+- raw dump を失敗時/短件数時のみ保存する条件付きに変更し、保存理由（eason）をメタ情報へ追加。
+- Geminiログを status, latency, count(in/out) 中心の最小ログへ整理。
+
+### Files Touched
+- Services/GeminiClient.cs — スキーマ短文化、配列パース、index再マップ、条件付きraw dump、ログ整理を実装。
+
+### Behavioral Impact
+- Gemini応答が source_text を返さなくても、配列順で翻訳結果を適用できる。
+- 件数不足時は先頭Nだけ反映し、残りは原文維持となる。
+- 通常成功時のraw dump生成が減り、失敗調査時のみ詳細本文を保存する。
+
+### Risk & Mitigation
+- Risk: 同一原文が複数ある場合、辞書契約上は後勝ちで上書きされる。
+- Mitigation: RemapByIndex に WHYコメントを追加し、仕様として明示した。
+- Risk: 件数不足時は後半が未翻訳のまま残る。
+- Mitigation: 先頭N部分適用を明示し、count(in/out) ログと count_mismatch_short dump で追跡できるようにした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors）。
+- 実行中プロセスが Hotkey-Translator.exe をロックしていたため、apphostコピーでMSB3026警告は発生（既知の実行中ビルド警告）。
