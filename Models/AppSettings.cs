@@ -107,11 +107,11 @@ public sealed class AppSettings
     public double MergeOverlapRatioThreshold { get; set; } = 0.1;
     public double MergeVerticalWeight { get; set; } = 0.5;
     public double MergeThresholdRatio { get; set; } = 0.9;
-    public int MergeNeighborCount { get; set; } = 14;
+    public int MergeNeighborCount { get; set; } = 12;
     public double RowMergeYCenterToleranceRatio { get; set; } = 0.45;
     public double RowMergeHeightRatioMin { get; set; } = 0.55;
-    public double RowMergeMaxGapRatio { get; set; } = 1.25;
-    public double RowMergeHardBreakRatio { get; set; } = 1.25;
+    public double RowMergeMaxGapRatio { get; set; } = 1.5;
+    public double RowMergeHardBreakRatio { get; set; } = 2;
     public int RowMergeNeighborCount { get; set; } = 24;
     public bool EnableVerticalMerge { get; set; } = true;
     public bool VerticalModeAutoDetect { get; set; } = true;
@@ -141,7 +141,7 @@ public sealed class AppSettings
     public string StyleId { get; set; } = "default";
     public string GlossaryVersion { get; set; } = "v1";
     public bool EnableGemini { get; set; } = false;
-    public string GeminiModel { get; set; } = "gemini-2.5-flash-lite";
+    public string GeminiModel { get; set; } = "gemini-2.5-flash";
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";

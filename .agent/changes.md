@@ -6195,3 +6195,41 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+
+**2026-02-11 04:18 (Asia/Taipei) — PaddleOCR向け枠結合パラメータ最適化**
+
+### Summary
+- WinRT寄りだった行結合設定を、PaddleOCRの座標揺れ・大きめ矩形前提へ調整しました。
+
+### Context / Goal
+- 現行の `settings.json` はWinRT向けに寄っており、PaddleOCRで枠分断が起きやすい。
+- 過剰結合を抑えつつ、同一行/近接行の取りこぼしを減らす設定へ寄せたい。
+
+### Changes
+- `%AppData%\Hotkey-Translator\settings.json` の `OcrEngine` を `1`（Paddle）へ変更。
+- 2段階結合関連の閾値をPaddle向けに中庸調整:
+  - `MergeOverlapRatioThreshold: 0.16`
+  - `MergeVerticalWeight: 0.4`
+  - `MergeThresholdRatio: 1.05`
+  - `MergeNeighborCount: 14`
+  - `RowMergeYCenterToleranceRatio: 0.55`
+  - `RowMergeHeightRatioMin: 0.45`
+  - `RowMergeMaxGapRatio: 1.9`
+  - `RowMergeHardBreakRatio: 2.4`
+  - `RowMergeNeighborCount: 28`
+
+### Files Touched
+- `%AppData%\Hotkey-Translator\settings.json` — PaddleOCR前提の行結合閾値へ更新。
+- `.agent/changes.md` — 本作業ログを追記。
+
+### Behavioral Impact
+- PaddleOCRで行内トークン結合と段落結合が通りやすくなり、分断されるケースを減らす方向の挙動になる。
+- 一方で近接テキストが多い画面では、誤結合リスクがわずかに増える可能性がある。
+
+### Risk & Mitigation
+- Risk: 許容幅の拡大により、UI密集箇所で別文が結合される場合がある。
+- Mitigation: まず上記中庸値で運用し、誤結合が目立つ場合は `RowMergeMaxGapRatio` と `RowMergeYCenterToleranceRatio` を小さく戻して微調整する。
+
+### Tests / Verification
+- `%AppData%\Hotkey-Translator\settings.json` の該当キー更新を再読込で確認。
+- アプリ実画面での目視検証は未実施（設定反映のみ実施）。
