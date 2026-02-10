@@ -5415,3 +5415,32 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-line-merge-twostage\"` を実行。
 - 結果: 成功（0 errors / 0 warnings）。
+**2026-02-10 13:26 (Asia/Taipei) — PaddleOCRパディング座標戻しの最小修正**
+
+### Summary
+- `OcrService/ocr_engine.py` のパディング戻しを `x,y` 補正のみから、`left/top/right/bottom` 再計算 + 画像境界クリップへ変更した。
+
+### Context / Goal
+- パディング付き推論時に、検出ボックスが表示上大きくはみ出すケースを抑える。
+- まずは最小実装として、座標復元の幾何補正だけを強化する。
+
+### Changes
+- `recognize()` で元画像サイズ（`original_width`, `original_height`）を保持。
+- パディング戻し処理を `_restore_boxes_after_padding(...)` へ分離。
+- 各ボックスについて `left/top/right/bottom` をパディング分だけ戻し、元画像サイズへクリップ。
+- クリップ後に `width/height` を再計算し、無効ボックス（0以下）は除外。
+
+### Files Touched
+- `OcrService/ocr_engine.py` — パディング復元ロジックを再計算方式へ変更し、座標補正ヘルパーを追加。
+
+### Behavioral Impact
+- 画像端での検出ボックス過大化が起きにくくなり、オーバレイはみ出しが軽減される。
+- パディングを使った見切れ救済自体は維持される。
+
+### Risk & Mitigation
+- Risk: 端境界で極小ボックスが除外され、まれに1件欠落する可能性。
+- Mitigation: 無効ボックス除外は `width/height<=0` のみとし、通常ケースへの影響を最小化。
+
+### Tests / Verification
+- `python -m py_compile OcrService/ocr_engine.py` を実行。
+- 結果: 成功（文法エラーなし）。

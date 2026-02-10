@@ -130,6 +130,7 @@ class PaddleOcrEngine:
 
         # bytes -> RGB ndarray (H, W, 3) uint8
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        original_width, original_height = image.size
         padding_px = 40
         if padding_px > 0:
             padding_color = self._estimate_padding_color(image)
@@ -143,12 +144,7 @@ class PaddleOcrEngine:
         #print("=== RAW OCR RESULT END ===")
         lines = self._parse_v5_predict_result(result)
         if padding_px > 0 and lines:
-            for line in lines:
-                box = line.get("box")
-                if not box or len(box) < 2:
-                    continue
-                box[0] = max(0.0, box[0] - padding_px)
-                box[1] = max(0.0, box[1] - padding_px)
+            lines = self._restore_boxes_after_padding(lines, padding_px, original_width, original_height)
         return json.dumps({"lines": lines}, ensure_ascii=False)
 
     @staticmethod
@@ -213,6 +209,40 @@ class PaddleOcrEngine:
             )
 
         return lines
+
+    @staticmethod
+    def _restore_boxes_after_padding(
+        lines: list[dict],
+        padding_px: int,
+        original_width: int,
+        original_height: int,
+    ) -> list[dict]:
+        restored: list[dict] = []
+        for line in lines:
+            box = line.get("box")
+            if not isinstance(box, list) or len(box) < 4:
+                continue
+
+            left = float(box[0]) - padding_px
+            top = float(box[1]) - padding_px
+            right = float(box[0] + box[2]) - padding_px
+            bottom = float(box[1] + box[3]) - padding_px
+
+            # WHY: Clamp all edges in original-image coordinates, then recompute width/height
+            # to avoid oversized boxes near image boundaries after unpadding.
+            left = min(max(0.0, left), float(original_width))
+            top = min(max(0.0, top), float(original_height))
+            right = min(max(0.0, right), float(original_width))
+            bottom = min(max(0.0, bottom), float(original_height))
+            width = max(0.0, right - left)
+            height = max(0.0, bottom - top)
+            if width <= 0.0 or height <= 0.0:
+                continue
+
+            line["box"] = [left, top, width, height]
+            restored.append(line)
+
+        return restored
 
     @staticmethod
     def _estimate_padding_color(image: Image.Image) -> tuple[int, int, int]:
