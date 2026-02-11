@@ -6267,3 +6267,95 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-writingmode-impl\"` を実行し、0 warning / 0 error を確認。
 
+**2026-02-11 12:19 (Asia/Taipei) — WinRT CJKスペース補正の実装案をDocへ追加**
+
+### Summary
+- WinRT OCR の CJK文字間スペース問題に対する段階導入型の実装案を `Doc/` に新規作成した。
+
+### Context / Goal
+- `line.Text` の CJK 文字間スペース混入により、翻訳送信とオーバーレイ可読性が低下している。
+- まずは低リスクな最小修正から入り、必要時のみ拡張する実装方針を整理する。
+
+### Changes
+- `Doc/Ocr_WinRt_Cjk_Spacing_Fix_Plan.md` を新規作成。
+- 推奨順として「第1段階: CJK間スペースのみ除去」→「第2段階: CJK率ゲート」→「第3段階: Words再構成」を記載。
+- WinRT限定適用、Settingsトグル追加、DoD/リスク緩和を明記。
+
+### Files Touched
+- `Doc/Ocr_WinRt_Cjk_Spacing_Fix_Plan.md` — WinRT CJKスペース補正の実装案を追加。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時に英数字スペースまで削除すると副作用が出る。
+- Mitigation: Doc で初期適用範囲を「CJK間空白のみ」に限定し、段階導入前提を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-11 13:50 (Asia/Taipei) — WinRT CJKスペース補正計画の自己レビュー反映**
+
+### Summary
+- `Doc/Ocr_WinRt_Cjk_Spacing_Fix_Plan.md` を更新し、「line.Words未実装」前提に合わせて UI なし・line.Text補正中心の計画へ整理した。
+
+### Context / Goal
+- 直前の自己レビュー指摘（UI前提の残存、補正ルール曖昧、言語タグ依存）を解消したい。
+- 現実装方針に沿った実装手順と受け入れ基準へ修正する。
+
+### Changes
+- 概要・構成から UI トグル前提を除外し、WinRT内部補正のみのスコープに修正。
+- `line.Text` 補正ルールを具体化（半角/全角空白統一、CJK+数字、句読点前後、trim）。
+- 適用条件に `SourceLanguage` だけでなく CJK率フォールバック（例: 0.6）を追加。
+- 実装手順を現方針に合わせて再整理し、チューニング手順を明確化。
+- DoDを定量化し、翻訳送信ログ（`<sp>`）で前後比較できる検証条件を追加。
+
+### Files Touched
+- `Doc/Ocr_WinRt_Cjk_Spacing_Fix_Plan.md` — 自己レビュー指摘反映（UIなし前提、適用条件、補正ルール、DoD）を更新。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: UIトグルなしのため、実装後の即時切り戻し導線が弱い。
+- Mitigation: 補正呼び出しを1箇所へ集約し、コード側で無効化可能な構造を計画に明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 14:00 (Asia/Taipei) — WinRT CJKスペース補正をline.Text経路で実装**
+
+### Summary
+- `WinRtOcrProvider` に line.Text ベースの CJKスペース補正を実装し、翻訳送信前の不自然空白を減らす処理を追加した。
+
+### Context / Goal
+- WinRT OCR で CJK文字が `文 字 列` のように分割され、翻訳品質と表示可読性を落としていた。
+- UI追加なしで、WinRT経路だけに限定した低リスク補正を先に導入したい。
+
+### Changes
+- `RecognizeAsync` で各行テキストに対して補正判定・補正適用を追加。
+- 適用判定は `SourceLanguage` (`ja/zh*`) または CJK率しきい値（0.60）で実施。
+- 補正ルールを追加:
+  - 半角/全角空白を統一
+  - CJK-CJK 間空白を削除
+  - CJK-数字間空白を削除
+  - 句読点直前空白を削除
+  - 英数字単語間空白は維持
+  - trim で前後空白を除去
+- 補正が発生したフレームのみ、件数とサンプル（`<sp>` 可視化）をログ出力するようにした。
+
+### Files Touched
+- `Services/WinRtOcrProvider.cs` — CJKスペース補正ロジック、適用条件判定、可視化ログを追加。
+
+### Behavioral Impact
+- WinRT + CJK主体行で不自然な文字間空白が減る。
+- 英語単語間空白は維持される設計。
+- PaddleOCR を含む他OCR経路の挙動は変更しない。
+
+### Risk & Mitigation
+- Risk: 混在文で必要な空白を誤削除する可能性。
+- Mitigation: CJK関連ケースに限定して空白削除し、英数字間は維持。適用判定に言語タグとCJK率の二重条件を使う。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-winrt-cjk-fix\"` を実行し、0 warning / 0 error を確認。
+

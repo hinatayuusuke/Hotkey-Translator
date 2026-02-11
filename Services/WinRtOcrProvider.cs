@@ -5,6 +5,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -19,6 +20,8 @@ namespace Hotkey_Translator.Services;
 
 public sealed class WinRtOcrProvider : IOcrProvider
 {
+    private const double CjkRatioThreshold = 0.60;
+    private const int LogPreviewMaxChars = 120;
     private readonly ConcurrentDictionary<string, Windows.Media.Ocr.OcrEngine> _engines = new(StringComparer.OrdinalIgnoreCase);
     private readonly Windows.Media.Ocr.OcrEngine _fallbackEngine;
     private readonly AppLogger? _logger;
@@ -39,10 +42,36 @@ public sealed class WinRtOcrProvider : IOcrProvider
         var result = await engine.RecognizeAsync(softwareBitmap).AsTask(cancellationToken);
 
         var lines = new List<ModelOcrLine>(result.Lines.Count);
+        var normalizedLineCount = 0;
+        string? sampleBefore = null;
+        string? sampleAfter = null;
         foreach (var line in result.Lines)
         {
             var rect = GetLineRect(line);
-            lines.Add(new ModelOcrLine(line.Text, rect, 1.0f, 1, rect.Height));
+            var text = line.Text ?? string.Empty;
+            if (ShouldApplyCjkSpacingFix(text, settings.SourceLanguage))
+            {
+                var normalized = NormalizeWinRtCjkSpacing(text);
+                if (!string.Equals(text, normalized, StringComparison.Ordinal))
+                {
+                    normalizedLineCount++;
+                    if (sampleBefore is null)
+                    {
+                        sampleBefore = text;
+                        sampleAfter = normalized;
+                    }
+                    text = normalized;
+                }
+            }
+
+            lines.Add(new ModelOcrLine(text, rect, 1.0f, 1, rect.Height));
+        }
+
+        if (normalizedLineCount > 0)
+        {
+            _logger?.Info(
+                $"WinRT CJK spacing fix: normalized {normalizedLineCount}/{result.Lines.Count} lines. " +
+                $"sample=\"{ToLogPreview(sampleBefore)}\" => \"{ToLogPreview(sampleAfter)}\".");
         }
 
         return new OcrResultModel(lines, softwareBitmap.PixelWidth, softwareBitmap.PixelHeight);
@@ -118,5 +147,166 @@ public sealed class WinRtOcrProvider : IOcrProvider
         {
             bitmap.UnlockBits(data);
         }
+    }
+
+    private static bool ShouldApplyCjkSpacingFix(string text, string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        if (IsLikelyCjkLanguage(sourceLanguage))
+        {
+            return true;
+        }
+
+        var nonWhitespaceCount = 0;
+        var cjkCount = 0;
+        foreach (var ch in text)
+        {
+            if (char.IsWhiteSpace(ch) || ch == '\u3000')
+            {
+                continue;
+            }
+
+            nonWhitespaceCount++;
+            if (IsCjkCharacter(ch))
+            {
+                cjkCount++;
+            }
+        }
+
+        if (nonWhitespaceCount == 0)
+        {
+            return false;
+        }
+
+        return (cjkCount / (double)nonWhitespaceCount) >= CjkRatioThreshold;
+    }
+
+    private static bool IsLikelyCjkLanguage(string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLanguage))
+        {
+            return false;
+        }
+
+        var normalized = sourceLanguage.Trim().Replace('_', '-');
+        return normalized.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ||
+               normalized.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeWinRtCjkSpacing(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        var normalizedWhitespace = NormalizeWhitespaceToSpaces(text);
+        var builder = new StringBuilder(normalizedWhitespace.Length);
+        for (var i = 0; i < normalizedWhitespace.Length; i++)
+        {
+            var ch = normalizedWhitespace[i];
+            if (ch != ' ')
+            {
+                builder.Append(ch);
+                continue;
+            }
+
+            var previousIndex = FindPreviousNonSpaceIndex(normalizedWhitespace, i - 1);
+            var nextIndex = FindNextNonSpaceIndex(normalizedWhitespace, i + 1);
+            if (previousIndex < 0 || nextIndex < 0)
+            {
+                continue;
+            }
+
+            var previous = normalizedWhitespace[previousIndex];
+            var next = normalizedWhitespace[nextIndex];
+
+            // WHY: CJK adjacent spacing from WinRT often appears as tokenization artifacts and degrades translation quality.
+            if (char.IsPunctuation(next))
+            {
+                continue;
+            }
+
+            if ((IsCjkCharacter(previous) && IsCjkCharacter(next)) ||
+                (IsCjkCharacter(previous) && char.IsDigit(next)) ||
+                (char.IsDigit(previous) && IsCjkCharacter(next)))
+            {
+                continue;
+            }
+
+            if (builder.Length > 0 && builder[^1] != ' ')
+            {
+                builder.Append(' ');
+            }
+        }
+
+        return builder.ToString().Trim();
+    }
+
+    private static string NormalizeWhitespaceToSpaces(string text)
+    {
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            builder.Append(char.IsWhiteSpace(ch) || ch == '\u3000' ? ' ' : ch);
+        }
+
+        return builder.ToString();
+    }
+
+    private static int FindPreviousNonSpaceIndex(string text, int startIndex)
+    {
+        for (var i = startIndex; i >= 0; i--)
+        {
+            if (text[i] != ' ')
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static int FindNextNonSpaceIndex(string text, int startIndex)
+    {
+        for (var i = startIndex; i < text.Length; i++)
+        {
+            if (text[i] != ' ')
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool IsCjkCharacter(char value)
+    {
+        return value is >= '\u3040' and <= '\u30FF' or
+               >= '\u3400' and <= '\u4DBF' or
+               >= '\u4E00' and <= '\u9FFF' or
+               >= '\uF900' and <= '\uFAFF';
+    }
+
+    private static string ToLogPreview(string? text)
+    {
+        var value = text ?? string.Empty;
+        var visible = value
+            .Replace("\\", "\\\\", StringComparison.Ordinal)
+            .Replace("\r", "\\r", StringComparison.Ordinal)
+            .Replace("\n", "\\n", StringComparison.Ordinal)
+            .Replace("\t", "\\t", StringComparison.Ordinal)
+            .Replace(" ", "<sp>", StringComparison.Ordinal)
+            .Replace("\u3000", "<fwsp>", StringComparison.Ordinal);
+        if (visible.Length <= LogPreviewMaxChars)
+        {
+            return visible;
+        }
+
+        return visible[..LogPreviewMaxChars] + "...";
     }
 }
