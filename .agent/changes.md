@@ -6767,3 +6767,84 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 18:13 (Asia/Taipei) — ROI計画書の固定ROI非排他化表現を修正**
+
+### Summary
+- ROIセット計画書内の「固定ROIが排他に見える記述」を非排他仕様へ統一した。
+
+### Context / Goal
+- 固定ROI機能は残したまま、ROI入力元のみ Single/Set 切替とする意図を文書上で明確化したい。
+- 実装時の誤解（固定ROI無効化や排他化）を防ぎたい。
+
+### Changes
+- 前提・仮定の文言を、固定ROI維持 + ROI入力元選択の表現へ更新。
+- 提案アーキテクチャの「排他で切替運用」を削除し、固定ROI機能は無効化しないことを明記。
+- 実装手順 Step 2 を ROI入力元切替 + 固定ROI併存の表現へ修正。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 固定ROI非排他の仕様意図に沿う表現へ修正。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント表現の整合修正のみ）。
+
+### Risk & Mitigation
+- Risk: 表現変更のみのため、実装時に旧認識が残る可能性。
+- Mitigation: 主要3箇所（前提/アーキテクチャ/実装手順）を同時修正して解釈を固定。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 18:25 (Asia/Taipei) — ROI Singleモード仕様の明確化（複数選択禁止）**
+
+### Summary
+- ROI Set計画書に RoiMode=Single の複数ROI選択禁止と既存単一ROI経路維持を反映し、全体整合を修正した。
+
+### Context / Goal
+- RoiMode=Single では複数ROIを選べない仕様にしたい。
+- Single時は既存パイプラインをそのまま利用する方針を文書上で明確化したい。
+
+### Changes
+- 概要/前提/アーキテクチャ/インターフェースに、Single時の1ROI制約と既存経路維持を追記。
+- データフローをSingle/Setで読めるように補正。
+- 実装手順のUI・ガード実装範囲を RoiMode=Set 前提に整理。
+- DoDとリスクにSingle時の複数入力防止を追加。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — Single/Setの責務分離とSingle時の既存経路維持を反映。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時にSingleでもSet向け処理（多重ROI前提）が混入する可能性。
+- Mitigation: Singleの制約（UI禁止・保存時1ROI）とDoDを明示し、レビュー観点を固定。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 18:30 (Asia/Taipei) — ROI順序ルールの矛盾解消（Single/Set分離）**
+
+### Summary
+- ROI計画書の「非固定Overlayの順序ルール」を Single/Set で分離し、矛盾しない仕様に修正した。
+
+### Context / Goal
+- 「ROIセット登録順で扱う」という文言が Single モードと衝突する曖昧さを解消したい。
+- 実装時に ROI間順序と ROI内読順の責務を明確化したい。
+
+### Changes
+- RoiMode=Single は既存の読順ロジックに従うと明記。
+- RoiMode=Set は ROI間を登録順、ROI内を既存読順ロジックとする規則に分離。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 非固定Overlayの描画・翻訳送信順ルールを Single/Set で明確化。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 順序ルールの適用層（ROI間/ROI内）が実装で混同される可能性。
+- Mitigation: 文言を2層に分離し、レビュー時の確認点を明示。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。

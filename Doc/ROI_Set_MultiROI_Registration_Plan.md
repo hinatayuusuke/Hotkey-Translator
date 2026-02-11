@@ -2,9 +2,9 @@
 
 1. **概要（1–3行）**
 - 固定ROI機能は維持しつつ、ゲーム向けに「複数ROIを1セットとして登録・切替」できる運用を追加する。
-- ROI選択は複数矩形の手動描画を前提とし、描画中は枠を可視化して登録確定する。
+- ROI選択は `RoiMode=Single` では1矩形のみ、`RoiMode=Set` では複数矩形の手動描画を許可し、描画中は枠を可視化して登録確定する。
 - 重なり防止は描画時に適用し、既存ROI近傍までで引けるように制約する。
-- OCR実行は複数回に分割せず、ROI集合の外接矩形で切り抜いた1枚画像を従来パイプラインへ渡す。
+- OCR実行は複数回に分割せず、`RoiMode=Single` は既存単一ROI経路、`RoiMode=Set` はROI集合の外接矩形で切り抜いた1枚画像を従来パイプラインへ渡す。
 
 2. **ゴール / 非ゴール**
 - ゴール:
@@ -19,8 +19,10 @@
 
 3. **前提・仮定**
 - 既存は単一ROI中心で、固定ROI Overlayモードが存在する。
-- 固定ROIとROIセットは用途が異なるため、設定・UI・実行経路を分離する。
-- 非固定Overlayの描画・翻訳送信順は、ROIセット内の登録順で扱う。
+- 固定ROI機能は維持しつつ、ROI入力元（Single/Set）を選択できる前提で設定・UI・実行経路を整理する。
+- `RoiMode=Single` は既存単一ROIパイプラインを維持し、複数ROI入力を受け付けない。
+- `RoiMode=Single` の非固定Overlay描画・翻訳送信順は、既存の読順ロジック（書字方向判定後の行順）に従う。
+- `RoiMode=Set` の非固定Overlay描画・翻訳送信順は、ROI間はセット内の登録順、各ROI内は既存の読順ロジックに従う。
 
 4. **現状整理**
 - ROIは `AppSettings.Roi / NormalizedRoi` を主に使用している。
@@ -30,19 +32,20 @@
 5. **提案アーキテクチャ**
 - コンポーネント構成:
 - `AppSettings` に ROIセット構造（複数セット + アクティブID）を追加。
-- `RoiSelectorWindow` を複数矩形描画モードに拡張。
-- `PipelineOrchestrator` はアクティブROIセットからマスク画像を1枚生成し、OCRは1回のみ実行する。
+- `RoiSelectorWindow` を `RoiMode` に応じた描画モード（Single: 単一矩形 / Set: 複数矩形）に拡張。
+- `PipelineOrchestrator` は `RoiMode=Single` では既存単一ROI経路を維持し、`RoiMode=Set` ではアクティブROIセットからマスク画像を1枚生成してOCRを1回だけ実行する。
 - データフロー / シーケンス:
 1. ユーザーが「ROIセット編集」を開始
-2. ROIを複数描画（描画中は可視枠表示）
+2. `RoiMode=Set` の場合はROIを複数描画（描画中は可視枠表示）
 3. `登録完了` で1セット保存
 4. アクティブセット切替で次回OCRから適用
-5. `RoiMode=Set` かつ ROI数2以上のとき、ROI集合の外接矩形で切り抜き
-6. 切り抜き画像のうちROI外を黒塗りしてOCRへ投入
-7. OCR結果はROI所属を判定し、行結合は同一ROI内だけ許可
+5. `RoiMode=Single` のときは既存単一ROI切り抜き経路をそのまま実行
+6. `RoiMode=Set` かつ ROI数2以上のとき、ROI集合の外接矩形で切り抜き
+7. 切り抜き画像のうちROI外を黒塗りしてOCRへ投入
+8. OCR結果はROI所属を判定し、行結合は同一ROI内だけ許可
 - 既存パターン整合:
 - 単一ROIは「1要素セット」として互換移行。
-- 固定ROI経路は維持し、ROIセット経路とは排他で切替運用する。
+- 固定ROI機能は維持し、ROI入力元のみ `RoiMode=Single|Set` で切り替える（固定ROI機能そのものは無効化しない）。
 
 6. **インターフェース設計**
 - 新規設定（案）:
@@ -63,6 +66,8 @@
 - モード前提（MUST）:
 - `EnableRoi=false` の場合は単一ROI/ROIセットともに無効（ROI未使用）。
 - `RoiMode=Set` は `EnableRoi=true` を前提とする。
+- `RoiMode=Single` では ROI選択UIは1矩形のみ許可し、追加描画は受け付けない。
+- `RoiMode=Single` では OCR入力経路は既存単一ROI切り抜き（黒塗りなし）をそのまま使う。
 - `EnableFixedRoiOverlay` は表示モード設定として維持し、ROI有効/無効判定は `EnableRoi` に従う。
 - ROIセットOCRポリシー（MUST）:
 - `RoiMode=Set` かつ ROI数が2以上のときは、まずROI集合の外接矩形を切り抜く。
@@ -75,15 +80,16 @@
 - 新規ROIは既存ROIと高重複（例: IoU >= 0.15）なら追加拒否。
 - 近接しすぎる場合は `minGapPx`（例: 8px）を保つ位置までクランプ。
 - 既存ROIの内側に完全包含されるROIは拒否。
+- `RoiMode=Single` では重複/近接判定は不要（複数描画自体を禁止）。
 - 操作補助（SHOULD）:
 - `Undo Last` / `Clear All` / `登録完了` / `キャンセル`。
 - `Shift` 押下時のみ近接クランプ解除（重複禁止は維持）。
 
 7. **実装手順（ステップ分割）**
 - Step 1: `AppSettings` に ROIセット構造を追加し、旧ROIからの移行処理を実装。
-- Step 2: 固定ROIとROIセットのモード切替を追加（相互に独立設定として扱う）。
-- Step 3: ROI選択UIを複数描画対応へ拡張（描画中枠表示、Undo/Clear/完了）。
-- Step 4: 描画時の重複/近接ガード（IoU + minGap）を実装。
+- Step 2: ROI入力元のモード切替（`RoiMode=Single|Set`）を追加し、固定ROI機能は既存どおり併存させる。
+- Step 3: ROI選択UIを `RoiMode` 対応へ拡張（Singleは単一描画のみ、Setは複数描画 + 枠表示 + Undo/Clear/完了）。
+- Step 4: `RoiMode=Set` 時の描画で重複/近接ガード（IoU + minGap）を実装。
 - Step 5: セット保存・セット切替UI（最低限: コンボ + 保存/更新）を実装。
 - Step 6: Pipelineで `EnableRoi` / `RoiMode` / ROI数に応じて入力経路を分岐（ROI数1は従来切り抜き、ROI数2以上は外接矩形切り抜き + ROI外黒塗り1枚OCR）。
 - Step 6.5: ROI数2以上経路で、OCR結果座標へ外接矩形オフセットを戻す。
@@ -110,6 +116,8 @@
 - Mitigation: `minGapPx` を保守的初期値にし、`Shift` で一時解除を許可。
 - Risk: ROIが近い場合に行結合で誤連結する可能性。
 - Mitigation: `OwnerRoiIndex` を導入し、ROI跨ぎ結合を禁止する。
+- Risk: `RoiMode=Single` なのに複数ROI相当のデータが流入して経路がぶれる可能性。
+- Mitigation: UIで複数描画を禁止し、保存時バリデーションでSingleは1ROIのみ許可する。
 - Risk: ROI数1でも黒塗り経路を通すと既存挙動との差分が増える。
 - Mitigation: ROI数1は従来切り抜き経路を維持し、既存チューニングを活かす。
 - Risk: 旧設定との整合不備。
@@ -130,6 +138,8 @@
 - [ ] セット切替が反映され、OCR対象領域が切り替わる。
 - [ ] 描画時に重複/近接ガードが動作する。
 - [ ] `EnableRoi=false` のとき ROIは適用されない。
+- [ ] `RoiMode=Single` のとき、ROI選択UIで複数描画ができない。
+- [ ] `RoiMode=Single` のとき、OCRは既存単一ROI切り抜き経路（黒塗りなし）で実行される。
 - [ ] `RoiMode=Set` かつ ROI数1のときは従来切り抜き経路でOCRが実行される。
 - [ ] `RoiMode=Set` かつ ROI数2以上のとき、外接矩形切り抜き + ROI外黒塗り（余白なし）の1枚画像でOCRが実行される。
 - [ ] ROI数2以上経路で、OCR結果の座標が元スクリーン座標へ正しく復元される。
