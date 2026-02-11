@@ -1,7 +1,7 @@
 ﻿# ROIセット登録・複数ROI描画・セット切替 実装案
 
 1. **概要（1–3行）**
-- 固定ROI機能は維持しつつ、ゲーム向けに「複数ROIを1セットとして登録・切替」できる運用を追加する。
+- 旧 `EnableFixedRoiOverlay` は段階廃止し、ゲーム向けに「複数ROIを1セットとして登録・切替」できる運用へ統合する。
 - ROI選択は `RoiMode=Single` では1矩形のみ、`RoiMode=Set` では複数矩形の手動描画を許可し、描画中は枠を可視化して登録確定する。
 - 重なり防止は描画時に適用し、既存ROI近傍までで引けるように制約する。
 - OCR実行は複数回に分割せず、`RoiMode=Single` は既存単一ROI経路、`RoiMode=Set` はROI集合の外接矩形で切り抜いた1枚画像を従来パイプラインへ渡す。
@@ -11,6 +11,7 @@
 - ユーザーが複数ROIを1セットとして保存できる。
 - セット切替で対象領域を即時変更できる。
 - ROI作成時の重なり・近接ミスを抑制できる。
+- 旧固定ROI表示フラグを `OverlayLayoutMode` へ統合し、表示分岐を簡素化できる。
 - 非ゴール:
 - 複数セット同時OCR（初期実装では行わない）。
 - ROIごとの複数OCR実行（初期実装では行わない）。
@@ -18,22 +19,24 @@
 - 複数ウィンドウ同時追従の高度制御。
 
 3. **前提・仮定**
-- 既存は単一ROI中心で、固定ROI Overlayモードが存在する。
-- 固定ROI機能は維持しつつ、ROI入力元（Single/Set）を選択できる前提で設定・UI・実行経路を整理する。
+- 既存は単一ROI中心で、旧 `EnableFixedRoiOverlay` 分岐が残っている。
+- ROI入力元（Single/Set）と表示モード（PerBox/PerRoiAggregate）を分離し、表示制御を `OverlayLayoutMode` に統合する。
 - `RoiMode=Single` は既存単一ROIパイプラインを維持し、複数ROI入力を受け付けない。
 - `RoiMode=Single` の非固定Overlay描画・翻訳送信順は、既存の読順ロジック（書字方向判定後の行順）に従う。
-- `RoiMode=Set` の非固定Overlay描画・翻訳送信順は、ROI間はセット内の登録順、各ROI内は既存の読順ロジックに従う。
+- `RoiMode=Set` の `OverlayLayoutMode=PerBox` 時の描画・翻訳送信順は、ROI間はセット内の登録順、各ROI内は既存の読順ロジックに従う。
+- `RoiMode=Set` の `OverlayLayoutMode=PerRoiAggregate` 時は ROIごとに1ブロック集約表示し、ROI間は登録順に従う。
 
 4. **現状整理**
 - ROIは `AppSettings.Roi / NormalizedRoi` を主に使用している。
 - ROI選択UIは単発矩形選択を前提。
-- 固定ROI Overlayモードがあり、全テキスト集約表示経路が存在する。
+- 旧 `EnableFixedRoiOverlay` があり、表示ロジックに分岐が残っている。
 
 5. **提案アーキテクチャ**
 - コンポーネント構成:
 - `AppSettings` に ROIセット構造（複数セット + アクティブID）を追加。
 - `RoiSelectorWindow` を `RoiMode` に応じた描画モード（Single: 単一矩形 / Set: 複数矩形）に拡張。
 - `PipelineOrchestrator` は `RoiMode=Single` では既存単一ROI経路を維持し、`RoiMode=Set` ではアクティブROIセットからマスク画像を1枚生成してOCRを1回だけ実行する。
+- Overlay表示は `OverlayLayoutMode` で制御し、`PerBox`（従来）と `PerRoiAggregate`（ROI単位集約）を切り替える。
 - データフロー / シーケンス:
 1. ユーザーが「ROIセット編集」を開始
 2. `RoiMode=Set` の場合はROIを複数描画（描画中は可視枠表示）
@@ -45,12 +48,13 @@
 8. OCR結果はROI所属を判定し、行結合は同一ROI内だけ許可
 - 既存パターン整合:
 - 単一ROIは「1要素セット」として互換移行。
-- 固定ROI機能は維持し、ROI入力元のみ `RoiMode=Single|Set` で切り替える（固定ROI機能そのものは無効化しない）。
+- 旧 `EnableFixedRoiOverlay` は互換読込のみ残し、起動時に `true -> PerRoiAggregate / false -> PerBox` へマップする。
 
 6. **インターフェース設計**
 - 新規設定（案）:
 - `RoiSets: List<RoiSetConfig>`
 - `ActiveRoiSetId: string?`
+- `OverlayLayoutMode: PerBox | PerRoiAggregate`
 - `RoiSetConfig`:
 - `Id: string`
 - `Name: string`
@@ -59,16 +63,18 @@
 - 運用モード（案）:
 - `RoiMode: Single | Set`
 - `RoiSet` は `RoiMode=Set` のときのみ有効
+- `OverlayLayoutMode` は描画モード設定（OCR入力モードとは独立）
 - 互換移行:
 - 既存 `NormalizedRoi` がある場合は、起動時に `Default` セットへ自動移行する。
 - 旧単一ROI設定は互換のため保持しつつ、実行時は `RoiMode` に従って適用対象を決める。
-- `EnableFixedRoiOverlay` は既存値を維持する（自動無効化しない）。
+- 旧 `EnableFixedRoiOverlay=true` は、初回起動時に `OverlayLayoutMode=PerRoiAggregate` へ移行して保存する。
+- 旧 `EnableFixedRoiOverlay=false` は、`OverlayLayoutMode=PerBox` へ移行して保存する。
 - モード前提（MUST）:
 - `EnableRoi=false` の場合は単一ROI/ROIセットともに無効（ROI未使用）。
 - `RoiMode=Set` は `EnableRoi=true` を前提とする。
 - `RoiMode=Single` では ROI選択UIは1矩形のみ許可し、追加描画は受け付けない。
 - `RoiMode=Single` では OCR入力経路は既存単一ROI切り抜き（黒塗りなし）をそのまま使う。
-- `EnableFixedRoiOverlay` は表示モード設定として維持し、ROI有効/無効判定は `EnableRoi` に従う。
+- ROI有効/無効判定は `EnableRoi` に従い、表示レイアウトは `OverlayLayoutMode` のみで制御する。
 - ROIセットOCRポリシー（MUST）:
 - `RoiMode=Set` かつ ROI数が2以上のときは、まずROI集合の外接矩形を切り抜く。
 - 切り抜き後画像の ROI外を黒塗りする（余白拡張なし、ROI境界そのまま）。
@@ -84,10 +90,12 @@
 - 操作補助（SHOULD）:
 - `Undo Last` / `Clear All` / `登録完了` / `キャンセル`。
 - `Shift` 押下時のみ近接クランプ解除（重複禁止は維持）。
+- 表示モード切替（`PerBox` / `PerRoiAggregate`）を設定UIに提供する。
 
 7. **実装手順（ステップ分割）**
 - Step 1: `AppSettings` に ROIセット構造を追加し、旧ROIからの移行処理を実装。
-- Step 2: ROI入力元のモード切替（`RoiMode=Single|Set`）を追加し、固定ROI機能は既存どおり併存させる。
+- Step 2: ROI入力元のモード切替（`RoiMode=Single|Set`）を追加する。
+- Step 2.5: `OverlayLayoutMode` を導入し、旧 `EnableFixedRoiOverlay` を起動時に新モードへ移行する（互換読込のみ残す）。
 - Step 3: ROI選択UIを `RoiMode` 対応へ拡張（Singleは単一描画のみ、Setは複数描画 + 枠表示 + Undo/Clear/完了）。
 - Step 4: `RoiMode=Set` 時の描画で重複/近接ガード（IoU + minGap）を実装。
 - Step 5: セット保存・セット切替UI（最低限: コンボ + 保存/更新）を実装。
@@ -95,6 +103,8 @@
 - Step 6.5: ROI数2以上経路で、OCR結果座標へ外接矩形オフセットを戻す。
 - Step 7: `OcrLine` に `OwnerRoiIndex` を追加し、OCR結果へ所属情報を付与。
 - Step 8: 行結合を同一 `OwnerRoiIndex` 内に制限（ROI跨ぎ結合禁止）。
+- Step 8.5: Overlay構築を `OverlayLayoutMode` 分岐へ置換（`PerBox` は従来、`PerRoiAggregate` はROI単位集約）。
+- Step 8.6: `EnableFixedRoiOverlay` のUI項目を撤去し、表示モードUIへ置換。
 - Step 9: 手動検証（代表ゲーム画面）とビルド確認。
 
 8. **非機能要件チェック**
@@ -106,6 +116,7 @@
 - セットID、ROI数、入力経路（切り抜き/黒塗り）、重複拒否回数、ROI跨ぎ結合ブロック件数をログ化。
 - 互換性:
 - 旧単一ROIは自動移行し、既存利用者を壊さない。
+- 旧 `EnableFixedRoiOverlay` は起動時マッピングで新 `OverlayLayoutMode` へ移行し、設定破壊を避ける。
 
 9. **リスクと緩和策**
 - Risk: ROI境界ぎりぎりの文字が黒塗りで欠ける可能性。
@@ -122,18 +133,20 @@
 - Mitigation: ROI数1は従来切り抜き経路を維持し、既存チューニングを活かす。
 - Risk: 旧設定との整合不備。
 - Mitigation: 起動時マイグレーション + ログ + 失敗時フォールバック（単一ROI）。
+- Risk: 固定ROI廃止により既存ユーザーが表示仕様変更を混乱する可能性。
+- Mitigation: 互換移行時に `EnableFixedRoiOverlay` 値を `OverlayLayoutMode` へ写像し、初回だけ移行ログを表示する。
 
 10. **影響範囲（変更ファイル候補）**
 - `Models/AppSettings.cs` — ROIセット設定とROIモード設定の追加。
 - `Models/OcrLine.cs` — `OwnerRoiIndex` 追加。
 - `Services/SettingsService.cs` — 旧設定からROIセットへの移行処理。
 - `UI/RoiSelectorWindow.xaml(.cs)` — 複数ROI描画・枠表示・登録完了操作。
-- `MainWindow.xaml(.cs)` — ROIモード選択、ROIセット編集/切替UI、保存処理。
-- `Services/PipelineOrchestrator.cs` — 外接矩形切り抜き + ROI外黒塗り画像生成 + 座標オフセット復元経路。
+- `MainWindow.xaml(.cs)` — ROIモード選択、ROIセット編集/切替UI、`OverlayLayoutMode` 選択、保存処理。
+- `Services/PipelineOrchestrator.cs` — 外接矩形切り抜き + ROI外黒塗り画像生成 + 座標オフセット復元 + Overlay構築分岐更新。
+- `UI/OverlayWindow.xaml(.cs)` — `PerRoiAggregate` 表示モードでの描画整形。
 - `Services/OcrLineGrouper.cs` — ROI跨ぎ結合禁止（OwnerRoiIndexゲート）対応。
 
 11. **Definition of Done**
-- [ ] 固定ROI機能は従来どおり動作する。
 - [ ] 複数ROIを1セットとして登録・保存できる。
 - [ ] セット切替が反映され、OCR対象領域が切り替わる。
 - [ ] 描画時に重複/近接ガードが動作する。
@@ -145,4 +158,6 @@
 - [ ] ROI数2以上経路で、OCR結果の座標が元スクリーン座標へ正しく復元される。
 - [ ] ROI跨ぎ行結合が発生しない。
 - [ ] 旧単一ROI設定が起動時に `Default` セットへ自動移行される。
+- [ ] 旧 `EnableFixedRoiOverlay` が初回起動時に `OverlayLayoutMode` へ移行され、次回以降は新モードのみで動作する。
+- [ ] `OverlayLayoutMode=PerBox` と `OverlayLayoutMode=PerRoiAggregate` の表示差分が意図どおり確認できる。
 - [ ] `dotnet build Hotkey-Translator.sln` が成功する。
