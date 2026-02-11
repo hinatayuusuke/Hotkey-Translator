@@ -44,6 +44,8 @@ public partial class OverlayWindow : Window
     private const double SpinnerMargin = 12.0;
     private static readonly Duration SpinnerRotationDuration = new(TimeSpan.FromMilliseconds(900));
     private const double AutoVerticalAspectThreshold = 1.25;
+    private const double DominantAxisBoostRatio = 0.90;
+    private const double SecondaryAxisBoostRatio = 0.45;
     private readonly DispatcherTimer _toastTimer;
     private DateTime _lastToastAtUtc = DateTime.MinValue;
 
@@ -355,8 +357,14 @@ public partial class OverlayWindow : Window
             return rect;
         }
 
-        var width = rect.Width * scale;
-        var height = rect.Height * scale;
+        var delta = scale - 1.0;
+        var (ratioX, ratioY) = writingMode == OverlayWritingMode.Vertical
+            ? (DominantAxisBoostRatio, SecondaryAxisBoostRatio)
+            : (SecondaryAxisBoostRatio, DominantAxisBoostRatio);
+        var scaleX = 1.0 + (delta * ratioX);
+        var scaleY = 1.0 + (delta * ratioY);
+        var width = rect.Width * scaleX;
+        var height = rect.Height * scaleY;
         var expandToLeft = writingMode == OverlayWritingMode.Vertical &&
                            _verticalColumnOrder == VerticalColumnOrder.RightToLeft;
         // WHY: Keep the reading origin stable by anchoring expansion to the start edge:

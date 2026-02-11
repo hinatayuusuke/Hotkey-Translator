@@ -6596,3 +6596,32 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。
+
+**2026-02-11 16:17 (Asia/Taipei) — 小枠拡大を縦横で軸別倍率に調整**
+
+### Summary
+- 小枠拡大を等倍率から軸別倍率へ変更し、横書きは高さ寄り、縦書きは幅寄りに拡大するようにした。
+
+### Context / Goal
+- 現行は等倍率拡大のため、必要な軸への拡大効率が低く、重なりが増えやすかった。
+- 横書き/縦書きで読みやすさに効く軸へ優先的に拡大をかけたい。
+
+### Changes
+- OverlayWindow に軸別倍率定数を追加（dominant/secondary）。
+- ExpandRectWithAnchor で書字モード別に scaleX / scaleY を分離計算。
+- 横書き: Y優先拡大、縦書き: X優先拡大へ変更。
+- 既存アンカー規則（横:右下、縦RTL:左下、縦LTR:右下）は維持。
+
+### Files Touched
+- UI/OverlayWindow.xaml.cs — 軸別倍率拡大ロジックを実装。
+
+### Behavioral Impact
+- 小枠補正ON時、横書きでは高さ方向の余裕が増え、縦書きでは幅方向の余裕が増える。
+- 逆軸の不要な拡大量が減るため、重なりリスクを抑えやすくなる。
+
+### Risk & Mitigation
+- Risk: 軸比率が強すぎると一部レイアウトで見切れや重なりが残る可能性。
+- Mitigation: 比率定数をコード定義に集約し、必要時に一括調整しやすくした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。
