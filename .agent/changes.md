@@ -6625,3 +6625,145 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。
+
+**2026-02-11 17:22 (Asia/Taipei) — 複数ROIセット登録・切替の実装案を追加**
+
+### Summary
+- 固定ROI無効化を前提に、複数ROIの手動登録とセット切替機能の実装案を Doc/ に新規作成した。
+
+### Context / Goal
+- ゲーム用途で、複数領域をまとめて管理し、セット単位で切り替えたい。
+- ROI描画時の重なり防止（近接制約）を設計へ含めたい。
+
+### Changes
+- ROIセット構造（RoiSets / ActiveRoiSetId）の提案を追加。
+- 複数ROI描画フロー（枠表示、Undo/Clear、登録完了）を定義。
+- 重複/近接ガード（IoU + minGap + 包含拒否）を定義。
+- 固定ROI Overlay廃止、旧単一ROIからの互換移行方針を明記。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: ROI数増加によるOCR処理時間の増大。
+- Mitigation: 初期はROI数上限を設け、順次処理で運用する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-11 17:25 (Asia/Taipei) — ROIセット実装案を固定ROI併存方針へ修正**
+
+### Summary
+- ROI_Set_MultiROI_Registration_Plan を「固定ROI維持 + ROIセット分離」方針に更新した。
+
+### Context / Goal
+- 先行案が固定ROI廃止前提になっていたため、意図（固定ROIは残す）に合わせて設計を修正したい。
+- ROIセットは固定ROIと分離し、独立モードとして運用したい。
+
+### Changes
+- 概要/前提/アーキテクチャから固定ROI廃止記述を削除し、併存・分離運用へ変更。
+- 設定設計に RoiMode: Single | Set を追加。
+- 互換移行を「固定ROIを保持しつつ、必要ならDefaultセットへ任意コピー」に修正。
+- 実装手順・影響範囲・DoDを固定ROI維持前提へ更新。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 固定ROI併存方針へ全面修正。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: Single/Set のモード分離が曖昧だとUI/実行経路で混線する。
+- Mitigation: RoiMode を明示し、Pipelineでモード単位に処理経路を分離する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 17:41 (Asia/Taipei) — ROIセット案に黒塗り単一OCRとROI跨ぎ結合禁止を反映**
+
+### Summary
+- ROI_Set_MultiROI_Registration_Plan に、ROI外黒塗り（余白なし）の単一OCR方式とROI跨ぎ結合禁止を反映した。
+
+### Context / Goal
+- 複数ROIでもOCR呼び出しを増やさず、既存パイプライン互換を維持したい。
+- ゲーム画面でのノイズ抑制と近接ROI間の誤結合防止を設計へ明示したい。
+
+### Changes
+- 複数OCR前提を撤回し、RoiMode=Set での「ROI外黒塗り1枚OCR」方式へ変更。
+- 余白拡張なし（ROI境界そのまま）をポリシーとして明記。
+- OCR行に OwnerRoiIndex を付与し、行結合は同一ROI内のみ許可する方針を追加。
+- 実装手順・非機能要件・リスク・DoDを上記方針に合わせて更新。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 単一OCR黒塗り方式とROI跨ぎ結合禁止を追記。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 余白なし黒塗りでROI境界の文字が欠ける可能性。
+- Mitigation: 初期は余白なしを維持し、問題時のみエンジン別余白設定を検討する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 18:02 (Asia/Taipei) — ROIセット実装案に4方針を反映**
+
+### Summary
+- ROI_Set_MultiROI_Registration_Plan に、指定された4方針（自動移行、OwnerRoiIndex、ROI跨ぎ結合禁止、ROI数1は従来切り抜き）を反映した。
+
+### Context / Goal
+- 仕様の最終方針を設計書へ固定し、実装時のブレを防ぎたい。
+- ROIセット導入後も既存挙動との差分を必要最小限に抑えたい。
+
+### Changes
+- 互換移行を「Defaultセットへ自動移行」に統一。
+- OcrLine.OwnerRoiIndex を明示し、結合は同一ROI内のみ許可へ更新。
+- EnableRoi / RoiMode / EnableFixedRoiOverlay の前提関係を明文化。
+- RoiMode=Set の入力経路を ROI数で分岐（1:従来切り抜き、2以上:ROI外黒塗り1枚OCR）へ更新。
+- 実装手順・リスク・DoD・影響ファイルを上記方針に整合させた。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 指定4方針を反映して更新。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: RoiMode と既存設定の優先順位解釈が実装でずれる可能性。
+- Mitigation: 前提条件とDoDに条件を明記し、実装時に検証可能な形へ固定した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 18:08 (Asia/Taipei) — ROIセット案に外接矩形切り抜き経路を反映**
+
+### Summary
+- ROI_Set_MultiROI_Registration_Plan を更新し、複数ROI時のOCR入力を「外接矩形切り抜き + ROI外黒塗り」へ変更した。
+
+### Context / Goal
+- ROI集合全体を覆う矩形で切り抜いて入力を小さくし、既存1回OCRパイプラインを維持したい。
+- 余計なノイズを抑えつつ、座標復元の要件を明確化したい。
+
+### Changes
+- 概要/データフロー/OCRポリシーを外接矩形切り抜き前提に更新。
+- ROI数2以上経路に座標オフセット復元要件を追加。
+- 実装手順に経路分岐とオフセット復元ステップを追加。
+- リスク/DoDに座標復元検証を追加。
+- 影響範囲の PipelineOrchestrator 記述を重複整理。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 外接矩形切り抜き + ROI外黒塗り方針へ更新。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 切り抜き後の座標復元ミスでOverlay位置がずれる。
+- Mitigation: オフセット加算の共通化とDoDでの位置一致確認を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
