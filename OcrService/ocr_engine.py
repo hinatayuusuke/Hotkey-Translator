@@ -115,9 +115,9 @@ class PaddleOcrEngine:
             "text_recognition_model_name": rec_model_name,
             # NOTE: v3系の推奨パラメータ名。旧 det_db_* は非推奨。
             # WHY: Raise thresholds slightly to reduce low-confidence boxes that tend to drift visually.
-            "text_det_thresh": 0.33,
-            "text_det_box_thresh": 0.64,
-            "text_det_unclip_ratio": 1.15,
+            "text_det_thresh": 0.25,
+            "text_det_box_thresh": 0.68,
+            "text_det_unclip_ratio": 1.3,
             "text_rec_score_thresh": 0.58,
         }
 
