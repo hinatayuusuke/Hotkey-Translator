@@ -6447,3 +6447,122 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。
+
+**2026-02-11 15:17 (Asia/Taipei) — Overlay小枠可読性ブースト実装案を追加**
+
+### Summary
+- 小枠の可読性改善（枠拡大 + フォント追従）の実装案を Doc/ に新規追加した。
+
+### Context / Goal
+- 面積だけでは判定しづらい横長/縦長1行枠でも、表示文字が小さすぎる問題を改善したい。
+- OCR/翻訳パイプラインを変えず、Overlay描画のみで対処する案を明文化する。
+
+### Changes
+- effectiveTextPx（短辺/行高ベース）を主指標にした小枠判定案を定義。
+- 細長い1行枠向けの動的閾値補正（slender boost）を追加。
+- UIスライダー案（閾値・最大倍率・フォント追従重み・追加余白）を定義。
+- 初回適用範囲を非固定ROIに限定する方針を明記。
+
+### Files Touched
+- Doc/Overlay_SmallBox_Readability_Boost_Plan.md — 実装案を新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 補正倍率が強すぎると枠重なりが増える。
+- Mitigation: SmallBoxMaxScale と SmallBoxFontScaleWeight を保守的初期値で開始する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-11 15:34 (Asia/Taipei) — Overlay小枠可読性UIの公開項目を簡潔化**
+
+### Summary
+- Overlay_SmallBox_Readability_Boost_Plan の公開UIを「ON/OFF + 感度スライダー」の2項目に整理した。
+
+### Context / Goal
+- 小枠可読性機能のUI露出を最小化し、運用時の調整負荷を下げたい。
+- 内部パラメータは固定運用にして、誤調整リスクを抑えたい。
+
+### Changes
+- 公開設定を EnableSmallBoxReadabilityBoost / SmallTextThresholdPx のみへ変更。
+- SmallBoxMaxScale / SmallBoxFontScaleWeight / slender補正係数を内部固定・非UIに再定義。
+- 実装手順のUIステップを2項目公開前提へ更新。
+
+### Files Touched
+- Doc/Overlay_SmallBox_Readability_Boost_Plan.md — 公開/非公開設定方針と手順を更新。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 公開項目が少ないため細かな調整要望に即応しにくい。
+- Mitigation: まずは内部固定で安定運用し、必要時に内部定数のみ段階調整する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 15:36 (Asia/Taipei) — Overlay小枠可読性プランにsettings.json調整方針を追記**
+
+### Summary
+- UI非公開パラメータを settings.json で調整可能にする方針を計画へ反映した。
+
+### Context / Goal
+- UIは簡潔化を維持しつつ、上級者向けの調整余地を残したい。
+- 不正値で挙動が崩れないよう、設定ロード時バリデーション方針を明確化したい。
+
+### Changes
+- SmallBoxMaxScale など4項目を「UI非公開だが settings.json で調整可能」に変更。
+- 読み込み時クランプ（範囲検証）要件を追加。
+- 実装手順に settings.json 読込・検証ステップ（Step 2.5）を追加。
+- リスク欄に「不正値入力」と「クランプ + 異常値ログ」対策を追加。
+
+### Files Touched
+- Doc/Overlay_SmallBox_Readability_Boost_Plan.md — settings.json調整方針とバリデーション要件を追記。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: settings.json 手動編集で極端値が入る。
+- Mitigation: 読み込み時クランプと異常値ログを標準動作にする。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 15:43 (Asia/Taipei) — Overlay小枠可読性ブーストを実装**
+
+### Summary
+- 小枠可読性ブースト（UI公開2項目 + settings.json調整4項目）を実装し、Overlay描画時に小さいOCR枠を拡大表示できるようにした。
+
+### Context / Goal
+- 小さいOCR枠で文字が読みにくい問題を、OCR/翻訳パイプラインに手を入れずOverlay層のみで改善したい。
+- UIは簡潔に保ちつつ、上級者が settings.json で詳細調整できる構成にしたい。
+
+### Changes
+- AppSettings に小枠可読性設定を追加（公開2 + 非公開4）。
+- Settings > OCR に EnableSmallBoxReadabilityBoost と SmallTextThresholdPx スライダーを追加。
+- MainWindow で新設定の読込/保存を追加し、settings.json 調整値のクランプ（範囲検証）を実装。
+- OverlayWindow に小枠判定（effectiveTextPx）と枠拡大/フォント追従ロジックを追加。
+- 小枠補正は非固定ROI時のみ適用し、固定ROIモードは既存挙動を維持。
+
+### Files Touched
+- Models/AppSettings.cs — 小枠可読性ブースト設定を追加。
+- MainWindow.xaml — 公開UI（ON/OFF + 感度スライダー）を追加。
+- MainWindow.xaml.cs — 設定読込/保存、クランプ、表示更新、イベント処理を追加。
+- UI/OverlayWindow.xaml.cs — 小枠補正アルゴリズムと描画時適用を追加。
+
+### Behavioral Impact
+- EnableSmallBoxReadabilityBoost=false では既存表示と同等。
+- EnableSmallBoxReadabilityBoost=true では小さいOCR枠のみ表示枠と基準フォントが拡大され、読みやすさが向上する。
+- UI非公開パラメータは settings.json で調整可能だが、範囲外値はロード時にクランプされる。
+
+### Risk & Mitigation
+- Risk: 拡大で隣接枠の重なりが増える可能性。
+- Mitigation: SmallBoxMaxScale に上限を設け、既定値を保守的に設定した。
+- Risk: settings.json の異常値で表示が不安定になる可能性。
+- Mitigation: 設定ロード時に範囲検証とクランプを実施し、ログに記録する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。

@@ -20,6 +20,12 @@ public partial class OverlayWindow : Window
     private double _fontSize = 18;
     private bool _isFixedRoiOverlay;
     private bool _enableFontStabilization = true;
+    private bool _enableSmallBoxReadabilityBoost;
+    private double _smallTextThresholdPx = 22;
+    private double _smallBoxMaxScale = 1.6;
+    private double _smallBoxFontScaleWeight = 0.7;
+    private double _smallBoxSlenderAspectThreshold = 3.0;
+    private double _smallBoxSlenderThresholdBoost = 1.2;
     private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
@@ -37,6 +43,8 @@ public partial class OverlayWindow : Window
     private static readonly Duration SpinnerRotationDuration = new(TimeSpan.FromMilliseconds(900));
     private readonly DispatcherTimer _toastTimer;
     private DateTime _lastToastAtUtc = DateTime.MinValue;
+
+    private readonly record struct OverlayItemLayout(Rect Rect, double BaseFontSize);
 
     public OverlayWindow()
     {
@@ -56,6 +64,12 @@ public partial class OverlayWindow : Window
         _background = ApplyOverlayOpacity(background, settings.OverlayBackgroundOpacity);
         _isFixedRoiOverlay = settings.EnableFixedRoiOverlay;
         _enableFontStabilization = settings.EnableOverlayFontStabilization;
+        _enableSmallBoxReadabilityBoost = settings.EnableSmallBoxReadabilityBoost;
+        _smallTextThresholdPx = ClampFinite(settings.SmallTextThresholdPx, 8.0, 48.0, 22.0);
+        _smallBoxMaxScale = ClampFinite(settings.SmallBoxMaxScale, 1.0, 3.0, 1.6);
+        _smallBoxFontScaleWeight = ClampFinite(settings.SmallBoxFontScaleWeight, 0.0, 1.0, 0.7);
+        _smallBoxSlenderAspectThreshold = ClampFinite(settings.SmallBoxSlenderAspectThreshold, 1.0, 8.0, 3.0);
+        _smallBoxSlenderThresholdBoost = ClampFinite(settings.SmallBoxSlenderThresholdBoost, 1.0, 2.0, 1.2);
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -64,7 +78,8 @@ public partial class OverlayWindow : Window
         var nextCache = new Dictionary<string, double>(items.Count);
         foreach (var item in items)
         {
-            var rect = item.Rect;
+            var layout = ResolveOverlayItemLayout(item);
+            var rect = layout.Rect;
             var availableWidth = rect.Width > 0
                 ? Math.Max(0, rect.Width - OverlayPadding.Left - OverlayPadding.Right)
                 : double.PositiveInfinity;
@@ -72,7 +87,7 @@ public partial class OverlayWindow : Window
                 ? Math.Max(0, rect.Height - OverlayPadding.Top - OverlayPadding.Bottom)
                 : double.PositiveInfinity;
             var cacheKey = BuildFontCacheKey(item, rect);
-            var fontSize = ResolveFontSize(item, availableWidth, availableHeight, cacheKey);
+            var fontSize = ResolveFontSize(item, availableWidth, availableHeight, cacheKey, layout.BaseFontSize);
             nextCache[cacheKey] = fontSize;
             var textBlock = new TextBlock
             {
@@ -225,9 +240,80 @@ public partial class OverlayWindow : Window
         Height = SystemParameters.VirtualScreenHeight;
     }
 
-    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight, string cacheKey)
+    private OverlayItemLayout ResolveOverlayItemLayout(OverlayItem item)
     {
-        var baseSize = Math.Clamp(_fontSize, MinFontSize, MaxFontSize);
+        var rect = item.Rect;
+        var baseFontSize = _fontSize;
+        if (!_enableSmallBoxReadabilityBoost || _isFixedRoiOverlay || rect.Width <= 0 || rect.Height <= 0)
+        {
+            // WHY: Fixed ROI mode renders one aggregate block, so per-item small-box boosting should stay disabled.
+            return new OverlayItemLayout(rect, baseFontSize);
+        }
+
+        var shortSide = Math.Min(rect.Width, rect.Height);
+        if (shortSide <= 0)
+        {
+            return new OverlayItemLayout(rect, baseFontSize);
+        }
+
+        var effectiveTextPx = item.LineHeight > 0
+            ? item.LineHeight
+            : shortSide / Math.Max(1, item.LineCount);
+        var dynamicThreshold = _smallTextThresholdPx;
+        if (item.LineCount <= 1)
+        {
+            var aspect = Math.Max(rect.Width, rect.Height) / Math.Max(1.0, shortSide);
+            if (aspect >= _smallBoxSlenderAspectThreshold)
+            {
+                dynamicThreshold *= _smallBoxSlenderThresholdBoost;
+            }
+        }
+
+        if (effectiveTextPx >= dynamicThreshold)
+        {
+            return new OverlayItemLayout(rect, baseFontSize);
+        }
+
+        var scaleRaw = dynamicThreshold / Math.Max(1.0, effectiveTextPx);
+        var boxScale = Math.Clamp(scaleRaw, 1.0, _smallBoxMaxScale);
+        var expandedRect = ExpandRectFromCenter(rect, boxScale);
+        var clippedRect = ClipRectToOverlayBounds(expandedRect);
+        var fontScale = 1.0 + ((boxScale - 1.0) * _smallBoxFontScaleWeight);
+        var boostedBaseFont = Math.Clamp(baseFontSize * fontScale, MinFontSize, MaxFontSize);
+        return new OverlayItemLayout(clippedRect, boostedBaseFont);
+    }
+
+    private Rect ClipRectToOverlayBounds(Rect rect)
+    {
+        var width = ActualWidth > 0 ? ActualWidth : Width;
+        var height = ActualHeight > 0 ? ActualHeight : Height;
+        if (width <= 0 || height <= 0)
+        {
+            return rect;
+        }
+
+        var bounds = new Rect(0, 0, width, height);
+        var clipped = Rect.Intersect(rect, bounds);
+        return clipped.IsEmpty ? rect : clipped;
+    }
+
+    private static Rect ExpandRectFromCenter(Rect rect, double scale)
+    {
+        if (scale <= 1.0 || rect.Width <= 0 || rect.Height <= 0)
+        {
+            return rect;
+        }
+
+        var width = rect.Width * scale;
+        var height = rect.Height * scale;
+        var x = rect.X - ((width - rect.Width) / 2.0);
+        var y = rect.Y - ((height - rect.Height) / 2.0);
+        return new Rect(x, y, width, height);
+    }
+
+    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight, string cacheKey, double baseFontSize)
+    {
+        var baseSize = Math.Clamp(baseFontSize, MinFontSize, MaxFontSize);
         if (string.IsNullOrWhiteSpace(item.Text))
         {
             return baseSize;
@@ -350,6 +436,16 @@ public partial class OverlayWindow : Window
             width,
             height,
             text);
+    }
+
+    private static double ClampFinite(double value, double min, double max, double fallback)
+    {
+        if (!double.IsFinite(value))
+        {
+            return fallback;
+        }
+
+        return Math.Clamp(value, min, max);
     }
 
     private static Brush ParseBrush(string value, Brush fallback)

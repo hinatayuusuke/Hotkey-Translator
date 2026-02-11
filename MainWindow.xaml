@@ -357,6 +357,24 @@
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
                                 <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="SmallTextThresholdSlider"
+                                            Width="180"
+                                            Minimum="8"
+                                            Maximum="48"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="1"
+                                            SmallChange="1"
+                                            LargeChange="2"
+                                            ValueChanged="OnSmallTextThresholdChanged" />
+                                    <TextBlock x:Name="SmallTextThresholdValue"
+                                               Width="48"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right" />
+                                </StackPanel>
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />

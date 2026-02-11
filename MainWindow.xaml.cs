@@ -97,6 +97,7 @@ public partial class MainWindow : Window
         var settingsChanged = NormalizeHotkeySettings(settings);
         settingsChanged |= NormalizeSceneChangeModeSettings(settings);
         settingsChanged |= NormalizeWritingModeSettings(settings);
+        settingsChanged |= NormalizeSmallBoxReadabilitySettings(settings);
         if (settings.EnableCTranslate2)
         {
             settings.EnableCTranslate2 = false;
@@ -807,6 +808,8 @@ public partial class MainWindow : Window
         OverlayBackgroundOpacitySlider.Value = settings.OverlayBackgroundOpacity;
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
         EnableOverlayFontStabilizationCheck.IsChecked = settings.EnableOverlayFontStabilization;
+        EnableSmallBoxReadabilityBoostCheck.IsChecked = settings.EnableSmallBoxReadabilityBoost;
+        SmallTextThresholdSlider.Value = settings.SmallTextThresholdPx;
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
         EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
@@ -820,7 +823,9 @@ public partial class MainWindow : Window
         UpdateOcrTwoPassThresholdValues();
         UpdateOverlayFontSizeValue();
         UpdateOverlayBackgroundOpacityValue();
+        UpdateSmallTextThresholdValue();
         UpdateOcrPreprocessControls(settings);
+        UpdateSmallBoxReadabilityControls(settings);
         UpdatePaddleConfidenceThresholdValue();
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
@@ -1050,6 +1055,47 @@ public partial class MainWindow : Window
         }
 
         return changed;
+    }
+
+    private bool NormalizeSmallBoxReadabilitySettings(AppSettings settings)
+    {
+        var changed = false;
+        changed |= ClampSetting(settings.SmallTextThresholdPx, 8.0, 48.0, 22.0, out var smallTextThreshold);
+        changed |= ClampSetting(settings.SmallBoxMaxScale, 1.0, 3.0, 1.6, out var smallBoxMaxScale);
+        changed |= ClampSetting(settings.SmallBoxFontScaleWeight, 0.0, 1.0, 0.7, out var smallBoxFontScaleWeight);
+        changed |= ClampSetting(settings.SmallBoxSlenderAspectThreshold, 1.0, 8.0, 3.0, out var smallBoxSlenderAspectThreshold);
+        changed |= ClampSetting(settings.SmallBoxSlenderThresholdBoost, 1.0, 2.0, 1.2, out var smallBoxSlenderThresholdBoost);
+        settings.SmallTextThresholdPx = smallTextThreshold;
+        settings.SmallBoxMaxScale = smallBoxMaxScale;
+        settings.SmallBoxFontScaleWeight = smallBoxFontScaleWeight;
+        settings.SmallBoxSlenderAspectThreshold = smallBoxSlenderAspectThreshold;
+        settings.SmallBoxSlenderThresholdBoost = smallBoxSlenderThresholdBoost;
+        if (changed)
+        {
+            // WHY: settings.json allows advanced tuning; clamp here so malformed values don't destabilize overlay layout.
+            _logger?.Info("Small-box readability settings were clamped to safe ranges.");
+        }
+
+        return changed;
+    }
+
+    private static bool ClampSetting(double value, double min, double max, double fallback, out double normalized)
+    {
+        if (!double.IsFinite(value))
+        {
+            normalized = fallback;
+            return true;
+        }
+
+        var clamped = Math.Clamp(value, min, max);
+        if (Math.Abs(clamped - value) < 0.0001)
+        {
+            normalized = clamped;
+            return false;
+        }
+
+        normalized = clamped;
+        return true;
     }
 
     private static string NormalizeLlamaModelFileName(string? value)
@@ -1681,6 +1727,17 @@ public partial class MainWindow : Window
         await SaveSettingsAsync().ConfigureAwait(true);
     }
 
+    private async void OnSmallTextThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        UpdateSmallTextThresholdValue();
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        await SaveSettingsAsync().ConfigureAwait(true);
+    }
+
     private async void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSceneChangeThresholdValue();
@@ -1810,6 +1867,8 @@ public partial class MainWindow : Window
         settings.OverlayBackgroundOpacity = Math.Round(OverlayBackgroundOpacitySlider.Value, 2);
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
         settings.EnableOverlayFontStabilization = EnableOverlayFontStabilizationCheck.IsChecked == true;
+        settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoostCheck.IsChecked == true;
+        settings.SmallTextThresholdPx = Math.Round(SmallTextThresholdSlider.Value, 1);
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslateCheck.IsChecked == true;
         var normalizedSceneChangeMode = NormalizeSceneChangeModeSettings(settings);
@@ -1823,6 +1882,7 @@ public partial class MainWindow : Window
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
         NormalizeWritingModeSettings(settings);
+        NormalizeSmallBoxReadabilitySettings(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -1848,7 +1908,9 @@ public partial class MainWindow : Window
         UpdateOcrTwoPassThresholdValues();
         UpdateOverlayFontSizeValue();
         UpdateOverlayBackgroundOpacityValue();
+        UpdateSmallTextThresholdValue();
         UpdateOcrPreprocessControls(settings);
+        UpdateSmallBoxReadabilityControls(settings);
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
         UpdateSceneChangeWatchValues();
@@ -2159,6 +2221,16 @@ public partial class MainWindow : Window
         OverlayBackgroundOpacityValue.Text = OverlayBackgroundOpacitySlider.Value.ToString("0.00");
     }
 
+    private void UpdateSmallTextThresholdValue()
+    {
+        if (SmallTextThresholdValue == null || SmallTextThresholdSlider == null)
+        {
+            return;
+        }
+
+        SmallTextThresholdValue.Text = SmallTextThresholdSlider.Value.ToString("0.0");
+    }
+
     private void UpdateSceneChangeThresholdValue()
     {
         if (SceneChangeThresholdValue == null || SceneChangeThresholdSlider == null)
@@ -2167,6 +2239,20 @@ public partial class MainWindow : Window
         }
 
         SceneChangeThresholdValue.Text = SceneChangeThresholdSlider.Value.ToString("0.00");
+    }
+
+    private void UpdateSmallBoxReadabilityControls(AppSettings settings)
+    {
+        if (EnableSmallBoxReadabilityBoostCheck == null || SmallTextThresholdSlider == null || SmallTextThresholdValue == null)
+        {
+            return;
+        }
+
+        var enabled = settings.EnableSmallBoxReadabilityBoost;
+        SmallTextThresholdSlider.IsEnabled = enabled;
+        SmallTextThresholdValue.Foreground = enabled
+            ? System.Windows.Media.Brushes.Black
+            : System.Windows.Media.Brushes.DimGray;
     }
 
     private void UpdateSceneChangeControls(AppSettings settings)

@@ -69,6 +69,12 @@ public sealed class AppSettings
     public bool OcrTwoPassPreferAuto { get; set; } = true;
     public bool EnableFixedRoiOverlay { get; set; } = false;
     public bool EnableOverlayFontStabilization { get; set; } = true;
+    public bool EnableSmallBoxReadabilityBoost { get; set; } = false;
+    public double SmallTextThresholdPx { get; set; } = 22;
+    public double SmallBoxMaxScale { get; set; } = 1.6;
+    public double SmallBoxFontScaleWeight { get; set; } = 0.7;
+    public double SmallBoxSlenderAspectThreshold { get; set; } = 3.0;
+    public double SmallBoxSlenderThresholdBoost { get; set; } = 1.2;
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeAutoTranslate { get; set; } = false;
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
