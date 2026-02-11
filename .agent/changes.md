@@ -6848,3 +6848,31 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+
+**2026-02-11 19:39 (Asia/Taipei) — Small OCR Box拡大を中心アンカーへ変更**
+
+### Summary
+- Small-box readability boost の矩形拡大を「開始端固定」から「中心拡大」に変更しました。
+
+### Context / Goal
+- 小さいOCR枠の可読性ブースト時、片方向拡大だと表示位置が偏って見える。
+- 枠ゆれ時の見切れ/片寄りを減らすため、拡大の基準点を中心へ統一したい。
+
+### Changes
+- `UI/OverlayWindow.xaml.cs` の `ExpandRectWithAnchor` で、`x/y` を中心基準で再計算する方式へ変更。
+- 旧実装の `VerticalColumnOrder` 依存アンカー分岐（右下/左下方向固定）を削除。
+- コメントを WHY 観点で更新（中心拡大で揺れ時のクリップ偏りを抑える意図を明示）。
+
+### Files Touched
+- `UI/OverlayWindow.xaml.cs` — small-box拡大のアンカー計算を中心拡大へ変更。
+
+### Behavioral Impact
+- readability boost発動時、枠が左右上下に均等に拡張される。
+- 縦書きRTL/LTRでの拡大方向差はなくなり、同一ルールで表示される。
+
+### Risk & Mitigation
+- Risk: 画面端付近では中心拡大によりはみ出しやすくなる。
+- Mitigation: 既存の `ClipRectToOverlayBounds` によりオーバーレイ境界内へクリップされる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。

@@ -27,7 +27,6 @@ public partial class OverlayWindow : Window
     private double _smallBoxSlenderAspectThreshold = 3.0;
     private double _smallBoxSlenderThresholdBoost = 1.2;
     private VerticalModeOverride _verticalModeOverride = VerticalModeOverride.Auto;
-    private VerticalColumnOrder _verticalColumnOrder = VerticalColumnOrder.RightToLeft;
     private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
@@ -84,7 +83,6 @@ public partial class OverlayWindow : Window
         _verticalModeOverride = Enum.IsDefined(typeof(VerticalModeOverride), settings.VerticalModeOverride)
             ? settings.VerticalModeOverride
             : VerticalModeOverride.Auto;
-        _verticalColumnOrder = settings.VerticalColumnOrder;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -365,12 +363,9 @@ public partial class OverlayWindow : Window
         var scaleY = 1.0 + (delta * ratioY);
         var width = rect.Width * scaleX;
         var height = rect.Height * scaleY;
-        var expandToLeft = writingMode == OverlayWritingMode.Vertical &&
-                           _verticalColumnOrder == VerticalColumnOrder.RightToLeft;
-        // WHY: Keep the reading origin stable by anchoring expansion to the start edge:
-        // horizontal -> right/down, vertical RTL -> left/down, vertical LTR -> right/down.
-        var x = expandToLeft ? rect.X - (width - rect.Width) : rect.X;
-        var y = rect.Y;
+        // WHY: Expanding from center reduces clipping bias when OCR boxes jitter between frames.
+        var x = rect.X - ((width - rect.Width) / 2.0);
+        var y = rect.Y - ((height - rect.Height) / 2.0);
         return new Rect(x, y, width, height);
     }
 
