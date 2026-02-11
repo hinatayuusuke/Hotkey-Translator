@@ -6359,3 +6359,91 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-winrt-cjk-fix\"` を実行し、0 warning / 0 error を確認。
 
+**2026-02-11 14:31 (Asia/Taipei) — 縦書き列間横結合の推奨実装案をDoc化**
+
+### Summary
+- 縦書きで列と列を左右結合するための推奨案を、現行 `ReadingUnit`/翻訳仕様との整合を含めて `Doc/` に新規出力した。
+
+### Context / Goal
+- 現行は縦書きで列内結合のみで、列間が分断されるケースが残る。
+- 横書きB-stageの考え方を転置して、安全に列間結合を導入する実装方針を整理する。
+
+### Changes
+- `Doc/Ocr_Vertical_ColumnMerge_Plan.md` を新規作成。
+- Stage-A（列内）+ Stage-B（列間横結合）構成、判定式、ハードブレーク、設定項目案を定義。
+- `OcrLineGrouper` 内完結により `ReadingUnitBuilder`/`PipelineOrchestrator` 契約を維持する方針を明記。
+- DoDに `afterUnitCount <= beforeUnitCount` などの検証条件を追加。
+
+### Files Touched
+- `Doc/Ocr_Vertical_ColumnMerge_Plan.md` — 縦書き列間横結合の実装案を追加。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 列間の誤結合で別セリフが混ざる可能性。
+- Mitigation: オーバーラップゲート + コスト閾値 + ハードブレークの3段ガード、初期OFF運用を計画に明記。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-11 14:41 (Asia/Taipei) — 縦書き列間横結合プランに運用方針を追記**
+
+### Summary
+- `Doc/Ocr_Vertical_ColumnMerge_Plan.md` を更新し、推奨方針（1～3）と UI 非露出方針を反映した。
+
+### Context / Goal
+- 自己レビュー指摘のうち、設定優先順位・列ユニット定義・Auto判定タイミングを明確化したい。
+- 実装ブレを防ぐため、UIを触らない運用前提を計画へ固定する。
+
+### Changes
+- 適用優先順位を明記（`EnableVerticalColumnMerge=true` かつ最終Vertical時のみ適用）。
+- `ColumnUnit` を「Stage-A後 `OcrLine`」で統一定義し、再生成ルールを具体化。
+- Auto判定で `scoreV` を Stage-B適用後Vertical結果で算出する方針を明記。
+- 実装手順を更新（UI露出なし、Auto判定反映手順を追加）。
+- 非機能要件に「settings.jsonのみ管理（UI非露出）」を追記。
+- DoDに ColumnUnit統一・Auto判定算出条件を追加。
+
+### Files Touched
+- `Doc/Ocr_Vertical_ColumnMerge_Plan.md` — 優先順位・列ユニット定義・Auto判定タイミング・UI非露出方針を追記。
+
+### Behavioral Impact
+- コード挙動の変更はなし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: UIがないため調整導線が弱く、設定ミス時の発見が遅れる。
+- Mitigation: 初期OFF運用とログ観測（before/after列数、結合件数）を必須化して段階導入する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+
+**2026-02-11 14:49 (Asia/Taipei) — 縦書き列間横結合の実装**
+
+### Summary
+- 縦書き Stage-A 後に列間横結合（Stage-B）を追加し、EnableVerticalColumnMerge 設定で有効化できるようにした。
+
+### Context / Goal
+- 縦書きで列分断されたテキストを、過結合を抑えながら同一読み単位として統合したい。
+- ReadingUnitBuilder / 翻訳送信の 1:1 契約を崩さず、OcrLineGrouper 内で完結させる。
+
+### Changes
+- AppSettings に縦書き列間横結合の設定項目を追加（初期値は安全側で OFF）。
+- OcrLineGrouper.MergeVerticalLinesTwoStage に Stage-B を追加し、縦方向重なりゲート + コスト閾値 + ハードブレークで列間結合を実装。
+- 結合後テキスト順を VerticalColumnOrder（右→左 / 左→右）に合わせるため、マージ時ソートに降順オプションを追加。
+- ログに efore/after 件数、mergedPairs、hardBreakSkips を出力。
+
+### Files Touched
+- Models/AppSettings.cs — EnableVerticalColumnMerge と関連閾値設定を追加。
+- Services/OcrLineGrouper.cs — 縦書き Stage-B 列間横結合ロジックと補助判定関数、ログを追加。
+
+### Behavioral Impact
+- EnableVerticalColumnMerge=false のとき既存挙動を維持。
+- EnableVerticalColumnMerge=true かつ最終モードが縦書きのとき、Stage-A 後の列ユニットが追加統合される。
+
+### Risk & Mitigation
+- Risk: 近接した別列を誤って結合する可能性。
+- Mitigation: 縦重なりゲート、ハードブレーク、コスト閾値を併用し、既定値を OFF にして段階適用可能にした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。

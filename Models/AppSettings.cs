@@ -118,6 +118,12 @@ public sealed class AppSettings
     public VerticalModeOverride VerticalModeOverride { get; set; } = VerticalModeOverride.Auto;
     public VerticalColumnOrder VerticalColumnOrder { get; set; } = VerticalColumnOrder.RightToLeft;
     public double VerticalGapRatio { get; set; } = 1.25;
+    public bool EnableVerticalColumnMerge { get; set; } = true;
+    public int VerticalColumnMergeNeighborCount { get; set; } = 8;
+    public double VerticalColumnMergeOverlapRatioThreshold { get; set; } = 0.20;
+    public double VerticalColumnMergeWeight { get; set; } = 0.5;
+    public double VerticalColumnMergeThresholdRatio { get; set; } = 0.9;
+    public double VerticalColumnMergeHardBreakRatio { get; set; } = 1.8;
     public string HotkeyRunOnceKey { get; set; } = "F8";
     public string HotkeyRunOnceModifiers { get; set; } = "None";
     public string HotkeyToggleOverlayKey { get; set; } = "F9";
