@@ -6233,3 +6233,37 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `%AppData%\Hotkey-Translator\settings.json` の該当キー更新を再読込で確認。
 - アプリ実画面での目視検証は未実施（設定反映のみ実施）。
+**2026-02-11 11:04 (Asia/Taipei) — 書字方向スコア選択実装とUIモード追加**
+
+### Summary
+- `Doc/Ocr_WritingMode_BidirectionalScoring_Plan.md` 方針を実装し、書字方向の旧単純判定を廃止して双方向スコア選択へ移行、あわせて UI に `Auto/Vertical/Horizontal` モード選択を追加した。
+
+### Context / Goal
+- 縦書き/横書きの誤判定を減らし、判定根拠を幾何スコアベースへ統一したい。
+- 旧設定との互換を保ったまま、UI から明示的にモード制御できるようにしたい。
+
+### Changes
+- `OcrLineGrouper` を改修し、`VerticalModeOverride=Auto` かつ `ja/zh` のみで Horizontal/Vertical 両経路を実行してスコア比較する方式を実装。
+- 旧近傍 `dx/dy` 判定ロジック（Auto 判定）を除去し、同点/僅差はヒステリシス（前回モード維持、初回 Horizontal）で処理。
+- スコア要素として `SingleChar` / `AbnormalSpace` / `RectVariance` / `BlockAspect` の4指標を追加し、判定内訳ログを出力。
+- Settings UI の OCR セクションへ `Writing mode` コンボを追加（`Auto` / `Vertical (forced)` / `Horizontal (forced)`）。
+- `MainWindow` の設定反映・保存処理に `VerticalModeOverride` の読み書きを追加。
+- 旧設定互換として、未知 enum 値は `Auto` にフォールバックし、旧トグル `EnableVerticalMerge`/`VerticalModeAutoDetect` は常時有効へ正規化。
+
+### Files Touched
+- `Services/OcrLineGrouper.cs` — 双方向スコア選択、4指標採点、ヒステリシス選択、判定ログを追加。
+- `MainWindow.xaml` — OCR 詳細設定に `Writing mode` コンボ（Auto/Vertical/Horizontal）を追加。
+- `MainWindow.xaml.cs` — UI⇔設定のバインド、書字方向設定の互換正規化、`OcrLineGrouper` への logger 注入を追加。
+
+### Behavioral Impact
+- Auto モード時は `ja/zh` のみ双方向スコア選択が動作し、その他言語の Auto は Horizontal 固定になる。
+- Vertical/Horizontal 強制モードは UI から明示的に指定でき、Auto 判定を経由しない。
+- 旧 Auto 判定（近傍 `dx/dy`）には戻らないため、判定挙動は従来より決定論的になる。
+
+### Risk & Mitigation
+- Risk: 非 `ja/zh` の Auto が Horizontal 固定になるため、将来的な縦書き言語拡張時には不足する可能性がある。
+- Mitigation: 判定ロジックを `ShouldEnableVerticalDetectionForLanguage` に集約しており、対象言語拡張はこの関数更新で対応可能。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -p:OutDir="g:\Local App\Hotkey-Translator\obj\verify-build-writingmode-impl\"` を実行し、0 warning / 0 error を確認。
+

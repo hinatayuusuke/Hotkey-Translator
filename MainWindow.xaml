@@ -237,6 +237,14 @@
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="IouThresholdBox" Width="80" LostFocus="OnSettingLostFocus" />
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="VerticalModeOverrideBox" Width="180" SelectionChanged="OnSettingChanged">
+                                        <ComboBoxItem Content="Auto" Tag="Auto" />
+                                        <ComboBoxItem Content="Vertical (forced)" Tag="Vertical" />
+                                        <ComboBoxItem Content="Horizontal (forced)" Tag="Horizontal" />
+                                    </ComboBox>
+                                </StackPanel>
 
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="Performance" FontWeight="SemiBold" />

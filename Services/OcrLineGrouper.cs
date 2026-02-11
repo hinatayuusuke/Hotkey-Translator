@@ -8,18 +8,37 @@ namespace Hotkey_Translator.Services;
 
 public sealed class OcrLineGrouper
 {
-    private const double VerticalDetectDominanceRatio = 1.2;
-    private const int VerticalDetectMinSamples = 2;
+    private const double ScoreWeightSingleChar = 0.35;
+    private const double ScoreWeightAbnormalSpace = 0.25;
+    private const double ScoreWeightRectVariance = 0.25;
+    private const double ScoreWeightBlockAspect = 0.15;
+    private const double AutoModeScoreEpsilon = 0.03;
+    private const double AspectFilterMinArea = 16.0;
+    private const double AspectFilterMedianAreaRatio = 0.15;
     private const double VerticalColumnCenterToleranceRatio = 0.55;
     private const double VerticalColumnWidthRatioMin = 0.55;
     private const double VerticalColumnOverlapRatioMin = 0.10;
     private const double VerticalHardBreakMultiplier = 1.5;
+    private readonly AppLogger? _logger;
+    private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
+    private bool _hasAutoSelectedMode;
 
     private enum WritingMode
     {
         Horizontal,
-        Vertical,
-        Unknown
+        Vertical
+    }
+
+    private readonly record struct DirectionScore(
+        double SingleChar,
+        double AbnormalSpace,
+        double RectVariance,
+        double BlockAspect,
+        double Total);
+
+    public OcrLineGrouper(AppLogger? logger = null)
+    {
+        _logger = logger;
     }
 
     public IReadOnlyList<OcrLine> MergeLines(IReadOnlyList<OcrLine> lines, AppSettings settings)
@@ -29,21 +48,45 @@ public sealed class OcrLineGrouper
             return lines;
         }
 
-        var writingMode = ResolveWritingMode(lines, settings);
-        if (!settings.EnableTwoStageLineMerge)
+        if (settings.VerticalModeOverride == VerticalModeOverride.Horizontal)
         {
-            if (writingMode == WritingMode.Vertical)
-            {
-                return OrderLines(lines, writingMode, settings);
-            }
-
-            var ordered = OrderLines(lines, WritingMode.Horizontal, settings);
-            return MergeHorizontalLines(ordered, settings);
+            return MergeAsHorizontal(lines, settings);
         }
 
-        if (writingMode == WritingMode.Vertical)
+        if (settings.VerticalModeOverride == VerticalModeOverride.Vertical)
         {
-            return MergeVerticalLinesTwoStage(lines, settings);
+            return MergeAsVertical(lines, settings);
+        }
+
+        if (!ShouldUseBidirectionalScoring(settings))
+        {
+            // WHY: Outside scoped auto-detect languages, keep behavior deterministic and cheap with horizontal mode.
+            _hasAutoSelectedMode = false;
+            return MergeAsHorizontal(lines, settings);
+        }
+
+        var horizontalMerged = MergeAsHorizontal(lines, settings);
+        var verticalMerged = MergeAsVertical(lines, settings);
+        var horizontalScore = ScoreMergedResult(horizontalMerged, WritingMode.Horizontal);
+        var verticalScore = ScoreMergedResult(verticalMerged, WritingMode.Vertical);
+        var selectedMode = SelectAutoMode(horizontalScore.Total, verticalScore.Total);
+
+        _logger?.Info(
+            $"OCR writing mode scored: H={horizontalScore.Total:0.000} " +
+            $"(single={horizontalScore.SingleChar:0.000}, space={horizontalScore.AbnormalSpace:0.000}, rect={horizontalScore.RectVariance:0.000}, aspect={horizontalScore.BlockAspect:0.000}) " +
+            $"V={verticalScore.Total:0.000} " +
+            $"(single={verticalScore.SingleChar:0.000}, space={verticalScore.AbnormalSpace:0.000}, rect={verticalScore.RectVariance:0.000}, aspect={verticalScore.BlockAspect:0.000}) " +
+            $"selected={selectedMode}.");
+
+        return selectedMode == WritingMode.Vertical ? verticalMerged : horizontalMerged;
+    }
+
+    private static IReadOnlyList<OcrLine> MergeAsHorizontal(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    {
+        if (!settings.EnableTwoStageLineMerge)
+        {
+            var ordered = OrderLines(lines, WritingMode.Horizontal, settings);
+            return MergeHorizontalLines(ordered, settings);
         }
 
         var horizontalOrdered = OrderLines(lines, WritingMode.Horizontal, settings);
@@ -51,76 +94,44 @@ public sealed class OcrLineGrouper
         return MergeHorizontalLines(stageAResult, settings);
     }
 
-    private static WritingMode ResolveWritingMode(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static IReadOnlyList<OcrLine> MergeAsVertical(IReadOnlyList<OcrLine> lines, AppSettings settings)
     {
-        if (!settings.EnableVerticalMerge)
+        if (!settings.EnableTwoStageLineMerge)
         {
-            return WritingMode.Horizontal;
+            return OrderLines(lines, WritingMode.Vertical, settings);
         }
 
-        if (settings.VerticalModeOverride == VerticalModeOverride.Horizontal)
+        return MergeVerticalLinesTwoStage(lines, settings);
+    }
+
+    private bool ShouldUseBidirectionalScoring(AppSettings settings)
+    {
+        if (!settings.EnableVerticalMerge || !settings.VerticalModeAutoDetect)
         {
-            return WritingMode.Horizontal;
+            return false;
         }
 
-        if (settings.VerticalModeOverride == VerticalModeOverride.Vertical)
+        // WHY: Restrict bidirectional scoring to CJK auto mode to avoid unnecessary overhead on other scripts.
+        return ShouldEnableVerticalDetectionForLanguage(settings.SourceLanguage);
+    }
+
+    private WritingMode SelectAutoMode(double horizontalScore, double verticalScore)
+    {
+        var delta = verticalScore - horizontalScore;
+        WritingMode selected;
+        if (Math.Abs(delta) < AutoModeScoreEpsilon)
         {
-            return WritingMode.Vertical;
+            // WHY: Preserve prior mode when confidence is ambiguous to reduce frame-to-frame direction flapping.
+            selected = _hasAutoSelectedMode ? _lastAutoSelectedMode : WritingMode.Horizontal;
+        }
+        else
+        {
+            selected = delta > 0 ? WritingMode.Vertical : WritingMode.Horizontal;
         }
 
-        if (!settings.VerticalModeAutoDetect || !ShouldEnableVerticalDetectionForLanguage(settings.SourceLanguage))
-        {
-            return WritingMode.Horizontal;
-        }
-
-        var horizontalSignals = 0;
-        var verticalSignals = 0;
-        var samples = 0;
-        for (var i = 0; i < lines.Count; i++)
-        {
-            var neighborIndex = FindNearestNeighborIndex(lines, i);
-            if (neighborIndex < 0)
-            {
-                continue;
-            }
-
-            var dx = Math.Abs(GetCenterX(lines[i].Rect) - GetCenterX(lines[neighborIndex].Rect));
-            var dy = Math.Abs(GetCenterY(lines[i].Rect) - GetCenterY(lines[neighborIndex].Rect));
-            if (dx <= 0.001 && dy <= 0.001)
-            {
-                continue;
-            }
-
-            samples++;
-            if (dy > dx)
-            {
-                verticalSignals++;
-            }
-            else if (dx > dy)
-            {
-                horizontalSignals++;
-            }
-        }
-
-        if (samples < VerticalDetectMinSamples)
-        {
-            return WritingMode.Unknown;
-        }
-
-        // WHY: Require a dominance margin so mixed layouts fall back to horizontal safely.
-        if (verticalSignals >= VerticalDetectMinSamples &&
-            verticalSignals >= Math.Ceiling(horizontalSignals * VerticalDetectDominanceRatio))
-        {
-            return WritingMode.Vertical;
-        }
-
-        if (horizontalSignals >= VerticalDetectMinSamples &&
-            horizontalSignals >= Math.Ceiling(verticalSignals * VerticalDetectDominanceRatio))
-        {
-            return WritingMode.Horizontal;
-        }
-
-        return WritingMode.Unknown;
+        _lastAutoSelectedMode = selected;
+        _hasAutoSelectedMode = true;
+        return selected;
     }
 
     private static bool ShouldEnableVerticalDetectionForLanguage(string? sourceLanguage)
@@ -133,36 +144,6 @@ public sealed class OcrLineGrouper
         var normalized = sourceLanguage.Trim().Replace('_', '-');
         return normalized.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ||
                normalized.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static int FindNearestNeighborIndex(IReadOnlyList<OcrLine> lines, int sourceIndex)
-    {
-        var source = lines[sourceIndex];
-        var sourceCenterX = GetCenterX(source.Rect);
-        var sourceCenterY = GetCenterY(source.Rect);
-        var nearest = -1;
-        var nearestDistance = double.MaxValue;
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (i == sourceIndex)
-            {
-                continue;
-            }
-
-            var dx = sourceCenterX - GetCenterX(lines[i].Rect);
-            var dy = sourceCenterY - GetCenterY(lines[i].Rect);
-            var distance = (dx * dx) + (dy * dy);
-            if (distance >= nearestDistance)
-            {
-                continue;
-            }
-
-            nearestDistance = distance;
-            nearest = i;
-        }
-
-        return nearest;
     }
 
     private static IReadOnlyList<OcrLine> MergeSameRowTokens(IReadOnlyList<OcrLine> lines, AppSettings settings)
@@ -515,6 +496,192 @@ public sealed class OcrLineGrouper
 
         var text = string.Join(separator, sortedGroup.Select(line => line.Text));
         return new OcrLine(text, unionRect, minConfidence, lineCount, lineHeight);
+    }
+
+    private static DirectionScore ScoreMergedResult(IReadOnlyList<OcrLine> merged, WritingMode mode)
+    {
+        var singleChar = ComputeSingleCharUnitScore(merged);
+        var abnormalSpace = ComputeAbnormalSpaceScore(merged);
+        var rectVariance = ComputeRectVarianceScore(merged, mode);
+        var blockAspect = ComputeBlockAspectScore(merged, mode);
+        var total =
+            (ScoreWeightSingleChar * singleChar) +
+            (ScoreWeightAbnormalSpace * abnormalSpace) +
+            (ScoreWeightRectVariance * rectVariance) +
+            (ScoreWeightBlockAspect * blockAspect);
+        return new DirectionScore(singleChar, abnormalSpace, rectVariance, blockAspect, total);
+    }
+
+    private static double ComputeSingleCharUnitScore(IReadOnlyList<OcrLine> lines)
+    {
+        var totalUnits = 0;
+        var singleCharUnits = 0;
+        foreach (var line in lines)
+        {
+            var charCount = CountNonWhitespaceCharacters(line.Text);
+            if (charCount == 0)
+            {
+                continue;
+            }
+
+            totalUnits++;
+            if (charCount == 1)
+            {
+                singleCharUnits++;
+            }
+        }
+
+        if (totalUnits == 0)
+        {
+            return 0.5;
+        }
+
+        return Clamp01(1.0 - (singleCharUnits / (double)totalUnits));
+    }
+
+    private static double ComputeAbnormalSpaceScore(IReadOnlyList<OcrLine> lines)
+    {
+        var totalChars = 0;
+        var abnormalSpaces = 0;
+        foreach (var line in lines)
+        {
+            var text = line.Text ?? string.Empty;
+            totalChars += text.Length;
+
+            for (var i = 0; i < text.Length; i++)
+            {
+                if (!char.IsWhiteSpace(text[i]))
+                {
+                    continue;
+                }
+
+                if (i > 0 && i < text.Length - 1 &&
+                    IsCjkCharacter(text[i - 1]) &&
+                    IsCjkCharacter(text[i + 1]))
+                {
+                    abnormalSpaces++;
+                }
+
+                if (i > 0 && char.IsWhiteSpace(text[i - 1]))
+                {
+                    abnormalSpaces += 2;
+                }
+            }
+        }
+
+        if (totalChars == 0)
+        {
+            return 0.5;
+        }
+
+        return Clamp01(1.0 - (abnormalSpaces / (double)totalChars));
+    }
+
+    private static double ComputeRectVarianceScore(IReadOnlyList<OcrLine> lines, WritingMode mode)
+    {
+        if (lines.Count <= 1)
+        {
+            return 0.5;
+        }
+
+        var values = new List<double>(lines.Count);
+        foreach (var line in lines)
+        {
+            var value = mode == WritingMode.Vertical ? line.Rect.Width : line.Rect.Height;
+            if (value > 0)
+            {
+                values.Add(value);
+            }
+        }
+
+        if (values.Count <= 1)
+        {
+            return 0.5;
+        }
+
+        var mean = values.Average();
+        if (mean <= 0)
+        {
+            return 0.5;
+        }
+
+        var variance = values.Sum(value => Math.Pow(value - mean, 2)) / values.Count;
+        var coefficientOfVariation = Math.Sqrt(variance) / mean;
+        return Clamp01(1.0 - Math.Min(1.0, coefficientOfVariation));
+    }
+
+    private static double ComputeBlockAspectScore(IReadOnlyList<OcrLine> lines, WritingMode mode)
+    {
+        if (lines.Count == 0)
+        {
+            return 0.5;
+        }
+
+        var areas = lines
+            .Select(line => line.Rect.Width * line.Rect.Height)
+            .Where(area => area > 0)
+            .OrderBy(area => area)
+            .ToList();
+        if (areas.Count == 0)
+        {
+            return 0.5;
+        }
+
+        var medianArea = areas[areas.Count / 2];
+        var minArea = Math.Max(AspectFilterMinArea, medianArea * AspectFilterMedianAreaRatio);
+        var scoreSum = 0.0;
+        var scoreCount = 0;
+
+        foreach (var line in lines)
+        {
+            var area = line.Rect.Width * line.Rect.Height;
+            if (area < minArea)
+            {
+                continue;
+            }
+
+            var width = Math.Max(0.001, line.Rect.Width);
+            var height = Math.Max(0.001, line.Rect.Height);
+            var aspect = height / width;
+            var verticalLikelihood = aspect / (aspect + 1.0);
+            var horizontalLikelihood = 1.0 / (aspect + 1.0);
+            scoreSum += mode == WritingMode.Vertical ? verticalLikelihood : horizontalLikelihood;
+            scoreCount++;
+        }
+
+        if (scoreCount == 0)
+        {
+            return 0.5;
+        }
+
+        return Clamp01(scoreSum / scoreCount);
+    }
+
+    private static int CountNonWhitespaceCharacters(string text)
+    {
+        var count = 0;
+        foreach (var ch in text)
+        {
+            if (!char.IsWhiteSpace(ch))
+            {
+                count++;
+            }
+        }
+
+        return count;
+    }
+
+    private static bool IsCjkCharacter(char value)
+    {
+        return value is >= '\u3040' and <= '\u30FF' or
+               >= '\u3400' and <= '\u4DBF' or
+               >= '\u4E00' and <= '\u9FFF' or
+               >= '\uF900' and <= '\uFAFF';
+    }
+
+    private static double Clamp01(double value)
+    {
+        return Math.Max(0.0, Math.Min(1.0, value));
     }
 
     private static List<OcrLine> OrderLines(IEnumerable<OcrLine> lines, WritingMode mode, AppSettings settings)

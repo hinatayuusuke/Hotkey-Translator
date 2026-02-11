@@ -96,6 +96,7 @@ public partial class MainWindow : Window
         var settings = _settingsService.Settings;
         var settingsChanged = NormalizeHotkeySettings(settings);
         settingsChanged |= NormalizeSceneChangeModeSettings(settings);
+        settingsChanged |= NormalizeWritingModeSettings(settings);
         if (settings.EnableCTranslate2)
         {
             settings.EnableCTranslate2 = false;
@@ -128,7 +129,7 @@ public partial class MainWindow : Window
         _phashService = new PhashService();
         var normalization = new NormalizationService();
         var ocrPreprocess = new OcrPreprocessService();
-        var lineGrouper = new OcrLineGrouper();
+        var lineGrouper = new OcrLineGrouper(_logger);
         var keyBuilder = new CacheKeyBuilder();
         var geminiClient = new GeminiClient(_httpClient, _logger);
         var translationProviders = new List<ITranslationProvider>
@@ -786,6 +787,7 @@ public partial class MainWindow : Window
         ApplyHotkeySettingsToUi(settings);
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
+        SetComboBoxByTag(VerticalModeOverrideBox, GetVerticalModeOverrideTag(settings.VerticalModeOverride));
         EnableOcrPerfLogCheck.IsChecked = settings.EnableOcrPerfLog;
         OcrPerfLogThresholdBox.Text = settings.OcrPerfLogThresholdMs.ToString();
         EnableLoggingCheck.IsChecked = settings.EnableLogging;
@@ -1021,6 +1023,33 @@ public partial class MainWindow : Window
         // COMPAT: Legacy settings may have both enabled; keep auto-hide as the fixed priority.
         settings.EnableSceneChangeAutoTranslate = false;
         return true;
+    }
+
+    private bool NormalizeWritingModeSettings(AppSettings settings)
+    {
+        var changed = false;
+        if (!Enum.IsDefined(typeof(VerticalModeOverride), settings.VerticalModeOverride))
+        {
+            // COMPAT: Unknown persisted enum values must not break runtime behavior; fallback to Auto.
+            _logger?.Info($"VerticalModeOverride value '{(int)settings.VerticalModeOverride}' is invalid. Falling back to Auto.");
+            settings.VerticalModeOverride = VerticalModeOverride.Auto;
+            changed = true;
+        }
+
+        // COMPAT: Writing-mode behavior is now controlled by VerticalModeOverride; keep legacy toggles enabled.
+        if (!settings.EnableVerticalMerge)
+        {
+            settings.EnableVerticalMerge = true;
+            changed = true;
+        }
+
+        if (!settings.VerticalModeAutoDetect)
+        {
+            settings.VerticalModeAutoDetect = true;
+            changed = true;
+        }
+
+        return changed;
     }
 
     private static string NormalizeLlamaModelFileName(string? value)
@@ -1294,6 +1323,27 @@ public partial class MainWindow : Window
         }
 
         return OcrEngineKind.WinRt;
+    }
+
+    private VerticalModeOverride GetVerticalModeOverride()
+    {
+        var tag = GetSelectedTag(VerticalModeOverrideBox, "Auto");
+        return tag switch
+        {
+            "Vertical" => VerticalModeOverride.Vertical,
+            "Horizontal" => VerticalModeOverride.Horizontal,
+            _ => VerticalModeOverride.Auto
+        };
+    }
+
+    private static string GetVerticalModeOverrideTag(VerticalModeOverride mode)
+    {
+        return mode switch
+        {
+            VerticalModeOverride.Vertical => "Vertical",
+            VerticalModeOverride.Horizontal => "Horizontal",
+            _ => "Auto"
+        };
     }
 
     private static void SetComboBoxByTag(ComboBox comboBox, string tag)
@@ -1741,6 +1791,7 @@ public partial class MainWindow : Window
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
         ApplyHotkeySettingsFromUi(settings);
+        settings.VerticalModeOverride = GetVerticalModeOverride();
         settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
         settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
@@ -1771,6 +1822,7 @@ public partial class MainWindow : Window
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
+        NormalizeWritingModeSettings(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
