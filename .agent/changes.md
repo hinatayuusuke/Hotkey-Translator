@@ -6566,3 +6566,33 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。
+
+**2026-02-11 16:10 (Asia/Taipei) — 小枠拡大の縦書き判定と拡大アンカーを修正**
+
+### Summary
+- 小枠可読性ブーストが縦書きでも効くように判定式を修正し、拡大方向を横書き/縦書きで分岐した。
+
+### Context / Goal
+- 現行実装では LineHeight 優先のため縦書きで補正が発火しにくく、枠拡大が効かない問題があった。
+- 併せて、拡大方向を横書きは右下、縦書きは列順に応じて左下/右下へ揃えたい。
+
+### Changes
+- OverlayWindow に書字モード判定（強制Horizontal/Vertical優先、Auto時は矩形アスペクト推定）を追加。
+- effectiveTextPx を縦横で分離計算に変更（横=高さ基準、縦=幅基準、LineHeight は短辺側にクランプ）。
+- 枠拡大を中心拡大からアンカー拡大へ変更。
+- アンカー規則を導入（横書き: 右+下、縦書きRTL: 左+下、縦書きLTR: 右+下）。
+- ApplyStyle で VerticalModeOverride / VerticalColumnOrder を保持して拡大方向に反映。
+
+### Files Touched
+- UI/OverlayWindow.xaml.cs — 書字モード判定、effectiveTextPx算出、アンカー拡大ロジックを修正。
+
+### Behavioral Impact
+- 小枠補正ON時、縦書きでも小さい幅の枠に対して拡大が発火しやすくなる。
+- 拡大方向が読み方向に揃うため、表示起点の視覚ズレが減る。
+
+### Risk & Mitigation
+- Risk: Auto判定で矩形形状が曖昧なケースは誤判定する可能性。
+- Mitigation: VerticalModeOverride が強制時はそれを優先し、Autoしきい値は定数で調整可能にした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、成功（0 warnings / 0 errors）。

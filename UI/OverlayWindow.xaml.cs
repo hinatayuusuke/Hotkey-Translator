@@ -26,6 +26,8 @@ public partial class OverlayWindow : Window
     private double _smallBoxFontScaleWeight = 0.7;
     private double _smallBoxSlenderAspectThreshold = 3.0;
     private double _smallBoxSlenderThresholdBoost = 1.2;
+    private VerticalModeOverride _verticalModeOverride = VerticalModeOverride.Auto;
+    private VerticalColumnOrder _verticalColumnOrder = VerticalColumnOrder.RightToLeft;
     private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
@@ -41,8 +43,15 @@ public partial class OverlayWindow : Window
     private const double SpinnerSize = 24.0;
     private const double SpinnerMargin = 12.0;
     private static readonly Duration SpinnerRotationDuration = new(TimeSpan.FromMilliseconds(900));
+    private const double AutoVerticalAspectThreshold = 1.25;
     private readonly DispatcherTimer _toastTimer;
     private DateTime _lastToastAtUtc = DateTime.MinValue;
+
+    private enum OverlayWritingMode
+    {
+        Horizontal,
+        Vertical
+    }
 
     private readonly record struct OverlayItemLayout(Rect Rect, double BaseFontSize);
 
@@ -70,6 +79,10 @@ public partial class OverlayWindow : Window
         _smallBoxFontScaleWeight = ClampFinite(settings.SmallBoxFontScaleWeight, 0.0, 1.0, 0.7);
         _smallBoxSlenderAspectThreshold = ClampFinite(settings.SmallBoxSlenderAspectThreshold, 1.0, 8.0, 3.0);
         _smallBoxSlenderThresholdBoost = ClampFinite(settings.SmallBoxSlenderThresholdBoost, 1.0, 2.0, 1.2);
+        _verticalModeOverride = Enum.IsDefined(typeof(VerticalModeOverride), settings.VerticalModeOverride)
+            ? settings.VerticalModeOverride
+            : VerticalModeOverride.Auto;
+        _verticalColumnOrder = settings.VerticalColumnOrder;
     }
 
     public void UpdateItems(IReadOnlyList<OverlayItem> items)
@@ -256,9 +269,8 @@ public partial class OverlayWindow : Window
             return new OverlayItemLayout(rect, baseFontSize);
         }
 
-        var effectiveTextPx = item.LineHeight > 0
-            ? item.LineHeight
-            : shortSide / Math.Max(1, item.LineCount);
+        var writingMode = ResolveWritingMode(rect);
+        var effectiveTextPx = ResolveEffectiveTextPx(item, rect, writingMode);
         var dynamicThreshold = _smallTextThresholdPx;
         if (item.LineCount <= 1)
         {
@@ -276,11 +288,50 @@ public partial class OverlayWindow : Window
 
         var scaleRaw = dynamicThreshold / Math.Max(1.0, effectiveTextPx);
         var boxScale = Math.Clamp(scaleRaw, 1.0, _smallBoxMaxScale);
-        var expandedRect = ExpandRectFromCenter(rect, boxScale);
+        var expandedRect = ExpandRectWithAnchor(rect, boxScale, writingMode);
         var clippedRect = ClipRectToOverlayBounds(expandedRect);
         var fontScale = 1.0 + ((boxScale - 1.0) * _smallBoxFontScaleWeight);
         var boostedBaseFont = Math.Clamp(baseFontSize * fontScale, MinFontSize, MaxFontSize);
         return new OverlayItemLayout(clippedRect, boostedBaseFont);
+    }
+
+    private OverlayWritingMode ResolveWritingMode(Rect rect)
+    {
+        if (_verticalModeOverride == VerticalModeOverride.Horizontal)
+        {
+            return OverlayWritingMode.Horizontal;
+        }
+
+        if (_verticalModeOverride == VerticalModeOverride.Vertical)
+        {
+            return OverlayWritingMode.Vertical;
+        }
+
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            return OverlayWritingMode.Horizontal;
+        }
+
+        var aspect = rect.Height / Math.Max(1.0, rect.Width);
+        return aspect >= AutoVerticalAspectThreshold
+            ? OverlayWritingMode.Vertical
+            : OverlayWritingMode.Horizontal;
+    }
+
+    private static double ResolveEffectiveTextPx(OverlayItem item, Rect rect, OverlayWritingMode writingMode)
+    {
+        var shortSide = Math.Min(rect.Width, rect.Height);
+        var lineCount = Math.Max(1, item.LineCount);
+        if (writingMode == OverlayWritingMode.Vertical)
+        {
+            var widthBased = rect.Width / lineCount;
+            var lineHeightBased = item.LineHeight > 0 ? Math.Min(item.LineHeight, rect.Width) : widthBased;
+            return Math.Max(1.0, Math.Min(shortSide, lineHeightBased));
+        }
+
+        var heightBased = rect.Height / lineCount;
+        var lineHeightFromItem = item.LineHeight > 0 ? Math.Min(item.LineHeight, rect.Height) : heightBased;
+        return Math.Max(1.0, Math.Min(shortSide, lineHeightFromItem));
     }
 
     private Rect ClipRectToOverlayBounds(Rect rect)
@@ -297,7 +348,7 @@ public partial class OverlayWindow : Window
         return clipped.IsEmpty ? rect : clipped;
     }
 
-    private static Rect ExpandRectFromCenter(Rect rect, double scale)
+    private Rect ExpandRectWithAnchor(Rect rect, double scale, OverlayWritingMode writingMode)
     {
         if (scale <= 1.0 || rect.Width <= 0 || rect.Height <= 0)
         {
@@ -306,8 +357,12 @@ public partial class OverlayWindow : Window
 
         var width = rect.Width * scale;
         var height = rect.Height * scale;
-        var x = rect.X - ((width - rect.Width) / 2.0);
-        var y = rect.Y - ((height - rect.Height) / 2.0);
+        var expandToLeft = writingMode == OverlayWritingMode.Vertical &&
+                           _verticalColumnOrder == VerticalColumnOrder.RightToLeft;
+        // WHY: Keep the reading origin stable by anchoring expansion to the start edge:
+        // horizontal -> right/down, vertical RTL -> left/down, vertical LTR -> right/down.
+        var x = expandToLeft ? rect.X - (width - rect.Width) : rect.X;
+        var y = rect.Y;
         return new Rect(x, y, width, height);
     }
 
