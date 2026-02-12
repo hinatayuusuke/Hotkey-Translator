@@ -6937,3 +6937,235 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。
+
+**2026-02-12 15:27 (Asia/Taipei) — PaddleOCR v5 パラメーター運用ガイドを新規作成**
+
+### Summary
+- PaddleOCR v5 の関連パラメーターを整理し、Settings.json と OcrService/ocr_engine.py の責務を分けた運用ドキュメントを追加した。
+
+### Context / Goal
+- PaddleOCR v5 の調整点が複数ファイルに散在しており、どこを運用で触れるべきか判断しづらい。
+- 実装経路に沿って、設定可能項目とコード固定項目を分離した実務向けガイドを用意したい。
+
+### Changes
+- PaddleOCR 実行経路（OcrEngine -> gRPC Provider -> gRPC Host -> OcrService）を整理して記載。
+- Settings.json で調整可能な項目（接続・モデル・後段信頼度フィルタ・再起動制御）を一覧化。
+- ocr_engine.py 側の固定閾値（text_det_* / text_rec_score_thresh / padding_px）を明記。
+- gRPC経路では PaddleLanguage 非使用、PaddleDevice=cpu 強制補正などの注意点を追記。
+- 症状別チューニング指針と最小設定サンプルを追加。
+
+### Files Touched
+- Doc/PaddleOCRv5_Settings_Operation_Guide.md — PaddleOCR v5 パラメーター運用ガイドを新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 将来の実装変更でガイド記載と実コードが乖離する可能性。
+- Mitigation: 項目を「Settings連動 / コード固定」に分離し、変更時の更新対象を追いやすい構成にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-12 15:44 (Asia/Taipei) — PaddleOCR本体パラメーター情報を運用ガイドへ反映**
+
+### Summary
+- Doc/PaddleOCRv5_Settings_Operation_Guide.md に PaddleOCR 本体が提供する主要パラメーター群と旧名対応を追記し、全体整合を再レビューして修正した。
+
+### Context / Goal
+- ocr_engine.py 固定値だけでなく、PaddleOCR 自体の提供パラメーターを運用視点で把握できるようにしたい。
+- 旧パラメーター名と新パラメーター名の混在による設定ミスを防ぎたい。
+
+### Changes
+- PaddleOCR(...) 初期化で使える主要パラメーター（実行/モデル/前処理/閾値/性能）を追加。
+- predict(...) での上書き優先ルール（None でない値が初期化値を優先）を追記。
+- 旧名 -> 新名（det_db_* / use_angle_cls）の対応表を追加。
+- 公式参照リンクを追記。
+- 自己レビューで見つけた章番号順の不整合（6/7）を修正。
+
+### Files Touched
+- Doc/PaddleOCRv5_Settings_Operation_Guide.md — PaddleOCR本体パラメーター説明と旧名対応、参考リンクを追加し整合修正。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: PaddleOCR の将来更新でパラメーター体系が変わる可能性。
+- Mitigation: 公式ドキュメント参照セクションを明記し、追従更新しやすい形にした。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-12 15:51 (Asia/Taipei) — PaddleOCR主要パラメーター解説ドキュメントを新規作成**
+
+### Summary
+- PaddleOCR 3.x の主要パラメーターと predict(...) 上書きルールを独立ドキュメントとして追加した。
+
+### Context / Goal
+- PaddleOCR 本体が提供する項目を、運用判断しやすい形で単独参照できる資料が必要。
+- 初期化パラメーターと推論時上書きの使い分けを明確化したい。
+
+### Changes
+- PaddleOCR(...) 初期化時の主要パラメーターをカテゴリ別（実行/検出/認識/前処理/しきい値/性能）に整理。
+- predict(...) の上書き優先ルール（None でない値が初期化値より優先）を明記。
+- 運用時の基本方針（固定基準→局所上書き）を追記。
+
+### Files Touched
+- Doc/PaddleOCR_Core_Parameters_Reference.md — PaddleOCR 主要パラメーター解説を新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: PaddleOCR本体の仕様更新で項目名や挙動が変わる可能性。
+- Mitigation: 公式参照リンクを併記し、追従更新しやすい構成にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-12 16:00 (Asia/Taipei) — PaddleOCR GPU自動最適化の実装案ドキュメントを新規作成**
+
+### Summary
+- enable_hpi 固定 + TRT条件判定 + precision 自動切替 + 失敗時フォールバックを含む実装案を Doc に新規作成した。
+
+### Context / Goal
+- PaddleOCR の推論パラメーターを GPU環境に応じて自動決定したい。
+- TensorRT 未対応環境でも OCR 初期化が止まらない安全設計にしたい。
+
+### Changes
+- enable_hpi=true 固定方針を明記。
+- use_tensorrt 条件付きON、precision を p16/fp32 で自動切替する設計を明記。
+- PaddleOCR 初期化失敗時の安全フォールバック再試行を設計に追加。
+- 実装手順、リスク、DoD をテンプレート形式で整理。
+
+### Files Touched
+- Doc/PaddleOCR_GPU_AutoTuning_Plan.md — PaddleOCR GPU自動最適化の実装案を新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時にTRT判定が環境差で不安定になる可能性。
+- Mitigation: 初期化失敗時に use_tensorrt=false + precision=fp32 へ再試行する設計を先に規定。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-12 16:04 (Asia/Taipei) — PaddleOCR GPU自動最適化を実装（HPI固定/TRT条件判定）**
+
+### Summary
+- OcrService/ocr_engine.py に enable_hpi 固定、TensorRT条件判定、precision 自動切替、初期化失敗時フォールバックを実装した。
+
+### Context / Goal
+- GPU環境で enable_hpi=true を常用しつつ、TensorRT 可用性に応じて use_tensorrt / precision を安全に自動決定したい。
+- TRT非対応環境で初期化失敗して OCR が停止する事態を避けたい。
+
+### Changes
+- PaddleOCR kwargs に enable_hpi=true を常時設定。
+- TensorRT可用性プローブ（	ensorrt import + Paddle TRT compile version 確認）を追加。
+- use_tensorrt はプローブ結果で条件付きON、precision は TRT有効時 p16 / 無効時 p32 を採用。
+- TRT有効初期化が失敗した場合、use_tensorrt=false + precision=fp32 で再初期化するフォールバックを追加。
+- 最終採用のランタイム設定をログ出力するよう追加。
+
+### Files Touched
+- OcrService/ocr_engine.py — GPU自動最適化ロジックとフォールバック初期化を実装。
+
+### Behavioral Impact
+- GPU環境で TRT利用可能時は enable_hpi=true, use_tensorrt=true, precision=fp16 が優先される。
+- TRT利用不可/初期化失敗時は自動的に use_tensorrt=false, precision=fp32 へ退避し、OCR初期化継続を優先する。
+
+### Risk & Mitigation
+- Risk: 環境依存で TRT 判定が過剰に保守的になり、TRT を使えない場合がある。
+- Mitigation: 判定理由（probe結果）をログに残し、必要時に判定条件を調整できるようにした。
+
+### Tests / Verification
+- python -m py_compile OcrService/ocr_engine.py 実行成功。
+
+**2026-02-12 16:05 (Asia/Taipei) — PaddleOCR GPU自動最適化を実装（記録訂正版）**
+
+### Summary
+- `OcrService/ocr_engine.py` に `enable_hpi` 固定、TensorRT条件判定、`precision` 自動切替、初期化失敗時フォールバックを実装した。
+
+### Context / Goal
+- GPU環境で `enable_hpi=true` を常用しつつ、TensorRT 可用性に応じて `use_tensorrt` / `precision` を安全に自動決定したい。
+- TRT非対応環境で初期化失敗して OCR が停止する事態を避けたい。
+
+### Changes
+- PaddleOCR `kwargs` に `enable_hpi=true` を常時設定。
+- TensorRT可用性プローブ（`tensorrt` import + Paddle TRT compile version 確認）を追加。
+- `use_tensorrt` はプローブ結果で条件付きON、`precision` は TRT有効時 `fp16` / 無効時 `fp32` を採用。
+- TRT有効初期化が失敗した場合、`use_tensorrt=false` + `precision=fp32` で再初期化するフォールバックを追加。
+- 最終採用のランタイム設定をログ出力するよう追加。
+
+### Files Touched
+- `OcrService/ocr_engine.py` — GPU自動最適化ロジックとフォールバック初期化を実装。
+
+### Behavioral Impact
+- GPU環境で TRT利用可能時は `enable_hpi=true`, `use_tensorrt=true`, `precision=fp16` が優先される。
+- TRT利用不可/初期化失敗時は自動的に `use_tensorrt=false`, `precision=fp32` へ退避し、OCR初期化継続を優先する。
+
+### Risk & Mitigation
+- Risk: 環境依存で TRT 判定が過剰に保守的になり、TRT を使えない場合がある。
+- Mitigation: 判定理由（probe結果）をログに残し、必要時に判定条件を調整できるようにした。
+
+### Tests / Verification
+- `python -m py_compile OcrService/ocr_engine.py` 実行成功。
+
+**2026-02-12 16:16 (Asia/Taipei) — OCR枠結合のエンジン別補正係数 実装案を新規作成**
+
+### Summary
+- WinRT/Paddle の枠特性差分を「共通ベース + エンジン別係数」で吸収する実装案を Doc に追加した。
+
+### Context / Goal
+- Doc/WinRT-settings.json と Doc/Paddle-settings.json の最適値差を、二重設定化せず運用可能な形に落とし込みたい。
+- 既存互換を維持しつつ、エンジン別に実効閾値を分けたい。
+
+### Changes
+- WinRTをベース値、Paddleを係数（Paddle/WinRT）で導出する方針を明記。
+- 実効値プロファイル（effective = base * scale）と clamp 方針を定義。
+- 係数対象を横結合優先、縦結合は初期 1.0 固定とする段階導入案を追加。
+- 実装手順、影響範囲、DoD をテンプレート形式で整理。
+
+### Files Touched
+- Doc/Ocr_LineMerge_EngineScale_Profile_Plan.md — エンジン別補正係数の実装案を新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 係数が過大/過小で誤結合または未結合が増える可能性。
+- Mitigation: 機能フラグ初期OFF + clamp + 実効値ログで段階検証可能にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-12 16:25 (Asia/Taipei) — OcrLineGrouper エンジン別スケール実装**
+
+### Summary
+- Doc/Ocr_LineMerge_EngineScale_Profile_Plan.md に沿って、Paddle時のみ有効になるエンジン別補正係数を実装した。
+
+### Context / Goal
+- WinRT と Paddle の OCR 枠特性差を、共通ベース値 + エンジン別係数で吸収したい。
+- 既存挙動との互換性を維持しつつ、必要時だけ実効閾値を切り替えたい。
+
+### Changes
+- AppSettings に EnableEngineScaledLineMergeProfile と Paddle向けスケール係数群を追加。
+- OcrLineGrouper に実効閾値の解決ロジック（base * scale + clamp）を追加。
+- EnableEngineScaledLineMergeProfile=true かつ OcrEngine=Paddle のときだけスケール適用する分岐を実装。
+- 横結合/縦結合の判定で raw settings ではなく実効閾値を参照するよう差し替え。
+- 実効プロファイルのログを同一値重複出力しないガード付きで追加。
+
+### Files Touched
+- Models/AppSettings.cs — エンジン別スケール機能の設定項目と既定値を追加。
+- Services/OcrLineGrouper.cs — 実効閾値解決、適用、ログ出力を実装。
+
+### Behavioral Impact
+- 既定値（EnableEngineScaledLineMergeProfile=false）では従来挙動のまま。
+- 機能ON時、Paddleのみスケール済み閾値で行/列結合判定を行う。
+
+### Risk & Mitigation
+- Risk: 係数が環境に合わない場合、誤結合または未結合が増える可能性。
+- Mitigation: 機能フラグ初期OFF・係数を設定で調整可能・実効値ログで検証可能にした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 warnings / 0 errors）。

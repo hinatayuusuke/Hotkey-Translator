@@ -109,6 +109,7 @@ public sealed class AppSettings
     public string VllmBaseUrl { get; set; } = "http://localhost:8000/v1";
     public string VllmModelName { get; set; } = "PaddlePaddle/PaddleOCR-VL";
     public bool EnableLineMerge { get; set; } = true;
+    public bool EnableEngineScaledLineMergeProfile { get; set; } = true;
     public bool EnableTwoStageLineMerge { get; set; } = true;
     public double MergeOverlapRatioThreshold { get; set; } = 0.1;
     public double MergeVerticalWeight { get; set; } = 0.5;
@@ -130,6 +131,18 @@ public sealed class AppSettings
     public double VerticalColumnMergeWeight { get; set; } = 0.5;
     public double VerticalColumnMergeThresholdRatio { get; set; } = 0.9;
     public double VerticalColumnMergeHardBreakRatio { get; set; } = 1.8;
+    public double PaddleMergeOverlapScale { get; set; } = 0.5333333333;
+    public double PaddleMergeVerticalWeightScale { get; set; } = 1.2;
+    public double PaddleMergeThresholdScale { get; set; } = 0.83;
+    public double PaddleRowMergeYCenterToleranceScale { get; set; } = 1.2222222222;
+    public double PaddleRowMergeHeightRatioMinScale { get; set; } = 0.8181818182;
+    public double PaddleRowMergeMaxGapScale { get; set; } = 0.7857142857;
+    public double PaddleRowMergeHardBreakScale { get; set; } = 0.7777777778;
+    public double PaddleVerticalGapScale { get; set; } = 1.0;
+    public double PaddleVerticalColumnMergeOverlapScale { get; set; } = 1.0;
+    public double PaddleVerticalColumnMergeWeightScale { get; set; } = 1.0;
+    public double PaddleVerticalColumnMergeThresholdScale { get; set; } = 1.0;
+    public double PaddleVerticalColumnMergeHardBreakScale { get; set; } = 1.0;
     public string HotkeyRunOnceKey { get; set; } = "F8";
     public string HotkeyRunOnceModifiers { get; set; } = "None";
     public string HotkeyToggleOverlayKey { get; set; } = "F9";

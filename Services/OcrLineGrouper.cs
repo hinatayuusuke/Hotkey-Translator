@@ -19,9 +19,16 @@ public sealed class OcrLineGrouper
     private const double VerticalColumnWidthRatioMin = 0.55;
     private const double VerticalColumnOverlapRatioMin = 0.10;
     private const double VerticalHardBreakMultiplier = 1.5;
+    private const double OverlapClampMin = 0.05;
+    private const double OverlapClampMax = 0.95;
+    private const double RatioClampMin = 0.10;
+    private const double RatioClampMax = 5.0;
+    private const double WeightClampMin = 0.0;
+    private const double WeightClampMax = 5.0;
     private readonly AppLogger? _logger;
     private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
     private bool _hasAutoSelectedMode;
+    private string? _lastLoggedProfileKey;
 
     private enum WritingMode
     {
@@ -36,6 +43,22 @@ public sealed class OcrLineGrouper
         double BlockAspect,
         double Total);
 
+    private readonly record struct EffectiveMergeThresholds(
+        double MergeOverlapRatioThreshold,
+        double MergeVerticalWeight,
+        double MergeThresholdRatio,
+        double RowMergeYCenterToleranceRatio,
+        double RowMergeHeightRatioMin,
+        double RowMergeMaxGapRatio,
+        double RowMergeHardBreakRatio,
+        double VerticalGapRatio,
+        double VerticalColumnMergeOverlapRatioThreshold,
+        double VerticalColumnMergeWeight,
+        double VerticalColumnMergeThresholdRatio,
+        double VerticalColumnMergeHardBreakRatio,
+        bool EngineScaledApplied,
+        OcrEngineKind EngineKind);
+
     public OcrLineGrouper(AppLogger? logger = null)
     {
         _logger = logger;
@@ -48,25 +71,28 @@ public sealed class OcrLineGrouper
             return lines;
         }
 
+        var thresholds = ResolveEffectiveThresholds(settings);
+        LogEffectiveThresholdsIfChanged(thresholds, settings);
+
         if (settings.VerticalModeOverride == VerticalModeOverride.Horizontal)
         {
-            return MergeAsHorizontal(lines, settings);
+            return MergeAsHorizontal(lines, settings, thresholds);
         }
 
         if (settings.VerticalModeOverride == VerticalModeOverride.Vertical)
         {
-            return MergeAsVertical(lines, settings);
+            return MergeAsVertical(lines, settings, thresholds);
         }
 
         if (!ShouldUseBidirectionalScoring(settings))
         {
             // WHY: Outside scoped auto-detect languages, keep behavior deterministic and cheap with horizontal mode.
             _hasAutoSelectedMode = false;
-            return MergeAsHorizontal(lines, settings);
+            return MergeAsHorizontal(lines, settings, thresholds);
         }
 
-        var horizontalMerged = MergeAsHorizontal(lines, settings);
-        var verticalMerged = MergeAsVertical(lines, settings);
+        var horizontalMerged = MergeAsHorizontal(lines, settings, thresholds);
+        var verticalMerged = MergeAsVertical(lines, settings, thresholds);
         var horizontalScore = ScoreMergedResult(horizontalMerged, WritingMode.Horizontal);
         var verticalScore = ScoreMergedResult(verticalMerged, WritingMode.Vertical);
         var selectedMode = SelectAutoMode(horizontalScore.Total, verticalScore.Total);
@@ -81,27 +107,33 @@ public sealed class OcrLineGrouper
         return selectedMode == WritingMode.Vertical ? verticalMerged : horizontalMerged;
     }
 
-    private static IReadOnlyList<OcrLine> MergeAsHorizontal(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static IReadOnlyList<OcrLine> MergeAsHorizontal(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         if (!settings.EnableTwoStageLineMerge)
         {
             var ordered = OrderLines(lines, WritingMode.Horizontal, settings);
-            return MergeHorizontalLines(ordered, settings);
+            return MergeHorizontalLines(ordered, settings, thresholds);
         }
 
         var horizontalOrdered = OrderLines(lines, WritingMode.Horizontal, settings);
-        var stageAResult = MergeSameRowTokens(horizontalOrdered, settings);
-        return MergeHorizontalLines(stageAResult, settings);
+        var stageAResult = MergeSameRowTokens(horizontalOrdered, settings, thresholds);
+        return MergeHorizontalLines(stageAResult, settings, thresholds);
     }
 
-    private IReadOnlyList<OcrLine> MergeAsVertical(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private IReadOnlyList<OcrLine> MergeAsVertical(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         if (!settings.EnableTwoStageLineMerge)
         {
             return OrderLines(lines, WritingMode.Vertical, settings);
         }
 
-        return MergeVerticalLinesTwoStage(lines, settings);
+        return MergeVerticalLinesTwoStage(lines, settings, thresholds);
     }
 
     private bool ShouldUseBidirectionalScoring(AppSettings settings)
@@ -146,14 +178,17 @@ public sealed class OcrLineGrouper
                normalized.StartsWith("zh", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static IReadOnlyList<OcrLine> MergeSameRowTokens(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static IReadOnlyList<OcrLine> MergeSameRowTokens(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         if (lines.Count <= 1)
         {
             return lines;
         }
 
-        var rowClusters = BuildRowClusters(lines, settings);
+        var rowClusters = BuildRowClusters(lines, settings, thresholds);
         var rowGroups = BuildGroups(lines, rowClusters);
         var merged = new List<OcrLine>(lines.Count);
         foreach (var rowGroup in rowGroups)
@@ -172,7 +207,7 @@ public sealed class OcrLineGrouper
             var adjacencyUnion = new UnionFind(orderedRow.Count);
             for (var i = 0; i < orderedRow.Count - 1; i++)
             {
-                if (ShouldMergeAdjacentTokens(orderedRow[i].Rect, orderedRow[i + 1].Rect, settings))
+                if (ShouldMergeAdjacentTokens(orderedRow[i].Rect, orderedRow[i + 1].Rect, thresholds))
                 {
                     adjacencyUnion.Union(i, i + 1);
                 }
@@ -189,7 +224,10 @@ public sealed class OcrLineGrouper
         return OrderLines(merged, WritingMode.Horizontal, settings);
     }
 
-    private static IReadOnlyList<OcrLine> MergeHorizontalLines(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static IReadOnlyList<OcrLine> MergeHorizontalLines(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         if (lines.Count <= 1)
         {
@@ -206,12 +244,12 @@ public sealed class OcrLineGrouper
             for (var offset = 1; offset <= neighborCount && i + offset < ordered.Count; offset++)
             {
                 var b = ordered[i + offset];
-                if (!PassesAlignmentGate(a.Rect, b.Rect, settings.MergeOverlapRatioThreshold))
+                if (!PassesAlignmentGate(a.Rect, b.Rect, thresholds.MergeOverlapRatioThreshold))
                 {
                     continue;
                 }
 
-                if (!IsMergeableByCost(a.Rect, b.Rect, settings))
+                if (!IsMergeableByCost(a.Rect, b.Rect, thresholds))
                 {
                     continue;
                 }
@@ -247,7 +285,10 @@ public sealed class OcrLineGrouper
         return OrderLines(merged, WritingMode.Horizontal, settings);
     }
 
-    private IReadOnlyList<OcrLine> MergeVerticalLinesTwoStage(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private IReadOnlyList<OcrLine> MergeVerticalLinesTwoStage(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         if (lines.Count <= 1)
         {
@@ -274,7 +315,7 @@ public sealed class OcrLineGrouper
             var adjacencyUnion = new UnionFind(orderedColumn.Count);
             for (var i = 0; i < orderedColumn.Count - 1; i++)
             {
-                if (ShouldMergeVerticalAdjacent(orderedColumn[i].Rect, orderedColumn[i + 1].Rect, settings))
+                if (ShouldMergeVerticalAdjacent(orderedColumn[i].Rect, orderedColumn[i + 1].Rect, thresholds))
                 {
                     adjacencyUnion.Union(i, i + 1);
                 }
@@ -294,7 +335,7 @@ public sealed class OcrLineGrouper
             return stageAResult;
         }
 
-        var stageBResult = MergeVerticalColumnUnits(stageAResult, settings, out var mergedPairs, out var hardBreakSkips);
+        var stageBResult = MergeVerticalColumnUnits(stageAResult, settings, thresholds, out var mergedPairs, out var hardBreakSkips);
         _logger?.Info(
             $"Vertical column merge: before={stageAResult.Count}, after={stageBResult.Count}, mergedPairs={mergedPairs}, hardBreakSkips={hardBreakSkips}.");
         return OrderLines(stageBResult, WritingMode.Vertical, settings);
@@ -303,6 +344,7 @@ public sealed class OcrLineGrouper
     private static IReadOnlyList<OcrLine> MergeVerticalColumnUnits(
         IReadOnlyList<OcrLine> columnUnits,
         AppSettings settings,
+        EffectiveMergeThresholds thresholds,
         out int mergedPairs,
         out int hardBreakSkips)
     {
@@ -319,7 +361,7 @@ public sealed class OcrLineGrouper
             .ToList();
         var unionFind = new UnionFind(orderedByX.Count);
         var neighborCount = Math.Max(1, settings.VerticalColumnMergeNeighborCount);
-        var hardBreakRatio = Math.Max(0.1, settings.VerticalColumnMergeHardBreakRatio);
+        var hardBreakRatio = Math.Max(0.1, thresholds.VerticalColumnMergeHardBreakRatio);
 
         for (var i = 0; i < orderedByX.Count; i++)
         {
@@ -327,7 +369,7 @@ public sealed class OcrLineGrouper
             for (var offset = 1; offset <= neighborCount && i + offset < orderedByX.Count; offset++)
             {
                 var b = orderedByX[i + offset];
-                if (!PassesVerticalAlignmentGate(a.Rect, b.Rect, settings.VerticalColumnMergeOverlapRatioThreshold))
+                if (!PassesVerticalAlignmentGate(a.Rect, b.Rect, thresholds.VerticalColumnMergeOverlapRatioThreshold))
                 {
                     continue;
                 }
@@ -345,7 +387,7 @@ public sealed class OcrLineGrouper
                     continue;
                 }
 
-                if (!IsVerticalColumnMergeableByCost(a.Rect, b.Rect, horizontalGap, settings))
+                if (!IsVerticalColumnMergeableByCost(a.Rect, b.Rect, horizontalGap, thresholds))
                 {
                     continue;
                 }
@@ -374,7 +416,10 @@ public sealed class OcrLineGrouper
         return merged;
     }
 
-    private static UnionFind BuildRowClusters(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static UnionFind BuildRowClusters(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         var unionFind = new UnionFind(lines.Count);
         var neighborCount = Math.Max(1, settings.RowMergeNeighborCount);
@@ -384,7 +429,7 @@ public sealed class OcrLineGrouper
             for (var offset = 1; offset <= neighborCount && i + offset < lines.Count; offset++)
             {
                 var b = lines[i + offset];
-                if (!IsSameRowCandidate(a.Rect, b.Rect, settings))
+                if (!IsSameRowCandidate(a.Rect, b.Rect, thresholds))
                 {
                     continue;
                 }
@@ -418,7 +463,7 @@ public sealed class OcrLineGrouper
         return unionFind;
     }
 
-    private static bool IsSameRowCandidate(Rect a, Rect b, AppSettings settings)
+    private static bool IsSameRowCandidate(Rect a, Rect b, EffectiveMergeThresholds thresholds)
     {
         var minHeight = Math.Min(a.Height, b.Height);
         var maxHeight = Math.Max(a.Height, b.Height);
@@ -428,13 +473,13 @@ public sealed class OcrLineGrouper
         }
 
         var centerDiff = Math.Abs(GetCenterY(a) - GetCenterY(b));
-        if (centerDiff > minHeight * settings.RowMergeYCenterToleranceRatio)
+        if (centerDiff > minHeight * thresholds.RowMergeYCenterToleranceRatio)
         {
             return false;
         }
 
         var heightRatio = minHeight / maxHeight;
-        return heightRatio >= settings.RowMergeHeightRatioMin;
+        return heightRatio >= thresholds.RowMergeHeightRatioMin;
     }
 
     private static bool IsSameColumnCandidate(Rect a, Rect b)
@@ -462,7 +507,7 @@ public sealed class OcrLineGrouper
         return (overlapWidth / minWidth) >= VerticalColumnOverlapRatioMin;
     }
 
-    private static bool ShouldMergeAdjacentTokens(Rect left, Rect right, AppSettings settings)
+    private static bool ShouldMergeAdjacentTokens(Rect left, Rect right, EffectiveMergeThresholds thresholds)
     {
         var minHeight = Math.Min(left.Height, right.Height);
         if (minHeight <= 0)
@@ -471,15 +516,15 @@ public sealed class OcrLineGrouper
         }
 
         var gapX = Math.Max(0, right.Left - left.Right);
-        if (gapX > minHeight * settings.RowMergeHardBreakRatio)
+        if (gapX > minHeight * thresholds.RowMergeHardBreakRatio)
         {
             return false;
         }
 
-        return gapX <= minHeight * settings.RowMergeMaxGapRatio;
+        return gapX <= minHeight * thresholds.RowMergeMaxGapRatio;
     }
 
-    private static bool ShouldMergeVerticalAdjacent(Rect top, Rect bottom, AppSettings settings)
+    private static bool ShouldMergeVerticalAdjacent(Rect top, Rect bottom, EffectiveMergeThresholds thresholds)
     {
         var minWidth = Math.Min(top.Width, bottom.Width);
         if (minWidth <= 0)
@@ -487,7 +532,7 @@ public sealed class OcrLineGrouper
             return false;
         }
 
-        var gapRatio = Math.Max(0.1, settings.VerticalGapRatio);
+        var gapRatio = Math.Max(0.1, thresholds.VerticalGapRatio);
         var gapY = Math.Max(0, bottom.Top - top.Bottom);
         if (gapY > minWidth * gapRatio * VerticalHardBreakMultiplier)
         {
@@ -771,6 +816,85 @@ public sealed class OcrLineGrouper
         return Math.Max(0.0, Math.Min(1.0, value));
     }
 
+    private EffectiveMergeThresholds ResolveEffectiveThresholds(AppSettings settings)
+    {
+        var engineKind = settings.OcrEngine;
+        var applyPaddleScale = settings.EnableEngineScaledLineMergeProfile &&
+                               engineKind == OcrEngineKind.Paddle;
+
+        if (!applyPaddleScale)
+        {
+            return new EffectiveMergeThresholds(
+                settings.MergeOverlapRatioThreshold,
+                settings.MergeVerticalWeight,
+                settings.MergeThresholdRatio,
+                settings.RowMergeYCenterToleranceRatio,
+                settings.RowMergeHeightRatioMin,
+                settings.RowMergeMaxGapRatio,
+                settings.RowMergeHardBreakRatio,
+                settings.VerticalGapRatio,
+                settings.VerticalColumnMergeOverlapRatioThreshold,
+                settings.VerticalColumnMergeWeight,
+                settings.VerticalColumnMergeThresholdRatio,
+                settings.VerticalColumnMergeHardBreakRatio,
+                EngineScaledApplied: false,
+                engineKind);
+        }
+
+        return new EffectiveMergeThresholds(
+            ClampScaled(settings.MergeOverlapRatioThreshold, settings.PaddleMergeOverlapScale, OverlapClampMin, OverlapClampMax),
+            ClampScaled(settings.MergeVerticalWeight, settings.PaddleMergeVerticalWeightScale, WeightClampMin, WeightClampMax),
+            ClampScaled(settings.MergeThresholdRatio, settings.PaddleMergeThresholdScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.RowMergeYCenterToleranceRatio, settings.PaddleRowMergeYCenterToleranceScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.RowMergeHeightRatioMin, settings.PaddleRowMergeHeightRatioMinScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.RowMergeMaxGapRatio, settings.PaddleRowMergeMaxGapScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.RowMergeHardBreakRatio, settings.PaddleRowMergeHardBreakScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.VerticalGapRatio, settings.PaddleVerticalGapScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.VerticalColumnMergeOverlapRatioThreshold, settings.PaddleVerticalColumnMergeOverlapScale, OverlapClampMin, OverlapClampMax),
+            ClampScaled(settings.VerticalColumnMergeWeight, settings.PaddleVerticalColumnMergeWeightScale, WeightClampMin, WeightClampMax),
+            ClampScaled(settings.VerticalColumnMergeThresholdRatio, settings.PaddleVerticalColumnMergeThresholdScale, RatioClampMin, RatioClampMax),
+            ClampScaled(settings.VerticalColumnMergeHardBreakRatio, settings.PaddleVerticalColumnMergeHardBreakScale, RatioClampMin, RatioClampMax),
+            EngineScaledApplied: true,
+            engineKind);
+    }
+
+    private void LogEffectiveThresholdsIfChanged(EffectiveMergeThresholds thresholds, AppSettings settings)
+    {
+        if (!thresholds.EngineScaledApplied || _logger == null)
+        {
+            return;
+        }
+
+        var key =
+            $"{thresholds.EngineKind}|" +
+            $"{thresholds.MergeOverlapRatioThreshold:0.###}|{thresholds.MergeVerticalWeight:0.###}|{thresholds.MergeThresholdRatio:0.###}|" +
+            $"{thresholds.RowMergeYCenterToleranceRatio:0.###}|{thresholds.RowMergeHeightRatioMin:0.###}|{thresholds.RowMergeMaxGapRatio:0.###}|{thresholds.RowMergeHardBreakRatio:0.###}|" +
+            $"{thresholds.VerticalGapRatio:0.###}|{thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}|{thresholds.VerticalColumnMergeWeight:0.###}|{thresholds.VerticalColumnMergeThresholdRatio:0.###}|{thresholds.VerticalColumnMergeHardBreakRatio:0.###}";
+        if (string.Equals(key, _lastLoggedProfileKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastLoggedProfileKey = key;
+        _logger.Info(
+            $"Engine-scaled merge profile: engine={thresholds.EngineKind}, enabled={settings.EnableEngineScaledLineMergeProfile}, " +
+            $"overlap={thresholds.MergeOverlapRatioThreshold:0.###}, weight={thresholds.MergeVerticalWeight:0.###}, threshold={thresholds.MergeThresholdRatio:0.###}, " +
+            $"rowCenterTol={thresholds.RowMergeYCenterToleranceRatio:0.###}, rowHeightMin={thresholds.RowMergeHeightRatioMin:0.###}, rowMaxGap={thresholds.RowMergeMaxGapRatio:0.###}, rowHardBreak={thresholds.RowMergeHardBreakRatio:0.###}, " +
+            $"verticalGap={thresholds.VerticalGapRatio:0.###}, colOverlap={thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}, colWeight={thresholds.VerticalColumnMergeWeight:0.###}, " +
+            $"colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}.");
+    }
+
+    private static double ClampScaled(double baseValue, double scale, double minValue, double maxValue)
+    {
+        var scaled = baseValue * scale;
+        if (double.IsNaN(scaled) || double.IsInfinity(scaled))
+        {
+            return Math.Clamp(baseValue, minValue, maxValue);
+        }
+
+        return Math.Clamp(scaled, minValue, maxValue);
+    }
+
     private static List<OcrLine> OrderLines(IEnumerable<OcrLine> lines, WritingMode mode, AppSettings settings)
     {
         if (mode == WritingMode.Vertical)
@@ -829,16 +953,20 @@ public sealed class OcrLineGrouper
         return (overlapHeight / minHeight) >= overlapRatioThreshold;
     }
 
-    private static bool IsMergeableByCost(Rect a, Rect b, AppSettings settings)
+    private static bool IsMergeableByCost(Rect a, Rect b, EffectiveMergeThresholds thresholds)
     {
         var verticalGap = Math.Max(0, b.Top - a.Bottom);
         var sizePenalty = Math.Abs(a.Height - b.Height);
-        var cost = (settings.MergeVerticalWeight * verticalGap) + sizePenalty;
-        var threshold = Math.Min(a.Height, b.Height) * settings.MergeThresholdRatio;
+        var cost = (thresholds.MergeVerticalWeight * verticalGap) + sizePenalty;
+        var threshold = Math.Min(a.Height, b.Height) * thresholds.MergeThresholdRatio;
         return cost <= threshold;
     }
 
-    private static bool IsVerticalColumnMergeableByCost(Rect a, Rect b, double horizontalGap, AppSettings settings)
+    private static bool IsVerticalColumnMergeableByCost(
+        Rect a,
+        Rect b,
+        double horizontalGap,
+        EffectiveMergeThresholds thresholds)
     {
         var minWidth = Math.Min(a.Width, b.Width);
         if (minWidth <= 0)
@@ -847,8 +975,8 @@ public sealed class OcrLineGrouper
         }
 
         var sizePenalty = Math.Abs(a.Width - b.Width);
-        var cost = (settings.VerticalColumnMergeWeight * horizontalGap) + sizePenalty;
-        var threshold = minWidth * settings.VerticalColumnMergeThresholdRatio;
+        var cost = (thresholds.VerticalColumnMergeWeight * horizontalGap) + sizePenalty;
+        var threshold = minWidth * thresholds.VerticalColumnMergeThresholdRatio;
         return cost <= threshold;
     }
 
