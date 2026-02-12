@@ -14,6 +14,7 @@ public sealed class OverlayPresenter
     private readonly OverlayWindow _window;
     private readonly AppLogger? _logger;
     private IReadOnlyList<OverlayItem> _lastItems = new List<OverlayItem>();
+    private Rect? _lastSmallBoxClipScreenRect;
     private bool _isEnabled = true;
     private bool _perfLogEnabled;
     private int _perfLogThresholdMs;
@@ -59,9 +60,10 @@ public sealed class OverlayPresenter
         });
     }
 
-    public void Update(IReadOnlyList<OverlayItem> items)
+    public void Update(IReadOnlyList<OverlayItem> items, Rect? smallBoxClipScreenRect = null)
     {
         _lastItems = items.ToList();
+        _lastSmallBoxClipScreenRect = NormalizeRect(smallBoxClipScreenRect);
         // NOTE: Keep latest items while disabled so toggle can show the newest overlay.
         if (!_isEnabled)
         {
@@ -70,6 +72,7 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayUpdate", measureRender: true, () =>
         {
+            _window.SetSmallBoxClipBounds(ToWindowDipRect(_lastSmallBoxClipScreenRect));
             var converted = ConvertToDip(_lastItems);
             _window.UpdateItems(converted);
             Updated?.Invoke();
@@ -90,6 +93,7 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayShowLast", measureRender: true, () =>
         {
+            _window.SetSmallBoxClipBounds(ToWindowDipRect(_lastSmallBoxClipScreenRect));
             var converted = ConvertToDip(_lastItems);
             _window.UpdateItems(converted);
             Updated?.Invoke();
@@ -157,6 +161,32 @@ public sealed class OverlayPresenter
         }
 
         return converted;
+    }
+
+    private Rect? ToWindowDipRect(Rect? screenRect)
+    {
+        if (screenRect is not { } rect || rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0)
+        {
+            return null;
+        }
+
+        var dip = DpiHelper.ScreenRectToWindowDip(_window, rect);
+        if (dip.IsEmpty || dip.Width <= 0 || dip.Height <= 0)
+        {
+            return null;
+        }
+
+        return dip;
+    }
+
+    private static Rect? NormalizeRect(Rect? rect)
+    {
+        if (rect is not { } value || value.IsEmpty || value.Width <= 0 || value.Height <= 0)
+        {
+            return null;
+        }
+
+        return value;
     }
 
     public void SetEnabled(bool enabled, bool showLast = true)

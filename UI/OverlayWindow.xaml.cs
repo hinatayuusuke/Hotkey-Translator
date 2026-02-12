@@ -27,6 +27,7 @@ public partial class OverlayWindow : Window
     private double _smallBoxSlenderAspectThreshold = 3.0;
     private double _smallBoxSlenderThresholdBoost = 1.2;
     private VerticalModeOverride _verticalModeOverride = VerticalModeOverride.Auto;
+    private Rect? _smallBoxClipBoundsDip;
     private Dictionary<string, double> _fontSizeCache = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
@@ -143,6 +144,17 @@ public partial class OverlayWindow : Window
     public void SetOverlayVisibility(bool visible)
     {
         OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
+    }
+
+    public void SetSmallBoxClipBounds(Rect? boundsDip)
+    {
+        if (boundsDip is not { } rect || rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0)
+        {
+            _smallBoxClipBoundsDip = null;
+            return;
+        }
+
+        _smallBoxClipBoundsDip = rect;
     }
 
     public void ShowLoadingSpinner(Rect anchorDipRect)
@@ -343,7 +355,16 @@ public partial class OverlayWindow : Window
             return rect;
         }
 
-        var bounds = new Rect(0, 0, width, height);
+        var windowBounds = new Rect(0, 0, width, height);
+        var bounds = _smallBoxClipBoundsDip is { } clip
+            // WHY: Active-window capture should keep readability boost expansion inside the capture window.
+            ? Rect.Intersect(windowBounds, clip)
+            : windowBounds;
+        if (bounds.IsEmpty)
+        {
+            bounds = windowBounds;
+        }
+
         var clipped = Rect.Intersect(rect, bounds);
         return clipped.IsEmpty ? rect : clipped;
     }

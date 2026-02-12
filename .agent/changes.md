@@ -6876,3 +6876,64 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行成功（0 errors / 0 warnings）。
+
+**2026-02-12 14:32 (Asia/Taipei) — OCR縦結合/横結合 Settings運用ガイドを新規作成**
+
+### Summary
+- Settings.json の縦結合・横結合関連項目を整理した運用ガイドを Doc に追加した。
+
+### Context / Goal
+- 枠の縦結合/横結合に関わる設定項目が多く、どれをどう調整すべきか分かりにくい。
+- 実装ロジックに沿って、優先順・調整方向・症状別の対処を一枚で参照できる資料を用意したい。
+
+### Changes
+- OcrLineGrouper の分岐順（Override優先、Auto判定条件、2段結合の有無）を整理して記載。
+- 横書き/縦書きの Stage A・Stage B ごとに、関連キーと調整方向を整理。
+- よくある症状別に、どのキーをどう動かすかの運用指針を追加。
+- Settings.json の最小サンプルを追記。
+
+### Files Touched
+- Doc/Ocr_LineMerge_Settings_Guide.md — 縦結合/横結合の設定運用ガイドを新規作成。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 将来ロジック変更でガイド記載が陳腐化する可能性。
+- Mitigation: 分岐条件や閾値はコード実装に対応する形で明示し、変更時の更新点を限定できる構成にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-12 14:48 (Asia/Taipei) — ActiveWindow境界でsmall-box可読性ブーストをクランプ**
+
+### Summary
+- small OCR box readability boost の拡大クランプ境界を、ActiveWindowキャプチャ時はモニター全体ではなくアクティブウィンドウ境界に合わせるよう変更した。
+
+### Context / Goal
+- 一部ゲームでsmall-box拡大時に表示枠が画面全体基準で広がり、意図より外側に寄ることがあった。
+- ActiveWindow運用時はゲームウィンドウ内で拡大・クランプしたい。
+
+### Changes
+- OverlayWindow に small-box 用クランプ矩形（DIP）を受け取る SetSmallBoxClipBounds を追加。
+- ClipRectToOverlayBounds を更新し、指定クランプ矩形がある場合はそれを優先してクリップ。
+- OverlayPresenter.Update に任意のクランプ矩形（画面座標）引数を追加し、DIPへ変換して OverlayWindow へ適用。
+- ShowLast でも直近クランプ矩形を再適用するように変更。
+- PipelineOrchestrator で CaptureMode=ActiveWindow のとき rame.Bounds をクランプ矩形として渡すように変更。
+- TrySetOverlayTextMode の再描画でも直近クランプ矩形を維持して適用。
+
+### Files Touched
+- UI/OverlayWindow.xaml.cs — small-box拡大のクランプ境界を外部指定できるよう拡張。
+- Services/OverlayPresenter.cs — クランプ境界の保持・DIP変換・OverlayWindow適用を追加。
+- Services/PipelineOrchestrator.cs — ActiveWindow時のクランプ境界解決と更新経路への引き渡しを追加。
+
+### Behavioral Impact
+- CaptureMode=ActiveWindow のとき、small-box readability boost の拡大枠はアクティブウィンドウ領域内でクランプされる。
+- CaptureMode=Screen のときは従来どおり仮想スクリーン境界クランプの挙動を維持する。
+
+### Risk & Mitigation
+- Risk: 画面座標→DIP変換の誤差で端部クリップが厳しく見える可能性。
+- Mitigation: 既存の DpiHelper.ScreenRectToWindowDip を使用し、無効矩形時は従来のウィンドウ全体境界へフォールバックする。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 errors / 0 warnings）。

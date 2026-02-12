@@ -47,6 +47,7 @@ public sealed class PipelineOrchestrator
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
     private Dictionary<int, string> _lastOverlayTranslations = new();
     private Rect _lastOverlayRoiScreen;
+    private Rect? _lastOverlayClipScreen;
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
     private Rect? _lastRoiBounds;
@@ -170,6 +171,7 @@ public sealed class PipelineOrchestrator
                 _overlayPresenter.ShowLast();
                 return;
             }
+            var overlayClipScreen = ResolveOverlayClipScreenRect(settings, frame.Bounds);
 
             var roiInFrame = new Rect(
                 roiScreen.X - frame.Bounds.X,
@@ -303,10 +305,11 @@ public sealed class PipelineOrchestrator
                 _lastReadingUnits = readingUnits.ToList();
                 _lastOverlayTranslations = new Dictionary<int, string>(translations);
                 _lastOverlayRoiScreen = roiScreen;
+                _lastOverlayClipScreen = overlayClipScreen;
                 var overlayItems = BuildOverlayItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
                 _lastOverlayItems = overlayItems;
                 Stopwatch? overlayStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-                _overlayPresenter.Update(overlayItems);
+                _overlayPresenter.Update(overlayItems, overlayClipScreen);
                 if (perfEnabled && overlayStopwatch != null)
                 {
                     overlayStopwatch.Stop();
@@ -387,13 +390,28 @@ public sealed class PipelineOrchestrator
                 _settingsService.Settings,
                 _overlayTextMode);
             _lastOverlayItems = overlayItems;
-            _overlayPresenter.Update(overlayItems);
+            _overlayPresenter.Update(overlayItems, _lastOverlayClipScreen);
             return true;
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private static Rect? ResolveOverlayClipScreenRect(AppSettings settings, Rect captureBounds)
+    {
+        if (settings.CaptureMode != CaptureMode.ActiveWindow)
+        {
+            return null;
+        }
+
+        if (captureBounds.IsEmpty || captureBounds.Width <= 0 || captureBounds.Height <= 0)
+        {
+            return null;
+        }
+
+        return captureBounds;
     }
 
     private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
