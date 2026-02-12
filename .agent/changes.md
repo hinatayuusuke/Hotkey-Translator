@@ -7225,3 +7225,30 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-02-13 00:59 (Asia/Taipei) — PaddleOCR-VL gRPC排他運用 実装案作成**
+
+### Summary
+- PaddleOCR と PaddleOCR-VL を相互排他にし、切替時に非選択側リソースを解放する方針を含む全体実装案を Doc に新規作成した。
+
+### Context / Goal
+- OcrServiceVL を PaddleOCR と同様の gRPC サーバ方式へ統一したい。
+- Paddle/PaddleVllm の同時常駐を防ぎ、切替時に VRAM/プロセス/チャネルを解放する運用方針を明文化したい。
+
+### Changes
+- OcrServiceVL gRPC 化の全体構成（Python server/engine、C# host/provider、UI配線）を整理。
+- 相互排他ルール（選択側のみ起動、非選択側停止）と解放対象（プロセス/チャネル/監視タスク）を明記。
+- 実装ステップ、AppSettings追加候補、DoD、リスク緩和策を定義。
+
+### Files Touched
+- Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md — PaddleOCR-VL gRPC化と相互排他・リソース解放方針を含む実装案を新規追加。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: ドキュメントのみ先行し、実装時に排他停止処理の漏れが出る可能性。
+- Mitigation: DoD に「非選択側停止・解放」を明示し、実装時の受け入れ条件として固定。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。

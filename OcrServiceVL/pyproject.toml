@@ -1,0 +1,24 @@
+[project]
+name = "paddleocr-vl-test"
+version = "0.1.0"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "numpy<2",
+    "paddlex[ocr]==3.4.1",
+    "paddleocr[doc-parser]>=3.4.0,<3.5.0",
+    "paddlepaddle-gpu==3.3.0; sys_platform == 'win32'",
+    "nvidia-cuda-runtime-cu11==11.8.89; sys_platform == 'win32'",
+    "nvidia-cublas-cu11==11.11.3.6; sys_platform == 'win32'",
+    "nvidia-cudnn-cu11==8.9.4.19; sys_platform == 'win32'",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]
+
+[[tool.uv.index]]
+name = "paddle-cu118"
+url = "https://www.paddlepaddle.org.cn/packages/stable/cu118/"
+explicit = true
+
+[tool.uv.sources]
+paddlepaddle-gpu = { index = "paddle-cu118" }
