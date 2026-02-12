@@ -137,7 +137,7 @@ class PaddleOcrEngine:
         # bytes -> RGB ndarray (H, W, 3) uint8
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         original_width, original_height = image.size
-        padding_px = 40
+        padding_px = 20
         if padding_px > 0:
             padding_color = self._estimate_padding_color(image)
             image = ImageOps.expand(image, border=padding_px, fill=padding_color)
