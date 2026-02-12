@@ -7252,3 +7252,57 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-02-13 02:58 (Asia/Taipei) — SceneChange自動翻訳 Pending追いかけ実行案 作成**
+
+### Summary
+- 自動翻訳スキップ時に未処理フラグを保持し、実行可能時に1回だけ追いかけ実行する実装案を Doc に追加した。
+
+### Context / Goal
+- 現状はシーン変化検知が実行中/クールダウンで破棄され、タイミングによって未発火になる。
+- 破棄せず 1 件集約で後追い実行し、未発火を減らしたい。
+
+### Changes
+- Pending 状態フィールド、Mark/Drain/Clear ヘルパー、既存メソッド改修ポイントを定義。
+- QueueSceneChangeAutoTranslate・RunOnceAsync finally・OnAutoHideTick への反映手順を具体化。
+- リスク、緩和策、DoD、Open Questions を整理。
+
+### Files Touched
+- Doc/SceneChange_AutoTranslate_PendingDrain_Plan.md — 自動翻訳未発火対策（Pending 1回追いかけ実行）の実装案を新規追加。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時に pending クリア漏れやログノイズ増加が起きる可能性。
+- Mitigation: clear 導線を明示し、DoD に残留なし・1回実行を含めて検証基準化。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-13 03:03 (Asia/Taipei) — 自動翻訳UI静音化（Spinner/No text）実装案作成**
+
+### Summary
+- 自動翻訳有効時に右下SpinnerとOCR No text通知を抑制する実装案を Doc に追加した。
+
+### Context / Goal
+- シーン変化監視では短周期実行が起きやすく、SpinnerとNo text表示がノイズ化しやすい。
+- 自動実行のみUIフィードバックを静音化し、手動実行の可視性は維持したい。
+
+### Changes
+- 実行トリガー識別フラグ（auto/manual）を ForceRunOptions へ追加する設計案を定義。
+- MainWindow の Spinner制御と PipelineOrchestrator の No textトースト抑制条件を整理。
+- 実装手順、リスク、DoD、Open Questions を明記。
+
+### Files Touched
+- Doc/SceneChange_AutoTranslate_QuietUi_Plan.md — 自動翻訳時のSpinner/No text非表示に関する実装案を新規追加。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 自動実行が見えにくくなり、停止と誤認される可能性。
+- Mitigation: ログに auto 実行開始/終了および suppressed 通知を残す方針を併記。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
