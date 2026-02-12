@@ -7169,3 +7169,59 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 warnings / 0 errors）。
+
+**2026-02-12 17:44 (Asia/Taipei) — ROI Set Plan 推奨修正反映**
+
+### Summary
+- Doc/ROI_Set_MultiROI_Registration_Plan.md に、実装前レビューでの推奨事項（順序保証・移行一本化・OwnerRoiIndex規則・Watcher連携）を反映した。
+
+### Context / Goal
+- 実装着手前に、仕様解釈の揺れで不具合化しやすい箇所を先に文書で固定したい。
+- 表示順と翻訳送信順の不整合、旧設定との二重管理、監視系の取りこぼしを防ぎたい。
+
+### Changes
+- source of truth を RoiSets + ActiveRoiSetId + RoiMode + OverlayLayoutMode に一本化し、旧設定は互換読込専用と明記。
+- OwnerRoiIndex の判定手順（中心点優先→IoU最大→登録順タイブレーク→閾値未満は -1 除外）を追加。
+- 最終表示順/翻訳送信順を ROI登録順 -> ROI内読順 に再整列する MUST を追加。
+- scene-change watcher の ROI 適用経路（Single/Set1は従来、Set複数は外接矩形+黒塗り）を追加。
+- DoD に順序保証・OwnerRoiIndex割当・watcher経路検証のチェック項目を追加。
+
+### Files Touched
+- Doc/ROI_Set_MultiROI_Registration_Plan.md — 実装前の仕様固定項目を追記・明確化。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 文書だけ更新して実装が追随しない可能性。
+- Mitigation: 追加したDoD項目を実装時の受け入れ基準として使用する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-12 18:18 (Asia/Taipei) — OCR前処理プレビュー即時反映 実装案作成**
+
+### Summary
+- 設定変更時にOCR本実行を待たず前処理プレビューを更新する実装案を Doc に新規作成した。
+
+### Context / Goal
+- 現状は Run OCR 実行時のみプレビュー更新され、設定調整の即時フィードバックがない。
+- 前処理設定の調整体験を改善しつつ、本番OCRパイプラインへの影響を最小化したい。
+
+### Changes
+- プレビュー専用更新API（PipelineOrchestrator）と UI側 debounce/cancel 制御（MainWindow）の構成案を定義。
+- 対象設定の判定方針、データフロー、段階実装ステップ、リスク緩和策を整理。
+- DoD に即時反映・過剰更新抑制・ROI変更反映・ビルド成功を明記。
+
+### Files Touched
+- Doc/Ocr_Preprocess_Preview_Immediate_Refresh_Plan.md — OCR前処理プレビュー即時反映の実装案を新規追加。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時に対象設定判定漏れが起き、期待どおり再描画されない可能性。
+- Mitigation: 対象設定を明示リスト化し、DoD で確認手順を固定する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。

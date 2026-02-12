@@ -25,6 +25,7 @@
 - `RoiMode=Single` の非固定Overlay描画・翻訳送信順は、既存の読順ロジック（書字方向判定後の行順）に従う。
 - `RoiMode=Set` の `OverlayLayoutMode=PerBox` 時の描画・翻訳送信順は、ROI間はセット内の登録順、各ROI内は既存の読順ロジックに従う。
 - `RoiMode=Set` の `OverlayLayoutMode=PerRoiAggregate` 時は ROIごとに1ブロック集約表示し、ROI間は登録順に従う。
+- 設定の source of truth は `RoiSets + ActiveRoiSetId + RoiMode + OverlayLayoutMode` とし、旧 `Roi/NormalizedRoi/EnableFixedRoiOverlay` は互換読込専用とする。
 
 4. **現状整理**
 - ROIは `AppSettings.Roi / NormalizedRoi` を主に使用している。
@@ -66,7 +67,7 @@
 - `OverlayLayoutMode` は描画モード設定（OCR入力モードとは独立）
 - 互換移行:
 - 既存 `NormalizedRoi` がある場合は、起動時に `Default` セットへ自動移行する。
-- 旧単一ROI設定は互換のため保持しつつ、実行時は `RoiMode` に従って適用対象を決める。
+- 旧単一ROI設定は互換読込のみ行い、保存時は新形式（`RoiSets + ActiveRoiSetId + RoiMode + OverlayLayoutMode`）へ正規化して書き戻す。
 - 旧 `EnableFixedRoiOverlay=true` は、初回起動時に `OverlayLayoutMode=PerRoiAggregate` へ移行して保存する。
 - 旧 `EnableFixedRoiOverlay=false` は、`OverlayLayoutMode=PerBox` へ移行して保存する。
 - モード前提（MUST）:
@@ -81,12 +82,23 @@
 - `RoiMode=Set` かつ ROI数が1のときは黒塗りを行わず、従来どおり単一ROI切り抜きでOCRへ渡す。
 - OCR投入画像は1枚のみ（複数ROIであっても OCR 呼び出しは1回）。
 - OCR後の座標は外接矩形オフセットを加算して元スクリーン座標へ戻す。
-- OCR行は `OcrLine.OwnerRoiIndex`（中心点ベース）を付与し、行結合は同一 `OwnerRoiIndex` 内のみ許可する。
+- OCR行は `OcrLine.OwnerRoiIndex` を付与し、行結合は同一 `OwnerRoiIndex` 内のみ許可する。
+- `OwnerRoiIndex` 判定ルール:
+- 第1候補: 行矩形中心点が含まれるROI。
+- 第2候補: 含まれない場合は IoU 最大のROI。
+- 同点時: ROI登録順の早い方を採用。
+- 最小IoU閾値未満は `OwnerRoiIndex=-1` とし、行結合対象から除外する（表示/翻訳対象からも除外）。
+- 並び順ルール（MUST）:
+- 最終表示順・翻訳送信順は `OwnerRoiIndex`（ROI登録順）→ ROI内読順 で確定する。
+- 1枚OCRの生順序は採用せず、最終出力直前に上記順へ再整列する。
 - ROI描画制約（MUST）:
 - 新規ROIは既存ROIと高重複（例: IoU >= 0.15）なら追加拒否。
 - 近接しすぎる場合は `minGapPx`（例: 8px）を保つ位置までクランプ。
 - 既存ROIの内側に完全包含されるROIは拒否。
 - `RoiMode=Single` では重複/近接判定は不要（複数描画自体を禁止）。
+- Scene-change watcher 適用（MUST）:
+- `RoiMode=Single` および `RoiMode=Set` かつ ROI数1 は従来ROI切り抜きで判定する。
+- `RoiMode=Set` かつ ROI数2以上は、OCR入力と同じ「外接矩形 + ROI外黒塗り」の1枚画像で判定する。
 - 操作補助（SHOULD）:
 - `Undo Last` / `Clear All` / `登録完了` / `キャンセル`。
 - `Shift` 押下時のみ近接クランプ解除（重複禁止は維持）。
@@ -105,6 +117,8 @@
 - Step 8: 行結合を同一 `OwnerRoiIndex` 内に制限（ROI跨ぎ結合禁止）。
 - Step 8.5: Overlay構築を `OverlayLayoutMode` 分岐へ置換（`PerBox` は従来、`PerRoiAggregate` はROI単位集約）。
 - Step 8.6: `EnableFixedRoiOverlay` のUI項目を撤去し、表示モードUIへ置換。
+- Step 8.7: 最終表示順・翻訳送信順を `OwnerRoiIndex`（登録順）→ ROI内読順 へ再整列する。
+- Step 8.8: scene-change watcher のROI判定入力を `RoiMode`/ROI数に応じて分岐する（Set複数は外接矩形+黒塗り）。
 - Step 9: 手動検証（代表ゲーム画面）とビルド確認。
 
 8. **非機能要件チェック**
@@ -157,7 +171,11 @@
 - [ ] `RoiMode=Set` かつ ROI数2以上のとき、外接矩形切り抜き + ROI外黒塗り（余白なし）の1枚画像でOCRが実行される。
 - [ ] ROI数2以上経路で、OCR結果の座標が元スクリーン座標へ正しく復元される。
 - [ ] ROI跨ぎ行結合が発生しない。
+- [ ] `OwnerRoiIndex` の割当が仕様どおり（中心点優先→IoU最大→登録順タイブレーク、閾値未満は -1 除外）に動作する。
+- [ ] `OverlayLayoutMode=PerBox` / `PerRoiAggregate` の両方で、表示順が `ROI登録順 -> ROI内読順` を満たす。
+- [ ] 翻訳送信順が表示順と一致し、`ROI登録順 -> ROI内読順` を満たす。
 - [ ] 旧単一ROI設定が起動時に `Default` セットへ自動移行される。
 - [ ] 旧 `EnableFixedRoiOverlay` が初回起動時に `OverlayLayoutMode` へ移行され、次回以降は新モードのみで動作する。
 - [ ] `OverlayLayoutMode=PerBox` と `OverlayLayoutMode=PerRoiAggregate` の表示差分が意図どおり確認できる。
+- [ ] scene-change watcher が `RoiMode`/ROI数に応じて正しい入力経路（単一切り抜き / 外接矩形+黒塗り）を使う。
 - [ ] `dotnet build Hotkey-Translator.sln` が成功する。

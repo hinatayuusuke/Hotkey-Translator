@@ -119,6 +119,10 @@ class PaddleOcrEngine:
             "text_det_box_thresh": 0.68,
             "text_det_unclip_ratio": 1.3,
             "text_rec_score_thresh": 0.58,
+            "use_doc_orientation_classify": True,
+            "use_doc_unwarping": True,
+            "use_textline_orientation": True,
+
         }
 
         # model_dir を使う場合は PaddleOCR 3.x の仕様に沿ってください。
