@@ -7367,3 +7367,61 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln 実行成功（0 warnings / 0 errors）。
+
+**2026-02-13 09:56 (Asia/Taipei) — DXGI timeout のクールダウン抑制**
+
+### Summary
+- DXGI の wait timeout をクールダウン対象から外し、DXGI固定時の長い取得停止を緩和した。
+
+### Context / Goal
+- DXGI固定 + 自動翻訳監視で DXGI timed out waiting for a new frame. が発生すると、プロバイダがクールダウン入りして数秒間 OCR が進まない。
+- transient timeout を恒久障害扱いしないようにして、再取得の機会を維持したい。
+
+### Changes
+- CaptureManager.Capture の失敗処理で、CaptureProviderKind.Dxgi かつ DXGI timed out waiting for a new frame. の場合は StartCooldown を呼ばない分岐を追加。
+- DXGI wait timeout 判定用の IsDxgiWaitTimeout(string? error) ヘルパーを追加。
+- WHY コメントを追加し、設計意図（transient timeout を cooldown しない）を明記。
+
+### Files Touched
+- Services/CaptureManager.cs — DXGI wait timeout のクールダウン抑制ロジックを実装。
+
+### Behavioral Impact
+- DXGI wait timeout 発生時、DXGI がクールダウンに入らなくなる。
+- DXGI固定時でも次回 tick で即再試行でき、数秒単位の空白期間が減る。
+
+### Risk & Mitigation
+- Risk: timeout 発生頻度が高い環境では再試行回数が増える可能性。
+- Mitigation: 変更は wait timeout のみに限定し、他のDXGIエラーは従来どおりクールダウンを維持する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 warnings / 0 errors）。
+
+**2026-02-13 10:11 (Asia/Taipei) — DXGI timeout 時の前回フレーム維持（最小実装）**
+
+### Summary
+- DXGI fixed で AcquireNextFrame が timeout した場合に、失敗ではなく直近成功フレームを返す最小実装を追加した。
+
+### Context / Goal
+- DXGI timeout は一時的な「新規フレームなし」であり、固定運用時に OCR 実行の空振りが増えやすい。
+- timeout 時でも直前フレームを維持して返し、実行パイプラインを継続させたい。
+
+### Changes
+- DxgiDuplicationProvider に直近成功フレームのキャッシュ（bitmap/bounds/mode/monitor）を追加。
+- 成功キャプチャ時に RememberLastSuccessfulFrame(...) でキャッシュを更新。
+- AcquireNextFrame timeout 時に TryCreateFrameFromLastSuccess(...) を優先し、取得できれば成功として返却。
+- キャッシュ不一致（mode/monitor違い）または未保持時は従来どおり timeout エラーを返す。
+
+### Files Touched
+- Services/DxgiDuplicationProvider.cs — timeout 時の前回フレーム返却ロジックを実装。
+
+### Behavioral Impact
+- DXGI fixed 運用で timeout 発生時でも、条件一致時は前回フレームで OCR が継続する。
+- monitor/mode が変わった場合は誤用を避けるため前回フレームを使わず、従来挙動のまま失敗扱い。
+
+### Risk & Mitigation
+- Risk: 画面が更新されていない間は同一フレームを繰り返し返し、差分判定が変化しにくくなる可能性。
+- Mitigation: fallback は timeout 時のみ発動し、通常の新規フレーム取得時は常に最新キャプチャで上書きされる。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln は実行中プロセスによる DLL/EXE ロックで失敗（コードエラーではない）。
+- 代替として dotnet build Hotkey-Translator.sln /p:OutputPath=bin\\TempVerify\\ でビルド成功（0 warnings / 0 errors）。

@@ -52,7 +52,11 @@ public sealed class CaptureManager
             if (!provider.TryCapture(request, out var frame, out var error))
             {
                 lastError = error is null ? null : new InvalidOperationException(error);
-                StartCooldown(provider.Kind, settings, now, error);
+                // WHY: DXGI wait timeout is often a transient "no new frame yet" state; cooldown here causes long blind spots.
+                if (!(provider.Kind == CaptureProviderKind.Dxgi && IsDxgiWaitTimeout(error)))
+                {
+                    StartCooldown(provider.Kind, settings, now, error);
+                }
                 continue;
             }
 
@@ -81,6 +85,11 @@ public sealed class CaptureManager
         }
 
         throw new InvalidOperationException("All capture providers failed.", lastError);
+    }
+
+    private static bool IsDxgiWaitTimeout(string? error)
+    {
+        return string.Equals(error, "DXGI timed out waiting for a new frame.", StringComparison.Ordinal);
     }
 
     public Rect GetCaptureBounds(AppSettings settings)

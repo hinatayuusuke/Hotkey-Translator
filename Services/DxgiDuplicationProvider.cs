@@ -19,6 +19,10 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
     private readonly object _sessionLock = new();
     private DxgiResidentSession? _residentSession;
     private bool _residentEnabled;
+    private Bitmap? _lastSuccessfulBitmap;
+    private Rect _lastSuccessfulBounds;
+    private CaptureMode _lastSuccessfulMode;
+    private IntPtr _lastSuccessfulMonitorHandle;
 
     public DxgiDuplicationProvider(AppLogger logger)
     {
@@ -248,9 +252,24 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                     continue;
                 }
 
-                error = IsWaitTimeout(acquireResult.Code)
-                    ? "DXGI timed out waiting for a new frame."
-                    : $"AcquireNextFrame failed: {acquireResult.Code}";
+                if (IsWaitTimeout(acquireResult.Code))
+                {
+                    if (TryCreateFrameFromLastSuccess(request.Mode, session.MonitorHandle, out frame))
+                    {
+                        if (_debugLogEnabled)
+                        {
+                            DebugLog("AcquireNextFrame timed out; using last successful frame.");
+                        }
+
+                        error = null;
+                        return true;
+                    }
+
+                    error = "DXGI timed out waiting for a new frame.";
+                    return false;
+                }
+
+                error = $"AcquireNextFrame failed: {acquireResult.Code}";
                 return false;
             }
 
@@ -324,10 +343,12 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
                         var cropped = BitmapHelper.Crop(bitmap, transformed);
                         cropped = RotateToDesktopOrientation(cropped, session.DuplicationDescription.Rotation);
                         bitmap.Dispose();
+                        RememberLastSuccessfulFrame(cropped, intersect, request.Mode, session.MonitorHandle);
                         frame = new CaptureFrame(cropped, intersect, Kind, DateTimeOffset.UtcNow);
                         return true;
                     }
 
+                    RememberLastSuccessfulFrame(bitmap, targetBounds, request.Mode, session.MonitorHandle);
                     frame = new CaptureFrame(bitmap, targetBounds, Kind, DateTimeOffset.UtcNow);
                     return true;
                 }
@@ -340,6 +361,33 @@ public sealed class DxgiDuplicationProvider : ICaptureProvider
 
         error = "DXGI frame not ready (warm-up).";
         return false;
+    }
+
+    private void RememberLastSuccessfulFrame(Bitmap bitmap, Rect bounds, CaptureMode mode, IntPtr monitorHandle)
+    {
+        _lastSuccessfulBitmap?.Dispose();
+        _lastSuccessfulBitmap = (Bitmap)bitmap.Clone();
+        _lastSuccessfulBounds = bounds;
+        _lastSuccessfulMode = mode;
+        _lastSuccessfulMonitorHandle = monitorHandle;
+    }
+
+    private bool TryCreateFrameFromLastSuccess(CaptureMode mode, IntPtr monitorHandle, out CaptureFrame frame)
+    {
+        frame = null!;
+        if (_lastSuccessfulBitmap == null)
+        {
+            return false;
+        }
+
+        if (_lastSuccessfulMode != mode || _lastSuccessfulMonitorHandle != monitorHandle)
+        {
+            return false;
+        }
+
+        var copy = (Bitmap)_lastSuccessfulBitmap.Clone();
+        frame = new CaptureFrame(copy, _lastSuccessfulBounds, Kind, DateTimeOffset.UtcNow);
+        return true;
     }
 
     private static ID3D11DeviceContext CreateDeviceAndContext(out ID3D11Device device)
