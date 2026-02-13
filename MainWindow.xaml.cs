@@ -818,8 +818,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
         SetComboBoxByTag(CaptureProviderBox, settings.PreferredCaptureProvider.ToString());
         CaptureProviderFixedCheck.IsChecked = settings.CaptureProviderMode == CaptureProviderMode.Fixed;
-        ApplyLanguageSelection(SourceLangCombo, SourceLangCustom, settings.SourceLanguage);
-        ApplyLanguageSelection(TargetLangCombo, TargetLangCustom, settings.TargetLanguage);
         EnableRoiCheck.IsChecked = settings.EnableRoi;
         SetComboBoxByTag(OcrEngineBox, settings.OcrEngine switch
         {
@@ -838,7 +836,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
         PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
-        PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
         settings.EnableCTranslate2 = false;
         if (EnableCTranslate2Check != null)
         {
@@ -882,30 +879,19 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         EnableOcrGammaCheck.IsChecked = settings.EnableOcrGamma;
         EnableOcrTwoPassCheck.IsChecked = settings.EnableOcrTwoPass;
         OcrTwoPassPreferAutoCheck.IsChecked = settings.OcrTwoPassPreferAuto;
-        OcrBinarizationThresholdSlider.Value = settings.OcrBinarizationThreshold;
-        OcrGammaSlider.Value = settings.OcrGamma;
         EnableOcrDownsamplingCheck.IsChecked = settings.EnableOcrDownsampling;
-        OcrDownsampleScaleSlider.Value = settings.OcrDownsampleScale;
-        OcrTwoPassLowThresholdSlider.Value = settings.OcrTwoPassLowThreshold;
-        OcrTwoPassHighThresholdSlider.Value = settings.OcrTwoPassHighThreshold;
-        OverlayFontSizeSlider.Value = settings.OverlayFontSize;
-        OverlayBackgroundOpacitySlider.Value = settings.OverlayBackgroundOpacity;
         EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
         EnableOverlayFontStabilizationCheck.IsChecked = settings.EnableOverlayFontStabilization;
         EnableSmallBoxReadabilityBoostCheck.IsChecked = settings.EnableSmallBoxReadabilityBoost;
-        SmallTextThresholdSlider.Value = settings.SmallTextThresholdPx;
         EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
         EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
         EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
-        SceneChangeThresholdSlider.Value = settings.SceneChangeThreshold;
-        SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
-        SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateOcrPreprocessControls(settings);
         UpdateSmallBoxReadabilityControls(settings);
         UpdateSceneChangeControls(settings);
         UpdateRoiStatus(settings);
-        UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
     }
 
@@ -1030,12 +1016,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settings.LlamaGrpcServerScript);
     }
 
-    private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateLanguageCustomVisibility();
-        RequestSettingsSave();
-    }
-
     private void OnHotkeySelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RequestSettingsSave();
@@ -1043,41 +1023,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void SwapLanguages()
     {
-        var sourceIsCustom = IsCustomSelected(SourceLangCombo);
-        var targetIsCustom = IsCustomSelected(TargetLangCombo);
-        var sourceTag = GetSelectedLanguageTag(SourceLangCombo);
-        var targetTag = GetSelectedLanguageTag(TargetLangCombo);
-        var sourceCustom = SourceLangCustom.Text;
-        var targetCustom = TargetLangCustom.Text;
-
-        if (targetIsCustom)
-        {
-            SelectLanguageByTag(SourceLangCombo, "custom");
-            SourceLangCustom.Text = targetCustom;
-        }
-        else
-        {
-            SelectLanguageByTag(SourceLangCombo, targetTag);
-        }
-
-        if (sourceIsCustom)
-        {
-            SelectLanguageByTag(TargetLangCombo, "custom");
-            TargetLangCustom.Text = sourceCustom;
-        }
-        else
-        {
-            SelectLanguageByTag(TargetLangCombo, sourceTag);
-        }
-
-        UpdateLanguageCustomVisibility();
-        RequestSettingsSave();
-    }
-
-    private void UpdateLanguageCustomVisibility()
-    {
-        SourceLangCustom.Visibility = IsCustomSelected(SourceLangCombo) ? Visibility.Visible : Visibility.Collapsed;
-        TargetLangCustom.Visibility = IsCustomSelected(TargetLangCombo) ? Visibility.Visible : Visibility.Collapsed;
+        var settingsViewModel = _mainWindowViewModel.Settings;
+        var sourceTag = settingsViewModel.SourceLanguageTag;
+        var sourceCustom = settingsViewModel.SourceLanguageCustom;
+        settingsViewModel.SourceLanguageTag = settingsViewModel.TargetLanguageTag;
+        settingsViewModel.SourceLanguageCustom = settingsViewModel.TargetLanguageCustom;
+        settingsViewModel.TargetLanguageTag = sourceTag;
+        settingsViewModel.TargetLanguageCustom = sourceCustom;
     }
 
     private void ApplyHotkeySettingsToUi(AppSettings settings)
@@ -1125,21 +1077,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settings.HotkeyUnlockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
     }
 
-    private static bool IsCustomSelected(ComboBox comboBox)
-    {
-        return GetSelectedLanguageTag(comboBox) == "custom";
-    }
-
-    private static string GetSelectedLanguageTag(ComboBox comboBox)
-    {
-        if (comboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-        {
-            return tag;
-        }
-
-        return string.Empty;
-    }
-
     private static string GetSelectedTag(ComboBox comboBox, string fallback)
     {
         if (comboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
@@ -1148,56 +1085,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         return fallback;
-    }
-
-    private static void SelectLanguageByTag(ComboBox comboBox, string tag)
-    {
-        foreach (var item in comboBox.Items)
-        {
-            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag && itemTag == tag)
-            {
-                comboBox.SelectedItem = comboItem;
-                return;
-            }
-        }
-
-        if (comboBox.Items.Count > 0)
-        {
-            comboBox.SelectedIndex = 0;
-        }
-    }
-
-    private static void ApplyLanguageSelection(ComboBox comboBox, TextBox customBox, string value)
-    {
-        var normalized = value?.Trim() ?? string.Empty;
-        var matched = false;
-        foreach (var item in comboBox.Items)
-        {
-            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag &&
-                itemTag.Equals(normalized, StringComparison.OrdinalIgnoreCase))
-            {
-                comboBox.SelectedItem = comboItem;
-                matched = true;
-                break;
-            }
-        }
-
-        if (!matched)
-        {
-            SelectLanguageByTag(comboBox, "custom");
-            customBox.Text = normalized;
-        }
-    }
-
-    private static string GetSelectedLanguage(ComboBox comboBox, TextBox customBox)
-    {
-        var tag = GetSelectedLanguageTag(comboBox);
-        if (tag == "custom")
-        {
-            return customBox.Text.Trim();
-        }
-
-        return tag;
     }
 
     private AppCaptureMode GetCaptureMode()
@@ -1588,126 +1475,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         RequestSettingsSave();
     }
 
-    private void OnOcrBinarizationThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOcrGammaChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnPaddleConfidenceThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOcrDownsampleScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOcrTwoPassHighThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOverlayFontSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnOverlayBackgroundOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnSmallTextThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnSceneChangeWatchIntervalChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
-    private void OnSceneChangeWatchPhashChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (_isApplyingSettings)
-        {
-            return;
-        }
-
-        RequestSettingsSave();
-    }
-
     private void RequestSettingsSave()
     {
         _settingsChangeScheduler.RequestSave();
@@ -1736,15 +1503,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ? CaptureProviderMode.Fixed
             : CaptureProviderMode.Auto;
         settings.PreferredCaptureProvider = GetCaptureProviderKind();
-        settings.SourceLanguage = GetSelectedLanguage(SourceLangCombo, SourceLangCustom);
-        settings.TargetLanguage = GetSelectedLanguage(TargetLangCombo, TargetLangCustom);
         settings.EnableRoi = EnableRoiCheck.IsChecked == true;
         settings.OcrEngine = GetOcrEngineKind();
         settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
         settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
         settings.PaddleVlPipelineVersion = GetSelectedTag(PaddleVlPipelineVersionBox, "v1.5");
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
-        settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
         if (double.TryParse(PaddleTextDetThreshBox.Text.Trim(), out var textDetThresh))
         {
             settings.PaddleTextDetThresh = textDetThresh;
@@ -1861,31 +1625,21 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ApplyHotkeySettingsFromUi(settings);
         settings.VerticalModeOverride = GetVerticalModeOverride();
         settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
-        settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThresholdSlider.Value);
         settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
         settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
         settings.EnableOcrGamma = EnableOcrGammaCheck.IsChecked == true;
-        settings.OcrGamma = Math.Round(OcrGammaSlider.Value, 2);
         settings.EnableLogging = EnableLoggingCheck.IsChecked == true;
         settings.EnableOcrPerfLog = EnableOcrPerfLogCheck.IsChecked == true;
         settings.EnableOcrDownsampling = EnableOcrDownsamplingCheck.IsChecked == true;
-        settings.OcrDownsampleScale = Math.Round(OcrDownsampleScaleSlider.Value, 2);
         settings.EnableOcrTwoPass = EnableOcrTwoPassCheck.IsChecked == true;
         settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAutoCheck.IsChecked == true;
-        settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThresholdSlider.Value);
-        settings.OcrTwoPassHighThreshold = (int)Math.Round(OcrTwoPassHighThresholdSlider.Value);
-        settings.OverlayFontSize = Math.Round(OverlayFontSizeSlider.Value, 1);
-        settings.OverlayBackgroundOpacity = Math.Round(OverlayBackgroundOpacitySlider.Value, 2);
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
         settings.EnableOverlayFontStabilization = EnableOverlayFontStabilizationCheck.IsChecked == true;
         settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoostCheck.IsChecked == true;
-        settings.SmallTextThresholdPx = Math.Round(SmallTextThresholdSlider.Value, 1);
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslateCheck.IsChecked == true;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
-        settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
-        settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
-        settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
+        _mainWindowViewModel.Settings.ApplyTo(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {

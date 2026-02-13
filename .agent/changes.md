@@ -8170,3 +8170,40 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build` 実行: `0 warning / 0 error`。
 - `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 02:31 (Asia/Taipei) — MVVM残タスク実装（Settings TwoWay化の拡張）**
+
+### Summary
+- 言語設定と主要スライダー設定を `SettingsViewModel` の TwoWay Binding に移し、`MainWindow.xaml.cs` の UIイベント依存をさらに削減した。
+
+### Context / Goal
+- `Doc/MVVM_Implementation_Plan.md` の残項目である Settings 双方向同期の適用範囲を拡張し、`ApplyUiInputToSettings` の直接UI読み取り依存を段階的に解体する。
+- `On...ValueChanged` / `OnLanguageSelectionChanged` 依存を減らし、ViewModel 経由の保存トリガへ統一する。
+
+### Changes
+- `SettingsViewModel` を `ObservableObject` 化し、主要設定値（OCR/Overlay/Scene/Paddle/言語）のプロパティを追加。
+- `SettingsViewModel.LoadFrom(AppSettings)` / `ApplyTo(AppSettings)` を追加し、読み込み反映と保存反映を ViewModel 経由に変更。
+- `SettingsViewModel` のプロパティ変更時に `debounce save` を自動要求する仕組みを追加（`_suspendAutoSave` でロード時保存を抑制）。
+- `MainWindow.xaml` の Source/Target 言語UIを `SelectedValue` / `Text` の TwoWay Binding 化し、custom入力欄の表示制御を `DataTrigger` 化。
+- 主要スライダー（OCR/Overlay/Scene/Paddle）の `Value` を `Settings.*` へ TwoWay Binding 化し、`ValueChanged` ハンドラをXAMLから除去。
+- `MainWindow.xaml.cs` で言語選択とスライダー更新のイベントハンドラ・補助メソッドを削除し、`SwapLanguages` を ViewModel プロパティ交換ベースへ変更。
+- `ApplySettingsToUi` は `Settings.LoadFrom(settings)`、`ApplyUiInputToSettings` は `Settings.ApplyTo(settings)` を使うように更新。
+
+### Files Touched
+- `ViewModels/SettingsViewModel.cs` — 設定プロパティ、Load/Apply、自動保存トリガ、言語解決ロジックを追加。
+- `MainWindow.xaml` — 言語UIと主要スライダーを TwoWay Binding 化、Visibility DataTrigger 化。
+- `MainWindow.xaml.cs` — 言語/スライダー関連の旧イベント・補助メソッドを削除し、ViewModel連携に置換。
+
+### Behavioral Impact
+- 言語設定（標準タグ/Custom）と主要スライダー設定が ViewModel を単一の更新経路として扱うようになった。
+- スライダー変更時の保存はイベントハンドラではなく ViewModel プロパティ変更から `debounce` で発火する。
+- 言語Custom欄の表示はコードビハインドではなく XAML `DataTrigger` で制御される。
+
+### Risk & Mitigation
+- Risk: Binding 導入で初期値反映時に不要保存が走る可能性。
+- Mitigation: `SettingsViewModel` に `_suspendAutoSave` を導入し、`LoadFrom` 中の保存要求を抑制。
+- Risk: 旧イベント削除で反映漏れが発生する可能性。
+- Mitigation: `ApplyTo` に保存対象を明示し、`dotnet build` と起動スモークで回帰確認。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: `0 warning / 0 error`。
+- `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

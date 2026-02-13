@@ -110,7 +110,8 @@
                                 <ComboBox Grid.Row="0" Grid.Column="0"
                                         x:Name="SourceLangCombo"
                                         Width="160"
-                                        SelectionChanged="OnLanguageSelectionChanged">
+                                        SelectedValuePath="Tag"
+                                        SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ComboBoxItem Content="English" Tag="en" />
                                     <ComboBoxItem Content="日本語" Tag="ja" />
                                     <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
@@ -123,15 +124,26 @@
                                         x:Name="SourceLangCustom"
                                         Width="90"
                                         Margin="8,0,0,0"
-                                        LostFocus="OnSettingLostFocus"
-                                        Visibility="Collapsed" />
+                                        Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Settings.SourceLanguageTag}" Value="custom">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
 
                                 <!-- Target -->
                                 <ComboBox Grid.Row="1" Grid.Column="0"
                                         x:Name="TargetLangCombo"
                                         Width="160"
                                         Margin="0,6,0,0"
-                                        SelectionChanged="OnLanguageSelectionChanged">
+                                        SelectedValuePath="Tag"
+                                        SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ComboBoxItem Content="English" Tag="en" />
                                     <ComboBoxItem Content="日本語" Tag="ja" />
                                     <ComboBoxItem Content="中文(繁體)" Tag="zh-Hant" />
@@ -144,8 +156,18 @@
                                         x:Name="TargetLangCustom"
                                         Width="90"
                                         Margin="8,6,0,0"
-                                        LostFocus="OnSettingLostFocus"
-                                        Visibility="Collapsed" />
+                                        Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Settings.TargetLanguageTag}" Value="custom">
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
 
                                 <!-- Swap（常にComboのすぐ右に固定） -->
                                 <Button Grid.Row="0" Grid.Column="1" Grid.RowSpan="2"
@@ -181,7 +203,7 @@
                                     TickFrequency="1"
                                     SmallChange="1"
                                     LargeChange="2"
-                                    ValueChanged="OnOverlayFontSizeChanged" />
+                                    Value="{Binding Settings.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock x:Name="OverlayFontSizeValue"
                                        Width="48"
                                        Margin="8,0,0,0"
@@ -199,7 +221,7 @@
                                     TickFrequency="0.05"
                                     SmallChange="0.01"
                                     LargeChange="0.1"
-                                    ValueChanged="OnOverlayBackgroundOpacityChanged" />
+                                    Value="{Binding Settings.OverlayBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <TextBlock x:Name="OverlayBackgroundOpacityValue"
                                        Width="48"
                                        Margin="8,0,0,0"
@@ -276,7 +298,7 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            ValueChanged="OnOcrTwoPassLowThresholdChanged" />
+                                            Value="{Binding Settings.OcrTwoPassLowThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
@@ -290,7 +312,7 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            ValueChanged="OnOcrTwoPassHighThresholdChanged" />
+                                            Value="{Binding Settings.OcrTwoPassHighThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
@@ -304,7 +326,7 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            ValueChanged="OnOcrBinarizationThresholdChanged" />
+                                            Value="{Binding Settings.OcrBinarizationThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=OcrBinarizationThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
@@ -318,7 +340,7 @@
                                             TickFrequency="0.1"
                                             SmallChange="0.05"
                                             LargeChange="0.1"
-                                            ValueChanged="OnOcrGammaChanged" />
+                                            Value="{Binding Settings.OcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=OcrGammaSlider, Path=Value, StringFormat={}{0:F2}}" />
                                 </StackPanel>
@@ -339,7 +361,7 @@
                                             TickFrequency="0.05"
                                             SmallChange="0.05"
                                             LargeChange="0.1"
-                                            ValueChanged="OnOcrDownsampleScaleChanged" />
+                                            Value="{Binding Settings.OcrDownsampleScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrDownsampleScaleValue"
                                                Width="48"
                                                Margin="8,0,0,0"
@@ -376,7 +398,7 @@
                                             TickFrequency="1"
                                             SmallChange="1"
                                             LargeChange="2"
-                                            ValueChanged="OnSmallTextThresholdChanged" />
+                                            Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="SmallTextThresholdValue"
                                                Width="48"
                                                Margin="8,0,0,0"
@@ -401,7 +423,7 @@
                                             TickFrequency="0.05"
                                             SmallChange="0.01"
                                             LargeChange="0.1"
-                                            ValueChanged="OnSceneChangeThresholdChanged" />
+                                            Value="{Binding Settings.SceneChangeThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                 </StackPanel>
@@ -415,7 +437,7 @@
                                             TickFrequency="200"
                                             SmallChange="100"
                                             LargeChange="500"
-                                            ValueChanged="OnSceneChangeWatchIntervalChanged" />
+                                            Value="{Binding Settings.SceneChangeWatchIntervalMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
@@ -429,7 +451,7 @@
                                             TickFrequency="2"
                                             SmallChange="1"
                                             LargeChange="5"
-                                            ValueChanged="OnSceneChangeWatchPhashChanged" />
+                                            Value="{Binding Settings.SceneChangeWatchPhashThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
                                                Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
@@ -493,7 +515,7 @@
                                               TickFrequency="0.05"
                                               SmallChange="0.01"
                                               LargeChange="0.1"
-                                              ValueChanged="OnPaddleConfidenceThresholdChanged" />
+                                              Value="{Binding Settings.PaddleConfidenceThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                       <TextBlock x:Name="PaddleConfidenceThresholdValue"
                                                  Width="36"
                                                  Margin="8,0,0,0"
