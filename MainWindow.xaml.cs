@@ -1,7 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -14,7 +13,6 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
@@ -23,7 +21,7 @@ using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
 
-public partial class MainWindow : Window, IMainWindowViewBridge
+public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBridge
 {
     private readonly SettingsService _settingsService = new();
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
@@ -42,27 +40,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge
     private LlamaGrpcHost? _llamaGrpcHost;
     private readonly HotkeyController _hotkeyController;
     private readonly UiLogController _uiLogController;
+    private readonly SceneChangeController _sceneChangeController;
+    private readonly SettingsUiController _settingsUiController;
     private readonly MainWindowRunCoordinator _runCoordinator;
     private PhashService? _phashService;
-    private DispatcherTimer? _autoHideTimer;
-    private bool _autoHideTickInProgress;
-    private ulong? _autoHideLastHash;
-    private CancellationTokenSource? _autoHideBaselineCts;
-    private bool _autoHideBaselinePending;
-    private int _autoHideBaselineVersion;
-    private DateTime _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
-    private bool _sceneChangeAutoTranslatePending;
-    private int _sceneChangeAutoTranslatePendingDiff;
-    private int _sceneChangeAutoTranslatePendingThreshold;
-    private string? _sceneChangeAutoTranslatePendingReason;
-    private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
-    private SceneTextSnapshot? _sceneChangeAutoTranslatePendingPayload;
-    private SceneTextSnapshot? _lastSceneTextSnapshot;
-    private int _semanticCandidateStreak;
     private CancellationTokenSource? _translationOverlayCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
-    private bool _overlayVisible;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
@@ -72,17 +56,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
-    private const int SceneChangePendingLogSuppressionMs = 2000;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
-    // WHY: Share one option profile so immediate and pending-drain auto runs keep identical Quiet UI behavior.
-    private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
-        SkipPhash: false,
-        SkipOcrDiff: false,
-        SkipTranslationCache: false,
-        SkipTranslation: false,
-        ForceGeminiStrict: false,
-        Trigger: RunTrigger.AutoSceneChange,
-        SuppressTransientUiFeedback: true);
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
     private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
@@ -90,15 +64,31 @@ public partial class MainWindow : Window, IMainWindowViewBridge
     public MainWindow()
     {
         InitializeComponent();
+        _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger);
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
+        SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
             this,
             () => _pipeline,
             () => _logger,
-            ConsumeSceneChangeAutoTranslatePendingPayload,
-            TryDrainPendingSceneChangeAutoTranslate);
+            () => sceneChangeController?.ConsumePendingAutoTranslatePayload(),
+            () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false);
+        _sceneChangeController = new SceneChangeController(
+            Dispatcher,
+            _settingsService,
+            () => _logger,
+            () => _captureManager,
+            () => _phashService,
+            () => _sceneTextSnapshotService,
+            () => _overlayPresenter,
+            GetRoiBounds,
+            RunOnceAsync,
+            () => _runCoordinator.IsRunning,
+            AppendLog,
+            enabled => _overlayEnabled = enabled);
+        sceneChangeController = _sceneChangeController;
         PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -110,17 +100,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         InitializeLogBuffer();
         await _settingsService.LoadAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
-        var settingsChanged = NormalizeHotkeySettings(settings);
-        settingsChanged |= NormalizeSceneChangeModeSettings(settings);
-        settingsChanged |= NormalizeSceneSemanticSettings(settings);
-        settingsChanged |= NormalizeWritingModeSettings(settings);
-        settingsChanged |= NormalizeSmallBoxReadabilitySettings(settings);
-        settingsChanged |= NormalizePaddleOcrSettings(settings);
-        if (settings.EnableCTranslate2)
-        {
-            settings.EnableCTranslate2 = false;
-            settingsChanged = true;
-        }
+        var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         ApplySettingsToUi(settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
         EnsureSettingsCategorySelection();
@@ -190,13 +170,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         _translationOverlayCts?.Dispose();
         _hotkeyController.Dispose();
         _uiLogController.Dispose();
-        _autoHideBaselineCts?.Cancel();
-        _autoHideBaselineCts?.Dispose();
-        if (_autoHideTimer != null)
-        {
-            _autoHideTimer.Stop();
-            _autoHideTimer.Tick -= OnAutoHideTick;
-        }
+        _sceneChangeController.Dispose();
         _cacheRepository?.Dispose();
         _ocrEngine?.Dispose();
         _httpClient.Dispose();
@@ -666,13 +640,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         await _runCoordinator.RunOnceAsync(options, semanticPayload).ConfigureAwait(true);
     }
 
-    private SceneTextSnapshot? ConsumeSceneChangeAutoTranslatePendingPayload()
-    {
-        var payload = _sceneChangeAutoTranslatePendingPayload;
-        _sceneChangeAutoTranslatePendingPayload = null;
-        return payload;
-    }
-
     private void SetBusyOverlay(bool visible, string? message)
     {
         if (BusyOverlay == null || BusyOverlayText == null)
@@ -740,6 +707,32 @@ public partial class MainWindow : Window, IMainWindowViewBridge
     void IMainWindowViewBridge.ShowLoadingSpinnerForRun(AppSettings settings) => ShowLoadingSpinnerForRun(settings);
     void IMainWindowViewBridge.HideLoadingSpinnerForRun() => HideLoadingSpinnerForRun();
     void IMainWindowViewBridge.CancelTranslationOverlay() => CancelTranslationOverlay();
+
+    bool ISettingsUiBridge.IsLoaded => IsLoaded;
+
+    bool ISettingsUiBridge.IsApplyingSettings
+    {
+        get => _isApplyingSettings;
+        set => _isApplyingSettings = value;
+    }
+
+    void ISettingsUiBridge.ApplyUiInputToSettings(AppSettings settings) => ApplyUiInputToSettings(settings);
+
+    void ISettingsUiBridge.ApplySceneChangeModeToUi(AppSettings settings)
+    {
+        EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
+        EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
+    }
+
+    void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
+    Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => EnsureResourceHostsAsync(settings);
+    Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
+    void ISettingsUiBridge.AppendLog(string message) => AppendLog(message);
+    void ISettingsUiBridge.TryUpdateHotkeys(AppSettings settings) => TryUpdateHotkeys(settings);
+    void ISettingsUiBridge.UpdateAutoHideWatcher(AppSettings settings) => UpdateAutoHideWatcher(settings);
+
+    void ISettingsUiBridge.ClearSceneChangeAutoTranslatePending(string reason) =>
+        ClearSceneChangeAutoTranslatePending(reason);
 
     private Rect ResolveSpinnerAnchorScreenRect(AppSettings settings)
     {
@@ -945,7 +938,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
             return;
         }
 
-        var fallback = NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
+        var fallback = SettingsUiController.NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
         var selected = _llamaModelCatalog.NormalizeModelFileName(settings.LlamaSelectedModelFileName, fallback);
         var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames(settings.LlamaGrpcProjectDir);
         var previousApplyingState = _isApplyingSettings;
@@ -986,340 +979,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, fallback);
     }
 
-    private static void NormalizeCTranslate2Settings(AppSettings settings)
-    {
-        settings.CTranslate2Device = NormalizeCTranslate2Device(settings.CTranslate2Device);
-        settings.CTranslate2Precision = ResolveCTranslate2Precision(settings.CTranslate2Device);
-        settings.EnableCTranslate2AutoDownload = true;
-        if (string.IsNullOrWhiteSpace(settings.CTranslate2ModelId))
-        {
-            settings.CTranslate2ModelId = "entai2965/nllb-200-distilled-600M-ctranslate2";
-        }
-    }
-
-    private static void NormalizeLlamaSettings(AppSettings settings)
-    {
-        settings.LlamaHost = string.IsNullOrWhiteSpace(settings.LlamaHost)
-            ? "127.0.0.1"
-            : settings.LlamaHost.Trim();
-        settings.LlamaPort = settings.LlamaPort <= 0 ? 8088 : settings.LlamaPort;
-        settings.LlamaContextSize = Math.Max(256, settings.LlamaContextSize);
-        settings.LlamaGpuLayers = Math.Max(0, settings.LlamaGpuLayers);
-        settings.LlamaThreads = Math.Max(1, settings.LlamaThreads);
-        settings.LlamaParallel = Math.Max(1, settings.LlamaParallel);
-        settings.LlamaBatchSize = Math.Max(1, settings.LlamaBatchSize);
-        settings.LlamaMaxTokens = Math.Max(1, settings.LlamaMaxTokens);
-        settings.LlamaTemperature = Math.Clamp(settings.LlamaTemperature, 0.0, 2.0);
-        settings.LlamaTopP = Math.Clamp(settings.LlamaTopP, 0.0, 1.0);
-        settings.LlamaTopK = Math.Max(0, settings.LlamaTopK);
-        settings.LlamaRepeatPenalty = Math.Clamp(settings.LlamaRepeatPenalty, 0.5, 2.0);
-        settings.LlamaGrpcHost = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost)
-            ? "127.0.0.1"
-            : settings.LlamaGrpcHost.Trim();
-        settings.LlamaGrpcPort = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
-        settings.LlamaSelectedModelFileName = NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
-    }
-
-    private static bool NormalizeHotkeySettings(AppSettings settings)
-    {
-        var changed = false;
-        var forceGeminiStrictKey = (settings.HotkeyForceGeminiStrictKey ?? string.Empty).Trim();
-        var toggleSceneAutoTranslateKey = (settings.HotkeyToggleSceneAutoTranslateKey ?? string.Empty).Trim();
-        var selectRoiKey = (settings.HotkeySelectRoiKey ?? string.Empty).Trim();
-        var lockKey = (settings.HotkeyLockCaptureWindowKey ?? string.Empty).Trim();
-        var lockModifiers = ParseModifiers(settings.HotkeyLockCaptureWindowModifiers);
-        var unlockKey = (settings.HotkeyUnlockCaptureWindowKey ?? string.Empty).Trim();
-        var unlockModifiers = ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers);
-
-        if (string.IsNullOrWhiteSpace(forceGeminiStrictKey))
-        {
-            settings.HotkeyForceGeminiStrictKey = "F10";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(settings.HotkeyForceGeminiStrictModifiers))
-        {
-            settings.HotkeyForceGeminiStrictModifiers = "Shift";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(toggleSceneAutoTranslateKey))
-        {
-            settings.HotkeyToggleSceneAutoTranslateKey = "F5";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(settings.HotkeyToggleSceneAutoTranslateModifiers))
-        {
-            settings.HotkeyToggleSceneAutoTranslateModifiers = "None";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(selectRoiKey))
-        {
-            settings.HotkeySelectRoiKey = "F6";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(lockKey))
-        {
-            settings.HotkeyLockCaptureWindowKey = "F7";
-            changed = true;
-        }
-
-        if (string.IsNullOrWhiteSpace(unlockKey))
-        {
-            settings.HotkeyUnlockCaptureWindowKey = "F7";
-            changed = true;
-        }
-
-        // COMPAT: Legacy defaults (F12 / Shift+F12) are migrated to F7 to avoid common overlay/debug-tool conflicts.
-        if (lockKey.Equals("F12", StringComparison.OrdinalIgnoreCase) &&
-            lockModifiers == ModifierKeys.None &&
-            unlockKey.Equals("F12", StringComparison.OrdinalIgnoreCase) &&
-            unlockModifiers == ModifierKeys.Shift)
-        {
-            settings.HotkeyLockCaptureWindowKey = "F7";
-            settings.HotkeyLockCaptureWindowModifiers = "None";
-            settings.HotkeyUnlockCaptureWindowKey = "F7";
-            settings.HotkeyUnlockCaptureWindowModifiers = "Shift";
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private static bool NormalizeSceneChangeModeSettings(AppSettings settings)
-    {
-        if (!settings.EnableSceneChangeAutoHide || !settings.EnableSceneChangeAutoTranslate)
-        {
-            return false;
-        }
-
-        // COMPAT: Legacy settings may have both enabled; keep auto-hide as the fixed priority.
-        settings.EnableSceneChangeAutoTranslate = false;
-        return true;
-    }
-
-    private bool NormalizeSceneSemanticSettings(AppSettings settings)
-    {
-        var changed = false;
-        changed |= ClampSetting(settings.SceneSemanticBlockIouThreshold, 0.1, 0.95, 0.5, out var semanticIou);
-        changed |= ClampSetting(settings.SceneSemanticMinChars, 0, 64, 2, out var semanticMinChars);
-        changed |= ClampSetting(settings.SceneSemanticRequireConfirmTicks, 1, 5, 1, out var semanticConfirmTicks);
-        settings.SceneSemanticBlockIouThreshold = semanticIou;
-        settings.SceneSemanticMinChars = semanticMinChars;
-        settings.SceneSemanticRequireConfirmTicks = semanticConfirmTicks;
-        if (changed)
-        {
-            _logger?.Info(
-                $"Scene semantic gate settings normalized: IoU={semanticIou:0.##}, MinChars={semanticMinChars}, ConfirmTicks={semanticConfirmTicks}.");
-        }
-
-        return changed;
-    }
-
-    private bool NormalizeWritingModeSettings(AppSettings settings)
-    {
-        var changed = false;
-        if (!Enum.IsDefined(typeof(VerticalModeOverride), settings.VerticalModeOverride))
-        {
-            // COMPAT: Unknown persisted enum values must not break runtime behavior; fallback to Auto.
-            _logger?.Info($"VerticalModeOverride value '{(int)settings.VerticalModeOverride}' is invalid. Falling back to Auto.");
-            settings.VerticalModeOverride = VerticalModeOverride.Auto;
-            changed = true;
-        }
-
-        // COMPAT: Writing-mode behavior is now controlled by VerticalModeOverride; keep legacy toggles enabled.
-        if (!settings.EnableVerticalMerge)
-        {
-            settings.EnableVerticalMerge = true;
-            changed = true;
-        }
-
-        if (!settings.VerticalModeAutoDetect)
-        {
-            settings.VerticalModeAutoDetect = true;
-            changed = true;
-        }
-
-        return changed;
-    }
-
-    private bool NormalizeSmallBoxReadabilitySettings(AppSettings settings)
-    {
-        var changed = false;
-        changed |= ClampSetting(settings.SmallTextThresholdPx, 8.0, 48.0, 22.0, out var smallTextThreshold);
-        changed |= ClampSetting(settings.SmallBoxMaxScale, 1.0, 3.0, 1.6, out var smallBoxMaxScale);
-        changed |= ClampSetting(settings.SmallBoxFontScaleWeight, 0.0, 1.0, 0.7, out var smallBoxFontScaleWeight);
-        changed |= ClampSetting(settings.SmallBoxSlenderAspectThreshold, 1.0, 8.0, 3.0, out var smallBoxSlenderAspectThreshold);
-        changed |= ClampSetting(settings.SmallBoxSlenderThresholdBoost, 1.0, 2.0, 1.2, out var smallBoxSlenderThresholdBoost);
-        settings.SmallTextThresholdPx = smallTextThreshold;
-        settings.SmallBoxMaxScale = smallBoxMaxScale;
-        settings.SmallBoxFontScaleWeight = smallBoxFontScaleWeight;
-        settings.SmallBoxSlenderAspectThreshold = smallBoxSlenderAspectThreshold;
-        settings.SmallBoxSlenderThresholdBoost = smallBoxSlenderThresholdBoost;
-        if (changed)
-        {
-            // WHY: settings.json allows advanced tuning; clamp here so malformed values don't destabilize overlay layout.
-            _logger?.Info("Small-box readability settings were clamped to safe ranges.");
-        }
-
-        return changed;
-    }
-
-    private bool NormalizePaddleOcrSettings(AppSettings settings)
-    {
-        var changed = false;
-        changed |= ClampSetting(settings.PaddleTextDetThresh, 0.0, 1.0, 0.5, out var textDetThresh);
-        changed |= ClampSetting(settings.PaddleTextDetBoxThresh, 0.0, 1.0, 0.68, out var textDetBoxThresh);
-        changed |= ClampSetting(settings.PaddleTextDetUnclipRatio, 0.5, 3.0, 1.3, out var textDetUnclipRatio);
-        changed |= ClampSetting(settings.PaddleTextRecScoreThresh, 0.0, 1.0, 0.58, out var textRecScoreThresh);
-        settings.PaddleTextDetThresh = textDetThresh;
-        settings.PaddleTextDetBoxThresh = textDetBoxThresh;
-        settings.PaddleTextDetUnclipRatio = textDetUnclipRatio;
-        settings.PaddleTextRecScoreThresh = textRecScoreThresh;
-        if (settings.EnablePaddleConfidenceFilter)
-        {
-            // COMPAT: Keep one confidence gate path to avoid double-filtering with text_rec_score_thresh.
-            settings.EnablePaddleConfidenceFilter = false;
-            changed = true;
-        }
-
-        var pipelineVersion = (settings.PaddleVlPipelineVersion ?? string.Empty).Trim();
-        if (!string.Equals(pipelineVersion, "v1", StringComparison.OrdinalIgnoreCase) &&
-            !string.Equals(pipelineVersion, "v1.5", StringComparison.OrdinalIgnoreCase))
-        {
-            settings.PaddleVlPipelineVersion = "v1.5";
-            changed = true;
-        }
-        else
-        {
-            settings.PaddleVlPipelineVersion = string.Equals(pipelineVersion, "v1", StringComparison.OrdinalIgnoreCase)
-                ? "v1"
-                : "v1.5";
-        }
-
-        if (settings.PaddleVlMaxPixels.HasValue && settings.PaddleVlMaxPixels.Value <= 0)
-        {
-            settings.PaddleVlMaxPixels = null;
-            changed = true;
-        }
-
-        if (settings.PaddleVlLayoutThreshold.HasValue)
-        {
-            var clamped = Math.Clamp(settings.PaddleVlLayoutThreshold.Value, 0.0, 1.0);
-            if (Math.Abs(clamped - settings.PaddleVlLayoutThreshold.Value) > 0.0001)
-            {
-                settings.PaddleVlLayoutThreshold = clamped;
-                changed = true;
-            }
-        }
-
-        if (settings.PaddleVlMaxNewTokens.HasValue)
-        {
-            var clamped = Math.Clamp(settings.PaddleVlMaxNewTokens.Value, 512, 4096);
-            if (clamped != settings.PaddleVlMaxNewTokens.Value)
-            {
-                settings.PaddleVlMaxNewTokens = clamped;
-                changed = true;
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(settings.PaddleVlDevice))
-        {
-            settings.PaddleVlDevice = "gpu:0";
-            changed = true;
-        }
-        else
-        {
-            settings.PaddleVlDevice = settings.PaddleVlDevice.Trim();
-        }
-
-        if (string.IsNullOrWhiteSpace(settings.PaddleVlPrecision))
-        {
-            settings.PaddleVlPrecision = "fp32";
-            changed = true;
-        }
-        else
-        {
-            var precision = settings.PaddleVlPrecision.Trim().ToLowerInvariant();
-            if (precision is not ("fp16" or "fp32"))
-            {
-                settings.PaddleVlPrecision = "fp32";
-                changed = true;
-            }
-            else if (!string.Equals(settings.PaddleVlPrecision, precision, StringComparison.Ordinal))
-            {
-                settings.PaddleVlPrecision = precision;
-                changed = true;
-            }
-        }
-
-        return changed;
-    }
-
-    private static bool ClampSetting(double value, double min, double max, double fallback, out double normalized)
-    {
-        if (!double.IsFinite(value))
-        {
-            normalized = fallback;
-            return true;
-        }
-
-        var clamped = Math.Clamp(value, min, max);
-        if (Math.Abs(clamped - value) < 0.0001)
-        {
-            normalized = clamped;
-            return false;
-        }
-
-        normalized = clamped;
-        return true;
-    }
-
-    private static bool ClampSetting(int value, int min, int max, int fallback, out int normalized)
-    {
-        if (value < min || value > max)
-        {
-            normalized = fallback;
-            return true;
-        }
-
-        normalized = value;
-        return false;
-    }
-
-    private static string NormalizeLlamaModelFileName(string? value)
-    {
-        var fileName = Path.GetFileName((value ?? string.Empty).Trim());
-        return string.IsNullOrWhiteSpace(fileName) ||
-               !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
-            ? DefaultLlamaModelFileName
-            : fileName;
-    }
-
-    private static string NormalizeCTranslate2Device(string? device)
-    {
-        var normalized = (device ?? string.Empty).Trim();
-        if (normalized.StartsWith("gpu", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("cuda", StringComparison.OrdinalIgnoreCase))
-        {
-            return "gpu";
-        }
-
-        return "cpu";
-    }
-
-    private static string ResolveCTranslate2Precision(string? device)
-    {
-        var normalized = NormalizeCTranslate2Device(device);
-        return normalized == "gpu" ? "fp16" : "int8";
-    }
-
     private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
     {
-        NormalizeCTranslate2Settings(settings);
+        SettingsUiController.NormalizeCTranslate2Settings(settings);
         return new CTranslate2HostConfig(
             settings.CTranslate2Device,
             settings.CTranslate2Precision,
@@ -1335,7 +997,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
     {
-        NormalizeLlamaSettings(settings);
+        SettingsUiController.NormalizeLlamaSettings(settings);
         return new LlamaHostConfig(
             settings.LlamaHost,
             settings.LlamaPort,
@@ -2050,12 +1712,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge
 
     private async Task SaveSettingsAsync()
     {
-        if (_isApplyingSettings || !IsLoaded)
-        {
-            return;
-        }
+        await _settingsUiController.SaveFromUiAsync().ConfigureAwait(true);
+    }
 
-        var settings = _settingsService.Settings;
+    private void ApplyUiInputToSettings(AppSettings settings)
+    {
         settings.CaptureMode = GetCaptureMode();
         settings.CaptureProviderMode = CaptureProviderFixedCheck.IsChecked == true
             ? CaptureProviderMode.Fixed
@@ -2074,18 +1735,22 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         {
             settings.PaddleTextDetThresh = textDetThresh;
         }
+
         if (double.TryParse(PaddleTextDetBoxThreshBox.Text.Trim(), out var textDetBoxThresh))
         {
             settings.PaddleTextDetBoxThresh = textDetBoxThresh;
         }
+
         if (double.TryParse(PaddleTextDetUnclipRatioBox.Text.Trim(), out var textDetUnclip))
         {
             settings.PaddleTextDetUnclipRatio = textDetUnclip;
         }
+
         if (double.TryParse(PaddleTextRecScoreThreshBox.Text.Trim(), out var textRecScoreThresh))
         {
             settings.PaddleTextRecScoreThresh = textRecScoreThresh;
         }
+
         if (int.TryParse(PaddleVlMaxPixelsBox.Text.Trim(), out var paddleVlMaxPixels))
         {
             settings.PaddleVlMaxPixels = paddleVlMaxPixels;
@@ -2094,6 +1759,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         {
             settings.PaddleVlMaxPixels = null;
         }
+
         if (double.TryParse(PaddleVlLayoutThresholdBox.Text.Trim(), out var paddleVlLayoutThreshold))
         {
             settings.PaddleVlLayoutThreshold = paddleVlLayoutThreshold;
@@ -2102,6 +1768,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         {
             settings.PaddleVlLayoutThreshold = null;
         }
+
         if (int.TryParse(PaddleVlMaxNewTokensBox.Text.Trim(), out var paddleVlMaxNewTokens))
         {
             settings.PaddleVlMaxNewTokens = Math.Clamp(paddleVlMaxNewTokens, 512, 4096);
@@ -2111,6 +1778,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge
             // NOTE: Blank means AUTO; Python side keeps PaddleOCR-VL internal default.
             settings.PaddleVlMaxNewTokens = null;
         }
+
         settings.EnableCTranslate2 = false;
         settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
         settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
@@ -2119,47 +1787,57 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         {
             settings.LlamaPort = llamaPort;
         }
+
         if (int.TryParse(LlamaContextSizeBox.Text.Trim(), out var llamaContext))
         {
             settings.LlamaContextSize = llamaContext;
         }
+
         if (int.TryParse(LlamaGpuLayersBox.Text.Trim(), out var llamaGpuLayers))
         {
             settings.LlamaGpuLayers = llamaGpuLayers;
         }
+
         if (int.TryParse(LlamaThreadsBox.Text.Trim(), out var llamaThreads))
         {
             settings.LlamaThreads = llamaThreads;
         }
+
         if (int.TryParse(LlamaParallelBox.Text.Trim(), out var llamaParallel))
         {
             settings.LlamaParallel = llamaParallel;
         }
+
         if (int.TryParse(LlamaBatchSizeBox.Text.Trim(), out var llamaBatchSize))
         {
             settings.LlamaBatchSize = llamaBatchSize;
         }
+
         if (int.TryParse(LlamaMaxTokensBox.Text.Trim(), out var llamaMaxTokens))
         {
             settings.LlamaMaxTokens = llamaMaxTokens;
         }
+
         if (double.TryParse(LlamaTemperatureBox.Text.Trim(), out var llamaTemperature))
         {
             settings.LlamaTemperature = llamaTemperature;
         }
+
         if (double.TryParse(LlamaTopPBox.Text.Trim(), out var llamaTopP))
         {
             settings.LlamaTopP = llamaTopP;
         }
+
         if (int.TryParse(LlamaTopKBox.Text.Trim(), out var llamaTopK))
         {
             settings.LlamaTopK = llamaTopK;
         }
+
         if (double.TryParse(LlamaRepeatPenaltyBox.Text.Trim(), out var llamaRepeatPenalty))
         {
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
-        NormalizeLlamaSettings(settings);
+
         settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
@@ -2190,24 +1868,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         settings.SmallTextThresholdPx = Math.Round(SmallTextThresholdSlider.Value, 1);
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslateCheck.IsChecked == true;
-        var normalizedSceneChangeMode = NormalizeSceneChangeModeSettings(settings);
-        if (normalizedSceneChangeMode)
-        {
-            EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
-            EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
-        }
-        if (!settings.EnableSceneChangeAutoTranslate)
-        {
-            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
-        }
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
-        NormalizeSceneSemanticSettings(settings);
-        NormalizeWritingModeSettings(settings);
-        NormalizeSmallBoxReadabilitySettings(settings);
-        NormalizePaddleOcrSettings(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -2223,7 +1887,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         {
             settings.OcrPerfLogThresholdMs = Math.Max(0, perfThreshold);
         }
+    }
 
+    private void ApplyRuntimeStateAfterSave(AppSettings settings)
+    {
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
@@ -2249,11 +1916,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
-        await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
-        await _settingsService.SaveAsync().ConfigureAwait(true);
-        AppendLog("Settings saved.");
-        TryUpdateHotkeys(settings);
-        UpdateAutoHideWatcher(settings);
     }
 
     private void PopulateHotkeyKeyBoxes()
@@ -2560,488 +2222,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge
         SceneChangeWatchPhashValue.Text = ((int)Math.Round(SceneChangeWatchPhashSlider.Value)).ToString();
     }
 
-    private void OnOverlayShown()
-    {
-        _overlayVisible = true;
-        UpdateAutoHideWatcher(_settingsService.Settings);
-        ScheduleAutoHideBaselineReset();
-    }
+    private void OnOverlayShown() => _sceneChangeController.OnOverlayShown();
 
-    private void OnOverlayHidden()
-    {
-        _overlayVisible = false;
-        UpdateAutoHideWatcher(_settingsService.Settings);
-    }
+    private void OnOverlayHidden() => _sceneChangeController.OnOverlayHidden();
 
-    private void OnOverlayUpdated()
-    {
-        ScheduleAutoHideBaselineReset();
-    }
+    private void OnOverlayUpdated() => _sceneChangeController.OnOverlayUpdated();
 
-    private void InitializeAutoHideWatcher(AppSettings settings)
-    {
-        _autoHideTimer = new DispatcherTimer(DispatcherPriority.Background);
-        _autoHideTimer.Tick += OnAutoHideTick;
-        UpdateAutoHideWatcher(settings);
-    }
+    private void InitializeAutoHideWatcher(AppSettings settings) => _sceneChangeController.Initialize(settings);
 
-    private void UpdateAutoHideWatcher(AppSettings settings)
-    {
-        if (_autoHideTimer == null)
-        {
-            return;
-        }
+    private void UpdateAutoHideWatcher(AppSettings settings) => _sceneChangeController.UpdateWatcher(settings);
 
-        if (!ShouldWatchSceneChanges(settings))
-        {
-            StopAutoHideWatcher();
-            return;
-        }
-
-        var intervalMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
-        _autoHideTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
-        if (!_autoHideTimer.IsEnabled)
-        {
-            _autoHideTimer.Start();
-        }
-
-        if (!_autoHideBaselinePending && !_autoHideLastHash.HasValue)
-        {
-            ScheduleAutoHideBaselineReset();
-        }
-    }
-
-    private void StopAutoHideWatcher()
-    {
-        if (_autoHideTimer != null && _autoHideTimer.IsEnabled)
-        {
-            _autoHideTimer.Stop();
-        }
-
-        _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
-        ClearSceneChangeAutoTranslatePending("watcher stopped");
-        ClearAutoHideBaseline();
-        ResetSceneSemanticState();
-    }
-
-    private void ClearAutoHideBaseline()
-    {
-        _autoHideBaselineVersion++;
-        _autoHideLastHash = null;
-        _autoHideBaselinePending = false;
-        if (_autoHideBaselineCts != null)
-        {
-            _autoHideBaselineCts.Cancel();
-            _autoHideBaselineCts.Dispose();
-            _autoHideBaselineCts = null;
-        }
-        ResetSceneSemanticState();
-    }
-
-    private void ScheduleAutoHideBaselineReset()
-    {
-        var settings = _settingsService.Settings;
-        if (!ShouldWatchSceneChanges(settings) || _captureManager == null || _phashService == null)
-        {
-            return;
-        }
-
-        var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
-        var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
-        _autoHideBaselineVersion++;
-        _autoHideBaselinePending = true;
-        _autoHideLastHash = null;
-        _autoHideBaselineCts?.Cancel();
-        _autoHideBaselineCts?.Dispose();
-        _autoHideBaselineCts = new CancellationTokenSource();
-        var token = _autoHideBaselineCts.Token;
-
-        _ = Task.Run(async () =>
-        {
-            Stopwatch? baselineStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-            try
-            {
-                // WHY: Delay a bit so the overlay frame is fully composed before hashing.
-                await Task.Delay(OverlayBaselineDelayMs, token).ConfigureAwait(false);
-                if (token.IsCancellationRequested)
-                {
-                    return;
-                }
-
-                using var frame = _captureManager.Capture(settings);
-                if (frame.IsBlack)
-                {
-                    return;
-                }
-
-                var roiScreen = GetRoiBounds(settings, frame.Bounds);
-                if (roiScreen.IsEmpty)
-                {
-                    return;
-                }
-
-                var roiInFrame = new Rect(
-                    roiScreen.X - frame.Bounds.X,
-                    roiScreen.Y - frame.Bounds.Y,
-                    roiScreen.Width,
-                    roiScreen.Height);
-
-                using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-                _autoHideLastHash = _phashService.ComputeHash(roiBitmap);
-            }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                _logger?.Error(ex, "Auto-hide baseline reset failed.");
-            }
-            finally
-            {
-                if (baselineStopwatch != null)
-                {
-                    baselineStopwatch.Stop();
-                    if (baselineStopwatch.ElapsedMilliseconds >= perfThresholdMs)
-                    {
-                        _logger?.Info($"[Perf] AutoHideBaselineReset={baselineStopwatch.ElapsedMilliseconds}ms.");
-                    }
-                }
-                _autoHideBaselinePending = false;
-            }
-        }, token);
-    }
-
-    private async void OnAutoHideTick(object? sender, EventArgs e)
-    {
-        if (_autoHideTickInProgress || _captureManager == null || _phashService == null)
-        {
-            return;
-        }
-
-        var settings = _settingsService.Settings;
-        if (!ShouldWatchSceneChanges(settings))
-        {
-            return;
-        }
-
-        if (settings.EnableSceneChangeAutoTranslate && TryDrainPendingSceneChangeAutoTranslate())
-        {
-            // WHY: A drain already scheduled a run for this tick; skip duplicate scene-change processing.
-            return;
-        }
-
-        if (_autoHideBaselinePending || !_autoHideLastHash.HasValue)
-        {
-            return;
-        }
-
-        var baselineHash = _autoHideLastHash.Value;
-        var baselineVersion = _autoHideBaselineVersion;
-        var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
-        var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
-        var visualDiff = -1;
-        var visualThreshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
-        var visualHash = 0UL;
-        var visualCandidateReady = false;
-        _autoHideTickInProgress = true;
-        try
-        {
-            await Task.Run(() =>
-            {
-                Stopwatch? watcherStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-                try
-                {
-                    using var frame = _captureManager.Capture(settings);
-                    if (frame.IsBlack)
-                    {
-                        return;
-                    }
-
-                    var roiScreen = GetRoiBounds(settings, frame.Bounds);
-                    if (roiScreen.IsEmpty)
-                    {
-                        return;
-                    }
-
-                    var roiInFrame = new Rect(
-                        roiScreen.X - frame.Bounds.X,
-                        roiScreen.Y - frame.Bounds.Y,
-                        roiScreen.Width,
-                        roiScreen.Height);
-
-                    using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-                    var hash = _phashService.ComputeHash(roiBitmap);
-                    if (baselineVersion != _autoHideBaselineVersion)
-                    {
-                        return;
-                    }
-
-                    var diff = _phashService.HammingDistance(hash, baselineHash);
-                    var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
-                    if (baselineVersion != _autoHideBaselineVersion)
-                    {
-                        return;
-                    }
-
-                    visualDiff = diff;
-                    visualThreshold = threshold;
-                    visualHash = hash;
-                    visualCandidateReady = true;
-                    if (baselineVersion == _autoHideBaselineVersion)
-                    {
-                        _autoHideLastHash = visualHash;
-                    }
-                }
-                finally
-                {
-                    if (watcherStopwatch != null)
-                    {
-                        watcherStopwatch.Stop();
-                        if (watcherStopwatch.ElapsedMilliseconds >= perfThresholdMs)
-                        {
-                            _logger?.Info($"[Perf] AutoHideWatcherTick={watcherStopwatch.ElapsedMilliseconds}ms.");
-                        }
-                    }
-                }
-            }).ConfigureAwait(true);
-
-            if (!visualCandidateReady)
-            {
-                return;
-            }
-
-            if (visualDiff < visualThreshold)
-            {
-                if (settings.EnableSceneChangeSemanticGate)
-                {
-                    _semanticCandidateStreak = 0;
-                    _sceneChangeAutoTranslatePendingPayload = null;
-                }
-                return;
-            }
-
-            _logger?.Info($"Scene change Stage A passed (diff {visualDiff}, threshold {visualThreshold}).");
-
-            if (!settings.EnableSceneChangeSemanticGate || _sceneTextSnapshotService == null)
-            {
-                TriggerSceneChangeAction(settings, visualDiff, visualThreshold, semanticPayload: null);
-                return;
-            }
-
-            await HandleSceneChangeWithSemanticGateAsync(settings, visualDiff, visualThreshold).ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Scene-change watcher failed.");
-        }
-        finally
-        {
-            _autoHideTickInProgress = false;
-        }
-    }
-
-    private async Task HandleSceneChangeWithSemanticGateAsync(AppSettings settings, int diff, int threshold)
-    {
-        if (_sceneTextSnapshotService == null)
-        {
-            return;
-        }
-
-        var snapshot = await _sceneTextSnapshotService.CaptureSnapshotAsync(settings, CancellationToken.None).ConfigureAwait(true);
-        if (snapshot == null)
-        {
-            _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
-            _logger?.Info("Scene change Stage B skipped (no OCR snapshot).");
-            return;
-        }
-
-        if (_lastSceneTextSnapshot == null)
-        {
-            // WHY: Initialize semantic baseline first so watcher start does not trigger auto actions.
-            _lastSceneTextSnapshot = snapshot;
-            _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
-            _logger?.Info("Scene change Stage B baseline initialized.");
-            return;
-        }
-
-        var comparison = _sceneTextSnapshotService.CompareSnapshots(_lastSceneTextSnapshot, snapshot, settings);
-        if (!comparison.SemanticChanged)
-        {
-            _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
-            _lastSceneTextSnapshot = snapshot;
-            _logger?.Info($"Scene change Stage B blocked: {comparison.Reason}.");
-            return;
-        }
-
-        var requiredTicks = Math.Max(1, settings.SceneSemanticRequireConfirmTicks);
-        _semanticCandidateStreak++;
-        _sceneChangeAutoTranslatePendingPayload = snapshot;
-        _logger?.Info(
-            $"Scene change Stage B passed: {comparison.Reason}, streak={_semanticCandidateStreak}/{requiredTicks}.");
-        if (_semanticCandidateStreak < requiredTicks)
-        {
-            return;
-        }
-
-        _semanticCandidateStreak = 0;
-        _lastSceneTextSnapshot = snapshot;
-        TriggerSceneChangeAction(settings, diff, threshold, semanticPayload: snapshot);
-    }
-
-    private void TriggerSceneChangeAction(AppSettings settings, int diff, int threshold, SceneTextSnapshot? semanticPayload)
-    {
-        if (settings.EnableSceneChangeAutoHide)
-        {
-            _overlayEnabled = false;
-            _overlayPresenter?.SetEnabled(false);
-            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
-            _sceneChangeAutoTranslatePendingPayload = null;
-            return;
-        }
-
-        if (settings.EnableSceneChangeAutoTranslate)
-        {
-            QueueSceneChangeAutoTranslate(diff, threshold, semanticPayload);
-        }
-    }
-
-    private void ResetSceneSemanticState()
-    {
-        _lastSceneTextSnapshot = null;
-        _sceneChangeAutoTranslatePendingPayload = null;
-        _semanticCandidateStreak = 0;
-    }
-
-    private bool ShouldWatchSceneChanges(AppSettings settings)
-    {
-        if (settings.EnableSceneChangeAutoTranslate)
-        {
-            return true;
-        }
-
-        return settings.EnableSceneChangeAutoHide && _overlayVisible;
-    }
-
-    private void QueueSceneChangeAutoTranslate(int diff, int threshold, SceneTextSnapshot? semanticPayload)
-    {
-        var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoTranslate)
-        {
-            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
-            return;
-        }
-
-        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
-        var now = DateTime.UtcNow;
-        if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
-            (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
-        {
-            MarkSceneChangeAutoTranslatePending(diff, threshold, $"cooldown ({cooldownMs} ms)", semanticPayload);
-            return;
-        }
-
-        if (_runCoordinator.IsRunning)
-        {
-            MarkSceneChangeAutoTranslatePending(diff, threshold, "OCR already running", semanticPayload);
-            return;
-        }
-
-        if (_sceneChangeAutoTranslatePending)
-        {
-            ClearSceneChangeAutoTranslatePending("coalesced by immediate trigger");
-        }
-
-        _lastSceneChangeAutoTranslateRequestUtc = now;
-        AppendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(AutoSceneChangeRunOptions, semanticPayload);
-    }
-
-    private void MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason, SceneTextSnapshot? semanticPayload)
-    {
-        _sceneChangeAutoTranslatePending = true;
-        _sceneChangeAutoTranslatePendingDiff = Math.Max(_sceneChangeAutoTranslatePendingDiff, diff);
-        _sceneChangeAutoTranslatePendingThreshold = Math.Max(0, threshold);
-        if (semanticPayload != null)
-        {
-            _sceneChangeAutoTranslatePendingPayload = semanticPayload;
-        }
-
-        var now = DateTime.UtcNow;
-        var shouldLog = !string.Equals(_sceneChangeAutoTranslatePendingReason, reason, StringComparison.Ordinal) ||
-                        _lastSceneChangeAutoTranslatePendingLogUtc == DateTime.MinValue ||
-                        (now - _lastSceneChangeAutoTranslatePendingLogUtc).TotalMilliseconds >= SceneChangePendingLogSuppressionMs;
-        _sceneChangeAutoTranslatePendingReason = reason;
-        if (!shouldLog)
-        {
-            return;
-        }
-
-        _lastSceneChangeAutoTranslatePendingLogUtc = now;
-        AppendLog(
-            $"Scene change auto-translate pending: {reason} (diff {_sceneChangeAutoTranslatePendingDiff}, threshold {_sceneChangeAutoTranslatePendingThreshold}).");
-    }
-
-    private bool TryDrainPendingSceneChangeAutoTranslate()
-    {
-        var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoTranslate)
-        {
-            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
-            return false;
-        }
-
-        if (!_sceneChangeAutoTranslatePending)
-        {
-            return false;
-        }
-
-        if (_runCoordinator.IsRunning)
-        {
-            return false;
-        }
-
-        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
-        var now = DateTime.UtcNow;
-        if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
-            (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
-        {
-            return false;
-        }
-
-        var diff = _sceneChangeAutoTranslatePendingDiff;
-        var threshold = _sceneChangeAutoTranslatePendingThreshold;
-        var payload = _sceneChangeAutoTranslatePendingPayload;
-        ResetSceneChangeAutoTranslatePending();
-        _lastSceneChangeAutoTranslateRequestUtc = now;
-        AppendLog($"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(AutoSceneChangeRunOptions, payload);
-        return true;
-    }
-
-    private void ClearSceneChangeAutoTranslatePending(string reason)
-    {
-        if (!_sceneChangeAutoTranslatePending)
-        {
-            ResetSceneChangeAutoTranslatePending();
-            return;
-        }
-
-        AppendLog($"Scene change auto-translate pending cleared: {reason}.");
-        ResetSceneChangeAutoTranslatePending();
-    }
-
-    private void ResetSceneChangeAutoTranslatePending()
-    {
-        _sceneChangeAutoTranslatePending = false;
-        _sceneChangeAutoTranslatePendingDiff = 0;
-        _sceneChangeAutoTranslatePendingThreshold = 0;
-        _sceneChangeAutoTranslatePendingReason = null;
-        _sceneChangeAutoTranslatePendingPayload = null;
-        _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
-    }
+    private void ClearSceneChangeAutoTranslatePending(string reason) =>
+        _sceneChangeController.ClearPendingAutoTranslate(reason);
 
     private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
     {
@@ -3421,3 +2613,4 @@ public partial class MainWindow : Window, IMainWindowViewBridge
             ModifierKeys.Shift);
     }
 }
+

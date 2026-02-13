@@ -7983,3 +7983,36 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。
+**2026-02-14 00:49 (Asia/Taipei) — Layer1 Application: Scene/Settings Controller 分離完了**
+
+### Summary
+- Layer1 残タスクとして Scene-change watcher と Settings 調停を MainWindow から専用 Controller へ分離した。
+
+### Context / Goal
+- Doc/Refactoring_Layer1_Application_Plan.md の未完了項目（Scene watcher 制御、Settings 正規化/保存調停）を実装し、MainWindow を委譲中心へ寄せる。
+- 既存の auto-hide / auto-translate / 設定保存 / hotkey 動作互換を維持する。
+
+### Changes
+- SceneChangeController を新規追加し、watcher lifecycle・Stage A/B 判定・pending/drain・auto-hide/auto-translate 発火を移管。
+- SettingsUiController を新規追加し、Normalize* 群と保存フロー調停（UI入力反映→正規化→反映→保存→hotkey/watcher更新）を移管。
+- MainWindow は ISettingsUiBridge を実装し、settings 保存は SaveSettingsAsync -> SettingsUiController.SaveFromUiAsync に委譲。
+- MainWindow から watcher 状態フィールドと Normalize* 実装群を削除し、Scene/Settings の責務を縮小。
+
+### Files Touched
+- MainWindow.xaml.cs — Scene/Settings の委譲配線、bridge 実装、旧 watcher/normalize 実装削除、保存処理の分解。
+- Services/Application/SceneChangeController.cs — watcher/semantic gate/pending-drain の専用制御を新規実装。
+- Services/Application/SettingsUiController.cs — settings 正規化と保存調停を新規実装（ISettingsUiBridge 含む）。
+
+### Behavioral Impact
+- 既存ユーザー動作（F5/F8/F9/F10/F11/F6/F7、設定保存、scene auto-translate/auto-hide）は互換を維持。
+- 内部実装は MainWindow 直持ち状態から Controller 内部状態へ移管され、責務境界が明確化された。
+
+### Risk & Mitigation
+- Risk: watcher/state 移管で pending run や semantic streak のタイミングが変わる可能性。
+- Mitigation: 既存ロジックをそのまま移植し、Run 排他判定と pending-drain 経路を維持。
+- Risk: settings 保存中に UI イベントが再入して二重保存になる可能性。
+- Mitigation: SettingsUiController.SaveFromUiAsync で IsApplyingSettings を明示制御し再入を抑制。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。
+- 行数確認: MainWindow.xaml.cs は 3049 -> 2616 行へ減少。
