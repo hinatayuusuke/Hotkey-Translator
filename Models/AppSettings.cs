@@ -81,6 +81,10 @@ public sealed class AppSettings
     public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
     public int SceneChangeWatchPhashThreshold { get; set; } = 8;
+    public bool EnableSceneChangeSemanticGate { get; set; } = true;
+    public double SceneSemanticBlockIouThreshold { get; set; } = 0.5;
+    public int SceneSemanticMinChars { get; set; } = 2;
+    public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
     public string PaddleUvPath { get; set; } = "uv";

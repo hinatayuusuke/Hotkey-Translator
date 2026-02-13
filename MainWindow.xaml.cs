@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
     private OcrEngine? _ocrEngine;
+    private SceneTextSnapshotService? _sceneTextSnapshotService;
     private PaddleGrpcHost? _paddleGrpcHost;
     private PaddleVlGrpcHost? _paddleVlGrpcHost;
     private CTranslate2GrpcHost? _ct2GrpcHost;
@@ -62,6 +63,9 @@ public partial class MainWindow : Window
     private int _sceneChangeAutoTranslatePendingThreshold;
     private string? _sceneChangeAutoTranslatePendingReason;
     private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
+    private SceneTextSnapshot? _sceneChangeAutoTranslatePendingPayload;
+    private SceneTextSnapshot? _lastSceneTextSnapshot;
+    private int _semanticCandidateStreak;
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
     private CancellationTokenSource? _translationOverlayCts;
@@ -83,6 +87,7 @@ public partial class MainWindow : Window
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SceneChangePendingLogSuppressionMs = 2000;
+    private const int SceneSemanticPayloadTtlMs = 500;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     // WHY: Share one option profile so immediate and pending-drain auto runs keep identical Quiet UI behavior.
     private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
@@ -113,6 +118,7 @@ public partial class MainWindow : Window
         var settings = _settingsService.Settings;
         var settingsChanged = NormalizeHotkeySettings(settings);
         settingsChanged |= NormalizeSceneChangeModeSettings(settings);
+        settingsChanged |= NormalizeSceneSemanticSettings(settings);
         settingsChanged |= NormalizeWritingModeSettings(settings);
         settingsChanged |= NormalizeSmallBoxReadabilitySettings(settings);
         settingsChanged |= NormalizePaddleOcrSettings(settings);
@@ -149,6 +155,7 @@ public partial class MainWindow : Window
         var normalization = new NormalizationService();
         var ocrPreprocess = new OcrPreprocessService();
         var lineGrouper = new OcrLineGrouper(_logger);
+        _sceneTextSnapshotService = new SceneTextSnapshotService(_captureManager, _ocrEngine, lineGrouper, _logger);
         var keyBuilder = new CacheKeyBuilder();
         var geminiClient = new GeminiClient(_httpClient, _logger);
         var translationProviders = new List<ITranslationProvider>
@@ -670,6 +677,11 @@ public partial class MainWindow : Window
 
     private async Task RunOnceAsync(ForceRunOptions options)
     {
+        await RunOnceAsync(options, null).ConfigureAwait(true);
+    }
+
+    private async Task RunOnceAsync(ForceRunOptions options, SceneTextSnapshot? semanticPayload)
+    {
         if (_pipeline == null)
         {
             return;
@@ -695,7 +707,29 @@ public partial class MainWindow : Window
         }
         try
         {
-            await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+            var payloadCandidate = semanticPayload ?? _sceneChangeAutoTranslatePendingPayload;
+            _sceneChangeAutoTranslatePendingPayload = null;
+            if (TryResolveSceneSemanticPayload(settings, options, payloadCandidate, out var reusablePayload, out var reason))
+            {
+                _logger?.Info(
+                    $"Scene semantic payload reused for auto-translate (units={reusablePayload.ReadingUnits.Count}, age={(DateTime.UtcNow - reusablePayload.CapturedAtUtc).TotalMilliseconds:0}ms).");
+                await _pipeline.RunWithReadingUnitsAsync(
+                        reusablePayload.ReadingUnits,
+                        reusablePayload.RoiScreen,
+                        reusablePayload.OverlayClipScreen,
+                        _runCts.Token,
+                        options)
+                    .ConfigureAwait(true);
+            }
+            else
+            {
+                if (payloadCandidate != null && !string.IsNullOrWhiteSpace(reason))
+                {
+                    _logger?.Info($"Scene semantic payload fallback to full OCR: {reason}.");
+                }
+
+                await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+            }
         }
         finally
         {
@@ -708,6 +742,58 @@ public partial class MainWindow : Window
             _translationOverlayCts?.Cancel();
             TryDrainPendingSceneChangeAutoTranslate();
         }
+    }
+
+    private static bool TryResolveSceneSemanticPayload(
+        AppSettings settings,
+        ForceRunOptions options,
+        SceneTextSnapshot? payload,
+        out SceneTextSnapshot reusablePayload,
+        out string? reason)
+    {
+        reusablePayload = null!;
+        reason = null;
+
+        if (options.Trigger != RunTrigger.AutoSceneChange)
+        {
+            reason = "non auto-scene run";
+            return false;
+        }
+
+        if (payload == null)
+        {
+            reason = "no semantic payload";
+            return false;
+        }
+
+        if (!settings.EnableSceneChangeSemanticGate)
+        {
+            reason = "semantic gate disabled";
+            return false;
+        }
+
+        if (payload.ReadingUnits.Count == 0)
+        {
+            reason = "payload has no reading units";
+            return false;
+        }
+
+        var ageMs = (DateTime.UtcNow - payload.CapturedAtUtc).TotalMilliseconds;
+        if (ageMs > SceneSemanticPayloadTtlMs)
+        {
+            reason = $"payload stale ({ageMs:0} ms)";
+            return false;
+        }
+
+        var expectedSignature = SceneTextSnapshotService.BuildSnapshotSignature(settings);
+        if (!string.Equals(expectedSignature, payload.SnapshotSignature, StringComparison.Ordinal))
+        {
+            reason = "payload signature mismatch";
+            return false;
+        }
+
+        reusablePayload = payload;
+        return true;
     }
 
     private void SetBusyOverlay(bool visible, string? message)
@@ -1126,6 +1212,24 @@ public partial class MainWindow : Window
         return true;
     }
 
+    private bool NormalizeSceneSemanticSettings(AppSettings settings)
+    {
+        var changed = false;
+        changed |= ClampSetting(settings.SceneSemanticBlockIouThreshold, 0.1, 0.95, 0.5, out var semanticIou);
+        changed |= ClampSetting(settings.SceneSemanticMinChars, 0, 64, 2, out var semanticMinChars);
+        changed |= ClampSetting(settings.SceneSemanticRequireConfirmTicks, 1, 5, 1, out var semanticConfirmTicks);
+        settings.SceneSemanticBlockIouThreshold = semanticIou;
+        settings.SceneSemanticMinChars = semanticMinChars;
+        settings.SceneSemanticRequireConfirmTicks = semanticConfirmTicks;
+        if (changed)
+        {
+            _logger?.Info(
+                $"Scene semantic gate settings normalized: IoU={semanticIou:0.##}, MinChars={semanticMinChars}, ConfirmTicks={semanticConfirmTicks}.");
+        }
+
+        return changed;
+    }
+
     private bool NormalizeWritingModeSettings(AppSettings settings)
     {
         var changed = false;
@@ -1283,6 +1387,18 @@ public partial class MainWindow : Window
 
         normalized = clamped;
         return true;
+    }
+
+    private static bool ClampSetting(int value, int min, int max, int fallback, out int normalized)
+    {
+        if (value < min || value > max)
+        {
+            normalized = fallback;
+            return true;
+        }
+
+        normalized = value;
+        return false;
     }
 
     private static string NormalizeLlamaModelFileName(string? value)
@@ -2199,6 +2315,7 @@ public partial class MainWindow : Window
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
+        NormalizeSceneSemanticSettings(settings);
         NormalizeWritingModeSettings(settings);
         NormalizeSmallBoxReadabilitySettings(settings);
         NormalizePaddleOcrSettings(settings);
@@ -2682,6 +2799,7 @@ public partial class MainWindow : Window
         _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
         ClearSceneChangeAutoTranslatePending("watcher stopped");
         ClearAutoHideBaseline();
+        ResetSceneSemanticState();
     }
 
     private void ClearAutoHideBaseline()
@@ -2695,6 +2813,7 @@ public partial class MainWindow : Window
             _autoHideBaselineCts.Dispose();
             _autoHideBaselineCts = null;
         }
+        ResetSceneSemanticState();
     }
 
     private void ScheduleAutoHideBaselineReset()
@@ -2798,6 +2917,10 @@ public partial class MainWindow : Window
         var baselineVersion = _autoHideBaselineVersion;
         var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
         var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
+        var visualDiff = -1;
+        var visualThreshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+        var visualHash = 0UL;
+        var visualCandidateReady = false;
         _autoHideTickInProgress = true;
         try
         {
@@ -2838,26 +2961,13 @@ public partial class MainWindow : Window
                         return;
                     }
 
-                    if (diff >= threshold)
-                    {
-                        if (settings.EnableSceneChangeAutoHide)
-                        {
-                            Dispatcher.Invoke(() =>
-                            {
-                                _overlayEnabled = false;
-                                _overlayPresenter?.SetEnabled(false);
-                                AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
-                            });
-                        }
-                        else if (settings.EnableSceneChangeAutoTranslate)
-                        {
-                            Dispatcher.BeginInvoke(new Action(() => QueueSceneChangeAutoTranslate(diff, threshold)));
-                        }
-                    }
-
+                    visualDiff = diff;
+                    visualThreshold = threshold;
+                    visualHash = hash;
+                    visualCandidateReady = true;
                     if (baselineVersion == _autoHideBaselineVersion)
                     {
-                        _autoHideLastHash = hash;
+                        _autoHideLastHash = visualHash;
                     }
                 }
                 finally
@@ -2872,6 +2982,31 @@ public partial class MainWindow : Window
                     }
                 }
             }).ConfigureAwait(true);
+
+            if (!visualCandidateReady)
+            {
+                return;
+            }
+
+            if (visualDiff < visualThreshold)
+            {
+                if (settings.EnableSceneChangeSemanticGate)
+                {
+                    _semanticCandidateStreak = 0;
+                    _sceneChangeAutoTranslatePendingPayload = null;
+                }
+                return;
+            }
+
+            _logger?.Info($"Scene change Stage A passed (diff {visualDiff}, threshold {visualThreshold}).");
+
+            if (!settings.EnableSceneChangeSemanticGate || _sceneTextSnapshotService == null)
+            {
+                TriggerSceneChangeAction(settings, visualDiff, visualThreshold, semanticPayload: null);
+                return;
+            }
+
+            await HandleSceneChangeWithSemanticGateAsync(settings, visualDiff, visualThreshold).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -2881,6 +3016,81 @@ public partial class MainWindow : Window
         {
             _autoHideTickInProgress = false;
         }
+    }
+
+    private async Task HandleSceneChangeWithSemanticGateAsync(AppSettings settings, int diff, int threshold)
+    {
+        if (_sceneTextSnapshotService == null)
+        {
+            return;
+        }
+
+        var snapshot = await _sceneTextSnapshotService.CaptureSnapshotAsync(settings, CancellationToken.None).ConfigureAwait(true);
+        if (snapshot == null)
+        {
+            _semanticCandidateStreak = 0;
+            _sceneChangeAutoTranslatePendingPayload = null;
+            _logger?.Info("Scene change Stage B skipped (no OCR snapshot).");
+            return;
+        }
+
+        if (_lastSceneTextSnapshot == null)
+        {
+            // WHY: Initialize semantic baseline first so watcher start does not trigger auto actions.
+            _lastSceneTextSnapshot = snapshot;
+            _semanticCandidateStreak = 0;
+            _sceneChangeAutoTranslatePendingPayload = null;
+            _logger?.Info("Scene change Stage B baseline initialized.");
+            return;
+        }
+
+        var comparison = _sceneTextSnapshotService.CompareSnapshots(_lastSceneTextSnapshot, snapshot, settings);
+        if (!comparison.SemanticChanged)
+        {
+            _semanticCandidateStreak = 0;
+            _sceneChangeAutoTranslatePendingPayload = null;
+            _lastSceneTextSnapshot = snapshot;
+            _logger?.Info($"Scene change Stage B blocked: {comparison.Reason}.");
+            return;
+        }
+
+        var requiredTicks = Math.Max(1, settings.SceneSemanticRequireConfirmTicks);
+        _semanticCandidateStreak++;
+        _sceneChangeAutoTranslatePendingPayload = snapshot;
+        _logger?.Info(
+            $"Scene change Stage B passed: {comparison.Reason}, streak={_semanticCandidateStreak}/{requiredTicks}.");
+        if (_semanticCandidateStreak < requiredTicks)
+        {
+            return;
+        }
+
+        _semanticCandidateStreak = 0;
+        _lastSceneTextSnapshot = snapshot;
+        TriggerSceneChangeAction(settings, diff, threshold, semanticPayload: snapshot);
+    }
+
+    private void TriggerSceneChangeAction(AppSettings settings, int diff, int threshold, SceneTextSnapshot? semanticPayload)
+    {
+        if (settings.EnableSceneChangeAutoHide)
+        {
+            _overlayEnabled = false;
+            _overlayPresenter?.SetEnabled(false);
+            AppendLog($"Overlay auto-hidden (watcher diff {diff}).");
+            _sceneChangeAutoTranslatePendingPayload = null;
+            return;
+        }
+
+        if (settings.EnableSceneChangeAutoTranslate)
+        {
+            QueueSceneChangeAutoTranslate(diff, threshold, semanticPayload);
+        }
+    }
+
+    private void ResetSceneSemanticState()
+    {
+        _lastSceneTextSnapshot = null;
+        _sceneChangeAutoTranslatePendingPayload = null;
+        _semanticCandidateStreak = 0;
     }
 
     private bool ShouldWatchSceneChanges(AppSettings settings)
@@ -2893,7 +3103,7 @@ public partial class MainWindow : Window
         return settings.EnableSceneChangeAutoHide && _overlayVisible;
     }
 
-    private void QueueSceneChangeAutoTranslate(int diff, int threshold)
+    private void QueueSceneChangeAutoTranslate(int diff, int threshold, SceneTextSnapshot? semanticPayload)
     {
         var settings = _settingsService.Settings;
         if (!settings.EnableSceneChangeAutoTranslate)
@@ -2907,13 +3117,13 @@ public partial class MainWindow : Window
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
         {
-            MarkSceneChangeAutoTranslatePending(diff, threshold, $"cooldown ({cooldownMs} ms)");
+            MarkSceneChangeAutoTranslatePending(diff, threshold, $"cooldown ({cooldownMs} ms)", semanticPayload);
             return;
         }
 
         if (Volatile.Read(ref _runInProgress) == 1)
         {
-            MarkSceneChangeAutoTranslatePending(diff, threshold, "OCR already running");
+            MarkSceneChangeAutoTranslatePending(diff, threshold, "OCR already running", semanticPayload);
             return;
         }
 
@@ -2924,14 +3134,18 @@ public partial class MainWindow : Window
 
         _lastSceneChangeAutoTranslateRequestUtc = now;
         AppendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(AutoSceneChangeRunOptions);
+        _ = RunOnceAsync(AutoSceneChangeRunOptions, semanticPayload);
     }
 
-    private void MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason)
+    private void MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason, SceneTextSnapshot? semanticPayload)
     {
         _sceneChangeAutoTranslatePending = true;
         _sceneChangeAutoTranslatePendingDiff = Math.Max(_sceneChangeAutoTranslatePendingDiff, diff);
         _sceneChangeAutoTranslatePendingThreshold = Math.Max(0, threshold);
+        if (semanticPayload != null)
+        {
+            _sceneChangeAutoTranslatePendingPayload = semanticPayload;
+        }
 
         var now = DateTime.UtcNow;
         var shouldLog = !string.Equals(_sceneChangeAutoTranslatePendingReason, reason, StringComparison.Ordinal) ||
@@ -2977,10 +3191,11 @@ public partial class MainWindow : Window
 
         var diff = _sceneChangeAutoTranslatePendingDiff;
         var threshold = _sceneChangeAutoTranslatePendingThreshold;
+        var payload = _sceneChangeAutoTranslatePendingPayload;
         ResetSceneChangeAutoTranslatePending();
         _lastSceneChangeAutoTranslateRequestUtc = now;
         AppendLog($"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(AutoSceneChangeRunOptions);
+        _ = RunOnceAsync(AutoSceneChangeRunOptions, payload);
         return true;
     }
 
@@ -3002,6 +3217,7 @@ public partial class MainWindow : Window
         _sceneChangeAutoTranslatePendingDiff = 0;
         _sceneChangeAutoTranslatePendingThreshold = 0;
         _sceneChangeAutoTranslatePendingReason = null;
+        _sceneChangeAutoTranslatePendingPayload = null;
         _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
     }
 

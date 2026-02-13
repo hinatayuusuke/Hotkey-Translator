@@ -423,6 +423,77 @@ public sealed class PipelineOrchestrator
         }
     }
 
+    public async Task RunWithReadingUnitsAsync(
+        IReadOnlyList<ReadingUnit> readingUnits,
+        Rect roiScreen,
+        Rect? overlayClipScreen,
+        CancellationToken cancellationToken,
+        ForceRunOptions options)
+    {
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            var settings = _settingsService.Settings;
+            _logger.Info(
+                $"Run context: trigger={options.Trigger}, suppress transient UI={options.SuppressTransientUiFeedback}, precomputed payload=true.");
+            _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
+
+            if (readingUnits.Count == 0)
+            {
+                _logger.Info("Precomputed scene payload returned no reading units.");
+                _overlayPresenter.ClearOverlay();
+                return;
+            }
+
+            var groupedLines = readingUnits
+                .Select(unit => new OcrLine(unit.Text, unit.Rect, 1.0f, Math.Max(1, unit.LineCount), unit.LineHeight))
+                .ToList();
+            var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
+            var changedUnitIds = ResolveChangedUnitIds(readingUnits, groupedLines, changedLines, options.SkipOcrDiff);
+            _logger.Info(
+                $"Precomputed payload diff: {changedLines.Count} changed lines, {changedUnitIds.Count} changed units of {readingUnits.Count} total.");
+
+            Dictionary<int, string> translations;
+            if (options.SkipTranslation)
+            {
+                translations = new Dictionary<int, string>();
+            }
+            else
+            {
+                translations = await ResolveTranslationsAsync(
+                        readingUnits,
+                        changedUnitIds,
+                        settings,
+                        options,
+                        options.SkipTranslationCache,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            _lastReadingUnits = readingUnits.ToList();
+            _lastOverlayTranslations = new Dictionary<int, string>(translations);
+            _lastOverlayRoiScreen = roiScreen;
+            _lastOverlayClipScreen = overlayClipScreen;
+            var overlayItems = BuildOverlayItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+            _lastOverlayItems = overlayItems;
+            _overlayPresenter.Update(overlayItems, overlayClipScreen);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Info("Pipeline canceled.");
+            _overlayPresenter.ShowLast();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Pipeline failed.");
+            _overlayPresenter.ShowLast();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private static Rect? ResolveOverlayClipScreenRect(AppSettings settings, Rect captureBounds)
     {
         if (settings.CaptureMode != CaptureMode.ActiveWindow)

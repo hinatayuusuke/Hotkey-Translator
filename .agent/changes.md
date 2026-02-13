@@ -7706,3 +7706,247 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build 実行: 成功（警告0/エラー0）。
 - python -m py_compile OcrServiceVL/server.py OcrServiceVL/ocr_vl_engine.py OcrService/server.py OcrService/ocr_engine.py 実行: 成功。
+
+**2026-02-13 13:04 (Asia/Taipei) — Overlay adaptive background color plan追加**
+
+### Summary
+- オーバレイ背景を画面色へ追従させる実装案を PerFrame → PerBox の段階導入で新規作成した。
+
+### Context / Goal
+- 半透明背景を画面背景に近づける設定を追加したい。
+- 既存 OverlayBackgroundOpacity を維持しつつ、実装順序を明確化したい。
+
+### Changes
+- Doc/Overlay_Adaptive_Background_Color_Plan.md を新規作成。
+- PerFrame先行・PerBox後行の段階実装、UI追加、フォールバック、DoDを定義。
+- 透明度は既存スライダー値を最終適用する方針を明記。
+
+### Files Touched
+- Doc/Overlay_Adaptive_Background_Color_Plan.md — 新規実装案ドキュメントを追加。
+
+### Behavioral Impact
+- なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: PerBox導入時にちらつき/負荷増が発生する可能性。
+- Mitigation: PerFrame先行で段階導入し、PerBoxはサンプル上限・EMA平滑化・フォールバックを前提化。
+
+### Tests / Verification
+- Doc/Overlay_Adaptive_Background_Color_Plan.md を UTF-8 出力で作成。
+- 内容が「opacity反映」「PerFrame先行」「PerBox後行」を満たすことを目視確認。
+
+**2026-02-13 13:12 (Asia/Taipei) — Overlay背景追従計画に白黒自動文字色を反映**
+
+### Summary
+- Overlay_Adaptive_Background_Color_Plan.md に白黒自動文字色切替（補色非採用）方針を追加した。
+
+### Context / Goal
+- 背景追従色に対し、可読性確保のため文字色を白黒で自動切替する案を計画へ反映する。
+- 補色案は採用せず、まず安定実装を優先する。
+
+### Changes
+- 概要/ゴール/非ゴールに「白黒自動切替」「補色非採用」を追記。
+- アーキテクチャに OverlayItem.ForegroundColor 追加案を反映。
+- データフローに「背景輝度から白黒決定」を追加。
+- 実装手順（PerFrame/PerBox）へ白黒判定・フォールバックを追記。
+- リスクに「閾値境界での白黒反転」を追加し、ヒステリシス導入を明記。
+- DoDに白黒自動切替確認項目を追加。
+
+### Files Touched
+- Doc/Overlay_Adaptive_Background_Color_Plan.md — 白黒自動文字色切替方針を反映。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 白黒切替閾値付近で反転頻度が高くなる可能性。
+- Mitigation: 閾値ヒステリシスを仕様に含め、実装時の反転抑制を前提化。
+
+### Tests / Verification
+- Doc/Overlay_Adaptive_Background_Color_Plan.md を UTF-8 で再読し、白黒自動切替・補色非採用が各セクションで一貫していることを確認。
+
+**2026-02-13 13:24 (Asia/Taipei) — Overlay背景追従計画へ座標変換/UI配置/白黒閾値を反映**
+
+### Summary
+- Overlay_Adaptive_Background_Color_Plan.md に、座標変換の必須化・MainタブUI配置・白黒閾値初期値を追記した。
+
+### Context / Goal
+- レビュー指摘3点（座標系、UI配置、白黒判定仕様）を具体化し、実装時の解釈ブレを防ぐ。
+
+### Changes
+- screen -> roi local 座標変換と clamp を仕様へ明記。
+- UI配置を Mainタブ > Overlay に固定。
+- 白黒判定の初期ヒステリシス閾値を L<=0.45:white / L>=0.55:black として明記（初期はUI非露出）。
+- リスク/DoD/影響範囲へ上記内容を反映。
+
+### Files Touched
+- Doc/Overlay_Adaptive_Background_Color_Plan.md — 指定3点を反映。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時に座標系の取り扱いを誤り、背景推定が不安定になる可能性。
+- Mitigation: 変換手順と clamp 条件を実装手順・DoDへ明記して固定。
+
+### Tests / Verification
+- Doc/Overlay_Adaptive_Background_Color_Plan.md を UTF-8 で再読し、3点（推奨反映）が全セクションで整合していることを確認。
+
+**2026-02-13 13:34 (Asia/Taipei) — Overlay背景追従計画をPerBox専用方針へ更新**
+
+### Summary
+- Overlay_Adaptive_Background_Color_Plan.md を PerFrame 非採用・PerBox専用に再構成した。
+
+### Context / Goal
+- ゲーム画面では背景色が混在しやすく、PerFrame代表色が可読性を悪化させる懸念がある。
+- デフォルト半透明黒を維持しつつ、必要時のみ PerBox 自動推定を使う方針へ統一する。
+
+### Changes
+- 文書全体を「PerBoxのみ実装」に更新し、PerFrame関連の設計/手順/DoDを削除。
+- ゴールを ON/OFF のみへ簡素化し、UIのモード選択を廃止。
+- 非ゴールに PerFrame 非採用を明記。
+- フォールバック方針を「推定失敗時は既存背景（半透明黒）」へ統一。
+- 白黒文字色自動切替（0.45/0.55ヒステリシス）方針を維持。
+
+### Files Touched
+- Doc/Overlay_Adaptive_Background_Color_Plan.md — PerBox専用方針へ更新。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: PerBoxサンプリングは枠数比例で負荷が増える。
+- Mitigation: サンプル数上限・早期打切り・失敗時フォールバックを前提化。
+
+### Tests / Verification
+- Doc/Overlay_Adaptive_Background_Color_Plan.md を UTF-8 で再読し、PerFrame記述が排除されていることを確認。
+
+**2026-02-13 13:44 (Asia/Taipei) — SceneChange文字/ブロック変化トリガー実装案を追加**
+
+### Summary
+- 自動翻訳/自動非表示を「文字・ブロック変化時のみ発火」にする二段ゲート実装案を新規作成した。
+
+### Context / Goal
+- pHash差分のみだと背景変化で誤発火しやすいため、OCRスナップショット差分を追加して意味的変化で発火制御したい。
+- Auto-hide / Auto-translate の両方に共通適用できる設計を定義する。
+
+### Changes
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md を新規作成。
+- Stage A(pHash) + Stage B(OCR semantic diff) の二段ゲート方針を定義。
+- block対応付け（IoU）・本文変化・追加/削除をトリガー条件として明記。
+- settings.json向けの最小パラメータ（UI非露出）を追加提案。
+- 既存 pending-drain / 排他仕様との整合を明記。
+
+### Files Touched
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md — 新規実装案ドキュメントを追加。
+
+### Behavioral Impact
+- なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: Stage B追加で候補時OCRコストが増える。
+- Mitigation: Stage A通過時のみStage Bを実行し、閾値とConfirmTicksで制御する。
+
+### Tests / Verification
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md を UTF-8 で作成。
+- 内容が「Auto-hide/Auto-translate両方に適用」「文字/ブロック変化時のみ発火」を満たすことを目視確認。
+
+**2026-02-13 13:56 (Asia/Taipei) — SceneChange文字ブロック変化計画へStageB OCR再利用方針を反映**
+
+### Summary
+- SceneChange_TextBlockChanged_Trigger_Plan.md に、Stage B OCR結果を翻訳へ再利用する低遅延方針を追記した。
+
+### Context / Goal
+- 自動翻訳確定時の遅延を減らすため、Stage Bで取得したOCR payloadを再OCRせず翻訳入力へ流用したい。
+- 再利用時の安全性を担保するフォールバック条件も文書化する。
+
+### Changes
+- ゴールへ「Stage B OCR再利用による遅延低減」を追加。
+- SceneTextSnapshot に ReadingUnits / CapturedAtUtc / SnapshotSignature を追加提案。
+- Auto-translate整合章に「再利用優先 + 不整合時RunOnceフォールバック」を追加。
+- 判定フロー/実装手順/可観測性/リスク/DoDに再利用経路を反映。
+- 判定フローの番号不整合（6重複）を修正。
+
+### Files Touched
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md — Stage B OCR再利用方針を反映。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 古いpayloadを誤再利用して画面とずれた翻訳になる可能性。
+- Mitigation: TTL（初期500ms）と設定署名一致チェックで再利用可否を厳格化し、不一致時は従来RunOnceへフォールバック。
+
+### Tests / Verification
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md を UTF-8 で再読し、再利用条件・フォールバック条件・DoDが整合していることを確認。
+
+**2026-02-13 14:19 (Asia/Taipei) — SceneChange文字ブロック計画の推奨4点反映を補正**
+
+### Summary
+- 指定方針（同品質OCR採用 + 推奨3点）を反映し、文書内の発火条件/手順番号の整合を補正した。
+
+### Context / Goal
+- 自己レビューで挙がった不足（ConfirmTicks適用点、Signature範囲、前提文言）を解消し、実装時の解釈ブレを防ぐ。
+- Stage B OCR再利用方針を品質劣化なく成立させる。
+
+### Changes
+- 前提文言を pending-drain 現行仕様（実行中は破棄でなく集約）へ更新。
+- Stage B の OCR取得を「本番と同一品質経路」で固定。
+- SnapshotSignature 対象を preprocess / writing-mode / line-merge まで拡張。
+- OnAutoHideTick 判定フローへ SceneSemanticRequireConfirmTicks を明示適用。
+- 最終発火条件に streak >= SceneSemanticRequireConfirmTicks を明記。
+- 実装手順の Step 番号重複を修正（Step 1..7）。
+
+### Files Touched
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md — 推奨4点と整合補正を反映。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 文書上の発火条件と手順の不整合で実装が分岐する可能性。
+- Mitigation: 最終発火条件と手順番号を補正し、判定フローを一意化。
+
+### Tests / Verification
+- Doc/SceneChange_TextBlockChanged_Trigger_Plan.md を UTF-8 で再読し、4点反映と番号整合を確認。
+**2026-02-13 14:53 (Asia/Taipei) — SceneChange TextBlockChanged trigger 実装**
+
+### Summary
+- Scene-change watcher に semantic gate（二段判定）を実装し、Stage B OCR payload の auto-translate 再利用経路を追加した。
+
+### Context / Goal
+- 画面差分だけで誤発火するケースを抑え、文字/ブロック変化時のみ Auto-hide / Auto-translate を発火させる。
+- Stage B で取得した OCR 結果を翻訳に再利用して、確定後の再OCR遅延を削減する。
+
+### Changes
+- Scene semantic 用モデルを追加（`SceneTextBlock` / `SceneTextSnapshot`）。
+- `SceneTextSnapshotService` を新規追加し、監視用 OCR snapshot 取得・比較（IoUマッチ + text差分）を実装。
+- `MainWindow.xaml.cs` に Stage A(pHash)→Stage B(semantic) の判定フローを追加。
+- `SceneSemanticRequireConfirmTicks` による streak 判定を追加。
+- auto-translate pending に semantic payload を保持し、drain 時に payload を引き継ぐよう変更。
+- `RunOnceAsync` に payload 再利用判定（TTL/署名一致）を追加し、有効時は precomputed reading units 経路を使用。
+- `PipelineOrchestrator` に `RunWithReadingUnitsAsync(...)` を追加し、OCRスキップ時の翻訳/overlay 更新を実装。
+- `AppSettings` に semantic gate 設定を追加（Enable/IoU/MinChars/ConfirmTicks）し、`MainWindow` で normalize を追加。
+
+### Files Touched
+- `MainWindow.xaml.cs` — semantic gate 判定、payload再利用、pending-drain連携、設定normalizeを追加。
+- `Models/AppSettings.cs` — scene semantic gate 設定項目を追加。
+- `Services/PipelineOrchestrator.cs` — precomputed reading units 実行経路を追加。
+- `Services/SceneTextSnapshotService.cs` — snapshot 取得/比較ロジックを新規実装。
+- `Models/SceneTextBlock.cs` — semantic block モデルを新規追加。
+- `Models/SceneTextSnapshot.cs` — snapshot モデルを新規追加。
+
+### Behavioral Impact
+- `EnableSceneChangeSemanticGate=true` 時、Auto-hide / Auto-translate は Stage A + Stage B 通過時のみ発火する。
+- Stage B payload が新鮮かつ設定署名一致の場合、auto-translate 実行で再OCRを省略する。
+- payload が古い/不一致/空の場合は従来の `RunOnceAsync` へ自動フォールバックする。
+
+### Risk & Mitigation
+- Risk: semantic snapshot 比較の閾値が厳しすぎる/緩すぎると未発火または誤発火が起こる。
+- Mitigation: `SceneSemanticBlockIouThreshold` / `SceneSemanticMinChars` / `SceneSemanticRequireConfirmTicks` を settings で調整可能にした。
+- Risk: payload 再利用で設定変更直後の不整合が起こる。
+- Mitigation: 500ms TTL + `SnapshotSignature` 一致条件で再利用を制限し、失敗時は full OCR にフォールバック。
+
+### Tests / Verification
+- `dotnet build` を実行し、0 error / 0 warning でビルド成功を確認。
+- コンパイル確認で新規追加型・新規メソッド参照が解決することを確認。
