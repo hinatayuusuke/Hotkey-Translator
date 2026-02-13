@@ -52,6 +52,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _paddleVlPipelineVersion = "v1.5";
     [ObservableProperty] private bool _enablePaddleConfidenceFilter;
     [ObservableProperty] private bool _enableLlamaCppTranslation;
+    [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
     [ObservableProperty] private bool _enableDeepL;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
@@ -70,6 +71,29 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
+    [ObservableProperty] private string _phashThresholdText = string.Empty;
+    [ObservableProperty] private string _iouThresholdText = string.Empty;
+    [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
+    [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
+    [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
+    [ObservableProperty] private string _paddleTextDetUnclipRatioText = string.Empty;
+    [ObservableProperty] private string _paddleTextRecScoreThreshText = string.Empty;
+    [ObservableProperty] private string _paddleVlMaxPixelsText = string.Empty;
+    [ObservableProperty] private string _paddleVlLayoutThresholdText = string.Empty;
+    [ObservableProperty] private string _paddleVlMaxNewTokensText = string.Empty;
+    [ObservableProperty] private string _llamaHostText = string.Empty;
+    [ObservableProperty] private string _llamaPortText = string.Empty;
+    [ObservableProperty] private string _llamaContextSizeText = string.Empty;
+    [ObservableProperty] private string _llamaGpuLayersText = string.Empty;
+    [ObservableProperty] private string _llamaThreadsText = string.Empty;
+    [ObservableProperty] private string _llamaParallelText = string.Empty;
+    [ObservableProperty] private string _llamaBatchSizeText = string.Empty;
+    [ObservableProperty] private string _llamaMaxTokensText = string.Empty;
+    [ObservableProperty] private string _llamaTemperatureText = string.Empty;
+    [ObservableProperty] private string _llamaTopPText = string.Empty;
+    [ObservableProperty] private string _llamaTopKText = string.Empty;
+    [ObservableProperty] private string _llamaRepeatPenaltyText = string.Empty;
+    [ObservableProperty] private string _deepLEndpointText = string.Empty;
 
     public void LoadFrom(AppSettings settings)
     {
@@ -91,6 +115,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             PaddleVlPipelineVersion = settings.PaddleVlPipelineVersion;
             EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
             EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
+            LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
             EnableDeepL = settings.EnableDeepL;
             EnableGemini = settings.EnableGemini;
             VerticalModeOverrideTag = settings.VerticalModeOverride switch
@@ -114,6 +139,29 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
+            PhashThresholdText = settings.PhashThreshold.ToString();
+            IouThresholdText = settings.OcrIouThreshold.ToString("0.00");
+            OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
+            PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
+            PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
+            PaddleTextDetUnclipRatioText = settings.PaddleTextDetUnclipRatio.ToString("0.###");
+            PaddleTextRecScoreThreshText = settings.PaddleTextRecScoreThresh.ToString("0.###");
+            PaddleVlMaxPixelsText = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
+            PaddleVlLayoutThresholdText = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
+            PaddleVlMaxNewTokensText = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
+            LlamaHostText = settings.LlamaHost;
+            LlamaPortText = settings.LlamaPort.ToString();
+            LlamaContextSizeText = settings.LlamaContextSize.ToString();
+            LlamaGpuLayersText = settings.LlamaGpuLayers.ToString();
+            LlamaThreadsText = settings.LlamaThreads.ToString();
+            LlamaParallelText = settings.LlamaParallel.ToString();
+            LlamaBatchSizeText = settings.LlamaBatchSize.ToString();
+            LlamaMaxTokensText = settings.LlamaMaxTokens.ToString();
+            LlamaTemperatureText = settings.LlamaTemperature.ToString("0.###");
+            LlamaTopPText = settings.LlamaTopP.ToString("0.###");
+            LlamaTopKText = settings.LlamaTopK.ToString();
+            LlamaRepeatPenaltyText = settings.LlamaRepeatPenalty.ToString("0.###");
+            DeepLEndpointText = settings.DeepLEndpoint;
             PaddleConfidenceThreshold = settings.PaddleConfidenceThreshold;
             OcrBinarizationThreshold = settings.OcrBinarizationThreshold;
             OcrGamma = settings.OcrGamma;
@@ -160,6 +208,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.PaddleVlPipelineVersion = PaddleVlPipelineVersion;
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilter;
         settings.EnableLlamaCppTranslation = EnableLlamaCppTranslation;
+        settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
         settings.EnableDeepL = EnableDeepL;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
@@ -183,6 +232,126 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
+        if (int.TryParse(PhashThresholdText.Trim(), out var phashThreshold))
+        {
+            settings.PhashThreshold = phashThreshold;
+        }
+
+        if (double.TryParse(IouThresholdText.Trim(), out var iouThreshold))
+        {
+            settings.OcrIouThreshold = iouThreshold;
+        }
+
+        if (int.TryParse(OcrPerfLogThresholdText.Trim(), out var perfThreshold))
+        {
+            settings.OcrPerfLogThresholdMs = Math.Max(0, perfThreshold);
+        }
+
+        if (double.TryParse(PaddleTextDetThreshText.Trim(), out var textDetThresh))
+        {
+            settings.PaddleTextDetThresh = textDetThresh;
+        }
+
+        if (double.TryParse(PaddleTextDetBoxThreshText.Trim(), out var textDetBoxThresh))
+        {
+            settings.PaddleTextDetBoxThresh = textDetBoxThresh;
+        }
+
+        if (double.TryParse(PaddleTextDetUnclipRatioText.Trim(), out var textDetUnclip))
+        {
+            settings.PaddleTextDetUnclipRatio = textDetUnclip;
+        }
+
+        if (double.TryParse(PaddleTextRecScoreThreshText.Trim(), out var textRecScoreThresh))
+        {
+            settings.PaddleTextRecScoreThresh = textRecScoreThresh;
+        }
+
+        if (int.TryParse(PaddleVlMaxPixelsText.Trim(), out var paddleVlMaxPixels))
+        {
+            settings.PaddleVlMaxPixels = paddleVlMaxPixels;
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlMaxPixelsText))
+        {
+            settings.PaddleVlMaxPixels = null;
+        }
+
+        if (double.TryParse(PaddleVlLayoutThresholdText.Trim(), out var paddleVlLayoutThreshold))
+        {
+            settings.PaddleVlLayoutThreshold = paddleVlLayoutThreshold;
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlLayoutThresholdText))
+        {
+            settings.PaddleVlLayoutThreshold = null;
+        }
+
+        if (int.TryParse(PaddleVlMaxNewTokensText.Trim(), out var paddleVlMaxNewTokens))
+        {
+            settings.PaddleVlMaxNewTokens = Math.Clamp(paddleVlMaxNewTokens, 512, 4096);
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlMaxNewTokensText))
+        {
+            // NOTE: Blank means AUTO; Python side keeps PaddleOCR-VL internal default.
+            settings.PaddleVlMaxNewTokens = null;
+        }
+
+        settings.LlamaHost = (LlamaHostText ?? string.Empty).Trim();
+        if (int.TryParse(LlamaPortText.Trim(), out var llamaPort))
+        {
+            settings.LlamaPort = llamaPort;
+        }
+
+        if (int.TryParse(LlamaContextSizeText.Trim(), out var llamaContext))
+        {
+            settings.LlamaContextSize = llamaContext;
+        }
+
+        if (int.TryParse(LlamaGpuLayersText.Trim(), out var llamaGpuLayers))
+        {
+            settings.LlamaGpuLayers = llamaGpuLayers;
+        }
+
+        if (int.TryParse(LlamaThreadsText.Trim(), out var llamaThreads))
+        {
+            settings.LlamaThreads = llamaThreads;
+        }
+
+        if (int.TryParse(LlamaParallelText.Trim(), out var llamaParallel))
+        {
+            settings.LlamaParallel = llamaParallel;
+        }
+
+        if (int.TryParse(LlamaBatchSizeText.Trim(), out var llamaBatchSize))
+        {
+            settings.LlamaBatchSize = llamaBatchSize;
+        }
+
+        if (int.TryParse(LlamaMaxTokensText.Trim(), out var llamaMaxTokens))
+        {
+            settings.LlamaMaxTokens = llamaMaxTokens;
+        }
+
+        if (double.TryParse(LlamaTemperatureText.Trim(), out var llamaTemperature))
+        {
+            settings.LlamaTemperature = llamaTemperature;
+        }
+
+        if (double.TryParse(LlamaTopPText.Trim(), out var llamaTopP))
+        {
+            settings.LlamaTopP = llamaTopP;
+        }
+
+        if (int.TryParse(LlamaTopKText.Trim(), out var llamaTopK))
+        {
+            settings.LlamaTopK = llamaTopK;
+        }
+
+        if (double.TryParse(LlamaRepeatPenaltyText.Trim(), out var llamaRepeatPenalty))
+        {
+            settings.LlamaRepeatPenalty = llamaRepeatPenalty;
+        }
+
+        settings.DeepLEndpoint = (DeepLEndpointText ?? string.Empty).Trim();
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThreshold, 2);
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThreshold);
         settings.OcrGamma = Math.Round(OcrGamma, 2);
@@ -240,6 +409,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnPaddleVlPipelineVersionChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnablePaddleConfidenceFilterChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableLlamaCppTranslationChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnLlamaSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();
@@ -255,6 +425,29 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableFixedRoiOverlayChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOverlayFontStabilizationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSmallBoxReadabilityBoostChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnPhashThresholdTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnIouThresholdTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnOcrPerfLogThresholdTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleTextDetThreshTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleTextDetBoxThreshTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleTextDetUnclipRatioTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleTextRecScoreThreshTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlMaxPixelsTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlLayoutThresholdTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlMaxNewTokensTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaHostTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaPortTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaContextSizeTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaGpuLayersTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaThreadsTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaParallelTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaTemperatureTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaTopPTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaTopKTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnLlamaRepeatPenaltyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeAutoHideChanged(bool value)
     {

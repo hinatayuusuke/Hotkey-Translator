@@ -814,13 +814,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
-        PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
-        PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
-        PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
-        PaddleTextRecScoreThreshBox.Text = settings.PaddleTextRecScoreThresh.ToString("0.###");
-        PaddleVlMaxPixelsBox.Text = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
-        PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
-        PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         settings.EnableCTranslate2 = false;
         if (EnableCTranslate2Check != null)
         {
@@ -831,27 +824,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
         }
         ReloadLlamaModelOptions(settings);
-        LlamaHostBox.Text = settings.LlamaHost;
-        LlamaPortBox.Text = settings.LlamaPort.ToString();
-        LlamaContextSizeBox.Text = settings.LlamaContextSize.ToString();
-        LlamaGpuLayersBox.Text = settings.LlamaGpuLayers.ToString();
-        LlamaThreadsBox.Text = settings.LlamaThreads.ToString();
-        LlamaParallelBox.Text = settings.LlamaParallel.ToString();
-        LlamaBatchSizeBox.Text = settings.LlamaBatchSize.ToString();
-        LlamaMaxTokensBox.Text = settings.LlamaMaxTokens.ToString();
-        LlamaTemperatureBox.Text = settings.LlamaTemperature.ToString("0.###");
-        LlamaTopPBox.Text = settings.LlamaTopP.ToString("0.###");
-        LlamaTopKBox.Text = settings.LlamaTopK.ToString();
-        LlamaRepeatPenaltyBox.Text = settings.LlamaRepeatPenalty.ToString("0.###");
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
-        DeepLEndpointBox.Text = settings.DeepLEndpoint;
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         ApplyHotkeySettingsToUi(settings);
-        PhashThresholdBox.Text = settings.PhashThreshold.ToString();
-        IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
-        OcrPerfLogThresholdBox.Text = settings.OcrPerfLogThresholdMs.ToString();
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateOcrPreprocessControls(settings);
@@ -901,7 +878,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         var fallback = SettingsUiController.NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
-        var selected = _llamaModelCatalog.NormalizeModelFileName(settings.LlamaSelectedModelFileName, fallback);
+        var selectedFromViewModel = _mainWindowViewModel.Settings.LlamaSelectedModelFileName;
+        var selectedModel = string.IsNullOrWhiteSpace(selectedFromViewModel)
+            ? settings.LlamaSelectedModelFileName
+            : selectedFromViewModel;
+        var selected = _llamaModelCatalog.NormalizeModelFileName(selectedModel, fallback);
         var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames(settings.LlamaGrpcProjectDir);
         var previousApplyingState = _isApplyingSettings;
         _isApplyingSettings = true;
@@ -1392,150 +1373,25 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyUiInputToSettings(AppSettings settings)
     {
         _mainWindowViewModel.Settings.ApplyTo(settings);
-        if (double.TryParse(PaddleTextDetThreshBox.Text.Trim(), out var textDetThresh))
-        {
-            settings.PaddleTextDetThresh = textDetThresh;
-        }
-
-        if (double.TryParse(PaddleTextDetBoxThreshBox.Text.Trim(), out var textDetBoxThresh))
-        {
-            settings.PaddleTextDetBoxThresh = textDetBoxThresh;
-        }
-
-        if (double.TryParse(PaddleTextDetUnclipRatioBox.Text.Trim(), out var textDetUnclip))
-        {
-            settings.PaddleTextDetUnclipRatio = textDetUnclip;
-        }
-
-        if (double.TryParse(PaddleTextRecScoreThreshBox.Text.Trim(), out var textRecScoreThresh))
-        {
-            settings.PaddleTextRecScoreThresh = textRecScoreThresh;
-        }
-
-        if (int.TryParse(PaddleVlMaxPixelsBox.Text.Trim(), out var paddleVlMaxPixels))
-        {
-            settings.PaddleVlMaxPixels = paddleVlMaxPixels;
-        }
-        else if (string.IsNullOrWhiteSpace(PaddleVlMaxPixelsBox.Text))
-        {
-            settings.PaddleVlMaxPixels = null;
-        }
-
-        if (double.TryParse(PaddleVlLayoutThresholdBox.Text.Trim(), out var paddleVlLayoutThreshold))
-        {
-            settings.PaddleVlLayoutThreshold = paddleVlLayoutThreshold;
-        }
-        else if (string.IsNullOrWhiteSpace(PaddleVlLayoutThresholdBox.Text))
-        {
-            settings.PaddleVlLayoutThreshold = null;
-        }
-
-        if (int.TryParse(PaddleVlMaxNewTokensBox.Text.Trim(), out var paddleVlMaxNewTokens))
-        {
-            settings.PaddleVlMaxNewTokens = Math.Clamp(paddleVlMaxNewTokens, 512, 4096);
-        }
-        else if (string.IsNullOrWhiteSpace(PaddleVlMaxNewTokensBox.Text))
-        {
-            // NOTE: Blank means AUTO; Python side keeps PaddleOCR-VL internal default.
-            settings.PaddleVlMaxNewTokens = null;
-        }
 
         settings.EnableCTranslate2 = false;
-        settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
-        settings.LlamaHost = LlamaHostBox.Text.Trim();
-        if (int.TryParse(LlamaPortBox.Text.Trim(), out var llamaPort))
-        {
-            settings.LlamaPort = llamaPort;
-        }
-
-        if (int.TryParse(LlamaContextSizeBox.Text.Trim(), out var llamaContext))
-        {
-            settings.LlamaContextSize = llamaContext;
-        }
-
-        if (int.TryParse(LlamaGpuLayersBox.Text.Trim(), out var llamaGpuLayers))
-        {
-            settings.LlamaGpuLayers = llamaGpuLayers;
-        }
-
-        if (int.TryParse(LlamaThreadsBox.Text.Trim(), out var llamaThreads))
-        {
-            settings.LlamaThreads = llamaThreads;
-        }
-
-        if (int.TryParse(LlamaParallelBox.Text.Trim(), out var llamaParallel))
-        {
-            settings.LlamaParallel = llamaParallel;
-        }
-
-        if (int.TryParse(LlamaBatchSizeBox.Text.Trim(), out var llamaBatchSize))
-        {
-            settings.LlamaBatchSize = llamaBatchSize;
-        }
-
-        if (int.TryParse(LlamaMaxTokensBox.Text.Trim(), out var llamaMaxTokens))
-        {
-            settings.LlamaMaxTokens = llamaMaxTokens;
-        }
-
-        if (double.TryParse(LlamaTemperatureBox.Text.Trim(), out var llamaTemperature))
-        {
-            settings.LlamaTemperature = llamaTemperature;
-        }
-
-        if (double.TryParse(LlamaTopPBox.Text.Trim(), out var llamaTopP))
-        {
-            settings.LlamaTopP = llamaTopP;
-        }
-
-        if (int.TryParse(LlamaTopKBox.Text.Trim(), out var llamaTopK))
-        {
-            settings.LlamaTopK = llamaTopK;
-        }
-
-        if (double.TryParse(LlamaRepeatPenaltyBox.Text.Trim(), out var llamaRepeatPenalty))
-        {
-            settings.LlamaRepeatPenalty = llamaRepeatPenalty;
-        }
 
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
-        settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
         ApplyHotkeySettingsFromUi(settings);
-
-        if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
-        {
-            settings.PhashThreshold = phashThreshold;
-        }
-
-        if (double.TryParse(IouThresholdBox.Text.Trim(), out var iouThreshold))
-        {
-            settings.OcrIouThreshold = iouThreshold;
-        }
-
-        if (int.TryParse(OcrPerfLogThresholdBox.Text.Trim(), out var perfThreshold))
-        {
-            settings.OcrPerfLogThresholdMs = Math.Max(0, perfThreshold);
-        }
     }
 
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
     {
+        // WHY: Rehydrate VM from normalized settings so invalid text input is corrected in bound controls.
+        _mainWindowViewModel.Settings.LoadFrom(settings);
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
         UpdateOcrPreprocessControls(settings);
         UpdateSmallBoxReadabilityControls(settings);
         UpdateSceneChangeControls(settings);
-        PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
-        PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
-        PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
-        PaddleTextRecScoreThreshBox.Text = settings.PaddleTextRecScoreThresh.ToString("0.###");
-        SetComboBoxByTag(PaddleVlPipelineVersionBox, settings.PaddleVlPipelineVersion);
-        PaddleVlMaxPixelsBox.Text = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
-        PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
-        PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
     }

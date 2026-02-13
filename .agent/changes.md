@@ -8244,3 +8244,37 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: `0 warning / 0 error`。
 - `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 02:58 (Asia/Taipei) — MVVM次段階実装（設定入力の単一路化とLlamaモデル選択Binding化）**
+
+### Summary
+- ApplyUiInputToSettings の重複パースを削減し、SettingsViewModel.ApplyTo を設定入力の主経路に統一した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 3/7 を進め、MainWindow.xaml.cs の設定同期責務をさらに縮小する。
+- 保存正規化後の UI 反映を ViewModel 再読込で一貫化し、手動 TextBox 再代入を減らす。
+
+### Changes
+- MainWindow.xaml.cs の ApplyUiInputToSettings から、MVVM移行済み項目（Paddle/Llama/閾値群/DeepL endpoint）の直接読み取り処理を削除。
+- ApplyRuntimeStateAfterSave で Settings.LoadFrom(settings) を実行し、正規化値を Binding 経由で UI に再反映する構成へ変更。
+- SettingsViewModel に LlamaSelectedModelFileName を追加し、LoadFrom / ApplyTo / 保存トリガに組み込み。
+- MainWindow.xaml の LlamaModelBox を SelectedValue TwoWay Binding 化し、SelectionChanged="OnSettingChanged" 依存を削減。
+- ReloadLlamaModelOptions で、保存前の ViewModel 選択値も考慮してモデル再読込時の選択維持を強化。
+
+### Files Touched
+- MainWindow.xaml.cs — 設定入力経路の整理、保存後同期の ViewModel 化、Llamaモデル再読込選択ロジック調整。
+- MainWindow.xaml — LlamaModelBox を Settings.LlamaSelectedModelFileName にバインド。
+- ViewModels/SettingsViewModel.cs — Llamaモデル選択プロパティと AppSettings 双方向マッピングを追加。
+
+### Behavioral Impact
+- 設定保存時の反映元がより明確になり、保存正規化後は ViewModel 再読込で UI 表示が自動整合する。
+- Llama モデル選択は ViewModel 経由で保存トリガされ、コードビハインドのイベント依存が減少する。
+
+### Risk & Mitigation
+- Risk: 保存後に ViewModel を再読込することで未保存編集中の表示が上書きされる可能性。
+- Mitigation: 保存処理直後のみ再読込し、LoadFrom の _suspendAutoSave で再保存ループを抑制。
+- Risk: Llama モデル再読込時に選択が意図せず切り替わる可能性。
+- Mitigation: ViewModel の現在選択値を優先し、候補欠落時は既存の fallback/missing 表示ロジックを維持。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
+- dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
