@@ -63,8 +63,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     public MainWindow()
     {
-        InitializeComponent();
         _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger);
+        InitializeComponent();
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
         SceneChangeController? sceneChangeController = null;

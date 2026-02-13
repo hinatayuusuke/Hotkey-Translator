@@ -8016,3 +8016,30 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。
 - 行数確認: MainWindow.xaml.cs は 3049 -> 2616 行へ減少。
+**2026-02-14 00:58 (Asia/Taipei) — dotnet run 起動時 NullReference 修正**
+
+### Summary
+- InitializeComponent 中の UI イベント先行発火で SaveSettingsAsync が落ちる問題を、SettingsUiController 初期化順の修正で解消した。
+
+### Context / Goal
+- dotnet run 実行時にエラーログが見えないまま起動失敗するとの報告があり、実際は起動直後の NullReferenceException が原因だった。
+- 既存挙動を変えずに起動時クラッシュを止めることを目的とする。
+
+### Changes
+- MainWindow コンストラクタで _settingsUiController の生成を InitializeComponent() より前に移動。
+- これにより、XAML 初期化中に設定系イベントが先行発火しても SaveSettingsAsync が null 参照しないようにした。
+
+### Files Touched
+- MainWindow.xaml.cs — _settingsUiController の初期化順を変更（起動時 NRE 回避）。
+
+### Behavioral Impact
+- 起動時の NullReferenceException が解消され、dotnet run でアプリ起動が継続可能になった。
+- それ以外のユーザー機能挙動には変更なし。
+
+### Risk & Mitigation
+- Risk: 初期化順変更で他依存との順序問題が発生する可能性。
+- Mitigation: 依存を持つ初期化は従来順を維持し、SettingsUiController のみ前倒しして最小差分で対応。
+
+### Tests / Verification
+- dotnet run --project Hotkey-Translator.csproj を実行し、例外なしで終了コード 0 を確認。
+- dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。
