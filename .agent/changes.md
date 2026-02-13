@@ -7425,3 +7425,67 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln は実行中プロセスによる DLL/EXE ロックで失敗（コードエラーではない）。
 - 代替として dotnet build Hotkey-Translator.sln /p:OutputPath=bin\\TempVerify\\ でビルド成功（0 warnings / 0 errors）。
+
+**2026-02-13 10:23 (Asia/Taipei) — Quiet UI計画の現状仕様整合リライト**
+
+### Summary
+- `SceneChange_AutoTranslate_QuietUi_Plan.md` を現行実装に合わせて再構成し、pending drain経路漏れ・ログ定義不足を解消した。
+
+### Context / Goal
+- 自動翻訳時の一時UI抑制案について、実装レビューで見つかった仕様漏れをドキュメント側で是正する。
+- BusyOverlay は維持する方針を明文化し、実装時の解釈ブレを防ぐ。
+
+### Changes
+- 自動翻訳の2経路（即時実行/保留drain実行）を明記し、両方で同一optionsを使う要件に変更。
+- `ForceRunOptions` の役割分担を明確化し、`RunTrigger`（観測用）と `SuppressTransientUiFeedback`（表示制御用）を定義。
+- `No text detected` 抑制時の必須ログ（suppressed toast）と、run開始時の `trigger` ログ要件を追加。
+- 非ゴールへ「中央 BusyOverlay は現行維持」を明記し、DoDにも反映。
+
+### Files Touched
+- `Doc/SceneChange_AutoTranslate_QuietUi_Plan.md` — 仕様漏れ修正と方針固定（BusyOverlay維持、pending drain統一、ログ要件明確化）。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本計画どおり実装すれば、自動翻訳時の右下Spinner/No text toastの抑制が即時/Drain両経路で一貫する。
+
+### Risk & Mitigation
+- Risk: 実装側が旧計画のまま進むと、Drain経路でUI抑制漏れが再発する。
+- Mitigation: 影響範囲とDoDで「即時/Drainの両経路」を明示して固定した。
+
+### Tests / Verification
+- `Doc/SceneChange_AutoTranslate_QuietUi_Plan.md` をUTF-8で再読し、更新内容を行単位で確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 10:28 (Asia/Taipei) — Scene-change auto-translate Quiet UI実装**
+
+### Summary
+- 自動シーン変化実行時のみ右下SpinnerとNo textトーストを抑制し、手動実行時の挙動は維持した。
+
+### Context / Goal
+- `Doc/SceneChange_AutoTranslate_QuietUi_Plan.md` の方針をコードへ反映する。
+- 特に pending drain 経路を含む自動実行全経路で Quiet UI を一貫適用する。
+
+### Changes
+- `RunTrigger` enum を追加し、`ForceRunOptions` に `Trigger` と `SuppressTransientUiFeedback` を追加。
+- `PipelineOrchestrator.RunOnceAsync` に run context ログ（trigger / suppress flag）を追加。
+- `PipelineOrchestrator` の `No text detected` 2箇所で、`SuppressTransientUiFeedback=true` 時はトーストを抑制し suppression ログを出力する分岐を追加。
+- `MainWindow` に auto-scene 用 options を共通定義し、即時実行と pending drain 実行の双方で同じ options を使用。
+- `MainWindow.RunOnceAsync` の Spinner 表示/非表示を `SuppressTransientUiFeedback` 連動に変更。
+- `WHY` コメントを追加し、auto options 共通化の意図を明示。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — `RunTrigger`/`ForceRunOptions` 拡張、run context ログ追加、No textトースト抑制分岐を実装。
+- `MainWindow.xaml.cs` — auto-scene 共通 options 追加、Spinner抑制分岐、scene-change即時/Drain経路の呼び出し更新。
+
+### Behavioral Impact
+- 自動シーン変化実行（即時/Drainの両経路）では右下Spinnerが表示されない。
+- 自動シーン変化実行（即時/Drainの両経路）では `No text detected` トーストが表示されない。
+- 手動実行は従来どおりSpinner/No textトースト表示を維持。
+- 中央 BusyOverlay は従来どおり表示される。
+
+### Risk & Mitigation
+- Risk: UI抑制で実行有無が見えにくくなる可能性。
+- Mitigation: run context ログと `No text detected (toast suppressed).` ログを追加し可観測性を維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln /p:OutputPath=bin\\TempVerify\\` 実行成功（0 warnings / 0 errors）。

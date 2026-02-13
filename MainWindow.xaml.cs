@@ -82,6 +82,15 @@ public partial class MainWindow : Window
     private const int TranslationOverlayDelayMs = 200;
     private const int SceneChangePendingLogSuppressionMs = 2000;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
+    // WHY: Share one option profile so immediate and pending-drain auto runs keep identical Quiet UI behavior.
+    private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
+        SkipPhash: false,
+        SkipOcrDiff: false,
+        SkipTranslationCache: false,
+        SkipTranslation: false,
+        ForceGeminiStrict: false,
+        Trigger: RunTrigger.AutoSceneChange,
+        SuppressTransientUiFeedback: true);
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
     private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
@@ -619,14 +628,20 @@ public partial class MainWindow : Window
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
         SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
-        ShowLoadingSpinnerForRun(settings);
+        if (!options.SuppressTransientUiFeedback)
+        {
+            ShowLoadingSpinnerForRun(settings);
+        }
         try
         {
             await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
         }
         finally
         {
-            HideLoadingSpinnerForRun();
+            if (!options.SuppressTransientUiFeedback)
+            {
+                HideLoadingSpinnerForRun();
+            }
             SetBusyOverlay(false, null);
             Interlocked.Exchange(ref _runInProgress, 0);
             _translationOverlayCts?.Cancel();
@@ -2612,7 +2627,7 @@ public partial class MainWindow : Window
 
         _lastSceneChangeAutoTranslateRequestUtc = now;
         AppendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(ForceRunOptions.None);
+        _ = RunOnceAsync(AutoSceneChangeRunOptions);
     }
 
     private void MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason)
@@ -2668,7 +2683,7 @@ public partial class MainWindow : Window
         ResetSceneChangeAutoTranslatePending();
         _lastSceneChangeAutoTranslateRequestUtc = now;
         AppendLog($"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}).");
-        _ = RunOnceAsync(ForceRunOptions.None);
+        _ = RunOnceAsync(AutoSceneChangeRunOptions);
         return true;
     }
 

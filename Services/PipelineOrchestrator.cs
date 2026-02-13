@@ -11,12 +11,20 @@ using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services;
 
+public enum RunTrigger
+{
+    Manual = 0,
+    AutoSceneChange = 1,
+}
+
 public readonly record struct ForceRunOptions(
     bool SkipPhash,
     bool SkipOcrDiff,
     bool SkipTranslationCache,
     bool SkipTranslation,
-    bool ForceGeminiStrict = false)
+    bool ForceGeminiStrict = false,
+    RunTrigger Trigger = RunTrigger.Manual,
+    bool SuppressTransientUiFeedback = false)
 {
     public static ForceRunOptions None => new(false, false, false, false);
 
@@ -128,6 +136,8 @@ public sealed class PipelineOrchestrator
             var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
             perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
             totalStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+            _logger.Info(
+                $"Run context: trigger={options.Trigger}, suppress transient UI={options.SuppressTransientUiFeedback}.");
             if (perfEnabled)
             {
                 queueWaitMs = waitStopwatch.ElapsedMilliseconds;
@@ -244,7 +254,14 @@ public sealed class PipelineOrchestrator
                 {
                     _logger.Info("OCR returned no lines after confidence filtering.");
                     _overlayPresenter.ClearOverlay();
-                    _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                    if (!options.SuppressTransientUiFeedback)
+                    {
+                        _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                    }
+                    else
+                    {
+                        _logger.Info("No text detected (toast suppressed).");
+                    }
                     return;
                 }
 
@@ -272,7 +289,14 @@ public sealed class PipelineOrchestrator
                 {
                     _logger.Info("OCR returned no lines.");
                     _overlayPresenter.ClearOverlay();
-                    _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                    if (!options.SuppressTransientUiFeedback)
+                    {
+                        _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                    }
+                    else
+                    {
+                        _logger.Info("No text detected (toast suppressed).");
+                    }
                     return;
                 }
 
