@@ -186,7 +186,8 @@
                                        Width="48"
                                        Margin="8,0,0,0"
                                        VerticalAlignment="Center"
-                                       TextAlignment="Right" />
+                                       TextAlignment="Right"
+                                       Text="{Binding ElementName=OverlayFontSizeSlider, Path=Value, StringFormat={}{0:F1}}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                             <TextBlock Text="Overlay opacity" Width="150" VerticalAlignment="Center" />
@@ -203,7 +204,8 @@
                                        Width="48"
                                        Margin="8,0,0,0"
                                        VerticalAlignment="Center"
-                                       TextAlignment="Right" />
+                                       TextAlignment="Right"
+                                       Text="{Binding ElementName=OverlayBackgroundOpacitySlider, Path=Value, StringFormat={}{0:F2}}" />
                         </StackPanel>
 
                         <Separator Margin="0,10,0,10" />
@@ -275,7 +277,8 @@
                                             SmallChange="1"
                                             LargeChange="10"
                                             ValueChanged="OnOcrTwoPassLowThresholdChanged" />
-                                    <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="High threshold" Width="150" VerticalAlignment="Center" />
@@ -288,7 +291,8 @@
                                             SmallChange="1"
                                             LargeChange="10"
                                             ValueChanged="OnOcrTwoPassHighThresholdChanged" />
-                                    <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
@@ -301,7 +305,8 @@
                                             SmallChange="1"
                                             LargeChange="10"
                                             ValueChanged="OnOcrBinarizationThresholdChanged" />
-                                    <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrBinarizationThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Gamma" Width="150" VerticalAlignment="Center" />
@@ -314,7 +319,8 @@
                                             SmallChange="0.05"
                                             LargeChange="0.1"
                                             ValueChanged="OnOcrGammaChanged" />
-                                    <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrGammaSlider, Path=Value, StringFormat={}{0:F2}}" />
                                 </StackPanel>
 
                                 <Separator Margin="0,12,0,8" />
@@ -338,7 +344,8 @@
                                                Width="48"
                                                Margin="8,0,0,0"
                                                VerticalAlignment="Center"
-                                               TextAlignment="Right" />
+                                               TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}" />
                                 </StackPanel>
                                 <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
                                 <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="640" Height="360">
@@ -374,7 +381,8 @@
                                                Width="48"
                                                Margin="8,0,0,0"
                                                VerticalAlignment="Center"
-                                               TextAlignment="Right" />
+                                               TextAlignment="Right"
+                                               Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}" />
                                 </StackPanel>
 
                                 <Separator Margin="0,12,0,8" />
@@ -394,7 +402,8 @@
                                             SmallChange="0.01"
                                             LargeChange="0.1"
                                             ValueChanged="OnSceneChangeThresholdChanged" />
-                                    <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Watch interval (ms)" Width="150" VerticalAlignment="Center" />
@@ -407,7 +416,8 @@
                                             SmallChange="100"
                                             LargeChange="500"
                                             ValueChanged="OnSceneChangeWatchIntervalChanged" />
-                                    <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Watcher pHash threshold" Width="150" VerticalAlignment="Center" />
@@ -420,7 +430,8 @@
                                             SmallChange="1"
                                             LargeChange="5"
                                             ValueChanged="OnSceneChangeWatchPhashChanged" />
-                                    <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right" />
+                                    <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                             </StackPanel>
 
@@ -487,7 +498,8 @@
                                                  Width="36"
                                                  Margin="8,0,0,0"
                                                  VerticalAlignment="Center"
-                                                 TextAlignment="Right" />
+                                                 TextAlignment="Right"
+                                                 Text="{Binding ElementName=PaddleConfidenceThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                   </StackPanel>
                                   <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
                                   <Separator Margin="0,10,0,8" />
@@ -515,8 +527,8 @@
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                       <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
-                                      <Button Content="設定を反映して再起動" Width="160" Click="OnRestartPaddleOcrHosts" />
-                                      <Button Content="停止" Width="80" Margin="8,0,0,0" Click="OnStopPaddleVlHost" />
+                                      <Button Content="設定を反映して再起動" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />
+                                      <Button Content="停止" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
                                   </StackPanel>
                               </StackPanel>
 
@@ -558,12 +570,12 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
                                       <ComboBox x:Name="LlamaModelBox" Width="320" SelectionChanged="OnSettingChanged" />
-                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Click="OnReloadLlamaModels" />
+                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadLlamaModelsCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
-                                      <Button Content="Restart Llama.cpp" Width="150" Click="OnRestartLlamaCpp" />
-                                      <Button Content="Stop llama-server" Width="130" Margin="8,0,0,0" Click="OnStopLlamaServer" />
+                                      <Button Content="Restart Llama.cpp" Width="150" Command="{Binding RestartLlamaCppCommand}" />
+                                      <Button Content="Stop llama-server" Width="130" Margin="8,0,0,0" Command="{Binding StopLlamaServerCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />

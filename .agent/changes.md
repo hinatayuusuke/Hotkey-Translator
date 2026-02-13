@@ -8133,3 +8133,40 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet run --project Hotkey-Translator.csproj` をプロセス監視で5秒実行し、即時クラッシュしないことを確認（`RUNNING_OK_NO_EARLY_CRASH`）。
 - `dotnet build` を単独で再実行し、`0 warning / 0 error` を確認。
+**2026-02-14 02:17 (Asia/Taipei) — MVVM残タスク実装（Runtime Command化 + 値表示Binding化）**
+
+### Summary
+- `Doc/MVVM_Implementation_Plan.md` の残実装として、Runtime 操作の Command 化とスライダー値表示ロジックの XAML Binding 移行を実施した。
+
+### Context / Goal
+- 主要機能の Command 化を拡張し、`MainWindow.xaml.cs` のイベント依存をさらに削減する。
+- `Update...Value` 系の手動UI同期を廃止し、表示更新を XAML バインディングへ寄せる。
+
+### Changes
+- `MainWindowViewModel` に Runtime 操作用コマンド（Llama reload/restart/stop、Paddle host restart/stop）を追加。
+- `MainWindow.xaml` の Runtime 操作ボタンを `Click` から `Command` バインディングへ移行。
+- スライダー横の値表示（OCR/Overlay/Scene/Paddle）を `ElementName` + `StringFormat` バインディングへ変更。
+- `MainWindow.xaml.cs` から不要になった `Update...Value` / `UpdateSceneChangeWatchValues` を削除し、関連呼び出しも除去。
+- `OnRunOnce` など不要イベントハンドラを削除し、Runtime ハンドラをコマンド向け `Task`/`Action` メソッドへ置換。
+- View 境界責務を明示するため `Doc/MainWindow_View_Boundary.md` を追加し、`MainWindow` クラスに `NOTE` コメントを追記。
+
+### Files Touched
+- `ViewModels/MainWindowViewModel.cs` — Runtime 操作用 `ICommand` 群を追加。
+- `MainWindow.xaml` — Runtime ボタンの `Command` 化と値表示 `Binding` 化を実施。
+- `MainWindow.xaml.cs` — Runtime メソッドのコマンド化対応、不要UI同期メソッド削除、View責務コメント追加。
+- `Doc/MainWindow_View_Boundary.md` — View に残す責務境界を文書化。
+
+### Behavioral Impact
+- Runtime 操作（Llama/Paddle）の UI 操作が ViewModel コマンド経由で実行される。
+- スライダー値表示はコードビハインド更新ではなくバインディングで常時同期される。
+- 設定保存 debounce / 即時保存の既存戦略は維持される。
+
+### Risk & Mitigation
+- Risk: Command 化で実行経路が変わり、既存ボタン操作が効かなくなる可能性。
+- Mitigation: 既存ロジック本体は再利用し、入口のみ `Click` から `Command` へ移行。ビルドと起動確認を実施。
+- Risk: XAML バインディング式の誤りで表示欠落が起こる可能性。
+- Mitigation: 既存 `x:Name` を維持した `ElementName` バインディングを採用し、`dotnet run` 起動時クラッシュがないことを確認。
+
+### Tests / Verification
+- `dotnet build` 実行: `0 warning / 0 error`。
+- `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

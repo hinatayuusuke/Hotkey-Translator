@@ -15,6 +15,11 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         Action swapLanguages,
         Action moveTranslationPriorityUp,
         Action moveTranslationPriorityDown,
+        Func<Task> reloadLlamaModelsAsync,
+        Func<Task> restartLlamaCppAsync,
+        Func<Task> stopLlamaServerAsync,
+        Func<Task> restartPaddleOcrHostsAsync,
+        Action stopPaddleVlHost,
         Func<Task> saveSettingsAsync)
     {
         Settings = settings;
@@ -24,6 +29,11 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         SwapLanguagesCommand = new RelayCommand(swapLanguages);
         TranslationPriorityUpCommand = new RelayCommand(moveTranslationPriorityUp);
         TranslationPriorityDownCommand = new RelayCommand(moveTranslationPriorityDown);
+        ReloadLlamaModelsCommand = new AsyncRelayCommand(reloadLlamaModelsAsync);
+        RestartLlamaCppCommand = new AsyncRelayCommand(restartLlamaCppAsync);
+        StopLlamaServerCommand = new AsyncRelayCommand(stopLlamaServerAsync);
+        RestartPaddleOcrHostsCommand = new AsyncRelayCommand(restartPaddleOcrHostsAsync);
+        StopPaddleVlHostCommand = new RelayCommand(stopPaddleVlHost);
         SaveSettingsCommand = new AsyncRelayCommand(saveSettingsAsync);
     }
 
@@ -40,6 +50,16 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public IRelayCommand TranslationPriorityUpCommand { get; }
 
     public IRelayCommand TranslationPriorityDownCommand { get; }
+
+    public IAsyncRelayCommand ReloadLlamaModelsCommand { get; }
+
+    public IAsyncRelayCommand RestartLlamaCppCommand { get; }
+
+    public IAsyncRelayCommand StopLlamaServerCommand { get; }
+
+    public IAsyncRelayCommand RestartPaddleOcrHostsCommand { get; }
+
+    public IRelayCommand StopPaddleVlHostCommand { get; }
 
     public IAsyncRelayCommand SaveSettingsCommand { get; }
 }

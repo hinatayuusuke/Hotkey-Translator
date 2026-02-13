@@ -22,6 +22,7 @@ using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
 
+// NOTE: Global hotkey registration and Window lifecycle handling remain in View because they depend on HWND and WPF dispatcher boundaries.
 public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBridge
 {
     private readonly SettingsService _settingsService = new();
@@ -83,6 +84,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SwapLanguages,
             MoveTranslationPriorityUp,
             MoveTranslationPriorityDown,
+            ReloadLlamaModelsAsync,
+            RestartLlamaCppAsync,
+            StopLlamaServerAsync,
+            RestartPaddleOcrHostsAsync,
+            StopPaddleVlHost,
             SaveSettingsImmediatelyAsync);
         DataContext = _mainWindowViewModel;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
@@ -642,11 +648,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         AppendLog("Overlay shown.");
     }
 
-    private async void OnRunOnce(object sender, RoutedEventArgs e)
-    {
-        await RunOnceAsync().ConfigureAwait(true);
-    }
-
     private async Task RunOnceAsync()
     {
         await RunOnceAsync(ForceRunOptions.None).ConfigureAwait(true);
@@ -900,19 +901,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         SceneChangeWatchIntervalSlider.Value = settings.SceneChangeWatchIntervalMs;
         SceneChangeWatchPhashSlider.Value = settings.SceneChangeWatchPhashThreshold;
         UpdateLoggingState(settings.EnableLogging);
-        UpdateOcrBinarizationThresholdValue();
-        UpdateOcrGammaValue();
-        UpdateOcrDownsampleScaleValue();
-        UpdateOcrTwoPassThresholdValues();
-        UpdateOverlayFontSizeValue();
-        UpdateOverlayBackgroundOpacityValue();
-        UpdateSmallTextThresholdValue();
         UpdateOcrPreprocessControls(settings);
         UpdateSmallBoxReadabilityControls(settings);
-        UpdatePaddleConfidenceThresholdValue();
-        UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
-        UpdateSceneChangeWatchValues();
         UpdateRoiStatus(settings);
         UpdateLanguageCustomVisibility();
         _isApplyingSettings = false;
@@ -1444,14 +1435,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         RequestSettingsSave();
     }
 
-    private async void OnReloadLlamaModels(object sender, RoutedEventArgs e)
+    private async Task ReloadLlamaModelsAsync()
     {
         var settings = _settingsService.Settings;
         ReloadLlamaModelOptions(settings);
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
     }
 
-    private async void OnRestartLlamaCpp(object sender, RoutedEventArgs e)
+    private async Task RestartLlamaCppAsync()
     {
         if (!IsLoaded)
         {
@@ -1484,7 +1475,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private async void OnStopLlamaServer(object sender, RoutedEventArgs e)
+    private async Task StopLlamaServerAsync()
     {
         if (!IsLoaded)
         {
@@ -1512,7 +1503,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private async void OnRestartPaddleOcrHosts(object sender, RoutedEventArgs e)
+    private async Task RestartPaddleOcrHostsAsync()
     {
         if (!IsLoaded)
         {
@@ -1561,7 +1552,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private void OnStopPaddleVlHost(object sender, RoutedEventArgs e)
+    private void StopPaddleVlHost()
     {
         if (!IsLoaded)
         {
@@ -1599,7 +1590,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOcrBinarizationThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOcrBinarizationThresholdValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1610,7 +1600,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOcrGammaChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOcrGammaValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1621,7 +1610,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnPaddleConfidenceThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdatePaddleConfidenceThresholdValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1632,7 +1620,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOcrDownsampleScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOcrDownsampleScaleValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1643,7 +1630,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOcrTwoPassThresholdValues();
         if (_isApplyingSettings)
         {
             return;
@@ -1654,7 +1640,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOcrTwoPassHighThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOcrTwoPassThresholdValues();
         if (_isApplyingSettings)
         {
             return;
@@ -1665,7 +1650,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOverlayFontSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOverlayFontSizeValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1676,7 +1660,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnOverlayBackgroundOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateOverlayBackgroundOpacityValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1687,7 +1670,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnSmallTextThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateSmallTextThresholdValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1698,7 +1680,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateSceneChangeThresholdValue();
         if (_isApplyingSettings)
         {
             return;
@@ -1709,7 +1690,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnSceneChangeWatchIntervalChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateSceneChangeWatchValues();
         if (_isApplyingSettings)
         {
             return;
@@ -1720,7 +1700,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnSceneChangeWatchPhashChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
-        UpdateSceneChangeWatchValues();
         if (_isApplyingSettings)
         {
             return;
@@ -1929,18 +1908,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
-        UpdateOcrBinarizationThresholdValue();
-        UpdateOcrGammaValue();
-        UpdateOcrDownsampleScaleValue();
-        UpdateOcrTwoPassThresholdValues();
-        UpdateOverlayFontSizeValue();
-        UpdateOverlayBackgroundOpacityValue();
-        UpdateSmallTextThresholdValue();
         UpdateOcrPreprocessControls(settings);
         UpdateSmallBoxReadabilityControls(settings);
-        UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
-        UpdateSceneChangeWatchValues();
         PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
         PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
         PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
@@ -2112,98 +2082,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return string.Join("+", parts);
     }
 
-    private void UpdateOcrBinarizationThresholdValue()
-    {
-        if (OcrBinarizationThresholdValue == null || OcrBinarizationThresholdSlider == null)
-        {
-            return;
-        }
-
-        OcrBinarizationThresholdValue.Text = ((int)Math.Round(OcrBinarizationThresholdSlider.Value)).ToString();
-    }
-
-    private void UpdateOcrGammaValue()
-    {
-        if (OcrGammaValue == null || OcrGammaSlider == null)
-        {
-            return;
-        }
-
-        OcrGammaValue.Text = OcrGammaSlider.Value.ToString("0.00");
-    }
-
-    private void UpdatePaddleConfidenceThresholdValue()
-    {
-        if (PaddleConfidenceThresholdValue == null || PaddleConfidenceThresholdSlider == null)
-        {
-            return;
-        }
-
-        PaddleConfidenceThresholdValue.Text = PaddleConfidenceThresholdSlider.Value.ToString("0.00");
-    }
-
-    private void UpdateOcrDownsampleScaleValue()
-    {
-        if (OcrDownsampleScaleValue == null || OcrDownsampleScaleSlider == null)
-        {
-            return;
-        }
-
-        OcrDownsampleScaleValue.Text = OcrDownsampleScaleSlider.Value.ToString("0.00");
-    }
-
-    private void UpdateOcrTwoPassThresholdValues()
-    {
-        if (OcrTwoPassLowThresholdValue == null || OcrTwoPassLowThresholdSlider == null ||
-            OcrTwoPassHighThresholdValue == null || OcrTwoPassHighThresholdSlider == null)
-        {
-            return;
-        }
-
-        OcrTwoPassLowThresholdValue.Text = ((int)Math.Round(OcrTwoPassLowThresholdSlider.Value)).ToString();
-        OcrTwoPassHighThresholdValue.Text = ((int)Math.Round(OcrTwoPassHighThresholdSlider.Value)).ToString();
-    }
-
-    private void UpdateOverlayFontSizeValue()
-    {
-        if (OverlayFontSizeValue == null || OverlayFontSizeSlider == null)
-        {
-            return;
-        }
-
-        OverlayFontSizeValue.Text = OverlayFontSizeSlider.Value.ToString("0.0");
-    }
-
-    private void UpdateOverlayBackgroundOpacityValue()
-    {
-        if (OverlayBackgroundOpacityValue == null || OverlayBackgroundOpacitySlider == null)
-        {
-            return;
-        }
-
-        OverlayBackgroundOpacityValue.Text = OverlayBackgroundOpacitySlider.Value.ToString("0.00");
-    }
-
-    private void UpdateSmallTextThresholdValue()
-    {
-        if (SmallTextThresholdValue == null || SmallTextThresholdSlider == null)
-        {
-            return;
-        }
-
-        SmallTextThresholdValue.Text = SmallTextThresholdSlider.Value.ToString("0.0");
-    }
-
-    private void UpdateSceneChangeThresholdValue()
-    {
-        if (SceneChangeThresholdValue == null || SceneChangeThresholdSlider == null)
-        {
-            return;
-        }
-
-        SceneChangeThresholdValue.Text = SceneChangeThresholdSlider.Value.ToString("0.00");
-    }
-
     private void UpdateSmallBoxReadabilityControls(AppSettings settings)
     {
         if (EnableSmallBoxReadabilityBoostCheck == null || SmallTextThresholdSlider == null || SmallTextThresholdValue == null)
@@ -2243,18 +2121,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         SceneChangeWatchPhashValue.Foreground = sceneWatcherEnabled
             ? System.Windows.Media.Brushes.Black
             : System.Windows.Media.Brushes.DimGray;
-    }
-
-    private void UpdateSceneChangeWatchValues()
-    {
-        if (SceneChangeWatchIntervalValue == null || SceneChangeWatchIntervalSlider == null ||
-            SceneChangeWatchPhashValue == null || SceneChangeWatchPhashSlider == null)
-        {
-            return;
-        }
-
-        SceneChangeWatchIntervalValue.Text = ((int)Math.Round(SceneChangeWatchIntervalSlider.Value)).ToString();
-        SceneChangeWatchPhashValue.Text = ((int)Math.Round(SceneChangeWatchPhashSlider.Value)).ToString();
     }
 
     private void OnOverlayShown() => _sceneChangeController.OnOverlayShown();
