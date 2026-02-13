@@ -7489,3 +7489,220 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln /p:OutputPath=bin\\TempVerify\\` 実行成功（0 warnings / 0 errors）。
+
+**2026-02-13 10:41 (Asia/Taipei) — PaddleOCR-VL gRPC排他計画の方針反映（Vllm廃止/WinRt非停止）**
+
+### Summary
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を現方針へ更新し、Vllm設定廃止・WinRt時非停止・実装責務の曖昧さを解消した。
+
+### Context / Goal
+- 現行コードレビュー結果を踏まえ、計画書を実装可能な粒度に修正する。
+- ユーザー方針（既存 Vllm* 廃止、WinRt時は両停止しない）を優先して文書へ固定する。
+
+### Changes
+- ゴールに「`Vllm*`（HTTP直叩き）設定廃止、gRPC一本化」を追加。
+- 非ゴールに「WinRt選択時のPaddle系自動停止は要件外」を明記。
+- 現状整理へ、既存 `PaddleVllmOcrProvider` と `Vllm*` 設定残存を追記。
+- 提案構成で `PaddleVllm` の参照を gRPC化し、HTTP provider 参照撤去を明記。
+- 排他ルールを「Paddle と PaddleVllm の相互切替時のみ」に修正。
+- `IDisposable` の責務を明確化し、`OcrEngine : IDisposable` + `MainWindow.OnClosed` での明示解放に固定。
+- proto運用を `Protos/OcrGrpc.proto` 単一ソースへ統一する方針を追加。
+- AppSettings へ `Vllm*` 廃止項目と互換移行（起動時無視・保存時収束）を追記。
+- 実装手順、スモークテスト、DoD を新方針に合わせて更新。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` — 方針更新、責務明確化、移行方針追加、DoD/テスト条件の再定義。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本計画どおり実装すれば、Paddle/PaddleVllm は排他運用、WinRtは非停止運用、Vllm*は廃止運用で一貫する。
+
+### Risk & Mitigation
+- Risk: 旧 `Vllm*` 設定残存による移行時混乱。
+- Mitigation: 計画で「起動時無視・保存時削除/空化」を明記し、収束ルールを固定。
+
+### Tests / Verification
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を UTF-8 で再読し、排他定義・非ゴール・DoD の整合を確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 11:04 (Asia/Taipei) — PaddleOCR-VL計画へUI公開パラメーター方針を反映**
+
+### Summary
+- `OcrServiceVL/main.py` 引数を考慮した UI公開/非公開パラメーター方針を `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` に追記した。
+
+### Context / Goal
+- PaddleOCR Core と PaddleOCR-VL のパラメーターのうち、運用で安全にUI露出できる範囲を明確化する。
+- 過剰露出による設定事故を避けつつ、実運用で必要なしきい値調整は可能にする。
+
+### Changes
+- `7.3 UI露出パラメーター方針（Core + VL）` セクションを追加。
+- 公開UI: Coreの4しきい値（`text_det_thresh`, `text_det_box_thresh`, `text_det_unclip_ratio`, `text_rec_score_thresh`）とVLの3項目（`pipeline_version`, `max_pixels`, `layout_threshold`）を定義。
+- 非公開設定（Settings.json）: VL挙動系（`merge_layout_blocks`, `use_ocr_for_image_block`, `use_layout_detection`, `max_new_tokens`）と性能系（`enable_hpi`, `use_tensorrt`, `precision`）を定義。
+- UI非対象: `input_image`, `save_dir`（CLI専用）と `device`（Auto既定）を明記。
+- 競合回避: 既存 `PaddleConfidenceThreshold` 系と `text_rec_score_thresh` の二重調整回避ルールを追記。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` — UI公開/非公開パラメーター方針を追加。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本方針どおり実装すると、UIは最小公開で運用しやすく、詳細チューニングはSettings.json側に分離される。
+
+### Risk & Mitigation
+- Risk: 閾値系を複数経路で露出すると調整意図が衝突する可能性。
+- Mitigation: 文書に「一系統へ統一（推奨: `text_rec_score_thresh`）」を明記。
+
+### Tests / Verification
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を UTF-8 で再読し、追加セクションの位置・内容整合を確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 11:09 (Asia/Taipei) — PaddleOCR-VL計画へ停止/再開（設定反映）運用を追記**
+
+### Summary
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` に OCRホストの `停止` と `設定を反映して再起動` 導線を追加した。
+
+### Context / Goal
+- Llama同様に、設定変更後に明示操作でホストへ反映できる運用を計画へ反映する。
+- 排他制御と競合防止を維持したまま、運用者の再適用手順を明確化する。
+
+### Changes
+- C#側提案にホスト制御UI（主操作: `設定を反映して再起動`、副操作: `停止`）を追加。
+- 実装ポイントへ、保存先行・`_runInProgress` 中ボタン無効化・`resourceLoadGate` 直列化を追記。
+- 実装手順に「ホスト制御UI（停止/再起動）追加」ステップを追加。
+- スモークテストへ、再起動反映確認と停止操作の影響範囲確認を追加。
+- リスクへ「未保存再起動による想定外構成起動」を追加し、保存必須化で緩和する方針を追記。
+- DoDへ「再起動で最新設定反映」「停止で対象ホスト停止」を追加。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` — 停止/再起動UI運用、実装条件、検証条件を追記。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本計画どおり実装すると、設定反映タイミングをユーザーが明示的に制御できる。
+
+### Risk & Mitigation
+- Risk: 実行中操作や未保存状態で再起動すると状態競合や設定不一致が起きる可能性。
+- Mitigation: 実行中ボタン無効化、保存先行、`resourceLoadGate` 直列化を必須化。
+
+### Tests / Verification
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を UTF-8 で再読し、追加したUI運用・DoD・リスク項目の整合を確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 11:13 (Asia/Taipei) — PaddleOCR-VLタブ集約とMaxTokensレンジ要件を計画へ反映**
+
+### Summary
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` に「PaddleOCR-VLタブへUI集約」と `max_new_tokens(512～4096)` 露出要件を追記した。
+
+### Context / Goal
+- UI露出先を `Settings > PaddleOCR-VL` タブに統一し、設定導線を分散させない。
+- `max_new_tokens` を運用可能な範囲でUI公開し、過大/過小値を防ぐ。
+
+### Changes
+- C#側提案に「PaddleOCR-VLタブ新設」「UI露出項目の集約」を追加。
+- AppSettings候補へ `PaddleVlMaxNewTokens` と UIレンジ制限（512～4096）を追加。
+- UI方針セクションをタブ集約前提へ更新し、`max_new_tokens` を公開UIへ移動。
+- `max_new_tokens` は UI入力時と Python引数生成時の二重クランプを明記。
+- 実装手順にタブ追加とレンジ制約実装を追加。
+- スモークテストに `max_new_tokens` クランプ確認を追加。
+- DoD に「タブ集約完了」「`max_new_tokens` 範囲運用」を追加。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` — UI集約方針とMaxTokens制約を追記。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本計画どおり実装すると、PaddleOCR-VL関連UIは単一タブに集約され、`max_new_tokens` は安全レンジで運用される。
+
+### Risk & Mitigation
+- Risk: UI制限だけで満足すると、非UI経路（設定直編集）で範囲外値が混入する可能性。
+- Mitigation: Python引数生成時にも二重クランプする要件を明記。
+
+### Tests / Verification
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を UTF-8 で再読し、タブ集約・レンジ制約・DoD の整合を確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 11:18 (Asia/Taipei) — PaddleOCR-VL計画にAUTO/停止no-op仕様を反映**
+
+### Summary
+- `max_new_tokens` の未指定時挙動を `AUTO(None)` に固定し、停止ボタンの no-op 条件を計画へ反映した。
+
+### Context / Goal
+- 最終確認で残った曖昧点（未指定時挙動、停止ボタン対象）を仕様として確定する。
+- 実装時の解釈ブレをなくす。
+
+### Changes
+- ホスト制御UIの副操作を「`PaddleOCR-VL` ホスト生存時のみ停止、それ以外は no-op」に更新。
+- AppSettings候補の `PaddleVlMaxNewTokens` に「未指定は `AUTO(None)`」を追記。
+- UI方針へ「未指定時は AUTO 扱いで Python に `None` を渡す」ルールを追加。
+- 実装手順の停止ボタン仕様を no-op 条件付きに更新。
+- スモークテストに「AUTO(None)動作確認」「非稼働時停止no-op確認」を追加。
+- DoD に「AUTO(None)運用」「停止no-op仕様」を追加。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` — AUTO/停止no-op仕様を明文化。
+
+### Behavioral Impact
+- なし（ドキュメント更新のみ）。
+- ただし本計画どおり実装すると、未指定 `max_new_tokens` は内部既定利用となり、停止ボタンは無害な no-op 挙動になる。
+
+### Risk & Mitigation
+- Risk: UI未指定値や非稼働停止の扱いが実装者ごとに変わる可能性。
+- Mitigation: 文書に明示仕様（AUTO(None) / no-op）を固定し、テスト項目にも追加。
+
+### Tests / Verification
+- `Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md` を UTF-8 で再読し、追加仕様が実装手順・DoD と一致することを確認。
+- コード変更は未実施のためビルド/実行テストは未実施。
+
+**2026-02-13 11:39 (Asia/Taipei) — PaddleOCR-VL gRPC mutual exclusion implementation**
+
+### Summary
+- PaddleOCR-VL をローカル gRPC 経路で実装し、Paddle/PaddleOCR-VL の相互排他起動と UI/設定反映導線を追加した。
+
+### Context / Goal
+- Doc/PaddleOCR_VL_Grpc_MutualExclusion_Plan.md の実装。
+- Paddle と PaddleVllm の切替時に非選択側ホストを停止し、OCR実行経路を gRPC に一本化する。
+
+### Changes
+- OcrServiceVL に gRPC サーバ (server.py) を追加し、ocr_vl_engine.py を実運用用エンジンとして接続。
+- Services/PaddleVlGrpcHost.cs と Services/PaddleVlGrpcOcrProvider.cs を追加し、OcrEngineKind.PaddleVllm の実行経路を有効化。
+- Services/OcrEngine.cs を IDisposable 化し、Paddle/PaddleOCR-VL gRPC channel 解放を実装。
+- MainWindow.xaml(.cs) に OCR engine 選択肢 (PaddleOCR-VL) と PaddleOCR-VL 設定パネル、再起動/停止ボタンを追加。
+- EnsureResourceHostsAsync を拡張し、Paddle 選択時は PaddleVl 停止、PaddleVllm 選択時は Paddle 停止を強制。
+- SettingsService/AppSettings から旧 Vllm* 設定を撤去し、PaddleVlGrpc* と VL推論設定を追加。
+- Core Paddle の 	ext_det_* / 	ext_rec_score_thresh を settings 経由で渡せるよう OcrService/server.py と OcrService/ocr_engine.py を拡張。
+- 旧 HTTP provider Services/PaddleVllmOcrProvider.cs を削除。
+
+### Files Touched
+- MainWindow.xaml — OCR engine選択肢追加、Settingsカテゴリ名変更、PaddleOCR-VL 設定UI/再起動・停止ボタン追加。
+- MainWindow.xaml.cs — Paddle/PaddleVL host 相互排他制御、PaddleVL host 起動失敗時フォールバック、再起動/停止ハンドラ、UI保存反映。
+- Models/AppSettings.cs — PaddleVlGrpc*/PaddleVl* 設定と Core threshold 設定追加、旧 Vllm* 設定削除。
+- Services/SettingsService.cs — VllmApiKey* 保護/復号処理を削除。
+- Services/OcrEngine.cs — PaddleVllm 分岐追加、provider解放のため IDisposable 実装。
+- Services/PaddleGrpcHost.cs — Core threshold 引数を Python サーバへ送信。
+- Services/PaddleGrpcOcrProvider.cs — gRPC channel 解放 (IDisposable) 追加。
+- Services/PaddleVlGrpcHost.cs — 新規、PaddleOCR-VL gRPC host 起動/監視/再起動管理。
+- Services/PaddleVlGrpcOcrProvider.cs — 新規、PaddleOCR-VL gRPC OCR provider。
+- Services/PaddleVllmOcrProvider.cs — 削除（旧HTTP経路撤去）。
+- OcrService/server.py — Core threshold CLI引数対応と EnginePool 注入。
+- OcrService/ocr_engine.py — threshold をコンストラクタ引数化。
+- OcrServiceVL/server.py — 新規、PaddleOCR-VL gRPC サーバ実装。
+- OcrServiceVL/ocr_vl_engine.py — CUDA DLL bootstrap と close を追加。
+- OcrServiceVL/pyproject.toml — grpcio/grpcio-tools/pillow 依存追加。
+- OcrServiceVL/ocr.proto — gRPC 契約ファイルを配置。
+
+### Behavioral Impact
+- OCR engine を PaddleOCR-VL (gRPC) に切替えると、ローカル gRPC サーバ経由で OCR を実行する。
+- Paddle と PaddleOCR-VL は同時常駐せず、切替時に非選択側ホストを停止する。
+- PaddleOCR-VL 停止ボタンはホスト非稼働時は no-op ログのみ。
+- max_new_tokens は UI で空欄なら AUTO(None)、数値入力時は 512〜4096 にクランプされる。
+- WinRT 選択時は Paddle系ホストを自動停止しない（既存方針維持）。
+
+### Risk & Mitigation
+- Risk: Paddle/VL 片側だけ設定変更して再起動せずに稼働継続すると、古いプロセス設定で動作する。
+- Mitigation: 設定パネルに「設定を反映して再起動」導線を追加し、保存後の再起動を明示。
+- Risk: 旧 settings.json に残る Vllm* 項目との整合。
+- Mitigation: AppSettings から該当プロパティを削除して読み込み時に自然無視し、以後保存で収束。
+
+### Tests / Verification
+- dotnet build 実行: 成功（警告0/エラー0）。
+- python -m py_compile OcrServiceVL/server.py OcrServiceVL/ocr_vl_engine.py OcrService/server.py OcrService/ocr_engine.py 実行: 成功。

@@ -67,6 +67,10 @@ class PaddleOcrEngine:
         ocr_version: str = "PP-OCRv5",
         text_detection_model_name: str = "PP-OCRv5_mobile_det",
         text_recognition_model_name: str = "PP-OCRv5_server_rec",
+        text_det_thresh: float = 0.5,
+        text_det_box_thresh: float = 0.68,
+        text_det_unclip_ratio: float = 1.3,
+        text_rec_score_thresh: float = 0.58,
     ):
         try:
             from paddleocr import PaddleOCR
@@ -114,11 +118,11 @@ class PaddleOcrEngine:
             "text_detection_model_name": text_detection_model_name,
             "text_recognition_model_name": rec_model_name,
             # NOTE: v3系の推奨パラメータ名。旧 det_db_* は非推奨。
-            # WHY: Raise thresholds slightly to reduce low-confidence boxes that tend to drift visually.
-            "text_det_thresh": 0.5,
-            "text_det_box_thresh": 0.68,
-            "text_det_unclip_ratio": 1.3,
-            "text_rec_score_thresh": 0.58,
+            # WHY: Raise thresholds slightly by default to reduce low-confidence boxes that tend to drift visually.
+            "text_det_thresh": text_det_thresh,
+            "text_det_box_thresh": text_det_box_thresh,
+            "text_det_unclip_ratio": text_det_unclip_ratio,
+            "text_rec_score_thresh": text_rec_score_thresh,
             "use_doc_orientation_classify": True,
             "use_doc_unwarping": True,
             "use_textline_orientation": True,

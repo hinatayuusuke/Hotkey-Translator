@@ -69,9 +69,10 @@
                             <ComboBox Grid.Column="1" x:Name="OcrEngineBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                                <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
                             </ComboBox>
                         </Grid>
-                        <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
+                        <TextBlock Text="Use Settings &gt; PaddleOCR-VL runtime controls to apply changes and release OCR host resources."
                                    Foreground="DimGray"
                                    TextWrapping="Wrap"
                                    Margin="0,6,0,0" />
@@ -220,7 +221,7 @@
                         <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0">
                                 <ListBox x:Name="SettingsCategoryList" SelectionChanged="OnSettingsCategoryChanged" SelectedIndex="0">
                                     <ListBoxItem Content="OCR" />
-                                    <ListBoxItem Content="Paddle OCR" />
+                                    <ListBoxItem Content="PaddleOCR-VL" />
                                     <ListBoxItem Content="Translation" />
                                     <ListBoxItem Content="Hotkeys" />
                                 </ListBox>
@@ -424,7 +425,7 @@
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle" Visibility="Collapsed" Margin="0,8,0,0">
-                                <TextBlock Text="Paddle OCR" FontWeight="SemiBold" />
+                                <TextBlock Text="PaddleOCR Core (gRPC)" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Detection model" Width="120" VerticalAlignment="Center" />
                                     <ComboBox x:Name="PaddleDetectionModelBox" Width="220" SelectionChanged="OnSettingChanged">
@@ -450,11 +451,28 @@
                                           <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
                                       </ComboBox>
                                   </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetThreshBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_box_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetBoxThreshBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_unclip_ratio" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetUnclipRatioBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_rec_score_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextRecScoreThreshBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
                                   <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
                                             Content="Filter low-confidence lines (Paddle only)"
                                             Margin="0,8,0,0"
+                                            Visibility="Collapsed"
                                             Click="OnSettingChanged" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
                                       <TextBlock Text="Confidence threshold" Width="120" VerticalAlignment="Center" />
                                       <Slider x:Name="PaddleConfidenceThresholdSlider"
                                               Width="180"
@@ -472,6 +490,34 @@
                                                  TextAlignment="Right" />
                                   </StackPanel>
                                   <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
+                                  <Separator Margin="0,10,0,8" />
+
+                                  <TextBlock Text="PaddleOCR-VL (gRPC)" FontWeight="SemiBold" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Pipeline version" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120" SelectionChanged="OnSettingChanged">
+                                          <ComboBoxItem Content="v1" Tag="v1" />
+                                          <ComboBoxItem Content="v1.5" Tag="v1.5" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Max pixels" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlMaxPixelsBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Layout threshold" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlLayoutThresholdBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Max new tokens" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlMaxNewTokensBox" Width="120" LostFocus="OnSettingLostFocus" />
+                                      <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <Button Content="設定を反映して再起動" Width="160" Click="OnRestartPaddleOcrHosts" />
+                                      <Button Content="停止" Width="80" Margin="8,0,0,0" Click="OnStopPaddleVlHost" />
+                                  </StackPanel>
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelTranslation" Visibility="Collapsed" Margin="0,12,0,0">

@@ -35,7 +35,9 @@ public partial class MainWindow : Window
     private CacheRepository? _cacheRepository;
     private CaptureManager? _captureManager;
     private PipelineOrchestrator? _pipeline;
+    private OcrEngine? _ocrEngine;
     private PaddleGrpcHost? _paddleGrpcHost;
+    private PaddleVlGrpcHost? _paddleVlGrpcHost;
     private CTranslate2GrpcHost? _ct2GrpcHost;
     private LlamaGrpcHost? _llamaGrpcHost;
     private HotkeyManager? _hotkeyManager;
@@ -113,6 +115,7 @@ public partial class MainWindow : Window
         settingsChanged |= NormalizeSceneChangeModeSettings(settings);
         settingsChanged |= NormalizeWritingModeSettings(settings);
         settingsChanged |= NormalizeSmallBoxReadabilitySettings(settings);
+        settingsChanged |= NormalizePaddleOcrSettings(settings);
         if (settings.EnableCTranslate2)
         {
             settings.EnableCTranslate2 = false;
@@ -140,7 +143,7 @@ public partial class MainWindow : Window
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
         _captureManager = new CaptureManager(frameGate, _logger);
-        var ocrEngine = new OcrEngine(_httpClient, _logger);
+        _ocrEngine = new OcrEngine(_httpClient, _logger);
         var ocrDiff = new OcrDiffService { IouThreshold = settings.OcrIouThreshold };
         _phashService = new PhashService();
         var normalization = new NormalizationService();
@@ -158,7 +161,7 @@ public partial class MainWindow : Window
 
         _pipeline = new PipelineOrchestrator(
             _captureManager,
-            ocrEngine,
+            _ocrEngine,
             ocrDiff,
             _phashService,
             normalization,
@@ -207,8 +210,10 @@ public partial class MainWindow : Window
             _logFlushTimer.Tick -= OnLogFlushTick;
         }
         _cacheRepository?.Dispose();
+        _ocrEngine?.Dispose();
         _httpClient.Dispose();
         _paddleGrpcHost?.Stop();
+        _paddleVlGrpcHost?.Stop();
         _ct2GrpcHost?.Stop();
         _llamaGrpcHost?.Stop();
         if (_pipeline != null)
@@ -228,7 +233,8 @@ public partial class MainWindow : Window
 
     private async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
-        if (!ShouldLoadPaddle(settings) && !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
+        if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) &&
+            !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
         {
             return false;
         }
@@ -240,12 +246,37 @@ public partial class MainWindow : Window
         {
             if (ShouldLoadPaddle(settings))
             {
+                if (_paddleVlGrpcHost is { IsRunning: true })
+                {
+                    _logger?.Info("Stopping PaddleOCR-VL host before loading PaddleOCR.");
+                    _paddleVlGrpcHost.Stop();
+                }
+
                 _paddleGrpcHost ??= new PaddleGrpcHost(_logger);
                 if (_paddleGrpcHost is not { IsRunning: true })
                 {
                     SetBusyOverlay(true, "Loading PaddleOCR...");
                     overlayShown = true;
                     if (!await TryStartPaddleGrpcHostAsync(settings).ConfigureAwait(true))
+                    {
+                        settingsChanged = true;
+                    }
+                }
+            }
+            else if (ShouldLoadPaddleVl(settings))
+            {
+                if (_paddleGrpcHost is { IsRunning: true })
+                {
+                    _logger?.Info("Stopping PaddleOCR host before loading PaddleOCR-VL.");
+                    _paddleGrpcHost.Stop();
+                }
+
+                _paddleVlGrpcHost ??= new PaddleVlGrpcHost(_logger);
+                if (_paddleVlGrpcHost is not { IsRunning: true })
+                {
+                    SetBusyOverlay(true, "Loading PaddleOCR-VL...");
+                    overlayShown = true;
+                    if (!await TryStartPaddleVlGrpcHostAsync(settings).ConfigureAwait(true))
                     {
                         settingsChanged = true;
                     }
@@ -330,6 +361,11 @@ public partial class MainWindow : Window
         return settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost;
     }
 
+    private static bool ShouldLoadPaddleVl(AppSettings settings)
+    {
+        return settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost;
+    }
+
     private static bool ShouldLoadCTranslate2(AppSettings settings)
     {
         // WHY: CTranslate2 translation path is retired; keep host disabled even if legacy settings remain.
@@ -354,6 +390,23 @@ public partial class MainWindow : Window
             _paddleGrpcHost?.Stop();
             DisablePaddleOcr(settings);
             ShowLoadFailure("Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.");
+            return false;
+        }
+    }
+
+    private async Task<bool> TryStartPaddleVlGrpcHostAsync(AppSettings settings)
+    {
+        try
+        {
+            await _paddleVlGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "PaddleOCR-VL gRPC host failed to start.");
+            _paddleVlGrpcHost?.Stop();
+            DisablePaddleVlOcr(settings);
+            ShowLoadFailure("Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.");
             return false;
         }
     }
@@ -395,6 +448,14 @@ public partial class MainWindow : Window
     }
 
     private void DisablePaddleOcr(AppSettings settings)
+    {
+        settings.OcrEngine = OcrEngineKind.WinRt;
+        _isApplyingSettings = true;
+        SetComboBoxByTag(OcrEngineBox, "WinRt");
+        _isApplyingSettings = false;
+    }
+
+    private void DisablePaddleVlOcr(AppSettings settings)
     {
         settings.OcrEngine = OcrEngineKind.WinRt;
         _isApplyingSettings = true;
@@ -775,10 +836,19 @@ public partial class MainWindow : Window
         SetComboBoxByTag(OcrEngineBox, settings.OcrEngine switch
         {
             OcrEngineKind.Paddle => "Paddle",
+            OcrEngineKind.PaddleVllm => "PaddleVllm",
             _ => "WinRt"
         });
         SetComboBoxByTag(PaddleDetectionModelBox, settings.PaddleTextDetectionModelName);
         SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
+        PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
+        PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
+        PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
+        PaddleTextRecScoreThreshBox.Text = settings.PaddleTextRecScoreThresh.ToString("0.###");
+        SetComboBoxByTag(PaddleVlPipelineVersionBox, settings.PaddleVlPipelineVersion);
+        PaddleVlMaxPixelsBox.Text = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
+        PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
+        PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
         PaddleConfidenceThresholdSlider.Value = settings.PaddleConfidenceThreshold;
         settings.EnableCTranslate2 = false;
@@ -1105,6 +1175,97 @@ public partial class MainWindow : Window
         return changed;
     }
 
+    private bool NormalizePaddleOcrSettings(AppSettings settings)
+    {
+        var changed = false;
+        changed |= ClampSetting(settings.PaddleTextDetThresh, 0.0, 1.0, 0.5, out var textDetThresh);
+        changed |= ClampSetting(settings.PaddleTextDetBoxThresh, 0.0, 1.0, 0.68, out var textDetBoxThresh);
+        changed |= ClampSetting(settings.PaddleTextDetUnclipRatio, 0.5, 3.0, 1.3, out var textDetUnclipRatio);
+        changed |= ClampSetting(settings.PaddleTextRecScoreThresh, 0.0, 1.0, 0.58, out var textRecScoreThresh);
+        settings.PaddleTextDetThresh = textDetThresh;
+        settings.PaddleTextDetBoxThresh = textDetBoxThresh;
+        settings.PaddleTextDetUnclipRatio = textDetUnclipRatio;
+        settings.PaddleTextRecScoreThresh = textRecScoreThresh;
+        if (settings.EnablePaddleConfidenceFilter)
+        {
+            // COMPAT: Keep one confidence gate path to avoid double-filtering with text_rec_score_thresh.
+            settings.EnablePaddleConfidenceFilter = false;
+            changed = true;
+        }
+
+        var pipelineVersion = (settings.PaddleVlPipelineVersion ?? string.Empty).Trim();
+        if (!string.Equals(pipelineVersion, "v1", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(pipelineVersion, "v1.5", StringComparison.OrdinalIgnoreCase))
+        {
+            settings.PaddleVlPipelineVersion = "v1.5";
+            changed = true;
+        }
+        else
+        {
+            settings.PaddleVlPipelineVersion = string.Equals(pipelineVersion, "v1", StringComparison.OrdinalIgnoreCase)
+                ? "v1"
+                : "v1.5";
+        }
+
+        if (settings.PaddleVlMaxPixels.HasValue && settings.PaddleVlMaxPixels.Value <= 0)
+        {
+            settings.PaddleVlMaxPixels = null;
+            changed = true;
+        }
+
+        if (settings.PaddleVlLayoutThreshold.HasValue)
+        {
+            var clamped = Math.Clamp(settings.PaddleVlLayoutThreshold.Value, 0.0, 1.0);
+            if (Math.Abs(clamped - settings.PaddleVlLayoutThreshold.Value) > 0.0001)
+            {
+                settings.PaddleVlLayoutThreshold = clamped;
+                changed = true;
+            }
+        }
+
+        if (settings.PaddleVlMaxNewTokens.HasValue)
+        {
+            var clamped = Math.Clamp(settings.PaddleVlMaxNewTokens.Value, 512, 4096);
+            if (clamped != settings.PaddleVlMaxNewTokens.Value)
+            {
+                settings.PaddleVlMaxNewTokens = clamped;
+                changed = true;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.PaddleVlDevice))
+        {
+            settings.PaddleVlDevice = "gpu:0";
+            changed = true;
+        }
+        else
+        {
+            settings.PaddleVlDevice = settings.PaddleVlDevice.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.PaddleVlPrecision))
+        {
+            settings.PaddleVlPrecision = "fp32";
+            changed = true;
+        }
+        else
+        {
+            var precision = settings.PaddleVlPrecision.Trim().ToLowerInvariant();
+            if (precision is not ("fp16" or "fp32"))
+            {
+                settings.PaddleVlPrecision = "fp32";
+                changed = true;
+            }
+            else if (!string.Equals(settings.PaddleVlPrecision, precision, StringComparison.Ordinal))
+            {
+                settings.PaddleVlPrecision = precision;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
     private static bool ClampSetting(double value, double min, double max, double fallback, out double normalized)
     {
         if (!double.IsFinite(value))
@@ -1391,7 +1552,12 @@ public partial class MainWindow : Window
     {
         if (OcrEngineBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
         {
-            return tag == "Paddle" ? OcrEngineKind.Paddle : OcrEngineKind.WinRt;
+            return tag switch
+            {
+                "Paddle" => OcrEngineKind.Paddle,
+                "PaddleVllm" => OcrEngineKind.PaddleVllm,
+                _ => OcrEngineKind.WinRt
+            };
         }
 
         return OcrEngineKind.WinRt;
@@ -1660,6 +1826,86 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnRestartPaddleOcrHosts(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _runInProgress, 0, 0) == 1)
+        {
+            AppendLog("Restart skipped: OCR is running.");
+            return;
+        }
+
+        try
+        {
+            SetBusyOverlay(true, "Applying OCR settings and restarting host...");
+            await SaveSettingsAsync().ConfigureAwait(true);
+
+            var settings = _settingsService.Settings;
+            if (settings.OcrEngine == OcrEngineKind.Paddle)
+            {
+                _paddleGrpcHost?.Stop();
+                _paddleVlGrpcHost?.Stop();
+            }
+            else if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
+            {
+                _paddleVlGrpcHost?.Stop();
+                _paddleGrpcHost?.Stop();
+            }
+            else
+            {
+                AppendLog("OCR host restart skipped: current OCR engine is WinRT.");
+                return;
+            }
+
+            await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            AppendLog("OCR host restarted with latest settings.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to restart OCR host.");
+            ShowLoadFailure("Failed to restart OCR host. See the logs for details.");
+        }
+        finally
+        {
+            SetBusyOverlay(false, null);
+        }
+    }
+
+    private void OnStopPaddleVlHost(object sender, RoutedEventArgs e)
+    {
+        if (!IsLoaded)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _runInProgress, 0, 0) == 1)
+        {
+            AppendLog("Stop skipped: OCR is running.");
+            return;
+        }
+
+        if (_paddleVlGrpcHost is not { IsRunning: true })
+        {
+            AppendLog("PaddleOCR-VL host stop skipped: host is not running.");
+            return;
+        }
+
+        try
+        {
+            _paddleVlGrpcHost.Stop();
+            AppendLog("PaddleOCR-VL host stopped.");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to stop PaddleOCR-VL host.");
+            ShowLoadFailure("Failed to stop PaddleOCR-VL host. See the logs for details.");
+        }
+    }
+
     private async void OnSettingLostFocus(object sender, RoutedEventArgs e)
     {
         await SaveSettingsAsync().ConfigureAwait(true);
@@ -1816,8 +2062,50 @@ public partial class MainWindow : Window
         settings.OcrEngine = GetOcrEngineKind();
         settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
         settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
+        settings.PaddleVlPipelineVersion = GetSelectedTag(PaddleVlPipelineVersionBox, "v1.5");
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThresholdSlider.Value, 2);
+        if (double.TryParse(PaddleTextDetThreshBox.Text.Trim(), out var textDetThresh))
+        {
+            settings.PaddleTextDetThresh = textDetThresh;
+        }
+        if (double.TryParse(PaddleTextDetBoxThreshBox.Text.Trim(), out var textDetBoxThresh))
+        {
+            settings.PaddleTextDetBoxThresh = textDetBoxThresh;
+        }
+        if (double.TryParse(PaddleTextDetUnclipRatioBox.Text.Trim(), out var textDetUnclip))
+        {
+            settings.PaddleTextDetUnclipRatio = textDetUnclip;
+        }
+        if (double.TryParse(PaddleTextRecScoreThreshBox.Text.Trim(), out var textRecScoreThresh))
+        {
+            settings.PaddleTextRecScoreThresh = textRecScoreThresh;
+        }
+        if (int.TryParse(PaddleVlMaxPixelsBox.Text.Trim(), out var paddleVlMaxPixels))
+        {
+            settings.PaddleVlMaxPixels = paddleVlMaxPixels;
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlMaxPixelsBox.Text))
+        {
+            settings.PaddleVlMaxPixels = null;
+        }
+        if (double.TryParse(PaddleVlLayoutThresholdBox.Text.Trim(), out var paddleVlLayoutThreshold))
+        {
+            settings.PaddleVlLayoutThreshold = paddleVlLayoutThreshold;
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlLayoutThresholdBox.Text))
+        {
+            settings.PaddleVlLayoutThreshold = null;
+        }
+        if (int.TryParse(PaddleVlMaxNewTokensBox.Text.Trim(), out var paddleVlMaxNewTokens))
+        {
+            settings.PaddleVlMaxNewTokens = Math.Clamp(paddleVlMaxNewTokens, 512, 4096);
+        }
+        else if (string.IsNullOrWhiteSpace(PaddleVlMaxNewTokensBox.Text))
+        {
+            // NOTE: Blank means AUTO; Python side keeps PaddleOCR-VL internal default.
+            settings.PaddleVlMaxNewTokens = null;
+        }
         settings.EnableCTranslate2 = false;
         settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
         settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
@@ -1913,6 +2201,7 @@ public partial class MainWindow : Window
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashSlider.Value);
         NormalizeWritingModeSettings(settings);
         NormalizeSmallBoxReadabilitySettings(settings);
+        NormalizePaddleOcrSettings(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {
@@ -1944,6 +2233,14 @@ public partial class MainWindow : Window
         UpdateSceneChangeThresholdValue();
         UpdateSceneChangeControls(settings);
         UpdateSceneChangeWatchValues();
+        PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
+        PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
+        PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
+        PaddleTextRecScoreThreshBox.Text = settings.PaddleTextRecScoreThresh.ToString("0.###");
+        SetComboBoxByTag(PaddleVlPipelineVersionBox, settings.PaddleVlPipelineVersion);
+        PaddleVlMaxPixelsBox.Text = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
+        PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
+        PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
         await EnsureResourceHostsAsync(settings).ConfigureAwait(true);

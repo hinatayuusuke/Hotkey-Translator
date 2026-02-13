@@ -42,11 +42,6 @@ public sealed class SettingsService
             loaded.ApiKey = Unprotect(loaded.ApiKeyProtected);
         }
 
-        if (!string.IsNullOrWhiteSpace(loaded.VllmApiKeyProtected))
-        {
-            loaded.VllmApiKey = Unprotect(loaded.VllmApiKeyProtected);
-        }
-
         if (!string.IsNullOrWhiteSpace(loaded.DeepLApiKeyProtected))
         {
             loaded.DeepLApiKey = Unprotect(loaded.DeepLApiKeyProtected);
@@ -71,16 +66,6 @@ public sealed class SettingsService
         else
         {
             Settings.ApiKeyProtected = null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(Settings.VllmApiKey))
-        {
-            // SECURITY: vLLM API key is protected with DPAPI for the current user profile.
-            Settings.VllmApiKeyProtected = Protect(Settings.VllmApiKey);
-        }
-        else
-        {
-            Settings.VllmApiKeyProtected = null;
         }
 
         if (!string.IsNullOrWhiteSpace(Settings.DeepLApiKey))

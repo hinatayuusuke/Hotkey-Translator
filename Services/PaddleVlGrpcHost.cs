@@ -11,7 +11,7 @@ using Hotkey_Translator.OcrGrpc;
 
 namespace Hotkey_Translator.Services;
 
-public sealed class PaddleGrpcHost : IDisposable
+public sealed class PaddleVlGrpcHost : IDisposable
 {
     private readonly AppLogger? _logger;
     private readonly object _lock = new();
@@ -21,7 +21,7 @@ public sealed class PaddleGrpcHost : IDisposable
     private Task? _monitorTask;
     private bool _stopping;
 
-    public PaddleGrpcHost(AppLogger? logger = null)
+    public PaddleVlGrpcHost(AppLogger? logger = null)
     {
         _logger = logger;
     }
@@ -30,7 +30,7 @@ public sealed class PaddleGrpcHost : IDisposable
 
     public async Task StartAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        if (!settings.EnablePaddleGrpcHost)
+        if (!settings.EnablePaddleVlGrpcHost)
         {
             return;
         }
@@ -95,33 +95,26 @@ public sealed class PaddleGrpcHost : IDisposable
 
     private void StartProcess(AppSettings settings)
     {
-        var projectDir = ResolveDirectory(settings.PaddleGrpcProjectDir);
-        var script = string.IsNullOrWhiteSpace(settings.PaddleGrpcServerScript) ? "server.py" : settings.PaddleGrpcServerScript.Trim();
+        var projectDir = ResolveDirectory(settings.PaddleVlGrpcProjectDir);
+        var script = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcServerScript) ? "server.py" : settings.PaddleVlGrpcServerScript.Trim();
         var scriptPath = Path.Combine(projectDir, script);
         if (!File.Exists(scriptPath))
         {
-            throw new FileNotFoundException($"Paddle gRPC server not found: {scriptPath}");
+            throw new FileNotFoundException($"PaddleOCR-VL gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = string.IsNullOrWhiteSpace(settings.PaddleGrpcUvPath) ? "uv" : settings.PaddleGrpcUvPath.Trim();
-        var host = string.IsNullOrWhiteSpace(settings.PaddleGrpcHost) ? "127.0.0.1" : settings.PaddleGrpcHost.Trim();
-        var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
-        var modelDir = string.IsNullOrWhiteSpace(settings.PaddleModelDir) ? null : ResolvePath(settings.PaddleModelDir);
-        var device = string.IsNullOrWhiteSpace(settings.PaddleDevice) ? "cpu" : settings.PaddleDevice.Trim();
-        if (string.Equals(device, "cpu", StringComparison.OrdinalIgnoreCase))
+        var uvPath = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcUvPath) ? "uv" : settings.PaddleVlGrpcUvPath.Trim();
+        var host = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcHost) ? "127.0.0.1" : settings.PaddleVlGrpcHost.Trim();
+        var port = settings.PaddleVlGrpcPort <= 0 ? 50052 : settings.PaddleVlGrpcPort;
+        var device = string.IsNullOrWhiteSpace(settings.PaddleVlDevice) ? "gpu:0" : settings.PaddleVlDevice.Trim();
+        var pipelineVersion = string.IsNullOrWhiteSpace(settings.PaddleVlPipelineVersion) ? "v1.5" : settings.PaddleVlPipelineVersion.Trim();
+        var maxNewTokens = ClampMaxNewTokens(settings.PaddleVlMaxNewTokens);
+        var precision = string.IsNullOrWhiteSpace(settings.PaddleVlPrecision) ? "fp32" : settings.PaddleVlPrecision.Trim().ToLowerInvariant();
+        if (!string.Equals(precision, "fp16", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(precision, "fp32", StringComparison.OrdinalIgnoreCase))
         {
-            // WHY: PaddleOCR v5 GPU-only path is enforced; override cpu to gpu:0 for host startup.
-            device = "gpu:0";
+            precision = "fp32";
         }
-        var language = ResolvePaddleLanguage(settings);
-        var detModel = string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName)
-            ? "PP-OCRv5_mobile_det"
-            : settings.PaddleTextDetectionModelName.Trim();
-        var recModel = ResolveTextRecognitionModelName(settings);
-        var textDetThresh = Math.Clamp(settings.PaddleTextDetThresh, 0.0, 1.0);
-        var textDetBoxThresh = Math.Clamp(settings.PaddleTextDetBoxThresh, 0.0, 1.0);
-        var textDetUnclipRatio = Math.Clamp(settings.PaddleTextDetUnclipRatio, 0.5, 3.0);
-        var textRecScoreThresh = Math.Clamp(settings.PaddleTextRecScoreThresh, 0.0, 1.0);
 
         var startInfo = new ProcessStartInfo
         {
@@ -144,24 +137,32 @@ public sealed class PaddleGrpcHost : IDisposable
         startInfo.ArgumentList.Add(port.ToString());
         startInfo.ArgumentList.Add("--device");
         startInfo.ArgumentList.Add(device);
-        startInfo.ArgumentList.Add("--lang");
-        startInfo.ArgumentList.Add(language);
-        startInfo.ArgumentList.Add("--det-model");
-        startInfo.ArgumentList.Add(detModel);
-        startInfo.ArgumentList.Add("--rec-model");
-        startInfo.ArgumentList.Add(recModel);
-        startInfo.ArgumentList.Add("--text-det-thresh");
-        startInfo.ArgumentList.Add(textDetThresh.ToString("0.###", CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("--text-det-box-thresh");
-        startInfo.ArgumentList.Add(textDetBoxThresh.ToString("0.###", CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("--text-det-unclip-ratio");
-        startInfo.ArgumentList.Add(textDetUnclipRatio.ToString("0.###", CultureInfo.InvariantCulture));
-        startInfo.ArgumentList.Add("--text-rec-score-thresh");
-        startInfo.ArgumentList.Add(textRecScoreThresh.ToString("0.###", CultureInfo.InvariantCulture));
-        if (!string.IsNullOrWhiteSpace(modelDir))
+        startInfo.ArgumentList.Add("--pipeline-version");
+        startInfo.ArgumentList.Add(pipelineVersion);
+        startInfo.ArgumentList.Add(settings.PaddleVlEnableHpi ? "--enable-hpi" : "--no-enable-hpi");
+        startInfo.ArgumentList.Add("--precision");
+        startInfo.ArgumentList.Add(precision);
+        AddBooleanOptionalArg(startInfo.ArgumentList, "--use-tensorrt", settings.PaddleVlUseTensorrt);
+        AddBooleanOptionalArg(startInfo.ArgumentList, "--merge-layout-blocks", settings.PaddleVlMergeLayoutBlocks);
+        AddBooleanOptionalArg(startInfo.ArgumentList, "--use-ocr-for-image-block", settings.PaddleVlUseOcrForImageBlock);
+        AddBooleanOptionalArg(startInfo.ArgumentList, "--use-layout-detection", settings.PaddleVlUseLayoutDetection);
+
+        if (settings.PaddleVlMaxPixels is > 0)
         {
-            startInfo.ArgumentList.Add("--model");
-            startInfo.ArgumentList.Add(modelDir);
+            startInfo.ArgumentList.Add("--max-pixels");
+            startInfo.ArgumentList.Add(settings.PaddleVlMaxPixels.Value.ToString());
+        }
+
+        if (settings.PaddleVlLayoutThreshold is >= 0)
+        {
+            startInfo.ArgumentList.Add("--layout-threshold");
+            startInfo.ArgumentList.Add(settings.PaddleVlLayoutThreshold.Value.ToString("0.###", CultureInfo.InvariantCulture));
+        }
+
+        if (maxNewTokens.HasValue)
+        {
+            startInfo.ArgumentList.Add("--max-new-tokens");
+            startInfo.ArgumentList.Add(maxNewTokens.Value.ToString());
         }
 
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
@@ -169,20 +170,20 @@ public sealed class PaddleGrpcHost : IDisposable
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                _logger?.Info($"[PaddleGrpc] {args.Data}");
+                _logger?.Info($"[PaddleVlGrpc] {args.Data}");
             }
         };
         process.ErrorDataReceived += (_, args) =>
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                _logger?.Info($"[PaddleGrpc] {args.Data}");
+                _logger?.Info($"[PaddleVlGrpc] {args.Data}");
             }
         };
 
         if (!process.Start())
         {
-            throw new InvalidOperationException("Failed to start Paddle gRPC server process.");
+            throw new InvalidOperationException("Failed to start PaddleOCR-VL gRPC server process.");
         }
 
         process.BeginOutputReadLine();
@@ -199,7 +200,7 @@ public sealed class PaddleGrpcHost : IDisposable
     private async Task WaitForReadyAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
-        var timeoutMs = Math.Max(1000, settings.PaddleGrpcReadyTimeoutMs);
+        var timeoutMs = Math.Max(1000, settings.PaddleVlGrpcReadyTimeoutMs);
         var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
 
         while (DateTimeOffset.UtcNow < deadline)
@@ -212,7 +213,7 @@ public sealed class PaddleGrpcHost : IDisposable
                 var reply = await client.HealthAsync(new HealthRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (reply.Ready)
                 {
-                    _logger?.Info($"Paddle gRPC ready: {reply.Message}");
+                    _logger?.Info($"PaddleOCR-VL gRPC ready: {reply.Message}");
                     return;
                 }
             }
@@ -224,7 +225,7 @@ public sealed class PaddleGrpcHost : IDisposable
             await Task.Delay(200, cancellationToken).ConfigureAwait(false);
         }
 
-        throw new TimeoutException("Paddle gRPC server did not become ready in time.");
+        throw new TimeoutException("PaddleOCR-VL gRPC server did not become ready in time.");
     }
 
     private void EnsureMonitor(AppSettings settings)
@@ -276,10 +277,10 @@ public sealed class PaddleGrpcHost : IDisposable
                 }
             }
 
-            _logger?.Info($"Paddle gRPC exited with code {process.ExitCode}.");
+            _logger?.Info($"PaddleOCR-VL gRPC exited with code {process.ExitCode}.");
             if (!CanRestart(settings))
             {
-                _logger?.Info("Paddle gRPC restart limit reached.");
+                _logger?.Info("PaddleOCR-VL gRPC restart limit reached.");
                 return;
             }
 
@@ -290,7 +291,7 @@ public sealed class PaddleGrpcHost : IDisposable
             }
             catch (Exception ex)
             {
-                _logger?.Info($"Paddle gRPC restart failed: {ex.Message}");
+                _logger?.Info($"PaddleOCR-VL gRPC restart failed: {ex.Message}");
                 await Task.Delay(500, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -299,9 +300,9 @@ public sealed class PaddleGrpcHost : IDisposable
     private bool CanRestart(AppSettings settings)
     {
         var now = DateTimeOffset.UtcNow;
-        var window = TimeSpan.FromSeconds(Math.Max(1, settings.PaddleGrpcRestartWindowSeconds));
+        var window = TimeSpan.FromSeconds(Math.Max(1, settings.PaddleVlGrpcRestartWindowSeconds));
         _restartHistory.RemoveAll(time => now - time > window);
-        if (_restartHistory.Count >= settings.PaddleGrpcRestartMax)
+        if (_restartHistory.Count >= settings.PaddleVlGrpcRestartMax)
         {
             return false;
         }
@@ -312,13 +313,13 @@ public sealed class PaddleGrpcHost : IDisposable
 
     private static string ResolveEndpoint(AppSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleGrpcEndpoint))
+        if (!string.IsNullOrWhiteSpace(settings.PaddleVlGrpcEndpoint))
         {
-            return settings.PaddleGrpcEndpoint.Trim();
+            return settings.PaddleVlGrpcEndpoint.Trim();
         }
 
-        var host = string.IsNullOrWhiteSpace(settings.PaddleGrpcHost) ? "127.0.0.1" : settings.PaddleGrpcHost.Trim();
-        var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
+        var host = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcHost) ? "127.0.0.1" : settings.PaddleVlGrpcHost.Trim();
+        var port = settings.PaddleVlGrpcPort <= 0 ? 50052 : settings.PaddleVlGrpcPort;
         return $"http://{host}:{port}";
     }
 
@@ -326,13 +327,13 @@ public sealed class PaddleGrpcHost : IDisposable
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            throw new InvalidOperationException("Paddle gRPC project directory is not set.");
+            throw new InvalidOperationException("PaddleOCR-VL gRPC project directory is not set.");
         }
 
         var resolved = ResolvePath(path);
         if (!Directory.Exists(resolved))
         {
-            throw new DirectoryNotFoundException($"Paddle gRPC project directory not found: {resolved}");
+            throw new DirectoryNotFoundException($"PaddleOCR-VL gRPC project directory not found: {resolved}");
         }
 
         return resolved;
@@ -354,46 +355,23 @@ public sealed class PaddleGrpcHost : IDisposable
         return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
     }
 
-    private static string ResolvePaddleLanguage(AppSettings settings)
+    private static int? ClampMaxNewTokens(int? value)
     {
-        var source = settings.SourceLanguage?.Trim() ?? string.Empty;
-        return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
+        if (!value.HasValue)
+        {
+            return null;
+        }
+
+        return Math.Clamp(value.Value, 512, 4096);
     }
 
-    private static string ResolveTextRecognitionModelName(AppSettings settings)
+    private static void AddBooleanOptionalArg(ICollection<string> args, string flag, bool? value)
     {
-        var selected = settings.PaddleTextRecognitionModelName?.Trim();
-        if (string.IsNullOrWhiteSpace(selected))
+        if (!value.HasValue)
         {
-            return "PP-OCRv5_server_rec";
+            return;
         }
 
-        if (selected.Equals("auto", StringComparison.OrdinalIgnoreCase))
-        {
-            return ResolveRecognitionModelByLanguage(settings.SourceLanguage);
-        }
-
-        return selected;
-    }
-
-    private static string ResolveRecognitionModelByLanguage(string? language)
-    {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return "PP-OCRv5_server_rec";
-        }
-
-        var normalized = language.Trim();
-        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
-        {
-            return "en_PP-OCRv5_mobile_rec";
-        }
-
-        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
-        {
-            return "eslav_PP-OCRv5_mobile_rec";
-        }
-
-        return "PP-OCRv5_server_rec";
+        args.Add(value.Value ? flag : $"--no-{flag[2..]}");
     }
 }

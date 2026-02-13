@@ -13,7 +13,7 @@ using Hotkey_Translator.OcrGrpc;
 
 namespace Hotkey_Translator.Services;
 
-public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
+public sealed class PaddleVlGrpcOcrProvider : IOcrProvider, IDisposable
 {
     private const int MaxMessageBytes = 32 * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
@@ -23,7 +23,7 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
     private GrpcChannel? _channel;
     private static bool _http2Enabled;
 
-    public PaddleGrpcOcrProvider(AppLogger? logger = null)
+    public PaddleVlGrpcOcrProvider(AppLogger? logger = null)
     {
         _logger = logger;
     }
@@ -40,21 +40,19 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
         var request = new OcrRequest
         {
             Image = Google.Protobuf.ByteString.CopyFrom(stream.ToArray()),
-            Language = ResolvePaddleLanguage(settings),
-            TextDetectionModelName = ResolveTextDetectionModelName(settings),
-            TextRecognitionModelName = ResolveTextRecognitionModelName(settings)
+            Language = settings.SourceLanguage?.Trim() ?? string.Empty
         };
 
         var response = await client.RecognizeAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(response.Json))
         {
-            throw new InvalidOperationException("Paddle gRPC returned empty JSON.");
+            throw new InvalidOperationException("PaddleOCR-VL gRPC returned empty JSON.");
         }
 
-        var parsed = JsonSerializer.Deserialize<PaddleOcrResponse>(response.Json, JsonOptions);
+        var parsed = JsonSerializer.Deserialize<PaddleVlOcrResponse>(response.Json, JsonOptions);
         if (parsed?.Lines is null)
         {
-            throw new InvalidOperationException("Paddle gRPC response is missing lines.");
+            throw new InvalidOperationException("PaddleOCR-VL gRPC response is missing lines.");
         }
 
         var lines = new List<OcrLine>(parsed.Lines.Count);
@@ -75,6 +73,7 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
             lines.Add(new OcrLine(line.Text ?? string.Empty, rect, confidence, 1, rect.Height));
         }
 
+        _logger?.Info($"PaddleOCR-VL gRPC returned {lines.Count} lines.");
         return new OcrResultModel(lines, bitmap.Width, bitmap.Height);
     }
 
@@ -115,75 +114,22 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
 
     private static string ResolveEndpoint(AppSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleGrpcEndpoint))
+        if (!string.IsNullOrWhiteSpace(settings.PaddleVlGrpcEndpoint))
         {
-            return settings.PaddleGrpcEndpoint.Trim();
+            return settings.PaddleVlGrpcEndpoint.Trim();
         }
 
-        var host = string.IsNullOrWhiteSpace(settings.PaddleGrpcHost) ? "127.0.0.1" : settings.PaddleGrpcHost.Trim();
-        var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
+        var host = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcHost) ? "127.0.0.1" : settings.PaddleVlGrpcHost.Trim();
+        var port = settings.PaddleVlGrpcPort <= 0 ? 50052 : settings.PaddleVlGrpcPort;
         return $"http://{host}:{port}";
     }
 
-    private static string ResolvePaddleLanguage(AppSettings settings)
+    private sealed class PaddleVlOcrResponse
     {
-        var source = settings.SourceLanguage?.Trim() ?? string.Empty;
-        return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
+        public List<PaddleVlOcrLine>? Lines { get; set; }
     }
 
-    private static string ResolveTextDetectionModelName(AppSettings settings)
-    {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName))
-        {
-            return settings.PaddleTextDetectionModelName.Trim();
-        }
-
-        return "PP-OCRv5_mobile_det";
-    }
-
-    private static string ResolveTextRecognitionModelName(AppSettings settings)
-    {
-        var selected = settings.PaddleTextRecognitionModelName?.Trim();
-        if (string.IsNullOrWhiteSpace(selected))
-        {
-            return "PP-OCRv5_server_rec";
-        }
-
-        if (selected.Equals("auto", StringComparison.OrdinalIgnoreCase))
-        {
-            return ResolveRecognitionModelByLanguage(settings.SourceLanguage);
-        }
-
-        return selected;
-    }
-
-    private static string ResolveRecognitionModelByLanguage(string? language)
-    {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return "PP-OCRv5_server_rec";
-        }
-
-        var normalized = language.Trim();
-        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
-        {
-            return "en_PP-OCRv5_mobile_rec";
-        }
-
-        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
-        {
-            return "eslav_PP-OCRv5_mobile_rec";
-        }
-
-        return "PP-OCRv5_server_rec";
-    }
-
-    private sealed class PaddleOcrResponse
-    {
-        public List<PaddleOcrLine>? Lines { get; set; }
-    }
-
-    private sealed class PaddleOcrLine
+    private sealed class PaddleVlOcrLine
     {
         public string? Text { get; set; }
         public double[]? Box { get; set; }

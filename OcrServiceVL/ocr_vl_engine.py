@@ -1,0 +1,252 @@
+import io
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+from threading import Lock
+from typing import Any
+
+from PIL import Image
+
+_DLL_DIR_HANDLES = []
+
+
+def _candidate_site_packages() -> list[Path]:
+    candidates: list[Path] = []
+    candidates.append(Path(sys.prefix) / "Lib" / "site-packages")
+    candidates.append(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages")
+
+    seen = set()
+    unique: list[Path] = []
+    for path in candidates:
+        resolved = str(path.resolve(strict=False)).lower()
+        if resolved not in seen:
+            seen.add(resolved)
+            unique.append(path)
+    return unique
+
+
+def _bootstrap_windows_cuda_dll_dirs() -> None:
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+
+    subdirs = (
+        "nvidia/cuda_runtime/bin",
+        "nvidia/cublas/bin",
+        "nvidia/cudnn/bin",
+        "nvidia/nvjitlink/bin",
+        "nvidia/cufft/bin",
+        "nvidia/curand/bin",
+        "nvidia/cusolver/bin",
+        "nvidia/cusparse/bin",
+    )
+
+    # WHY: make CUDA DLL lookup deterministic to the active venv, not global PATH.
+    for site_packages in _candidate_site_packages():
+        for rel in subdirs:
+            dll_dir = site_packages / rel
+            if dll_dir.is_dir():
+                try:
+                    _DLL_DIR_HANDLES.append(os.add_dll_directory(str(dll_dir)))
+                except OSError:
+                    continue
+
+
+def _to_optional_bool(value: bool | None) -> bool | None:
+    if value is None:
+        return None
+    return bool(value)
+
+
+class PaddleOcrVlEngine:
+    def __init__(
+        self,
+        device: str = "gpu:0",
+        pipeline_version: str = "v1.5",
+        max_pixels: int | None = None,
+        layout_threshold: float | None = None,
+        max_new_tokens: int | None = None,
+        merge_layout_blocks: bool | None = None,
+        use_ocr_for_image_block: bool | None = None,
+        use_layout_detection: bool | None = None,
+        enable_hpi: bool | None = None,
+        use_tensorrt: bool | None = None,
+        precision: str | None = None,
+    ):
+        # WHY: Skip external model source probing to reduce startup failures/latency in locked-down networks.
+        os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+        _bootstrap_windows_cuda_dll_dirs()
+        from paddleocr import PaddleOCRVL
+
+        init_kwargs: dict[str, Any] = {
+            "pipeline_version": (pipeline_version or "v1.5").strip() or "v1.5",
+            "device": (device or "gpu:0").strip() or "gpu:0",
+            "format_block_content": True,
+            "use_queues": False,
+            "enable_hpi": _to_optional_bool(enable_hpi),
+            "use_tensorrt": _to_optional_bool(use_tensorrt),
+            "precision": precision,
+        }
+        init_kwargs = {k: v for k, v in init_kwargs.items() if v is not None}
+        self._engine = PaddleOCRVL(**init_kwargs)
+
+        self._predict_kwargs: dict[str, Any] = {
+            "merge_layout_blocks": _to_optional_bool(merge_layout_blocks),
+            "use_ocr_for_image_block": _to_optional_bool(use_ocr_for_image_block),
+            "use_layout_detection": _to_optional_bool(use_layout_detection),
+            "max_new_tokens": max_new_tokens,
+            "max_pixels": max_pixels,
+            "layout_threshold": layout_threshold,
+        }
+        self._predict_kwargs = {k: v for k, v in self._predict_kwargs.items() if v is not None}
+        self._lock = Lock()
+
+    def close(self) -> None:
+        try:
+            self._engine.close()
+        except Exception:
+            pass
+
+    def recognize(self, image_bytes: bytes) -> str:
+        with self._lock:
+            lines = self._recognize_locked(image_bytes)
+        return json.dumps({"lines": lines}, ensure_ascii=False)
+
+    def _recognize_locked(self, image_bytes: bytes) -> list[dict[str, Any]]:
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        with tempfile.NamedTemporaryFile(prefix="ocr_vl_", suffix=".png", delete=False) as tmp:
+            temp_path = tmp.name
+            image.save(tmp, format="PNG")
+
+        try:
+            pages = list(self._engine.predict_iter(temp_path, **self._predict_kwargs))
+        finally:
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+        lines: list[dict[str, Any]] = []
+        for page in pages:
+            lines.extend(self._extract_lines(page))
+        return lines
+
+    def _extract_lines(self, page: Any) -> list[dict[str, Any]]:
+        for candidate in self._iter_candidate_dicts(page):
+            parsed = self._parse_page_dict(candidate)
+            if parsed:
+                return parsed
+
+        markdown = getattr(page, "markdown", None)
+        if isinstance(markdown, dict):
+            text = (markdown.get("markdown_texts") or "").strip()
+            if text:
+                return [
+                    {
+                        "text": text,
+                        "box": [0.0, 0.0, 1.0, 1.0],
+                        "confidence": 1.0,
+                    }
+                ]
+
+        return []
+
+    @staticmethod
+    def _iter_candidate_dicts(page: Any) -> list[dict[str, Any]]:
+        candidates: list[dict[str, Any]] = []
+        if isinstance(page, dict):
+            candidates.append(page)
+        for attr in ("res", "json", "data"):
+            value = getattr(page, attr, None)
+            if isinstance(value, dict):
+                candidates.append(value)
+        return candidates
+
+    def _parse_page_dict(self, page: dict[str, Any]) -> list[dict[str, Any]]:
+        direct_lines = page.get("lines")
+        if isinstance(direct_lines, list):
+            parsed_direct = self._parse_line_list(direct_lines)
+            if parsed_direct:
+                return parsed_direct
+
+        nested = page.get("ocr_res")
+        if isinstance(nested, list):
+            parsed_nested = self._parse_line_list(nested)
+            if parsed_nested:
+                return parsed_nested
+
+        texts = page.get("rec_texts") or page.get("texts") or []
+        scores = page.get("rec_scores") or page.get("scores") or []
+        polys = page.get("rec_polys") or page.get("dt_polys") or page.get("polys") or []
+        count = min(len(texts), len(scores), len(polys))
+        if count <= 0:
+            return []
+
+        lines: list[dict[str, Any]] = []
+        for index in range(count):
+            try:
+                box = self._poly_to_ltrbwh(polys[index])
+            except Exception:
+                continue
+
+            if box[2] <= 0 or box[3] <= 0:
+                continue
+
+            score = scores[index]
+            lines.append(
+                {
+                    "text": str(texts[index]) if texts[index] is not None else "",
+                    "box": box,
+                    "confidence": float(score) if score is not None else 1.0,
+                }
+            )
+        return lines
+
+    @staticmethod
+    def _parse_line_list(items: list[Any]) -> list[dict[str, Any]]:
+        lines: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            text = item.get("text")
+            box = item.get("box") or item.get("bbox")
+            if not isinstance(box, list) or len(box) < 4:
+                continue
+
+            try:
+                left = float(box[0])
+                top = float(box[1])
+                width = float(box[2])
+                height = float(box[3])
+            except (TypeError, ValueError):
+                continue
+
+            if width <= 0 or height <= 0:
+                continue
+
+            confidence = item.get("confidence")
+            try:
+                confidence_value = float(confidence) if confidence is not None else 1.0
+            except (TypeError, ValueError):
+                confidence_value = 1.0
+
+            lines.append(
+                {
+                    "text": str(text) if text is not None else "",
+                    "box": [left, top, width, height],
+                    "confidence": confidence_value,
+                }
+            )
+        return lines
+
+    @staticmethod
+    def _poly_to_ltrbwh(poly: Any) -> list[float]:
+        xs = [float(point[0]) for point in poly]
+        ys = [float(point[1]) for point in poly]
+        left = min(xs)
+        top = min(ys)
+        right = max(xs)
+        bottom = max(ys)
+        return [left, top, right - left, bottom - top]

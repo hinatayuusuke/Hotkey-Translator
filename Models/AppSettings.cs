@@ -89,6 +89,10 @@ public sealed class AppSettings
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
     public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";
+    public double PaddleTextDetThresh { get; set; } = 0.5;
+    public double PaddleTextDetBoxThresh { get; set; } = 0.68;
+    public double PaddleTextDetUnclipRatio { get; set; } = 1.3;
+    public double PaddleTextRecScoreThresh { get; set; } = 0.58;
     public bool EnablePaddleConfidenceFilter { get; set; } = false;
     public double PaddleConfidenceThreshold { get; set; } = 0.6;
     public bool EnablePaddleGrpcHost { get; set; } = true;
@@ -101,13 +105,32 @@ public sealed class AppSettings
     public int PaddleGrpcReadyTimeoutMs { get; set; } = 120000;
     public int PaddleGrpcRestartMax { get; set; } = 3;
     public int PaddleGrpcRestartWindowSeconds { get; set; } = 30;
+    public bool EnablePaddleVlGrpcHost { get; set; } = true;
+    public string PaddleVlGrpcProjectDir { get; set; } = "OcrServiceVL";
+    public string PaddleVlGrpcUvPath { get; set; } = "uv";
+    public string PaddleVlGrpcServerScript { get; set; } = "server.py";
+    public string PaddleVlGrpcEndpoint { get; set; } = "http://127.0.0.1:50052";
+    public string PaddleVlGrpcHost { get; set; } = "127.0.0.1";
+    public int PaddleVlGrpcPort { get; set; } = 50052;
+    public int PaddleVlGrpcReadyTimeoutMs { get; set; } = 180000;
+    public int PaddleVlGrpcRestartMax { get; set; } = 3;
+    public int PaddleVlGrpcRestartWindowSeconds { get; set; } = 30;
+    public string PaddleVlDevice { get; set; } = "gpu:0";
+    public string PaddleVlPipelineVersion { get; set; } = "v1.5";
+    public int? PaddleVlMaxPixels { get; set; }
+    public double? PaddleVlLayoutThreshold { get; set; }
+    public int? PaddleVlMaxNewTokens { get; set; }
+    public bool? PaddleVlMergeLayoutBlocks { get; set; }
+    public bool? PaddleVlUseOcrForImageBlock { get; set; }
+    public bool? PaddleVlUseLayoutDetection { get; set; }
+    public bool PaddleVlEnableHpi { get; set; } = true;
+    public bool? PaddleVlUseTensorrt { get; set; }
+    public string? PaddleVlPrecision { get; set; } = "fp32";
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
     public string FlorenceUvPath { get; set; } = "uv";
     public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";
     public string FlorenceDevice { get; set; } = "cuda";
     public string? FlorenceModelDir { get; set; }
-    public string VllmBaseUrl { get; set; } = "http://localhost:8000/v1";
-    public string VllmModelName { get; set; } = "PaddlePaddle/PaddleOCR-VL";
     public bool EnableLineMerge { get; set; } = true;
     public bool EnableEngineScaledLineMergeProfile { get; set; } = true;
     public bool EnableTwoStageLineMerge { get; set; } = true;
@@ -218,11 +241,6 @@ public sealed class AppSettings
     public string? ApiKey { get; set; }
 
     public string? ApiKeyProtected { get; set; }
-
-    [JsonIgnore]
-    public string? VllmApiKey { get; set; }
-
-    public string? VllmApiKeyProtected { get; set; }
 
     [JsonIgnore]
     public string? DeepLApiKey { get; set; }
