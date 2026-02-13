@@ -50,7 +50,7 @@
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="ROI" VerticalAlignment="Center" Margin="0,6,0,0" />
 
                             <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
-                                <Button x:Name="SelectRoiButton" Content="Select ROI" Width="140" HorizontalAlignment="Left" Click="OnSelectRoi" />
+                                <Button x:Name="SelectRoiButton" Content="Select ROI" Width="140" HorizontalAlignment="Left" Command="{Binding SelectRoiCommand}" />
     
                                 <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
                             </StackPanel>
@@ -154,7 +154,7 @@
                                         Margin="4,0,0,0"
                                         HorizontalAlignment="Left"
                                         VerticalAlignment="Center"
-                                        Click="OnSwapLanguages"
+                                        Command="{Binding SwapLanguagesCommand}"
                                         ToolTip="Swap languages">
                                     <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="16"
                                             Text="&#xE117;"
@@ -618,8 +618,8 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <ListBox x:Name="TranslationPriorityList" Width="180" Height="80" />
                                     <StackPanel Margin="6,0,0,0">
-                                        <Button Content="Up" Width="60" Click="OnTranslationPriorityUp" />
-                                        <Button Content="Down" Width="60" Margin="0,6,0,0" Click="OnTranslationPriorityDown" />
+                                        <Button Content="Up" Width="60" Command="{Binding TranslationPriorityUpCommand}" />
+                                        <Button Content="Down" Width="60" Margin="0,6,0,0" Command="{Binding TranslationPriorityDownCommand}" />
                                     </StackPanel>
                                 </StackPanel>
                             </StackPanel>

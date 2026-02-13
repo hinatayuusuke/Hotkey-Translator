@@ -8043,3 +8043,93 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet run --project Hotkey-Translator.csproj を実行し、例外なしで終了コード 0 を確認。
 - dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。
+**2026-02-14 01:11 (Asia/Taipei) — MVVM 実装計画ドキュメント追加**
+
+### Summary
+- MVVM 移行の実装計画（段階移行・責務境界・DoD）を新規ドキュメントとして追加した。
+
+### Context / Goal
+- Doc/MVVMPlan.md を補強し、実装順序・リスク制御・完了条件を具体化した別計画を用意する。
+- 既存 Controller 分離済み構成を前提に、無理のない段階移行計画を明文化する。
+
+### Changes
+- Doc/MVVM_Implementation_Plan.md を新規作成。
+- ViewModel 分割、保存 debounce、Global Hotkey 境界、段階移行 Step、DoD、Migration/Open Questions を明記。
+
+### Files Touched
+- Doc/MVVM_Implementation_Plan.md — MVVM 移行の具体実装計画を新規追加。
+
+### Behavioral Impact
+- なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 計画が現実実装と乖離する可能性。
+- Mitigation: 既存コードベース（Controller 分離済み）を前提に、段階移行と検証条件を具体化。
+
+### Tests / Verification
+- Doc/MVVM_Implementation_Plan.md を UTF-8 で再読し、構成・内容を確認。
+**2026-02-14 01:32 (Asia/Taipei) — MVVM 実装計画の段階実装（Command化 + 保存debounce）**
+
+### Summary
+- `Doc/MVVM_Implementation_Plan.md` に沿って、主要操作の `ICommand` 化と設定保存の `debounce` 実装を本体へ反映した。
+
+### Context / Goal
+- `MainWindow.xaml.cs` のイベント駆動依存を段階的に減らし、MVVM 移行を進める。
+- 設定変更時の即時連続保存を抑制し、明示操作時のみ即時保存する保存戦略へ揃える。
+
+### Changes
+- `CommunityToolkit.Mvvm` を導入し、`MainWindowViewModel` / `SettingsViewModel` / `RuntimeStatusViewModel` を追加。
+- `MainWindow` で `DataContext` を ViewModel に配線し、`Select ROI` / `Swap languages` / `Translation priority Up/Down` を `Command` バインドへ移行。
+- `SettingsChangeScheduler` を `MainWindow` で実運用化し、設定変更イベントの保存を `RequestSave()`（debounce）へ切替。
+- 明示的な反映操作（Llama Reload/Restart、OCR Host 再起動など）は `SaveSettingsImmediatelyAsync()` を使うように分離。
+- `RunOnceAsync` 前に `FlushPendingSettingsSaveAsync()` を実行し、未反映 UI 設定を先に反映するよう調整。
+
+### Files Touched
+- `Hotkey-Translator.csproj` — `CommunityToolkit.Mvvm` パッケージ参照を追加。
+- `MainWindow.xaml` — 主要ボタンの `Click` を `Command` バインドへ変更。
+- `MainWindow.xaml.cs` — ViewModel 配線、保存 `debounce` 戦略、即時保存経路、Run 前 flush を実装。
+- `ViewModels/MainWindowViewModel.cs` — 画面コマンド公開用 ViewModel を追加。
+- `ViewModels/SettingsViewModel.cs` — 設定保存スケジューラ操作の窓口を追加。
+- `ViewModels/RuntimeStatusViewModel.cs` — ランタイム状態の基礎 ViewModel を追加。
+
+### Behavioral Impact
+- スライダー/チェックボックス等の連続変更で、保存が短時間に集約される。
+- Llama/OCR 再起動操作は従来どおり即時反映される。
+- ROI選択・言語入替・優先度上下は `Command` 経由で動作する。
+
+### Risk & Mitigation
+- Risk: `DataContext` 導入で既存 UI 連携が壊れる可能性。
+- Mitigation: 段階移行として対象を主要4操作に限定し、既存 Controller と UI 名称参照は維持した。
+- Risk: debounce による保存タイミング差で操作直後の反映が遅れる可能性。
+- Mitigation: 明示操作は即時保存、Run 実行前は flush を強制して整合性を確保した。
+
+### Tests / Verification
+- `dotnet build` を実行し、`0 warning / 0 error` を確認。
+- `dotnet run` は未実施（GUI 常駐アプリのため本セッションではビルド検証まで）。
+**2026-02-14 02:09 (Asia/Taipei) — dotnet run 起動時 NRE の初期化順修正**
+
+### Summary
+- `dotnet run` で無ログに見えて落ちる問題を、`SettingsChangeScheduler` の初期化順を修正して解消した。
+
+### Context / Goal
+- 起動直後に未処理例外でアプリが終了し、アプリ内ログが出ないように見える問題が発生していた。
+- MVVM段階移行で追加した設定保存 debounce を維持しつつ、起動時クラッシュを防ぐことを目的とした。
+
+### Changes
+- `MainWindow` コンストラクタで `_settingsChangeScheduler` の生成を `InitializeComponent()` より前へ移動。
+- 初期化順の意図を示す `WHY` コメントを追加し、XAML初期化中イベント先行発火への対策を明示。
+
+### Files Touched
+- `MainWindow.xaml.cs` — `SettingsChangeScheduler` 初期化順を前倒しし、起動時 NRE を回避。
+
+### Behavioral Impact
+- `dotnet run` 実行時に起動直後の `NullReferenceException` で落ちる挙動が解消。
+- 設定保存 debounce の挙動自体は維持。
+
+### Risk & Mitigation
+- Risk: 初期化順変更で副作用が出る可能性。
+- Mitigation: 移動対象を scheduler 生成のみに限定し、既存の依存配線・ロジックは変更しない最小差分で対応。
+
+### Tests / Verification
+- `dotnet run --project Hotkey-Translator.csproj` をプロセス監視で5秒実行し、即時クラッシュしないことを確認（`RUNNING_OK_NO_EARLY_CRASH`）。
+- `dotnet build` を単独で再実行し、`0 warning / 0 error` を確認。

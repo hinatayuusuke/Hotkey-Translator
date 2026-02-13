@@ -17,6 +17,7 @@ using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
 using Hotkey_Translator.UI;
+using Hotkey_Translator.ViewModels;
 using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
@@ -42,6 +43,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly UiLogController _uiLogController;
     private readonly SceneChangeController _sceneChangeController;
     private readonly SettingsUiController _settingsUiController;
+    private readonly SettingsChangeScheduler _settingsChangeScheduler;
+    private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
     private PhashService? _phashService;
     private CancellationTokenSource? _translationOverlayCts;
@@ -56,6 +59,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
+    private const int SettingsSaveDebounceMs = 400;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
@@ -64,7 +68,23 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     public MainWindow()
     {
         _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger);
+        // WHY: XAML initialization can raise ValueChanged handlers before constructor finishes.
+        _settingsChangeScheduler = new SettingsChangeScheduler(
+            Dispatcher,
+            SaveSettingsCoreAsync,
+            TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
+            ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
+        _mainWindowViewModel = new MainWindowViewModel(
+            new SettingsViewModel(_settingsChangeScheduler),
+            new RuntimeStatusViewModel(),
+            RunOnceAsync,
+            SelectRoiAsync,
+            SwapLanguages,
+            MoveTranslationPriorityUp,
+            MoveTranslationPriorityDown,
+            SaveSettingsImmediatelyAsync);
+        DataContext = _mainWindowViewModel;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
         SceneChangeController? sceneChangeController = null;
@@ -166,6 +186,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void OnClosed(object? sender, EventArgs e)
     {
         _runCoordinator.Dispose();
+        _settingsChangeScheduler.CancelPending();
+        _settingsChangeScheduler.Dispose();
         _translationOverlayCts?.Cancel();
         _translationOverlayCts?.Dispose();
         _hotkeyController.Dispose();
@@ -637,6 +659,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async Task RunOnceAsync(ForceRunOptions options, SceneTextSnapshot? semanticPayload)
     {
+        // WHY: Explicit actions should observe the latest UI edits before pipeline execution.
+        await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
         await _runCoordinator.RunOnceAsync(options, semanticPayload).ConfigureAwait(true);
     }
 
@@ -750,11 +774,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var roiOrCapture = GetRoiBounds(settings, captureBounds);
         // WHY: When ROI is invalid/outside the frame, keep spinner anchored to the capture target.
         return roiOrCapture.IsEmpty ? captureBounds : roiOrCapture;
-    }
-
-    private async void OnSelectRoi(object sender, RoutedEventArgs e)
-    {
-        await SelectRoiAsync().ConfigureAwait(true);
     }
 
     private async Task SelectRoiAsync()
@@ -1023,15 +1042,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void OnLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         UpdateLanguageCustomVisibility();
-        _ = SaveSettingsAsync();
+        RequestSettingsSave();
     }
 
-    private async void OnHotkeySelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void OnHotkeySelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private void OnSwapLanguages(object sender, RoutedEventArgs e)
+    private void SwapLanguages()
     {
         var sourceIsCustom = IsCustomSelected(SourceLangCombo);
         var targetIsCustom = IsCustomSelected(TargetLangCombo);
@@ -1061,7 +1080,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         UpdateLanguageCustomVisibility();
-        _ = SaveSettingsAsync();
+        RequestSettingsSave();
     }
 
     private void UpdateLanguageCustomVisibility()
@@ -1377,7 +1396,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return ordered;
     }
 
-    private void OnTranslationPriorityUp(object sender, RoutedEventArgs e)
+    private void MoveTranslationPriorityUp()
     {
         var index = TranslationPriorityList.SelectedIndex;
         if (index <= 0)
@@ -1389,10 +1408,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _translationPriority.RemoveAt(index);
         _translationPriority.Insert(index - 1, item);
         TranslationPriorityList.SelectedIndex = index - 1;
-        _ = SaveSettingsAsync();
+        RequestSettingsSave();
     }
 
-    private void OnTranslationPriorityDown(object sender, RoutedEventArgs e)
+    private void MoveTranslationPriorityDown()
     {
         var index = TranslationPriorityList.SelectedIndex;
         if (index < 0 || index >= _translationPriority.Count - 1)
@@ -1404,10 +1423,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _translationPriority.RemoveAt(index);
         _translationPriority.Insert(index + 1, item);
         TranslationPriorityList.SelectedIndex = index + 1;
-        _ = SaveSettingsAsync();
+        RequestSettingsSave();
     }
 
-    private async void OnSettingChanged(object sender, RoutedEventArgs e)
+    private void OnSettingChanged(object sender, RoutedEventArgs e)
     {
         if (ReferenceEquals(sender, EnableSceneChangeAutoHideCheck) &&
             EnableSceneChangeAutoHideCheck.IsChecked == true &&
@@ -1422,14 +1441,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             EnableSceneChangeAutoHideCheck.IsChecked = false;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
     private async void OnReloadLlamaModels(object sender, RoutedEventArgs e)
     {
         var settings = _settingsService.Settings;
         ReloadLlamaModelOptions(settings);
-        await SaveSettingsAsync().ConfigureAwait(true);
+        await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
     }
 
     private async void OnRestartLlamaCpp(object sender, RoutedEventArgs e)
@@ -1451,7 +1470,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             EnableLlamaCppCheck.IsChecked = true;
             _isApplyingSettings = previousApplyingState;
 
-            await SaveSettingsAsync().ConfigureAwait(true);
+            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
             AppendLog("Llama.cpp restarted.");
         }
         catch (Exception ex)
@@ -1483,7 +1502,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             EnableLlamaCppCheck.IsChecked = false;
             _isApplyingSettings = previousApplyingState;
 
-            await SaveSettingsAsync().ConfigureAwait(true);
+            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
             AppendLog("llama-server stopped.");
         }
         catch (Exception ex)
@@ -1509,7 +1528,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         try
         {
             SetBusyOverlay(true, "Applying OCR settings and restarting host...");
-            await SaveSettingsAsync().ConfigureAwait(true);
+            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
 
             var settings = _settingsService.Settings;
             if (settings.OcrEngine == OcrEngineKind.Paddle)
@@ -1573,12 +1592,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private async void OnSettingLostFocus(object sender, RoutedEventArgs e)
+    private void OnSettingLostFocus(object sender, RoutedEventArgs e)
     {
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOcrBinarizationThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOcrBinarizationThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrBinarizationThresholdValue();
         if (_isApplyingSettings)
@@ -1586,10 +1605,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOcrGammaChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOcrGammaChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrGammaValue();
         if (_isApplyingSettings)
@@ -1597,10 +1616,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnPaddleConfidenceThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnPaddleConfidenceThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdatePaddleConfidenceThresholdValue();
         if (_isApplyingSettings)
@@ -1608,10 +1627,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOcrDownsampleScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOcrDownsampleScaleChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrDownsampleScaleValue();
         if (_isApplyingSettings)
@@ -1619,10 +1638,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOcrTwoPassLowThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrTwoPassThresholdValues();
         if (_isApplyingSettings)
@@ -1630,10 +1649,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOcrTwoPassHighThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOcrTwoPassHighThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOcrTwoPassThresholdValues();
         if (_isApplyingSettings)
@@ -1641,10 +1660,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOverlayFontSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOverlayFontSizeChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOverlayFontSizeValue();
         if (_isApplyingSettings)
@@ -1652,10 +1671,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnOverlayBackgroundOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnOverlayBackgroundOpacityChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateOverlayBackgroundOpacityValue();
         if (_isApplyingSettings)
@@ -1663,10 +1682,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnSmallTextThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnSmallTextThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSmallTextThresholdValue();
         if (_isApplyingSettings)
@@ -1674,10 +1693,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnSceneChangeThresholdChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSceneChangeThresholdValue();
         if (_isApplyingSettings)
@@ -1685,10 +1704,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnSceneChangeWatchIntervalChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnSceneChangeWatchIntervalChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSceneChangeWatchValues();
         if (_isApplyingSettings)
@@ -1696,10 +1715,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async void OnSceneChangeWatchPhashChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    private void OnSceneChangeWatchPhashChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
     {
         UpdateSceneChangeWatchValues();
         if (_isApplyingSettings)
@@ -1707,12 +1726,28 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        await SaveSettingsAsync().ConfigureAwait(true);
+        RequestSettingsSave();
     }
 
-    private async Task SaveSettingsAsync()
+    private void RequestSettingsSave()
     {
-        await _settingsUiController.SaveFromUiAsync().ConfigureAwait(true);
+        _settingsChangeScheduler.RequestSave();
+    }
+
+    private Task FlushPendingSettingsSaveAsync()
+    {
+        return _settingsChangeScheduler.FlushAsync();
+    }
+
+    private async Task SaveSettingsImmediatelyAsync()
+    {
+        _settingsChangeScheduler.CancelPending();
+        await SaveSettingsCoreAsync().ConfigureAwait(true);
+    }
+
+    private Task SaveSettingsCoreAsync()
+    {
+        return _settingsUiController.SaveFromUiAsync();
     }
 
     private void ApplyUiInputToSettings(AppSettings settings)
