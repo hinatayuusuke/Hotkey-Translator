@@ -7950,3 +7950,36 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build` を実行し、0 error / 0 warning でビルド成功を確認。
 - コンパイル確認で新規追加型・新規メソッド参照が解決することを確認。
+**2026-02-14 00:20 (Asia/Taipei) — Layer1 Application: Run/Hotkey/Log Controller 分離**
+
+### Summary
+- MainWindow から Run/Hotkey/Logging の制御責務を専用 Controller へ分離し、UI 側を委譲中心へ整理した。
+
+### Context / Goal
+- Layer1 計画に沿って MainWindow.xaml.cs の責務集中を段階的に解消する。
+- 既存のホットキー動作、Run 実行、ログ表示の挙動互換を維持したまま境界を導入する。
+
+### Changes
+- IMainWindowViewBridge を新設し、Controller から UI 更新する最小橋渡し API を定義。
+- MainWindowRunCoordinator を新設し、Run 排他・busy 表示・semantic payload 再利用判定・pending drain 呼び出しを移管。
+- HotkeyController を新設し、hotkey 登録/更新/重複検知/ロールバックを MainWindow から分離。
+- UiLogController を新設し、ログキューと flush タイマ制御を MainWindow から分離。
+- MainWindow.xaml.cs を更新し、Run/Hotkey/Log の既存処理を各 Controller へ委譲する構成に変更。
+
+### Files Touched
+- MainWindow.xaml.cs — Bridge 実装、Controller 注入、Run/Hotkey/Log の委譲化、旧 private state/処理の削減。
+- Services/Application/IMainWindowViewBridge.cs — UI ブリッジの最小インターフェースを新規追加。
+- Services/Application/MainWindowRunCoordinator.cs — Run 実行制御を新規追加。
+- Services/Application/HotkeyController.cs — Hotkey 制御を新規追加。
+- Services/Application/UiLogController.cs — UI ログバッファ制御を新規追加。
+
+### Behavioral Impact
+- ユーザー操作上の仕様変更はなし（既存 hotkey / run / ログ表示挙動を維持）。
+- 内部的に Run 実行状態参照が MainWindow フィールドから MainWindowRunCoordinator 経由へ移行した。
+
+### Risk & Mitigation
+- Risk: Controller 化に伴う状態移管漏れで Run/Hotkey/Log のタイミングがずれる可能性。
+- Mitigation: 既存メソッドの実行順を維持し、dotnet build で参照整合を確認。Hotkey 登録失敗時ロールバック（WHY コメント）を維持。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、0 warning / 0 error を確認。

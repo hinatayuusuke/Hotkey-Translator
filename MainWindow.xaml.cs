@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
@@ -9,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -19,12 +17,13 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
+using Hotkey_Translator.Services.Application;
 using Hotkey_Translator.UI;
 using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, IMainWindowViewBridge
 {
     private readonly SettingsService _settingsService = new();
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
@@ -41,15 +40,9 @@ public partial class MainWindow : Window
     private PaddleVlGrpcHost? _paddleVlGrpcHost;
     private CTranslate2GrpcHost? _ct2GrpcHost;
     private LlamaGrpcHost? _llamaGrpcHost;
-    private HotkeyManager? _hotkeyManager;
-    private HotkeyManager? _overlayToggleHotkeyManager;
-    private HotkeyManager? _forceRunHotkeyManager;
-    private HotkeyManager? _forceGeminiStrictHotkeyManager;
-    private HotkeyManager? _ocrOnlyHotkeyManager;
-    private HotkeyManager? _sceneAutoTranslateToggleHotkeyManager;
-    private HotkeyManager? _selectRoiHotkeyManager;
-    private HotkeyManager? _lockCaptureWindowHotkeyManager;
-    private HotkeyManager? _unlockCaptureWindowHotkeyManager;
+    private readonly HotkeyController _hotkeyController;
+    private readonly UiLogController _uiLogController;
+    private readonly MainWindowRunCoordinator _runCoordinator;
     private PhashService? _phashService;
     private DispatcherTimer? _autoHideTimer;
     private bool _autoHideTickInProgress;
@@ -66,28 +59,20 @@ public partial class MainWindow : Window
     private SceneTextSnapshot? _sceneChangeAutoTranslatePendingPayload;
     private SceneTextSnapshot? _lastSceneTextSnapshot;
     private int _semanticCandidateStreak;
-    private CancellationTokenSource? _runCts;
-    private int _runInProgress;
     private CancellationTokenSource? _translationOverlayCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private bool _overlayVisible;
-    private bool _hasRunOnce;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
-    private volatile bool _loggingEnabled = true;
-    private readonly ConcurrentQueue<string> _logQueue = new();
-    private DispatcherTimer? _logFlushTimer;
-    private bool _logFlushPending;
     private int _logLineCount;
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SceneChangePendingLogSuppressionMs = 2000;
-    private const int SceneSemanticPayloadTtlMs = 500;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     // WHY: Share one option profile so immediate and pending-drain auto runs keep identical Quiet UI behavior.
     private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
@@ -105,6 +90,15 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
+        _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
+        _runCoordinator = new MainWindowRunCoordinator(
+            _settingsService,
+            this,
+            () => _pipeline,
+            () => _logger,
+            ConsumeSceneChangeAutoTranslatePendingPayload,
+            TryDrainPendingSceneChangeAutoTranslate);
         PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -191,30 +185,17 @@ public partial class MainWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        _runCts?.Cancel();
-        _runCts?.Dispose();
+        _runCoordinator.Dispose();
         _translationOverlayCts?.Cancel();
         _translationOverlayCts?.Dispose();
-        _hotkeyManager?.Dispose();
-        _overlayToggleHotkeyManager?.Dispose();
-        _forceRunHotkeyManager?.Dispose();
-        _forceGeminiStrictHotkeyManager?.Dispose();
-        _ocrOnlyHotkeyManager?.Dispose();
-        _sceneAutoTranslateToggleHotkeyManager?.Dispose();
-        _selectRoiHotkeyManager?.Dispose();
-        _lockCaptureWindowHotkeyManager?.Dispose();
-        _unlockCaptureWindowHotkeyManager?.Dispose();
+        _hotkeyController.Dispose();
+        _uiLogController.Dispose();
         _autoHideBaselineCts?.Cancel();
         _autoHideBaselineCts?.Dispose();
         if (_autoHideTimer != null)
         {
             _autoHideTimer.Stop();
             _autoHideTimer.Tick -= OnAutoHideTick;
-        }
-        if (_logFlushTimer != null)
-        {
-            _logFlushTimer.Stop();
-            _logFlushTimer.Tick -= OnLogFlushTick;
         }
         _cacheRepository?.Dispose();
         _ocrEngine?.Dispose();
@@ -508,7 +489,7 @@ public partial class MainWindow : Window
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
         EnsureTranslatedOverlayForRunHotkeys();
-        if (!_hasRunOnce)
+        if (!_runCoordinator.HasRunOnce)
         {
             AppendLog("F8: Run once (first run).");
             await RunOnceAsync().ConfigureAwait(true);
@@ -682,118 +663,14 @@ public partial class MainWindow : Window
 
     private async Task RunOnceAsync(ForceRunOptions options, SceneTextSnapshot? semanticPayload)
     {
-        if (_pipeline == null)
-        {
-            return;
-        }
-
-        if (Interlocked.Exchange(ref _runInProgress, 1) == 1)
-        {
-            AppendLog("Run skipped: OCR already running.");
-            return;
-        }
-
-        var settings = _settingsService.Settings;
-        var isFirstRun = !_hasRunOnce;
-        _hasRunOnce = true;
-        EnableOverlay();
-        _runCts?.Cancel();
-        _runCts?.Dispose();
-        _runCts = new CancellationTokenSource();
-        SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
-        if (!options.SuppressTransientUiFeedback)
-        {
-            ShowLoadingSpinnerForRun(settings);
-        }
-        try
-        {
-            var payloadCandidate = semanticPayload ?? _sceneChangeAutoTranslatePendingPayload;
-            _sceneChangeAutoTranslatePendingPayload = null;
-            if (TryResolveSceneSemanticPayload(settings, options, payloadCandidate, out var reusablePayload, out var reason))
-            {
-                _logger?.Info(
-                    $"Scene semantic payload reused for auto-translate (units={reusablePayload.ReadingUnits.Count}, age={(DateTime.UtcNow - reusablePayload.CapturedAtUtc).TotalMilliseconds:0}ms).");
-                await _pipeline.RunWithReadingUnitsAsync(
-                        reusablePayload.ReadingUnits,
-                        reusablePayload.RoiScreen,
-                        reusablePayload.OverlayClipScreen,
-                        _runCts.Token,
-                        options)
-                    .ConfigureAwait(true);
-            }
-            else
-            {
-                if (payloadCandidate != null && !string.IsNullOrWhiteSpace(reason))
-                {
-                    _logger?.Info($"Scene semantic payload fallback to full OCR: {reason}.");
-                }
-
-                await _pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
-            }
-        }
-        finally
-        {
-            if (!options.SuppressTransientUiFeedback)
-            {
-                HideLoadingSpinnerForRun();
-            }
-            SetBusyOverlay(false, null);
-            Interlocked.Exchange(ref _runInProgress, 0);
-            _translationOverlayCts?.Cancel();
-            TryDrainPendingSceneChangeAutoTranslate();
-        }
+        await _runCoordinator.RunOnceAsync(options, semanticPayload).ConfigureAwait(true);
     }
 
-    private static bool TryResolveSceneSemanticPayload(
-        AppSettings settings,
-        ForceRunOptions options,
-        SceneTextSnapshot? payload,
-        out SceneTextSnapshot reusablePayload,
-        out string? reason)
+    private SceneTextSnapshot? ConsumeSceneChangeAutoTranslatePendingPayload()
     {
-        reusablePayload = null!;
-        reason = null;
-
-        if (options.Trigger != RunTrigger.AutoSceneChange)
-        {
-            reason = "non auto-scene run";
-            return false;
-        }
-
-        if (payload == null)
-        {
-            reason = "no semantic payload";
-            return false;
-        }
-
-        if (!settings.EnableSceneChangeSemanticGate)
-        {
-            reason = "semantic gate disabled";
-            return false;
-        }
-
-        if (payload.ReadingUnits.Count == 0)
-        {
-            reason = "payload has no reading units";
-            return false;
-        }
-
-        var ageMs = (DateTime.UtcNow - payload.CapturedAtUtc).TotalMilliseconds;
-        if (ageMs > SceneSemanticPayloadTtlMs)
-        {
-            reason = $"payload stale ({ageMs:0} ms)";
-            return false;
-        }
-
-        var expectedSignature = SceneTextSnapshotService.BuildSnapshotSignature(settings);
-        if (!string.Equals(expectedSignature, payload.SnapshotSignature, StringComparison.Ordinal))
-        {
-            reason = "payload signature mismatch";
-            return false;
-        }
-
-        reusablePayload = payload;
-        return true;
+        var payload = _sceneChangeAutoTranslatePendingPayload;
+        _sceneChangeAutoTranslatePendingPayload = null;
+        return payload;
     }
 
     private void SetBusyOverlay(bool visible, string? message)
@@ -851,6 +728,18 @@ public partial class MainWindow : Window
             _logger?.Error(ex, "Failed to hide capture loading spinner.");
         }
     }
+
+    private void CancelTranslationOverlay()
+    {
+        _translationOverlayCts?.Cancel();
+    }
+
+    void IMainWindowViewBridge.AppendLog(string message) => AppendLog(message);
+    void IMainWindowViewBridge.EnableOverlay() => EnableOverlay();
+    void IMainWindowViewBridge.SetBusyOverlay(bool visible, string? message) => SetBusyOverlay(visible, message);
+    void IMainWindowViewBridge.ShowLoadingSpinnerForRun(AppSettings settings) => ShowLoadingSpinnerForRun(settings);
+    void IMainWindowViewBridge.HideLoadingSpinnerForRun() => HideLoadingSpinnerForRun();
+    void IMainWindowViewBridge.CancelTranslationOverlay() => CancelTranslationOverlay();
 
     private Rect ResolveSpinnerAnchorScreenRect(AppSettings settings)
     {
@@ -1949,7 +1838,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _runInProgress, 0, 0) == 1)
+        if (_runCoordinator.IsRunning)
         {
             AppendLog("Restart skipped: OCR is running.");
             return;
@@ -1998,7 +1887,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Interlocked.CompareExchange(ref _runInProgress, 0, 0) == 1)
+        if (_runCoordinator.IsRunning)
         {
             AppendLog("Stop skipped: OCR is running.");
             return;
@@ -2439,94 +2328,27 @@ public partial class MainWindow : Window
 
     private bool TryRegisterHotkeys(HotkeyConfig config)
     {
-        var allSucceeded = true;
-        var seen = new HashSet<(Key Key, ModifierKeys Modifiers)>();
-        allSucceeded &= TryApplyHotkeyBinding(ref _hotkeyManager, config.RunOnceKey, config.RunOnceModifiers, id: 1, OnHotkeyPressed, "RunOnce", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _overlayToggleHotkeyManager, config.ToggleOverlayKey, config.ToggleOverlayModifiers, id: 2, OnToggleOverlayHotkeyPressed, "ToggleOverlay", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _forceRunHotkeyManager, config.ForceRunKey, config.ForceRunModifiers, id: 3, OnForceRunHotkeyPressed, "ForceRun", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _forceGeminiStrictHotkeyManager, config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, id: 4, OnForceGeminiStrictHotkeyPressed, "ForceGeminiStrict", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _ocrOnlyHotkeyManager, config.OcrOnlyKey, config.OcrOnlyModifiers, id: 5, OnOcrOnlyHotkeyPressed, "OverlayText", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _sceneAutoTranslateToggleHotkeyManager, config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, id: 9, OnToggleSceneAutoTranslateHotkeyPressed, "SceneAutoTranslate", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _selectRoiHotkeyManager, config.SelectRoiKey, config.SelectRoiModifiers, id: 6, OnSelectRoiHotkeyPressed, "SelectRoi", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _lockCaptureWindowHotkeyManager, config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, id: 7, OnLockCaptureWindowHotkeyPressed, "LockWindow", seen);
-        allSucceeded &= TryApplyHotkeyBinding(ref _unlockCaptureWindowHotkeyManager, config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, id: 8, OnUnlockCaptureWindowHotkeyPressed, "UnlockWindow", seen);
-        return allSucceeded;
+        return _hotkeyController.TryRegisterBindings(BuildHotkeyRegistrations(config));
     }
 
-    private bool TryApplyHotkeyBinding(
-        ref HotkeyManager? slot,
-        Key key,
-        ModifierKeys modifiers,
-        int id,
-        EventHandler handler,
-        string name,
-        ISet<(Key Key, ModifierKeys Modifiers)> seen)
+    private IReadOnlyList<HotkeyBindingRegistration> BuildHotkeyRegistrations(HotkeyConfig config)
     {
-        var binding = (key, modifiers);
-        if (!seen.Add(binding))
+        return new List<HotkeyBindingRegistration>
         {
-            _logger?.Error($"Failed to register hotkey ({name}: {FormatHotkey(key, modifiers)}). Duplicate binding in settings.");
-            return false;
-        }
-
-        if (slot is not null && slot.Key == key && slot.Modifiers == modifiers)
-        {
-            return true;
-        }
-
-        HotkeyManager? previous = slot;
-        slot = null;
-        previous?.Dispose();
-
-        if (TryCreateHotkeyManager(key, modifiers, id, handler, out var manager, out var registerError))
-        {
-            slot = manager;
-            return true;
-        }
-
-        _logger?.Error($"Failed to register hotkey ({name}: {FormatHotkey(key, modifiers)}). {registerError?.Message}");
-        if (previous is null)
-        {
-            return false;
-        }
-
-        // WHY: Failed updates should not disable unrelated operations; rollback keeps prior binding active.
-        if (TryCreateHotkeyManager(previous.Key, previous.Modifiers, id, handler, out var restored, out var rollbackError))
-        {
-            slot = restored;
-            _logger?.Info($"Hotkey rollback applied for {name}: {FormatHotkey(previous.Key, previous.Modifiers)}.");
-            return false;
-        }
-
-        _logger?.Error($"Failed to restore previous hotkey ({name}). {rollbackError?.Message}");
-        return false;
-    }
-
-    private bool TryCreateHotkeyManager(
-        Key key,
-        ModifierKeys modifiers,
-        int id,
-        EventHandler handler,
-        out HotkeyManager? manager,
-        out Exception? error)
-    {
-        manager = null;
-        error = null;
-        try
-        {
-            var created = new HotkeyManager(this, key, modifiers, id);
-            created.HotkeyPressed += handler;
-            created.Register();
-            manager = created;
-            return true;
-        }
-        catch (Exception ex)
-        {
-            manager?.Dispose();
-            manager = null;
-            error = ex;
-            return false;
-        }
+            new("RunOnce", config.RunOnceKey, config.RunOnceModifiers, 1, OnHotkeyPressed),
+            new("ToggleOverlay", config.ToggleOverlayKey, config.ToggleOverlayModifiers, 2, OnToggleOverlayHotkeyPressed),
+            new("ForceRun", config.ForceRunKey, config.ForceRunModifiers, 3, OnForceRunHotkeyPressed),
+            new("ForceGeminiStrict", config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, 4,
+                OnForceGeminiStrictHotkeyPressed),
+            new("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed),
+            new("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9,
+                OnToggleSceneAutoTranslateHotkeyPressed),
+            new("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed),
+            new("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7,
+                OnLockCaptureWindowHotkeyPressed),
+            new("UnlockWindow", config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, 8,
+                OnUnlockCaptureWindowHotkeyPressed)
+        };
     }
 
     private static HotkeyConfig BuildHotkeyConfigFromSettings(AppSettings settings)
@@ -3121,7 +2943,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (Volatile.Read(ref _runInProgress) == 1)
+        if (_runCoordinator.IsRunning)
         {
             MarkSceneChangeAutoTranslatePending(diff, threshold, "OCR already running", semanticPayload);
             return;
@@ -3176,7 +2998,7 @@ public partial class MainWindow : Window
             return false;
         }
 
-        if (Volatile.Read(ref _runInProgress) == 1)
+        if (_runCoordinator.IsRunning)
         {
             return false;
         }
@@ -3299,61 +3121,25 @@ public partial class MainWindow : Window
 
     private void AppendLog(string message)
     {
-        if (!_loggingEnabled)
-        {
-            return;
-        }
-
-        _logQueue.Enqueue(message);
+        _uiLogController.AppendLog(message);
     }
 
     private void InitializeLogBuffer()
     {
-        _logFlushTimer = new DispatcherTimer(DispatcherPriority.Background);
-        _logFlushTimer.Interval = TimeSpan.FromMilliseconds(LogFlushIntervalMs);
-        _logFlushTimer.Tick += OnLogFlushTick;
-        _logFlushTimer.Start();
+        _uiLogController.Start();
     }
 
-    private void OnLogFlushTick(object? sender, EventArgs e)
+    private void FlushLogPayload(string payload)
     {
-        FlushLogs();
-    }
-
-    private void FlushLogs()
-    {
-        if (!_loggingEnabled || LogBox == null)
-        {
-            ClearLogQueue();
-            return;
-        }
-
-        if (_logFlushPending)
+        if (LogBox == null)
         {
             return;
         }
 
-        var builder = new StringBuilder();
-        while (_logQueue.TryDequeue(out var message))
-        {
-            builder.AppendLine(message);
-        }
-
-        if (builder.Length == 0)
-        {
-            return;
-        }
-
-        var payload = builder.ToString();
-        _logFlushPending = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(() =>
-        {
-            _logFlushPending = false;
-            LogBox.AppendText(payload);
-            _logLineCount += CountNewlines(payload);
-            TrimLogLines(MaxLogLines);
-            LogBox.ScrollToEnd();
-        }));
+        LogBox.AppendText(payload);
+        _logLineCount += CountNewlines(payload);
+        TrimLogLines(MaxLogLines);
+        LogBox.ScrollToEnd();
     }
 
     private void TrimLogLines(int maxLines)
@@ -3429,22 +3215,10 @@ public partial class MainWindow : Window
         return text.EndsWith("\n", StringComparison.Ordinal) ? lines : lines + 1;
     }
 
-    private void ClearLogQueue()
-    {
-        while (_logQueue.TryDequeue(out _))
-        {
-        }
-    }
-
     private void UpdateLoggingState(bool enabled)
     {
-        _loggingEnabled = enabled;
+        _uiLogController.SetEnabled(enabled);
         _logger?.SetEnabled(enabled);
-        if (!enabled)
-        {
-            ClearLogQueue();
-            _logFlushPending = false;
-        }
     }
 
     private void OnOcrPreprocessPreviewReady(Bitmap bitmap)
@@ -3466,12 +3240,12 @@ public partial class MainWindow : Window
 
     private async void OnTranslationStarted()
     {
-        if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        if (!_runCoordinator.IsRunning)
         {
             return;
         }
 
-        _translationOverlayCts?.Cancel();
+        CancelTranslationOverlay();
         _translationOverlayCts?.Dispose();
         _translationOverlayCts = new CancellationTokenSource();
         var token = _translationOverlayCts.Token;
@@ -3484,7 +3258,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (token.IsCancellationRequested || Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        if (token.IsCancellationRequested || !_runCoordinator.IsRunning)
         {
             return;
         }
@@ -3494,8 +3268,8 @@ public partial class MainWindow : Window
 
     private void OnTranslationCompleted()
     {
-        _translationOverlayCts?.Cancel();
-        if (Interlocked.CompareExchange(ref _runInProgress, 1, 1) != 1)
+        CancelTranslationOverlay();
+        if (!_runCoordinator.IsRunning)
         {
             return;
         }
