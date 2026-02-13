@@ -18,7 +18,6 @@ using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
 using Hotkey_Translator.UI;
 using Hotkey_Translator.ViewModels;
-using AppCaptureMode = Hotkey_Translator.Models.CaptureMode;
 
 namespace Hotkey_Translator;
 
@@ -815,27 +814,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
-        CaptureModeBox.SelectedIndex = settings.CaptureMode == AppCaptureMode.Screen ? 0 : 1;
-        SetComboBoxByTag(CaptureProviderBox, settings.PreferredCaptureProvider.ToString());
-        CaptureProviderFixedCheck.IsChecked = settings.CaptureProviderMode == CaptureProviderMode.Fixed;
-        EnableRoiCheck.IsChecked = settings.EnableRoi;
-        SetComboBoxByTag(OcrEngineBox, settings.OcrEngine switch
-        {
-            OcrEngineKind.Paddle => "Paddle",
-            OcrEngineKind.PaddleVllm => "PaddleVllm",
-            _ => "WinRt"
-        });
-        SetComboBoxByTag(PaddleDetectionModelBox, settings.PaddleTextDetectionModelName);
-        SetComboBoxByTag(PaddleRecognitionModelBox, settings.PaddleTextRecognitionModelName);
         PaddleTextDetThreshBox.Text = settings.PaddleTextDetThresh.ToString("0.###");
         PaddleTextDetBoxThreshBox.Text = settings.PaddleTextDetBoxThresh.ToString("0.###");
         PaddleTextDetUnclipRatioBox.Text = settings.PaddleTextDetUnclipRatio.ToString("0.###");
         PaddleTextRecScoreThreshBox.Text = settings.PaddleTextRecScoreThresh.ToString("0.###");
-        SetComboBoxByTag(PaddleVlPipelineVersionBox, settings.PaddleVlPipelineVersion);
         PaddleVlMaxPixelsBox.Text = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
         PaddleVlLayoutThresholdBox.Text = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
         PaddleVlMaxNewTokensBox.Text = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
-        EnablePaddleConfidenceFilterCheck.IsChecked = settings.EnablePaddleConfidenceFilter;
         settings.EnableCTranslate2 = false;
         if (EnableCTranslate2Check != null)
         {
@@ -845,7 +830,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
         }
-        EnableLlamaCppCheck.IsChecked = settings.EnableLlamaCppTranslation;
         ReloadLlamaModelOptions(settings);
         LlamaHostBox.Text = settings.LlamaHost;
         LlamaPortBox.Text = settings.LlamaPort.ToString();
@@ -859,33 +843,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         LlamaTopPBox.Text = settings.LlamaTopP.ToString("0.###");
         LlamaTopKBox.Text = settings.LlamaTopK.ToString();
         LlamaRepeatPenaltyBox.Text = settings.LlamaRepeatPenalty.ToString("0.###");
-        EnableDeepLCheck.IsChecked = settings.EnableDeepL;
         DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         DeepLEndpointBox.Text = settings.DeepLEndpoint;
-        EnableGeminiCheck.IsChecked = settings.EnableGemini;
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
         ApplyHotkeySettingsToUi(settings);
         PhashThresholdBox.Text = settings.PhashThreshold.ToString();
         IouThresholdBox.Text = settings.OcrIouThreshold.ToString("0.00");
-        SetComboBoxByTag(VerticalModeOverrideBox, GetVerticalModeOverrideTag(settings.VerticalModeOverride));
-        EnableOcrPerfLogCheck.IsChecked = settings.EnableOcrPerfLog;
         OcrPerfLogThresholdBox.Text = settings.OcrPerfLogThresholdMs.ToString();
-        EnableLoggingCheck.IsChecked = settings.EnableLogging;
-        EnableOcrBinarizationCheck.IsChecked = settings.EnableOcrBinarization;
-        EnableOcrAutoThresholdCheck.IsChecked = settings.EnableOcrAutoThreshold;
-        EnableOcrAutoInvertCheck.IsChecked = settings.EnableOcrAutoInvert;
-        EnableOcrGammaCheck.IsChecked = settings.EnableOcrGamma;
-        EnableOcrTwoPassCheck.IsChecked = settings.EnableOcrTwoPass;
-        OcrTwoPassPreferAutoCheck.IsChecked = settings.OcrTwoPassPreferAuto;
-        EnableOcrDownsamplingCheck.IsChecked = settings.EnableOcrDownsampling;
-        EnableFixedRoiOverlayCheck.IsChecked = settings.EnableFixedRoiOverlay;
-        EnableOverlayFontStabilizationCheck.IsChecked = settings.EnableOverlayFontStabilization;
-        EnableSmallBoxReadabilityBoostCheck.IsChecked = settings.EnableSmallBoxReadabilityBoost;
-        EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
-        EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
-        EnableSceneChangeTextWeightedCheck.IsChecked = settings.EnableSceneChangeTextWeighted;
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateOcrPreprocessControls(settings);
@@ -1087,67 +1053,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return fallback;
     }
 
-    private AppCaptureMode GetCaptureMode()
-    {
-        if (CaptureModeBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-        {
-            return tag == "Screen" ? AppCaptureMode.Screen : AppCaptureMode.ActiveWindow;
-        }
-
-        return AppCaptureMode.ActiveWindow;
-    }
-
-    private CaptureProviderKind GetCaptureProviderKind()
-    {
-        if (CaptureProviderBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-        {
-            return tag switch
-            {
-                "Dxgi" => CaptureProviderKind.Dxgi,
-                "Gdi" => CaptureProviderKind.Gdi,
-                _ => CaptureProviderKind.Wgc
-            };
-        }
-
-        return CaptureProviderKind.Wgc;
-    }
-
-    private OcrEngineKind GetOcrEngineKind()
-    {
-        if (OcrEngineBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-        {
-            return tag switch
-            {
-                "Paddle" => OcrEngineKind.Paddle,
-                "PaddleVllm" => OcrEngineKind.PaddleVllm,
-                _ => OcrEngineKind.WinRt
-            };
-        }
-
-        return OcrEngineKind.WinRt;
-    }
-
-    private VerticalModeOverride GetVerticalModeOverride()
-    {
-        var tag = GetSelectedTag(VerticalModeOverrideBox, "Auto");
-        return tag switch
-        {
-            "Vertical" => VerticalModeOverride.Vertical,
-            "Horizontal" => VerticalModeOverride.Horizontal,
-            _ => VerticalModeOverride.Auto
-        };
-    }
-
-    private static string GetVerticalModeOverrideTag(VerticalModeOverride mode)
-    {
-        return mode switch
-        {
-            VerticalModeOverride.Vertical => "Vertical",
-            VerticalModeOverride.Horizontal => "Horizontal",
-            _ => "Auto"
-        };
-    }
-
     private static void SetComboBoxByTag(ComboBox comboBox, string tag)
     {
         foreach (var item in comboBox.Items)
@@ -1306,19 +1211,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnSettingChanged(object sender, RoutedEventArgs e)
     {
-        if (ReferenceEquals(sender, EnableSceneChangeAutoHideCheck) &&
-            EnableSceneChangeAutoHideCheck.IsChecked == true &&
-            EnableSceneChangeAutoTranslateCheck.IsChecked == true)
-        {
-            EnableSceneChangeAutoTranslateCheck.IsChecked = false;
-        }
-        else if (ReferenceEquals(sender, EnableSceneChangeAutoTranslateCheck) &&
-                 EnableSceneChangeAutoTranslateCheck.IsChecked == true &&
-                 EnableSceneChangeAutoHideCheck.IsChecked == true)
-        {
-            EnableSceneChangeAutoHideCheck.IsChecked = false;
-        }
-
+        // WHY: Controls not yet migrated to SettingsViewModel still use this generic persistence trigger.
         RequestSettingsSave();
     }
 
@@ -1498,17 +1391,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void ApplyUiInputToSettings(AppSettings settings)
     {
-        settings.CaptureMode = GetCaptureMode();
-        settings.CaptureProviderMode = CaptureProviderFixedCheck.IsChecked == true
-            ? CaptureProviderMode.Fixed
-            : CaptureProviderMode.Auto;
-        settings.PreferredCaptureProvider = GetCaptureProviderKind();
-        settings.EnableRoi = EnableRoiCheck.IsChecked == true;
-        settings.OcrEngine = GetOcrEngineKind();
-        settings.PaddleTextDetectionModelName = GetSelectedTag(PaddleDetectionModelBox, "PP-OCRv5_mobile_det");
-        settings.PaddleTextRecognitionModelName = GetSelectedTag(PaddleRecognitionModelBox, "PP-OCRv5_server_rec");
-        settings.PaddleVlPipelineVersion = GetSelectedTag(PaddleVlPipelineVersionBox, "v1.5");
-        settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilterCheck.IsChecked == true;
+        _mainWindowViewModel.Settings.ApplyTo(settings);
         if (double.TryParse(PaddleTextDetThreshBox.Text.Trim(), out var textDetThresh))
         {
             settings.PaddleTextDetThresh = textDetThresh;
@@ -1558,7 +1441,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         settings.EnableCTranslate2 = false;
-        settings.EnableLlamaCppTranslation = EnableLlamaCppCheck.IsChecked == true;
         settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, DefaultLlamaModelFileName);
         settings.LlamaHost = LlamaHostBox.Text.Trim();
         if (int.TryParse(LlamaPortBox.Text.Trim(), out var llamaPort))
@@ -1616,30 +1498,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
 
-        settings.EnableDeepL = EnableDeepLCheck.IsChecked == true;
         settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.DeepLEndpoint = DeepLEndpointBox.Text.Trim();
-        settings.EnableGemini = EnableGeminiCheck.IsChecked == true;
         settings.TranslationPriority = GetTranslationPriority();
         settings.ApiKey = ApiKeyBox.Password;
         ApplyHotkeySettingsFromUi(settings);
-        settings.VerticalModeOverride = GetVerticalModeOverride();
-        settings.EnableOcrBinarization = EnableOcrBinarizationCheck.IsChecked == true;
-        settings.EnableOcrAutoThreshold = EnableOcrAutoThresholdCheck.IsChecked == true;
-        settings.EnableOcrAutoInvert = EnableOcrAutoInvertCheck.IsChecked == true;
-        settings.EnableOcrGamma = EnableOcrGammaCheck.IsChecked == true;
-        settings.EnableLogging = EnableLoggingCheck.IsChecked == true;
-        settings.EnableOcrPerfLog = EnableOcrPerfLogCheck.IsChecked == true;
-        settings.EnableOcrDownsampling = EnableOcrDownsamplingCheck.IsChecked == true;
-        settings.EnableOcrTwoPass = EnableOcrTwoPassCheck.IsChecked == true;
-        settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAutoCheck.IsChecked == true;
-        settings.EnableFixedRoiOverlay = EnableFixedRoiOverlayCheck.IsChecked == true;
-        settings.EnableOverlayFontStabilization = EnableOverlayFontStabilizationCheck.IsChecked == true;
-        settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoostCheck.IsChecked == true;
-        settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHideCheck.IsChecked == true;
-        settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslateCheck.IsChecked == true;
-        settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
-        _mainWindowViewModel.Settings.ApplyTo(settings);
 
         if (int.TryParse(PhashThresholdBox.Text.Trim(), out var phashThreshold))
         {

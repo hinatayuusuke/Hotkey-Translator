@@ -32,19 +32,24 @@
                             </Grid.RowDefinitions>
 
                             <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" VerticalAlignment="Center" />
-                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CaptureModeBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
+                            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CaptureModeBox" Width="200" HorizontalAlignment="Left"
+                                      SelectedValuePath="Tag"
+                                      SelectedValue="{Binding Settings.CaptureModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="Screen" Tag="Screen" />
                                 <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
                             </ComboBox>
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" VerticalAlignment="Center" Margin="0,6,0,0" />
                             <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
-                                <ComboBox x:Name="CaptureProviderBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
+                                <ComboBox x:Name="CaptureProviderBox" Width="200" HorizontalAlignment="Left"
+                                          SelectedValuePath="Tag"
+                                          SelectedValue="{Binding Settings.CaptureProviderTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ComboBoxItem Content="WGC" Tag="Wgc" />
                                     <ComboBoxItem Content="DXGI" Tag="Dxgi" />
                                     <ComboBoxItem Content="GDI" Tag="Gdi" />
                                 </ComboBox>
-                                <CheckBox x:Name="CaptureProviderFixedCheck" Content="Fixed only" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="CaptureProviderFixedCheck" Content="Fixed only" VerticalAlignment="Center" Margin="10,0,0,0"
+                                          IsChecked="{Binding Settings.IsCaptureProviderFixed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
 
                             <TextBlock Grid.Row="2" Grid.Column="0" Text="ROI" VerticalAlignment="Center" Margin="0,6,0,0" />
@@ -52,7 +57,8 @@
                             <StackPanel Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
                                 <Button x:Name="SelectRoiButton" Content="Select ROI" Width="140" HorizontalAlignment="Left" Command="{Binding SelectRoiCommand}" />
     
-                                <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0"
+                                          IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                             <TextBlock Grid.Row="3" Grid.Column="1" x:Name="RoiStatusText" Text="ROI: not set" Margin="0,6,0,0" Grid.ColumnSpan="2" />
                         </Grid>
@@ -66,7 +72,9 @@
                                 <ColumnDefinition Width="240" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Engine" VerticalAlignment="Center" />
-                            <ComboBox Grid.Column="1" x:Name="OcrEngineBox" Width="200" HorizontalAlignment="Left" SelectionChanged="OnSettingChanged">
+                            <ComboBox Grid.Column="1" x:Name="OcrEngineBox" Width="200" HorizontalAlignment="Left"
+                                      SelectedValuePath="Tag"
+                                      SelectedValue="{Binding Settings.OcrEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                                 <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
@@ -186,8 +194,10 @@
                             </Grid>
 
                             <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Margin="0,8,0,0">
-                                <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="12,0,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableDeepLCheck" Content="Enable DeepL"
+                                          IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="12,0,0,0"
+                                          IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </Grid>
 
@@ -264,7 +274,9 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />
-                                    <ComboBox x:Name="VerticalModeOverrideBox" Width="180" SelectionChanged="OnSettingChanged">
+                                    <ComboBox x:Name="VerticalModeOverrideBox" Width="180"
+                                              SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Settings.VerticalModeOverrideTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <ComboBoxItem Content="Auto" Tag="Auto" />
                                         <ComboBoxItem Content="Vertical (forced)" Tag="Vertical" />
                                         <ComboBoxItem Content="Horizontal (forced)" Tag="Horizontal" />
@@ -273,8 +285,10 @@
 
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="Performance" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="OcrPerfLogThresholdBox" Width="80" LostFocus="OnSettingLostFocus" />
@@ -282,12 +296,18 @@
 
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrBinarization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrAutoThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrAutoInvert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrTwoPass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.OcrTwoPassPreferAuto, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Low threshold" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassLowThresholdSlider"
@@ -350,7 +370,7 @@
                                 <CheckBox x:Name="EnableOcrDownsamplingCheck"
                                           Content="Downsample OCR input"
                                           Margin="0,6,0,0"
-                                          Click="OnSettingChanged" />
+                                          IsChecked="{Binding Settings.EnableOcrDownsampling, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Downsample scale" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrDownsampleScaleSlider"
@@ -385,9 +405,12 @@
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="SmallTextThresholdSlider"
@@ -409,10 +432,13 @@
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0" Click="OnSettingChanged" />
-                                <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
-                                <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0" Click="OnSettingChanged" />
+                                <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="SceneChangeThresholdSlider"
@@ -461,14 +487,18 @@
                                 <TextBlock Text="PaddleOCR Core (gRPC)" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Detection model" Width="120" VerticalAlignment="Center" />
-                                    <ComboBox x:Name="PaddleDetectionModelBox" Width="220" SelectionChanged="OnSettingChanged">
+                                    <ComboBox x:Name="PaddleDetectionModelBox" Width="220"
+                                              SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Settings.PaddleDetectionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <ComboBoxItem Content="Mobile (PP-OCRv5_mobile_det)" Tag="PP-OCRv5_mobile_det" />
                                         <ComboBoxItem Content="Server (PP-OCRv5_server_det)" Tag="PP-OCRv5_server_det" />
                                     </ComboBox>
                                 </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="PaddleRecognitionModelBox" Width="220" SelectionChanged="OnSettingChanged">
+                                      <ComboBox x:Name="PaddleRecognitionModelBox" Width="220"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleRecognitionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                           <ComboBoxItem Content="Auto (source language)" Tag="auto" />
                                           <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
                                         <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
@@ -504,7 +534,7 @@
                                             Content="Filter low-confidence lines (Paddle only)"
                                             Margin="0,8,0,0"
                                             Visibility="Collapsed"
-                                            Click="OnSettingChanged" />
+                                            IsChecked="{Binding Settings.EnablePaddleConfidenceFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
                                       <TextBlock Text="Confidence threshold" Width="120" VerticalAlignment="Center" />
                                       <Slider x:Name="PaddleConfidenceThresholdSlider"
@@ -529,7 +559,9 @@
                                   <TextBlock Text="PaddleOCR-VL (gRPC)" FontWeight="SemiBold" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Pipeline version" Width="120" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120" SelectionChanged="OnSettingChanged">
+                                      <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlPipelineVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                           <ComboBoxItem Content="v1" Tag="v1" />
                                           <ComboBoxItem Content="v1.5" Tag="v1.5" />
                                       </ComboBox>
@@ -581,7 +613,7 @@
                                   <CheckBox x:Name="EnableLlamaCppCheck"
                                             Content="Enable Llama.cpp translation"
                                             Margin="0,6,0,0"
-                                            Click="OnSettingChanged" />
+                                            IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
                                              Foreground="DimGray"
                                              TextWrapping="Wrap"

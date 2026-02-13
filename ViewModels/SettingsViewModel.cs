@@ -18,6 +18,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         "zh-Hans",
         "ru"
     };
+    private bool _suspendSceneModeSync;
     private bool _suspendAutoSave;
 
     public SettingsViewModel(ISettingsChangeScheduler changeScheduler)
@@ -41,12 +42,78 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _targetLanguageTag = "ja";
     [ObservableProperty] private string _sourceLanguageCustom = string.Empty;
     [ObservableProperty] private string _targetLanguageCustom = string.Empty;
+    [ObservableProperty] private string _captureModeTag = "ActiveWindow";
+    [ObservableProperty] private string _captureProviderTag = "Gdi";
+    [ObservableProperty] private bool _isCaptureProviderFixed;
+    [ObservableProperty] private bool _enableRoi;
+    [ObservableProperty] private string _ocrEngineTag = "WinRt";
+    [ObservableProperty] private string _paddleDetectionModelName = "PP-OCRv5_mobile_det";
+    [ObservableProperty] private string _paddleRecognitionModelName = "PP-OCRv5_server_rec";
+    [ObservableProperty] private string _paddleVlPipelineVersion = "v1.5";
+    [ObservableProperty] private bool _enablePaddleConfidenceFilter;
+    [ObservableProperty] private bool _enableLlamaCppTranslation;
+    [ObservableProperty] private bool _enableDeepL;
+    [ObservableProperty] private bool _enableGemini;
+    [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
+    [ObservableProperty] private bool _enableLogging;
+    [ObservableProperty] private bool _enableOcrPerfLog;
+    [ObservableProperty] private bool _enableOcrBinarization;
+    [ObservableProperty] private bool _enableOcrAutoThreshold;
+    [ObservableProperty] private bool _enableOcrAutoInvert;
+    [ObservableProperty] private bool _enableOcrGamma;
+    [ObservableProperty] private bool _enableOcrDownsampling;
+    [ObservableProperty] private bool _enableOcrTwoPass;
+    [ObservableProperty] private bool _ocrTwoPassPreferAuto;
+    [ObservableProperty] private bool _enableFixedRoiOverlay;
+    [ObservableProperty] private bool _enableOverlayFontStabilization;
+    [ObservableProperty] private bool _enableSmallBoxReadabilityBoost;
+    [ObservableProperty] private bool _enableSceneChangeAutoHide;
+    [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
+    [ObservableProperty] private bool _enableSceneChangeTextWeighted;
 
     public void LoadFrom(AppSettings settings)
     {
         _suspendAutoSave = true;
         try
         {
+            CaptureModeTag = settings.CaptureMode == CaptureMode.Screen ? "Screen" : "ActiveWindow";
+            CaptureProviderTag = settings.PreferredCaptureProvider.ToString();
+            IsCaptureProviderFixed = settings.CaptureProviderMode == CaptureProviderMode.Fixed;
+            EnableRoi = settings.EnableRoi;
+            OcrEngineTag = settings.OcrEngine switch
+            {
+                OcrEngineKind.Paddle => "Paddle",
+                OcrEngineKind.PaddleVllm => "PaddleVllm",
+                _ => "WinRt"
+            };
+            PaddleDetectionModelName = settings.PaddleTextDetectionModelName;
+            PaddleRecognitionModelName = settings.PaddleTextRecognitionModelName;
+            PaddleVlPipelineVersion = settings.PaddleVlPipelineVersion;
+            EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
+            EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
+            EnableDeepL = settings.EnableDeepL;
+            EnableGemini = settings.EnableGemini;
+            VerticalModeOverrideTag = settings.VerticalModeOverride switch
+            {
+                VerticalModeOverride.Vertical => "Vertical",
+                VerticalModeOverride.Horizontal => "Horizontal",
+                _ => "Auto"
+            };
+            EnableLogging = settings.EnableLogging;
+            EnableOcrPerfLog = settings.EnableOcrPerfLog;
+            EnableOcrBinarization = settings.EnableOcrBinarization;
+            EnableOcrAutoThreshold = settings.EnableOcrAutoThreshold;
+            EnableOcrAutoInvert = settings.EnableOcrAutoInvert;
+            EnableOcrGamma = settings.EnableOcrGamma;
+            EnableOcrDownsampling = settings.EnableOcrDownsampling;
+            EnableOcrTwoPass = settings.EnableOcrTwoPass;
+            OcrTwoPassPreferAuto = settings.OcrTwoPassPreferAuto;
+            EnableFixedRoiOverlay = settings.EnableFixedRoiOverlay;
+            EnableOverlayFontStabilization = settings.EnableOverlayFontStabilization;
+            EnableSmallBoxReadabilityBoost = settings.EnableSmallBoxReadabilityBoost;
+            EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
+            EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
+            EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             PaddleConfidenceThreshold = settings.PaddleConfidenceThreshold;
             OcrBinarizationThreshold = settings.OcrBinarizationThreshold;
             OcrGamma = settings.OcrGamma;
@@ -69,6 +136,53 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
     public void ApplyTo(AppSettings settings)
     {
+        settings.CaptureMode = string.Equals(CaptureModeTag, "Screen", StringComparison.OrdinalIgnoreCase)
+            ? CaptureMode.Screen
+            : CaptureMode.ActiveWindow;
+        settings.CaptureProviderMode = IsCaptureProviderFixed
+            ? CaptureProviderMode.Fixed
+            : CaptureProviderMode.Auto;
+        settings.PreferredCaptureProvider = CaptureProviderTag switch
+        {
+            "Dxgi" => CaptureProviderKind.Dxgi,
+            "Gdi" => CaptureProviderKind.Gdi,
+            _ => CaptureProviderKind.Wgc
+        };
+        settings.EnableRoi = EnableRoi;
+        settings.OcrEngine = OcrEngineTag switch
+        {
+            "Paddle" => OcrEngineKind.Paddle,
+            "PaddleVllm" => OcrEngineKind.PaddleVllm,
+            _ => OcrEngineKind.WinRt
+        };
+        settings.PaddleTextDetectionModelName = PaddleDetectionModelName;
+        settings.PaddleTextRecognitionModelName = PaddleRecognitionModelName;
+        settings.PaddleVlPipelineVersion = PaddleVlPipelineVersion;
+        settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilter;
+        settings.EnableLlamaCppTranslation = EnableLlamaCppTranslation;
+        settings.EnableDeepL = EnableDeepL;
+        settings.EnableGemini = EnableGemini;
+        settings.VerticalModeOverride = VerticalModeOverrideTag switch
+        {
+            "Vertical" => VerticalModeOverride.Vertical,
+            "Horizontal" => VerticalModeOverride.Horizontal,
+            _ => VerticalModeOverride.Auto
+        };
+        settings.EnableLogging = EnableLogging;
+        settings.EnableOcrPerfLog = EnableOcrPerfLog;
+        settings.EnableOcrBinarization = EnableOcrBinarization;
+        settings.EnableOcrAutoThreshold = EnableOcrAutoThreshold;
+        settings.EnableOcrAutoInvert = EnableOcrAutoInvert;
+        settings.EnableOcrGamma = EnableOcrGamma;
+        settings.EnableOcrDownsampling = EnableOcrDownsampling;
+        settings.EnableOcrTwoPass = EnableOcrTwoPass;
+        settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAuto;
+        settings.EnableFixedRoiOverlay = EnableFixedRoiOverlay;
+        settings.EnableOverlayFontStabilization = EnableOverlayFontStabilization;
+        settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoost;
+        settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
+        settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
+        settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThreshold, 2);
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThreshold);
         settings.OcrGamma = Math.Round(OcrGamma, 2);
@@ -116,6 +230,79 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnTargetLanguageTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnSourceLanguageCustomChanged(string value) => RequestSaveOnValueChange();
     partial void OnTargetLanguageCustomChanged(string value) => RequestSaveOnValueChange();
+    partial void OnCaptureModeTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnCaptureProviderTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnIsCaptureProviderFixedChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableRoiChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnOcrEngineTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleDetectionModelNameChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleRecognitionModelNameChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlPipelineVersionChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnablePaddleConfidenceFilterChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableLlamaCppTranslationChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableLoggingChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrPerfLogChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrBinarizationChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrAutoThresholdChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrAutoInvertChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrGammaChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrDownsamplingChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrTwoPassChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnOcrTwoPassPreferAutoChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableFixedRoiOverlayChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOverlayFontStabilizationChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableSmallBoxReadabilityBoostChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableSceneChangeAutoHideChanged(bool value)
+    {
+        if (_suspendSceneModeSync)
+        {
+            RequestSaveOnValueChange();
+            return;
+        }
+
+        if (value && EnableSceneChangeAutoTranslate)
+        {
+            _suspendSceneModeSync = true;
+            try
+            {
+                EnableSceneChangeAutoTranslate = false;
+            }
+            finally
+            {
+                _suspendSceneModeSync = false;
+            }
+        }
+
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnEnableSceneChangeAutoTranslateChanged(bool value)
+    {
+        if (_suspendSceneModeSync)
+        {
+            RequestSaveOnValueChange();
+            return;
+        }
+
+        if (value && EnableSceneChangeAutoHide)
+        {
+            _suspendSceneModeSync = true;
+            try
+            {
+                EnableSceneChangeAutoHide = false;
+            }
+            finally
+            {
+                _suspendSceneModeSync = false;
+            }
+        }
+
+        RequestSaveOnValueChange();
+    }
 
     private void RequestSaveOnValueChange()
     {

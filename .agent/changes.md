@@ -8207,3 +8207,40 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: `0 warning / 0 error`。
 - `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 02:45 (Asia/Taipei) — MVVM次段階実装（主要チェック/コンボのViewModel移行）**
+
+### Summary
+- Capture/OCR/Scene/Translation の主要チェックボックス・コンボを `SettingsViewModel` の TwoWay Binding に移し、`ApplyUiInputToSettings` の直接UI読取りをさらに削減した。
+
+### Context / Goal
+- `Doc/MVVM_Implementation_Plan.md` の Step 3/7 を継続し、Settings 双方向移行を拡張する。
+- 既存の `OnSettingChanged` に依存していた設定群を ViewModel 主導の保存トリガへ寄せ、コードビハインド責務を縮小する。
+
+### Changes
+- `SettingsViewModel` に主要設定プロパティを追加（CaptureMode/Provider、ROI、OCR engine、各種フラグ、Paddle model/pipeline、Scene mode、DeepL/Gemini、Llama enable など）。
+- `SettingsViewModel.LoadFrom` / `ApplyTo` を拡張し、上記設定を `AppSettings` と相互マッピング。
+- SceneChange の auto-hide / auto-translate 相互排他を ViewModel 側へ移植（`_suspendSceneModeSync` 付き）。
+- `MainWindow.xaml` の主要チェックボックス・コンボを `Click/SelectionChanged` から `IsChecked/SelectedValue` の TwoWay Binding へ移行。
+- `MainWindow.xaml.cs` の `ApplySettingsToUi` / `ApplyUiInputToSettings` から移行済み項目の直接操作を削除し、`Settings.LoadFrom/ApplyTo` 中心に整理。
+- 不要になった `GetCaptureMode` / `GetCaptureProviderKind` / `GetOcrEngineKind` / `GetVerticalModeOverride` などの補助メソッドを削除。
+- `OnSettingChanged` は未移行コントロール（Hotkey/CTranslate/LlamaModel）向けの汎用保存トリガとして簡素化。
+
+### Files Touched
+- `ViewModels/SettingsViewModel.cs` — 主要設定プロパティ追加、Load/Apply拡張、相互排他ロジック追加。
+- `MainWindow.xaml` — 主要チェック/コンボを TwoWay Binding 化。
+- `MainWindow.xaml.cs` — 直接UI読取りの削減、不要変換メソッド削除、保存経路整理。
+
+### Behavioral Impact
+- 主要設定変更時の保存は ViewModel のプロパティ変更経由で `debounce` 実行される。
+- SceneChange の auto-hide / auto-translate は UI イベントではなく ViewModel で排他制御される。
+- Hotkey 設定や一部テキスト入力は従来どおり段階移行対象外として維持。
+
+### Risk & Mitigation
+- Risk: Binding 置換により初期化時・保存時の同期ズレが起きる可能性。
+- Mitigation: `LoadFrom` の `_suspendAutoSave` と `ApplyTo` の単一反映点を維持し、build/runスモークで起動回帰を確認。
+- Risk: 相互排他ロジックの再入で意図しない再保存が発生する可能性。
+- Mitigation: `_suspendSceneModeSync` で再入を抑制し、最終的に `RequestSaveOnValueChange` を1経路に集約。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: `0 warning / 0 error`。
+- `dotnet run --project Hotkey-Translator.csproj` を5秒監視で実行し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
