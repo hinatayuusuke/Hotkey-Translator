@@ -7306,3 +7306,64 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-02-13 09:25 (Asia/Taipei) — SceneChange PendingDrain Plan 明確化修正**
+
+### Summary
+- Doc/SceneChange_AutoTranslate_PendingDrain_Plan.md に、PendingSince削除と実装曖昧点の解消（drain時クールダウン更新・Tick挙動固定・clear導線固定）を反映した。
+
+### Context / Goal
+- レビューで指摘した仕様の曖昧さを実装前に解消し、実装者間の解釈差を防ぎたい。
+- 特に drain 発火条件とモードOFF時の stale pending 防止を明文化したい。
+
+### Changes
+- _sceneChangeAutoTranslatePendingSinceUtc を削除し、未使用フィールドを整理。
+- drain 成功時に _lastSceneChangeAutoTranslateRequestUtc を更新する仕様を追加。
+- OnAutoHideTick で drain 起動した Tick は即 return する挙動を明記。
+- pending clear の呼び出し箇所（Stop watcher / F5 OFF / SaveSettings正規化後OFF）を固定。
+- pending set ログ抑制を「同一 reason 2 秒窓」に具体化。
+
+### Files Touched
+- Doc/SceneChange_AutoTranslate_PendingDrain_Plan.md — PendingDrain 実装案の仕様明確化を追記・修正。
+
+### Behavioral Impact
+- コード挙動の変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 具体化した挙動が既存実装制約に合わず再調整が必要になる可能性。
+- Mitigation: 実装時に MainWindow.xaml.cs の既存 run/watcher 制御へ沿って最小差分で適用する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-13 09:36 (Asia/Taipei) — SceneChange auto-translate PendingDrain 実装**
+
+### Summary
+- Scene-change 自動翻訳のスキップ時イベントを pending として保持し、実行可能時に1回だけ後追い実行する処理を実装した。
+
+### Context / Goal
+- クールダウン中や OCR 実行中に検知イベントが破棄されると、未発火のまま終わるケースがあった。
+- 既存の run ガードを維持したまま、pending を集約回収して未発火を減らしたい。
+
+### Changes
+- MainWindow.xaml.cs に pending 状態フィールドとログ抑制定数を追加。
+- MarkSceneChangeAutoTranslatePending / TryDrainPendingSceneChangeAutoTranslate / ClearSceneChangeAutoTranslatePending を実装。
+- QueueSceneChangeAutoTranslate を、スキップ時は pending 化、即時実行時は pending クリアへ変更。
+- RunOnceAsync finally で _runInProgress 解放後に pending drain を試行するよう追加。
+- OnAutoHideTick 冒頭で drain を試行し、drain 起動時は同 Tick の検知処理を打ち切るよう変更。
+- StopAutoHideWatcher、F5 auto-translate OFF、SaveSettingsAsync の mode 正規化後OFFで pending クリアを追加。
+
+### Files Touched
+- MainWindow.xaml.cs — PendingDrain ロジックと既存 watcher/run 経路への接続を実装。
+
+### Behavioral Impact
+- シーン変化検知がクールダウン中または実行中でも、イベントは pending として保持される。
+- 実行可能になったタイミングで pending が1回だけ実行される。
+- auto-translate OFF または watcher 停止時に stale pending は破棄される。
+
+### Risk & Mitigation
+- Risk: pending lifecycle ログが増える可能性。
+- Mitigation: 同一 reason の pending set ログは 2 秒窓で抑制した。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln 実行成功（0 warnings / 0 errors）。

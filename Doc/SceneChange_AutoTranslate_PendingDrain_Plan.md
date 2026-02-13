@@ -32,12 +32,13 @@
 - `private bool _sceneChangeAutoTranslatePending;`
 - `private int _sceneChangeAutoTranslatePendingDiff;`
 - `private int _sceneChangeAutoTranslatePendingThreshold;`
-- `private DateTime _sceneChangeAutoTranslatePendingSinceUtc = DateTime.MinValue;`
+- `private string? _sceneChangeAutoTranslatePendingReason;`
+- `private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;`
 
 ### 5.2 新規ヘルパー
 - `MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason)`
   - 未処理フラグを立て、代表値（最大 diff など）を保持。
-  - ログは必要最小限（同一連続理由でのログスパム抑制）。
+  - ログは必要最小限（同一 reason は 2 秒以内なら抑制）。
 
 - `TryDrainPendingSceneChangeAutoTranslate()`
   - 条件:
@@ -47,6 +48,8 @@
     - クールダウン経過
   - 成立時:
     - `pending=false` にして `RunOnceAsync(ForceRunOptions.None)` を 1 回実行。
+    - 追いかけ実行の開始時刻で `_lastSceneChangeAutoTranslateRequestUtc` を更新する。
+    - 戻り値 `true`（drainを起動）を返し、呼び出し側は同Tick処理を打ち切る。
 
 - `ClearSceneChangeAutoTranslatePending(string reason)`
   - モード無効化 / watcher 停止 / 手動明示クリア時に使用。
@@ -64,9 +67,14 @@
 - `OnAutoHideTick(...)` 冒頭
   - auto-translate モード時に `TryDrainPendingSceneChangeAutoTranslate()` を試行。
   - WHY: クールダウン理由の pending を「新規差分が出ない周期」でも回収できる。
+  - `TryDrain... == true` の Tick は即 return（同Tickでの再検知処理は行わない）。
 
 - `StopAutoHideWatcher()` / モードOFF遷移
   - `ClearSceneChangeAutoTranslatePending(...)` を呼んで stale pending を破棄。
+  - 呼び出し箇所を固定:
+    - `StopAutoHideWatcher()`
+    - `OnToggleSceneAutoTranslateHotkeyPressed` で `EnableSceneChangeAutoTranslate=false` に遷移した直後
+    - `SaveSettingsAsync` 内の `NormalizeSceneChangeModeSettings` 適用後に auto-translate が `false` へ正規化された直後
 
 ## 6. データフロー / シーケンス（要点）
 1. Tick で diff >= threshold を検知。
@@ -104,7 +112,7 @@
 
 ## 10. リスクと緩和策
 - Risk: drain 試行が多すぎてログノイズ増加。
-- Mitigation: 同種メッセージの抑制（連続同文ログを間引く）。
+- Mitigation: 同一 reason の pending set ログを 2 秒窓で間引く。
 
 - Risk: pending 実行が手動 Run と競合。
 - Mitigation: `_runInProgress` と既存 gate に完全依存し、競合時は pending 維持のみ。
@@ -127,4 +135,3 @@
 
 ## Open Questions
 - pending の代表値は「最新 diff」か「最大 diff」か（ログ可観測性の都合）。
-- pending drain を Tick 冒頭のみで十分か、DispatcherTimer で遅延再試行を入れるか。

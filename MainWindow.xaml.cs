@@ -55,6 +55,11 @@ public partial class MainWindow : Window
     private bool _autoHideBaselinePending;
     private int _autoHideBaselineVersion;
     private DateTime _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
+    private bool _sceneChangeAutoTranslatePending;
+    private int _sceneChangeAutoTranslatePendingDiff;
+    private int _sceneChangeAutoTranslatePendingThreshold;
+    private string? _sceneChangeAutoTranslatePendingReason;
+    private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
     private CancellationTokenSource? _translationOverlayCts;
@@ -75,6 +80,7 @@ public partial class MainWindow : Window
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
+    private const int SceneChangePendingLogSuppressionMs = 2000;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
@@ -487,6 +493,10 @@ public partial class MainWindow : Window
         {
             settings.EnableSceneChangeAutoHide = false;
         }
+        else
+        {
+            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
+        }
 
         _isApplyingSettings = true;
         if (EnableSceneChangeAutoTranslateCheck != null)
@@ -620,6 +630,7 @@ public partial class MainWindow : Window
             SetBusyOverlay(false, null);
             Interlocked.Exchange(ref _runInProgress, 0);
             _translationOverlayCts?.Cancel();
+            TryDrainPendingSceneChangeAutoTranslate();
         }
     }
 
@@ -1877,6 +1888,10 @@ public partial class MainWindow : Window
             EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
         }
+        if (!settings.EnableSceneChangeAutoTranslate)
+        {
+            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
+        }
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeightedCheck.IsChecked == true;
         settings.SceneChangeThreshold = SceneChangeThresholdSlider.Value;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalSlider.Value);
@@ -2353,6 +2368,7 @@ public partial class MainWindow : Window
         }
 
         _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
+        ClearSceneChangeAutoTranslatePending("watcher stopped");
         ClearAutoHideBaseline();
     }
 
@@ -2450,7 +2466,18 @@ public partial class MainWindow : Window
         }
 
         var settings = _settingsService.Settings;
-        if (!ShouldWatchSceneChanges(settings) || _autoHideBaselinePending || !_autoHideLastHash.HasValue)
+        if (!ShouldWatchSceneChanges(settings))
+        {
+            return;
+        }
+
+        if (settings.EnableSceneChangeAutoTranslate && TryDrainPendingSceneChangeAutoTranslate())
+        {
+            // WHY: A drain already scheduled a run for this tick; skip duplicate scene-change processing.
+            return;
+        }
+
+        if (_autoHideBaselinePending || !_autoHideLastHash.HasValue)
         {
             return;
         }
@@ -2559,6 +2586,7 @@ public partial class MainWindow : Window
         var settings = _settingsService.Settings;
         if (!settings.EnableSceneChangeAutoTranslate)
         {
+            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
             return;
         }
 
@@ -2567,19 +2595,102 @@ public partial class MainWindow : Window
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
         {
-            AppendLog($"Scene change auto-translate skipped: cooldown ({cooldownMs} ms).");
+            MarkSceneChangeAutoTranslatePending(diff, threshold, $"cooldown ({cooldownMs} ms)");
             return;
         }
 
         if (Volatile.Read(ref _runInProgress) == 1)
         {
-            AppendLog("Scene change auto-translate skipped: OCR already running.");
+            MarkSceneChangeAutoTranslatePending(diff, threshold, "OCR already running");
             return;
+        }
+
+        if (_sceneChangeAutoTranslatePending)
+        {
+            ClearSceneChangeAutoTranslatePending("coalesced by immediate trigger");
         }
 
         _lastSceneChangeAutoTranslateRequestUtc = now;
         AppendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
         _ = RunOnceAsync(ForceRunOptions.None);
+    }
+
+    private void MarkSceneChangeAutoTranslatePending(int diff, int threshold, string reason)
+    {
+        _sceneChangeAutoTranslatePending = true;
+        _sceneChangeAutoTranslatePendingDiff = Math.Max(_sceneChangeAutoTranslatePendingDiff, diff);
+        _sceneChangeAutoTranslatePendingThreshold = Math.Max(0, threshold);
+
+        var now = DateTime.UtcNow;
+        var shouldLog = !string.Equals(_sceneChangeAutoTranslatePendingReason, reason, StringComparison.Ordinal) ||
+                        _lastSceneChangeAutoTranslatePendingLogUtc == DateTime.MinValue ||
+                        (now - _lastSceneChangeAutoTranslatePendingLogUtc).TotalMilliseconds >= SceneChangePendingLogSuppressionMs;
+        _sceneChangeAutoTranslatePendingReason = reason;
+        if (!shouldLog)
+        {
+            return;
+        }
+
+        _lastSceneChangeAutoTranslatePendingLogUtc = now;
+        AppendLog(
+            $"Scene change auto-translate pending: {reason} (diff {_sceneChangeAutoTranslatePendingDiff}, threshold {_sceneChangeAutoTranslatePendingThreshold}).");
+    }
+
+    private bool TryDrainPendingSceneChangeAutoTranslate()
+    {
+        var settings = _settingsService.Settings;
+        if (!settings.EnableSceneChangeAutoTranslate)
+        {
+            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
+            return false;
+        }
+
+        if (!_sceneChangeAutoTranslatePending)
+        {
+            return false;
+        }
+
+        if (Volatile.Read(ref _runInProgress) == 1)
+        {
+            return false;
+        }
+
+        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        var now = DateTime.UtcNow;
+        if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
+            (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
+        {
+            return false;
+        }
+
+        var diff = _sceneChangeAutoTranslatePendingDiff;
+        var threshold = _sceneChangeAutoTranslatePendingThreshold;
+        ResetSceneChangeAutoTranslatePending();
+        _lastSceneChangeAutoTranslateRequestUtc = now;
+        AppendLog($"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}).");
+        _ = RunOnceAsync(ForceRunOptions.None);
+        return true;
+    }
+
+    private void ClearSceneChangeAutoTranslatePending(string reason)
+    {
+        if (!_sceneChangeAutoTranslatePending)
+        {
+            ResetSceneChangeAutoTranslatePending();
+            return;
+        }
+
+        AppendLog($"Scene change auto-translate pending cleared: {reason}.");
+        ResetSceneChangeAutoTranslatePending();
+    }
+
+    private void ResetSceneChangeAutoTranslatePending()
+    {
+        _sceneChangeAutoTranslatePending = false;
+        _sceneChangeAutoTranslatePendingDiff = 0;
+        _sceneChangeAutoTranslatePendingThreshold = 0;
+        _sceneChangeAutoTranslatePendingReason = null;
+        _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
     }
 
     private Rect GetRoiBounds(AppSettings settings, Rect frameBounds)
