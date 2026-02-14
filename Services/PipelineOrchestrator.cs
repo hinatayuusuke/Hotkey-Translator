@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -36,13 +35,8 @@ public readonly record struct ForceRunOptions(
 public sealed class PipelineOrchestrator
 {
     private readonly CaptureManager _captureManager;
-    private readonly OcrEngine _ocrEngine;
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
-    private readonly OcrPreprocessService _ocrPreprocessService;
-    private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
-    private readonly OcrLineGrouper _lineGrouper;
-    private readonly ReadingUnitBuilder _readingUnitBuilder;
     private readonly OcrAndGroupStage _ocrAndGroupStage;
     private readonly DiffStage _diffStage;
     private readonly TranslateStage _translateStage;
@@ -51,7 +45,6 @@ public sealed class PipelineOrchestrator
     private readonly SettingsService _settingsService;
     private readonly AppLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
     private Dictionary<int, string> _lastOverlayTranslations = new();
@@ -59,7 +52,6 @@ public sealed class PipelineOrchestrator
     private Rect? _lastOverlayClipScreen;
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
-    private Rect? _lastRoiBounds;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action? TranslationStarted;
@@ -93,15 +85,11 @@ public sealed class PipelineOrchestrator
         AppLogger logger)
     {
         _captureManager = captureManager;
-        _ocrEngine = ocrEngine;
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _logger = logger;
-        _ocrPreprocessService = ocrPreprocessService;
-        _ocrPreprocessCoordinator = new OcrPreprocessCoordinator(_ocrEngine, _ocrPreprocessService, new OcrCandidateScorer(), _logger);
-        _lineGrouper = lineGrouper;
-        _readingUnitBuilder = new ReadingUnitBuilder();
-        _ocrAndGroupStage = new OcrAndGroupStage(_ocrPreprocessCoordinator, _lineGrouper, _readingUnitBuilder);
+        var preprocessCoordinator = new OcrPreprocessCoordinator(ocrEngine, ocrPreprocessService, new OcrCandidateScorer(), _logger);
+        _ocrAndGroupStage = new OcrAndGroupStage(preprocessCoordinator, lineGrouper, new ReadingUnitBuilder());
         _diffStage = new DiffStage(_ocrDiffService);
         _translateStage = new TranslateStage(normalizationService, cacheRepository, cacheKeyBuilder, translationService, _logger);
         _overlayPresenter = overlayPresenter;
@@ -120,7 +108,6 @@ public sealed class PipelineOrchestrator
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         waitStopwatch.Stop();
         Bitmap? roiSnapshot = null;
-        Rect roiSnapshotBounds = default;
         PipelinePerfProbe? perfProbe = null;
         try
         {
@@ -156,12 +143,16 @@ public sealed class PipelineOrchestrator
             if (frame.IsBlack)
             {
                 _logger.Info($"Black frame detected from {frame.ProviderKind}. Keeping last overlay.");
-                context.FinalStageResult = PipelineStageResult.Stop(
-                    PipelineStopReason.BlackFrame,
-                    PipelineOverlayAction.ShowLast,
-                    "Black frame detected.");
-                _overlayPresenter.ShowLast();
-                return;
+                if (ApplyStopResult(
+                        context,
+                        PipelineStageResult.Stop(
+                            PipelineStopReason.BlackFrame,
+                            PipelineOverlayAction.ShowLast,
+                            "Black frame detected."),
+                        frame.Bounds))
+                {
+                    return;
+                }
             }
 
             RememberPreferredProvider(settings, frame.ProviderKind);
@@ -170,12 +161,16 @@ public sealed class PipelineOrchestrator
             if (roiScreen.IsEmpty)
             {
                 _logger.Info("ROI is outside capture bounds.");
-                context.FinalStageResult = PipelineStageResult.Stop(
-                    PipelineStopReason.RoiOutOfBounds,
-                    PipelineOverlayAction.ShowLast,
-                    "ROI is outside capture bounds.");
-                _overlayPresenter.ShowLast();
-                return;
+                if (ApplyStopResult(
+                        context,
+                        PipelineStageResult.Stop(
+                            PipelineStopReason.RoiOutOfBounds,
+                            PipelineOverlayAction.ShowLast,
+                            "ROI is outside capture bounds."),
+                        frame.Bounds))
+                {
+                    return;
+                }
             }
             var overlayClipScreen = ResolveOverlayClipScreenRect(settings, frame.Bounds);
             context.OverlayClipScreen = overlayClipScreen;
@@ -190,9 +185,8 @@ public sealed class PipelineOrchestrator
             using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
             perfProbe.RecordCrop(cropStopwatch);
             roiSnapshot = (Bitmap)roiBitmap.Clone();
-            roiSnapshotBounds = roiScreen;
             context.RoiSnapshot = roiSnapshot;
-            context.RoiSnapshotBounds = roiSnapshotBounds;
+            context.RoiSnapshotBounds = roiScreen;
 
             if (settings.PhashThreshold >= 0)
             {
@@ -200,12 +194,16 @@ public sealed class PipelineOrchestrator
                 if (!options.SkipPhash && _lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
                 {
                     _logger.Info("pHash unchanged; keeping last overlay.");
-                    context.FinalStageResult = PipelineStageResult.Stop(
-                        PipelineStopReason.UnchangedHash,
-                        PipelineOverlayAction.ShowLast,
-                        "pHash unchanged.");
-                    _overlayPresenter.ShowLast();
-                    return;
+                    if (ApplyStopResult(
+                            context,
+                            PipelineStageResult.Stop(
+                                PipelineStopReason.UnchangedHash,
+                                PipelineOverlayAction.ShowLast,
+                                "pHash unchanged."),
+                            frame.Bounds))
+                    {
+                        return;
+                    }
                 }
 
                 _lastHash = hash;
@@ -244,20 +242,17 @@ public sealed class PipelineOrchestrator
                 if (ocrStageOutput.FilteredLineCount == 0)
                 {
                     _logger.Info("OCR returned no lines after confidence filtering.");
-                    context.FinalStageResult = PipelineStageResult.Stop(
-                        PipelineStopReason.NoTextDetected,
-                        PipelineOverlayAction.Clear,
-                        "OCR returned no lines after confidence filtering.");
-                    _overlayPresenter.ClearOverlay();
-                    if (!options.SuppressTransientUiFeedback)
+                    if (ApplyStopResult(
+                            context,
+                            PipelineStageResult.Stop(
+                                PipelineStopReason.NoTextDetected,
+                                PipelineOverlayAction.Clear,
+                                "OCR returned no lines after confidence filtering."),
+                            frame.Bounds,
+                            showNoTextToast: true))
                     {
-                        _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                        return;
                     }
-                    else
-                    {
-                        _logger.Info("No text detected (toast suppressed).");
-                    }
-                    return;
                 }
 
                 var groupedLines = ocrStageOutput.GroupedLines;
@@ -267,20 +262,17 @@ public sealed class PipelineOrchestrator
                 if (readingUnits.Count == 0)
                 {
                     _logger.Info("OCR returned no lines.");
-                    context.FinalStageResult = PipelineStageResult.Stop(
-                        PipelineStopReason.NoTextDetected,
-                        PipelineOverlayAction.Clear,
-                        "OCR returned no reading units.");
-                    _overlayPresenter.ClearOverlay();
-                    if (!options.SuppressTransientUiFeedback)
+                    if (ApplyStopResult(
+                            context,
+                            PipelineStageResult.Stop(
+                                PipelineStopReason.NoTextDetected,
+                                PipelineOverlayAction.Clear,
+                                "OCR returned no reading units."),
+                            frame.Bounds,
+                            showNoTextToast: true))
                     {
-                        _overlayPresenter.ShowToast("No text detected", frame.Bounds);
+                        return;
                     }
-                    else
-                    {
-                        _logger.Info("No text detected (toast suppressed).");
-                    }
-                    return;
                 }
 
                 var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff);
@@ -307,13 +299,9 @@ public sealed class PipelineOrchestrator
                     context.Translations[pair.Key] = pair.Value;
                 }
 
-                _lastReadingUnits = readingUnits.ToList();
-                _lastOverlayTranslations = new Dictionary<int, string>(translations);
-                _lastOverlayRoiScreen = roiScreen;
-                _lastOverlayClipScreen = overlayClipScreen;
                 var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
                 context.OverlayItems = overlayItems;
-                _lastOverlayItems = overlayItems;
+                CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
                 var overlayStopwatch = perfProbe.BeginStep();
                 _overlayStage.Update(overlayItems, overlayClipScreen);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
@@ -343,7 +331,7 @@ public sealed class PipelineOrchestrator
 
             if (roiSnapshot != null)
             {
-                UpdateLastRoiSnapshot(roiSnapshot, roiSnapshotBounds);
+                UpdateLastRoiSnapshot(roiSnapshot);
             }
 
             _gate.Release();
@@ -384,7 +372,6 @@ public sealed class PipelineOrchestrator
                 _lastOverlayRoiScreen,
                 _settingsService.Settings,
                 _overlayTextMode);
-            _lastOverlayItems = overlayItems;
             _overlayStage.Update(overlayItems, _lastOverlayClipScreen);
             return true;
         }
@@ -418,12 +405,15 @@ public sealed class PipelineOrchestrator
             if (readingUnits.Count == 0)
             {
                 _logger.Info("Precomputed scene payload returned no reading units.");
-                context.FinalStageResult = PipelineStageResult.Stop(
-                    PipelineStopReason.NoTextDetected,
-                    PipelineOverlayAction.Clear,
-                    "Precomputed scene payload returned no reading units.");
-                _overlayPresenter.ClearOverlay();
-                return;
+                if (ApplyStopResult(
+                        context,
+                        PipelineStageResult.Stop(
+                            PipelineStopReason.NoTextDetected,
+                            PipelineOverlayAction.Clear,
+                            "Precomputed scene payload returned no reading units.")))
+                {
+                    return;
+                }
             }
 
             var groupedLines = readingUnits
@@ -451,13 +441,9 @@ public sealed class PipelineOrchestrator
                 context.Translations[pair.Key] = pair.Value;
             }
 
-            _lastReadingUnits = readingUnits.ToList();
-            _lastOverlayTranslations = new Dictionary<int, string>(translations);
-            _lastOverlayRoiScreen = roiScreen;
-            _lastOverlayClipScreen = overlayClipScreen;
             var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
             context.OverlayItems = overlayItems;
-            _lastOverlayItems = overlayItems;
+            CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
             _overlayStage.Update(overlayItems, overlayClipScreen);
             context.FinalStageResult = PipelineStageResult.ContinueExecution();
         }
@@ -475,6 +461,62 @@ public sealed class PipelineOrchestrator
         {
             _gate.Release();
         }
+    }
+
+    private bool ApplyStopResult(
+        PipelineExecutionContext context,
+        PipelineStageResult stageResult,
+        Rect? frameBounds = null,
+        bool showNoTextToast = false)
+    {
+        context.FinalStageResult = stageResult;
+        if (stageResult.Continue)
+        {
+            return false;
+        }
+
+        _logger.Info(
+            $"Pipeline stop: reason={stageResult.StopReason}, overlayAction={stageResult.OverlayAction}, message={stageResult.Message ?? "-"}.");
+        switch (stageResult.OverlayAction)
+        {
+            case PipelineOverlayAction.ShowLast:
+                _overlayPresenter.ShowLast();
+                break;
+            case PipelineOverlayAction.Clear:
+                _overlayPresenter.ClearOverlay();
+                break;
+            case PipelineOverlayAction.Update:
+            case PipelineOverlayAction.None:
+            default:
+                break;
+        }
+
+        if (showNoTextToast && stageResult.StopReason == PipelineStopReason.NoTextDetected && frameBounds.HasValue)
+        {
+            if (!context.Options.SuppressTransientUiFeedback)
+            {
+                _overlayPresenter.ShowToast("No text detected", frameBounds.Value);
+            }
+            else
+            {
+                _logger.Info("No text detected (toast suppressed).");
+            }
+        }
+
+        return true;
+    }
+
+    private void CommitOverlayState(
+        IReadOnlyList<ReadingUnit> readingUnits,
+        Dictionary<int, string> translations,
+        Rect roiScreen,
+        Rect? overlayClipScreen)
+    {
+        // WHY: Commit overlay-related _last* state in a single point to keep update order deterministic.
+        _lastReadingUnits = readingUnits.ToList();
+        _lastOverlayTranslations = new Dictionary<int, string>(translations);
+        _lastOverlayRoiScreen = roiScreen;
+        _lastOverlayClipScreen = overlayClipScreen;
     }
 
     private static Rect? ResolveOverlayClipScreenRect(AppSettings settings, Rect captureBounds)
@@ -544,10 +586,9 @@ public sealed class PipelineOrchestrator
         OcrPreprocessPreviewReady.Invoke(preview);
     }
 
-    private void UpdateLastRoiSnapshot(Bitmap snapshot, Rect bounds)
+    private void UpdateLastRoiSnapshot(Bitmap snapshot)
     {
         _lastRoiSnapshot?.Dispose();
         _lastRoiSnapshot = snapshot;
-        _lastRoiBounds = bounds;
     }
 }

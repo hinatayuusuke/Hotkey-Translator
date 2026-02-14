@@ -8918,3 +8918,36 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 13:10 (Asia/Taipei) — Layer2 Step7実装（旧経路削除・stage実行一本化）**
+
+### Summary
+- `PipelineOrchestrator` の停止分岐直書きを共通処理に集約し、overlay関連の `_last*` 更新を単一コミットに統一した。
+
+### Context / Goal
+- Layer2 Step7 の目的は、旧分岐直書き経路を削減し、stage 実行後の停止/状態更新を一貫した流れへ寄せること。
+- 併せて将来の回帰源になりやすい `_last*` 更新順序を固定化する。
+
+### Changes
+- `Services/PipelineOrchestrator.cs` を更新。
+- black frame / ROI out / pHash unchanged / no-text 分岐で重複していた overlay fallback 処理を `ApplyStopResult` に集約。
+- `PipelineStageResult` を必ず `ApplyStopResult` 経由で反映する形へ寄せ、停止理由ログを統一。
+- overlay関連 state の更新を `CommitOverlayState` に集約し、`RunOnceAsync` と `RunWithReadingUnitsAsync` の重複更新を削減。
+- 使われていない旧フィールド（旧経路由来）を削除し、責務境界を整理。
+- `UpdateLastRoiSnapshot` を簡素化し、未使用の bounds state を除去。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — 停止処理共通化、状態コミット一本化、旧未使用フィールド削除。
+
+### Behavioral Impact
+- 外部挙動（OCR/翻訳/overlay更新、例外時fallback）は維持。
+- 停止時ログが `reason/overlayAction/message` の形式で揃い、運用時の機械判定性が向上。
+
+### Risk & Mitigation
+- Risk: 停止処理共通化で no-text の toast 条件が変わる可能性。
+- Mitigation: 既存条件（`SuppressTransientUiFeedback`）を `ApplyStopResult` に移植し、表示/抑制挙動を維持。
+- Risk: `_last*` 更新位置の統合で表示モード切替の参照状態が変わる可能性。
+- Mitigation: 旧更新内容を同一順序で `CommitOverlayState` に集約し、更新タイミングは overlay描画直前に維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
