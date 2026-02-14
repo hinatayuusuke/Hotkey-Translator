@@ -175,7 +175,7 @@
                                         x:Name="SourceLangCustom"
                                         Width="90"
                                         Margin="8,0,0,0"
-                                        Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                     <TextBox.Style>
                                         <Style TargetType="TextBox">
                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -207,7 +207,7 @@
                                         x:Name="TargetLangCustom"
                                         Width="90"
                                         Margin="8,6,0,0"
-                                        Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                     <TextBox.Style>
                                         <Style TargetType="TextBox">
                                             <Setter Property="Visibility" Value="Collapsed" />
@@ -320,12 +320,12 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="PhashThresholdBox" Width="80"
-                                             Text="{Binding Settings.PhashThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding Settings.PhashThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="IouThresholdBox" Width="80"
-                                             Text="{Binding Settings.IouThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding Settings.IouThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />
@@ -602,7 +602,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
-                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                         <TextBox.IsEnabled>
                                             <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
                                                 <Binding Path="Settings.EnableLogging" />
@@ -733,22 +733,22 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_thresh" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_box_thresh" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetBoxThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_unclip_ratio" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetUnclipRatioBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_rec_score_thresh" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextRecScoreThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
                                             Content="Filter low-confidence lines (Paddle only)"
@@ -789,17 +789,17 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Max pixels" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlMaxPixelsBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Layout threshold" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlLayoutThresholdBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Max new tokens" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlMaxNewTokensBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -894,50 +894,50 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaHostBox" Width="120"
-                                               Text="{Binding Settings.LlamaHostText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaHostText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="Port" Width="40" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaPortBox" Width="80"
-                                               Text="{Binding Settings.LlamaPortText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaPortText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Context size" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaContextSizeBox" Width="80"
-                                               Text="{Binding Settings.LlamaContextSizeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaContextSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="GPU layers" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaGpuLayersBox" Width="80"
-                                               Text="{Binding Settings.LlamaGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Threads" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaThreadsBox" Width="80"
-                                               Text="{Binding Settings.LlamaThreadsText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaThreadsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="Parallel" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaParallelBox" Width="80"
-                                               Text="{Binding Settings.LlamaParallelText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaParallelText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Batch size" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaBatchSizeBox" Width="80"
-                                               Text="{Binding Settings.LlamaBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="Max tokens" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaMaxTokensBox" Width="80"
-                                               Text="{Binding Settings.LlamaMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Temperature" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaTemperatureBox" Width="80"
-                                               Text="{Binding Settings.LlamaTemperatureText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaTemperatureText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="Top P" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaTopPBox" Width="80"
-                                               Text="{Binding Settings.LlamaTopPText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaTopPText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Top K" Width="120" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaTopKBox" Width="80"
-                                               Text="{Binding Settings.LlamaTopKText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaTopKText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="Repeat penalty" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="LlamaRepeatPenaltyBox" Width="80"
-                                               Text="{Binding Settings.LlamaRepeatPenaltyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                               Text="{Binding Settings.LlamaRepeatPenaltyText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <Separator Margin="0,10,0,8" />
                                   <StackPanel Orientation="Horizontal">
@@ -949,7 +949,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
                                     <TextBox x:Name="DeepLEndpointBox" Width="200"
-                                             Text="{Binding Settings.DeepLEndpointText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding Settings.DeepLEndpointText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Gemini API key" Width="120" VerticalAlignment="Center" />

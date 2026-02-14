@@ -10313,3 +10313,30 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build を実行し、成功（Warnings 0 / Errors 0）を確認。
+**2026-02-15 01:11 (Asia/Taipei) — TextBox設定入力の保存トリガーをLostFocusへ変更**
+
+### Summary
+- Settings系TextBoxの更新トリガーを PropertyChanged から LostFocus に変更し、入力途中の自動正規化反映を抑止した。
+
+### Context / Goal
+- 数値・文字入力中に自動保存と正規化再読込が走り、入力途中の小数や末尾文字が途中で確定される挙動があった。
+- TextBox入力はフォーカス離脱時に確定し、編集中の文字列を保持したい。
+
+### Changes
+- MainWindow.xaml の Text="{Binding Settings...} を使うTextBoxバインディングについて、UpdateSourceTrigger=PropertyChanged を UpdateSourceTrigger=LostFocus へ変更。
+- CheckBox / ComboBox / Slider / PasswordBoxAssistant.BoundPassword のトリガーは変更せず維持。
+
+### Files Touched
+- MainWindow.xaml — Settings系TextBoxのUpdateSourceTriggerをLostFocusへ変更。
+
+### Behavioral Impact
+- TextBox入力はフォーカスを離すまで設定保存対象にならない。
+- 入力途中に正規化値で上書きされる頻度が低下し、直接入力の編集体験が改善される。
+
+### Risk & Mitigation
+- Risk: フォーカスを移動しないままアプリ終了すると、直前入力が保存されない可能性。
+- Mitigation: 既存の明示保存ボタンと、操作遷移時のフォーカス移動で確定される運用を維持する。
+
+### Tests / Verification
+- dotnet build を実行し、成功（Warnings 0 / Errors 0）を確認。
+- MainWindow.xaml 内で Text="{Binding Settings...} の PropertyChanged 残存がないことを確認。
