@@ -57,7 +57,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
-    private const int SettingsSaveDebounceMs = 400;
+    private const int SettingsSaveDebounceMs = 200;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
 
     public MainWindow()
