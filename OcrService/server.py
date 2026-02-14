@@ -13,6 +13,8 @@ import grpc
 
 from ocr_engine import PaddleOcrEngine
 
+DEFAULT_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
 
 def ensure_proto() -> None:
     base_dir = os.path.dirname(__file__)
@@ -139,12 +141,14 @@ class OcrService(ocr_pb2_grpc.OcrServiceServicer):
             return ocr_pb2.OcrResponse()
 
         try:
+            logging.info("stage=ocr_grpc host=paddle event=request_bytes bytes=%s", len(request.image))
             engine = self._engines.get(
                 request.language,
                 request.text_detection_model_name,
                 request.text_recognition_model_name,
             )
             payload = engine.recognize(request.image)
+            logging.info("stage=ocr_grpc host=paddle event=response_bytes bytes=%s", len(payload.encode("utf-8")))
             return ocr_pb2.OcrResponse(json=payload)
         except Exception as exc:
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -165,6 +169,7 @@ def main() -> int:
     parser.add_argument("--text-det-box-thresh", type=float, default=0.68)
     parser.add_argument("--text-det-unclip-ratio", type=float, default=1.3)
     parser.add_argument("--text-rec-score-thresh", type=float, default=0.58)
+    parser.add_argument("--max-message-bytes", type=int, default=DEFAULT_MAX_MESSAGE_BYTES)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -184,7 +189,15 @@ def main() -> int:
     )
     logging.info("PaddleOCR EnginePool: max=%s ttl=%ss", 2, 1800)
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
+    max_message_bytes = max(1, args.max_message_bytes)
+    logging.info("PaddleOCR gRPC max_message_bytes=%s", max_message_bytes)
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=4),
+        options=[
+            ("grpc.max_receive_message_length", max_message_bytes),
+            ("grpc.max_send_message_length", max_message_bytes),
+        ],
+    )
     ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine_pool), server)
     server.add_insecure_port(f"{args.host}:{args.port}")
     server.start()

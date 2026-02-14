@@ -12,6 +12,8 @@ import grpc
 
 from ocr_vl_engine import PaddleOcrVlEngine
 
+DEFAULT_MAX_MESSAGE_BYTES = 32 * 1024 * 1024
+
 
 def ensure_proto() -> None:
     base_dir = os.path.dirname(__file__)
@@ -145,8 +147,10 @@ class OcrService(ocr_pb2_grpc.OcrServiceServicer):
             return ocr_pb2.OcrResponse()
 
         try:
+            logging.info("stage=ocr_grpc host=paddle_vl event=request_bytes bytes=%s", len(request.image))
             engine = self._engines.get(request.language)
             payload = engine.recognize(request.image)
+            logging.info("stage=ocr_grpc host=paddle_vl event=response_bytes bytes=%s", len(payload.encode("utf-8")))
             return ocr_pb2.OcrResponse(json=payload)
         except Exception as exc:
             context.set_code(grpc.StatusCode.INTERNAL)
@@ -177,6 +181,7 @@ def main() -> int:
         choices=["fp32", "fp16"],
         default=None,
     )
+    parser.add_argument("--max-message-bytes", type=int, default=DEFAULT_MAX_MESSAGE_BYTES)
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
@@ -198,7 +203,15 @@ def main() -> int:
     )
     logging.info("PaddleOCR-VL EnginePool: max=%s ttl=%ss", 1, 1800)
 
-    server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
+    max_message_bytes = max(1, args.max_message_bytes)
+    logging.info("PaddleOCR-VL gRPC max_message_bytes=%s", max_message_bytes)
+    server = grpc.server(
+        futures.ThreadPoolExecutor(max_workers=4),
+        options=[
+            ("grpc.max_receive_message_length", max_message_bytes),
+            ("grpc.max_send_message_length", max_message_bytes),
+        ],
+    )
     ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine_pool), server)
     server.add_insecure_port(f"{args.host}:{args.port}")
     server.start()

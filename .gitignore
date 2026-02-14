@@ -20,6 +20,9 @@ docignore/
 .venv/
 .uv-sync.state
 outputs/
+ocr_pb2.py
+ocr_pb2_grpc.py
+.testpic
 
 # User-specific files
 *.rsuser

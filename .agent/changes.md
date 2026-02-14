@@ -9257,3 +9257,93 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - uv run --project OcrServiceVL python OcrServiceVL/test_ocr_vl_engine.py --help 実行: 引数一覧が期待通り表示されることを確認。
+**2026-02-14 15:58 (Asia/Taipei) — PaddleOCR-VL座標パース修正（parsing_res_list対応）**
+
+### Summary
+- ocr_vl_engine.py が parsing_res_list 形式の座標を拾えず 1x1 fallback を返していた問題を修正した。
+
+### Context / Goal
+- WPFログでは OCR/翻訳が成功しているのにオーバーレイが見えない症状が発生していた。
+- 原因は markdown fallback により ox=[0,0,1,1] が返ることだったため、PaddleOCR-VLの実出力形式を正しくパースする。
+
+### Changes
+- OcrServiceVL/ocr_vl_engine.py の _parse_page_dict に es ラッパー辞書の再帰処理を追加。
+- parsing_res_list（lock_content + lock_bbox / lock_polygon_points）のパース処理を追加。
+- lock_bbox の xyxy / xywh を吸収する _bbox_to_ltrbwh を追加。
+- 既存 lines / ocr_res / rec_texts+polys パースは維持し、互換性を確保。
+
+### Files Touched
+- OcrServiceVL/ocr_vl_engine.py — PaddleOCR-VLの新出力形式に対応し、座標抽出ロジックを拡張。
+
+### Behavioral Impact
+- parsing_res_list 出力時でも OCR結果が実座標（画面上の矩形）で返るようになり、WPFオーバーレイ非表示問題の主因を解消。
+- テキストのみfallback（1x1矩形）の発生頻度が大幅に低下。
+
+### Risk & Mitigation
+- Risk: box 形式の解釈差（xyxy / xywh）で矩形がずれる可能性。
+- Mitigation: x2>x1 && y2>y1 を優先してxyxy解釈し、成立しない場合のみxywhとして扱うフォールバックを実装。
+
+### Tests / Verification
+- uv run --project OcrServiceVL python OcrServiceVL/test_ocr_vl_engine.py "OcrServiceVL/test2.png" --device gpu:0 --pipeline-version v1.5 --max-pixels 500000 --layout-threshold 0.5 --max-new-tokens 512 --merge-layout-blocks --use-ocr-for-image-block --use-layout-detection --no-enable-hpi --no-use-tensorrt --precision fp16 --output-json "OcrServiceVL/outputs/ocr_vl_result.json" --pretty --traceback
+- 結果確認: ecognized_lines=1、ox=[-14.0, 13.0, 1152.0, 208.0]（1x1 fallback ではない）。
+**2026-02-14 16:36 (Asia/Taipei) — OCR gRPC上限/自動縮小 共通対策の実装案作成**
+
+### Summary
+- PaddleOCR / PaddleOCR-VL 両方を対象にした、gRPCメッセージ上限対策の実装案を Doc 配下へ追加した。
+
+### Context / Goal
+- 両エンジンで ResourceExhausted (Received message larger than max) が発生するため、限定対応ではなく共通対策を設計する。
+- 根本対策（server上限設定）と安全弁（自動ダウンサイジング再送）を両立する。
+
+### Changes
+- Doc/Ocr_Grpc_MessageSize_Resilience_Plan.md を新規作成。
+- サーバ上限引き上げ、Provider共通再試行、座標逆スケール復元、ログ観測設計をステップ化。
+- DoD とリスク緩和策、影響範囲を明記。
+
+### Files Touched
+- Doc/Ocr_Grpc_MessageSize_Resilience_Plan.md — OCR gRPCメッセージ上限超過への共通実装案を追加。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時にサーバ/クライアントの上限値が不整合になる可能性。
+- Mitigation: 計画内で両サーバ同値設定とログ計測を必須化した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 16:49 (Asia/Taipei) — OCR gRPC上限引き上げとpayloadログ追加**
+
+### Summary
+- 自動縮小は入れず、PaddleOCR/PaddleOCR-VL の gRPC上限引き上げと payloadサイズログのみを実装した。
+
+### Context / Goal
+- ResourceExhausted (Received message larger than max) を通信レイヤで抑止する。
+- 発生時の原因分析を容易にするため、クライアント/サーバ双方でpayloadサイズを観測可能にする。
+
+### Changes
+- OcrService/server.py に --max-message-bytes 引数（既定32MB）を追加し、grpc.server(..., options=[max_receive/max_send]) を設定。
+- OcrServiceVL/server.py にも同様の --max-message-bytes と gRPC options を追加。
+- 両serverの Recognize で request/response payload bytes を stage=ocr_grpc ログ出力。
+- PaddleGrpcOcrProvider / PaddleVlGrpcOcrProvider に送信前PNG payload bytesログを追加。
+
+### Files Touched
+- OcrService/server.py — gRPC message上限設定とrequest/response bytesログを追加。
+- OcrServiceVL/server.py — gRPC message上限設定とrequest/response bytesログを追加。
+- Services/PaddleGrpcOcrProvider.cs — 送信payload bytesログを追加。
+- Services/PaddleVlGrpcOcrProvider.cs — 送信payload bytesログを追加。
+
+### Behavioral Impact
+- 既定で server受信上限が32MBになり、4MB上限由来の ResourceExhausted を回避しやすくなる。
+- OCR実行ごとに payloadサイズログが出力され、運用時のサイズ超過原因追跡が可能になる。
+
+### Risk & Mitigation
+- Risk: 上限引き上げにより巨大payload送信時のメモリ使用量が増える可能性。
+- Mitigation: 32MBを初期値とし、--max-message-bytes で環境に合わせて調整可能にした。
+- Risk: ログ量が増える可能性。
+- Mitigation: 出力はbytes値の1行に限定し、解析に必要な最小情報に留めた。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行: 0 warning / 0 error。
+- uv run --project OcrService python -m py_compile OcrService/server.py 実行: 成功。
+- uv run --project OcrServiceVL python -m py_compile OcrServiceVL/server.py 実行: 成功。

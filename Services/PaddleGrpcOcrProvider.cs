@@ -36,6 +36,7 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
         var client = ResolveClient(endpoint);
         using var stream = new MemoryStream();
         bitmap.Save(stream, ImageFormat.Png);
+        _logger?.Info($"stage=ocr_grpc host=paddle event=request_bytes bytes={stream.Length}.");
 
         var request = new OcrRequest
         {
