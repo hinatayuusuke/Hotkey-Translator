@@ -556,17 +556,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ClearSceneChangeAutoTranslatePending("auto-translate disabled");
         }
 
-        _isApplyingSettings = true;
-        if (EnableSceneChangeAutoTranslateCheck != null)
-        {
-            EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
-        }
-
-        if (EnableSceneChangeAutoHideCheck != null)
-        {
-            EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
-        }
-        _isApplyingSettings = false;
+        // WHY: Keep hotkey-driven toggles on the same state path as UI binding.
+        _mainWindowViewModel.Settings.LoadFrom(settings);
 
         UpdateAutoHideWatcher(settings);
         AppendLog(nextEnabled
@@ -812,21 +803,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
-        settings.EnableCTranslate2 = false;
-        if (EnableCTranslate2Check != null)
-        {
-            EnableCTranslate2Check.IsChecked = false;
-        }
-        if (CTranslate2DeviceBox != null)
-        {
-            SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
-        }
         ReloadLlamaModelOptions(settings);
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
-        UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         _isApplyingSettings = false;
     }
@@ -1081,12 +1062,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         RequestSettingsSave();
     }
 
-    private void OnSettingChanged(object sender, RoutedEventArgs e)
-    {
-        // WHY: Controls not yet migrated to SettingsViewModel still use this generic persistence trigger.
-        RequestSettingsSave();
-    }
-
     private async Task ReloadLlamaModelsAsync()
     {
         var settings = _settingsService.Settings;
@@ -1259,8 +1234,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyUiInputToSettings(AppSettings settings)
     {
         _mainWindowViewModel.Settings.ApplyTo(settings);
-
-        settings.EnableCTranslate2 = false;
         settings.TranslationPriority = GetTranslationPriority();
     }
 
@@ -1271,7 +1244,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
-        UpdateOcrPreprocessControls(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
     }
@@ -1474,54 +1446,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         return absolute;
-    }
-
-    private void UpdateOcrPreprocessControls(AppSettings settings)
-    {
-        if (OcrBinarizationThresholdSlider == null || OcrBinarizationThresholdValue == null ||
-            EnableOcrAutoThresholdCheck == null || EnableOcrAutoInvertCheck == null ||
-            EnableOcrGammaCheck == null || OcrGammaSlider == null || OcrGammaValue == null ||
-            EnableOcrDownsamplingCheck == null || OcrDownsampleScaleSlider == null || OcrDownsampleScaleValue == null ||
-            EnableLoggingCheck == null || EnableOcrPerfLogCheck == null || OcrPerfLogThresholdBox == null ||
-            EnableOcrTwoPassCheck == null || OcrTwoPassPreferAutoCheck == null ||
-            OcrTwoPassLowThresholdSlider == null || OcrTwoPassLowThresholdValue == null ||
-            OcrTwoPassHighThresholdSlider == null || OcrTwoPassHighThresholdValue == null)
-        {
-            return;
-        }
-
-        var enabled = settings.EnableOcrBinarization;
-        var manualThresholdEnabled = enabled && !settings.EnableOcrAutoThreshold;
-        OcrBinarizationThresholdSlider.IsEnabled = manualThresholdEnabled;
-        EnableOcrAutoThresholdCheck.IsEnabled = enabled;
-        EnableOcrAutoInvertCheck.IsEnabled = enabled;
-        EnableOcrTwoPassCheck.IsEnabled = enabled;
-        OcrGammaSlider.IsEnabled = settings.EnableOcrGamma;
-        OcrDownsampleScaleSlider.IsEnabled = settings.EnableOcrDownsampling;
-        EnableOcrPerfLogCheck.IsEnabled = settings.EnableLogging;
-        OcrPerfLogThresholdBox.IsEnabled = settings.EnableLogging && settings.EnableOcrPerfLog;
-        var twoPassEnabled = enabled && settings.EnableOcrTwoPass;
-        OcrTwoPassLowThresholdSlider.IsEnabled = twoPassEnabled;
-        OcrTwoPassHighThresholdSlider.IsEnabled = twoPassEnabled;
-        OcrTwoPassLowThresholdValue.Foreground = twoPassEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        OcrTwoPassHighThresholdValue.Foreground = twoPassEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        OcrTwoPassPreferAutoCheck.IsEnabled = twoPassEnabled && settings.EnableOcrAutoThreshold;
-        OcrBinarizationThresholdValue.Foreground = manualThresholdEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        OcrGammaValue.Foreground = settings.EnableOcrGamma
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        OcrDownsampleScaleValue.Foreground = settings.EnableOcrDownsampling
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        OcrPerfLogThresholdBox.Foreground = settings.EnableLogging && settings.EnableOcrPerfLog
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
     }
 
     private void AppendLog(string message)

@@ -9,6 +9,7 @@
     <Window.Resources>
         <local:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
+        <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
     </Window.Resources>
     <Grid Margin="12">
         <Grid.ColumnDefinitions>
@@ -296,11 +297,28 @@
                                 <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
+                                          IsEnabled="{Binding Settings.EnableLogging}"
                                           IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
-                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <TextBox.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableLogging" />
+                                                <Binding Path="Settings.EnableOcrPerfLog" />
+                                            </MultiBinding>
+                                        </TextBox.IsEnabled>
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
                                 </StackPanel>
 
                                 <Separator Margin="0,10,0,8" />
@@ -308,15 +326,26 @@
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableOcrBinarization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0"
+                                          IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrAutoThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0"
+                                          IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrAutoInvert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0"
+                                          IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrTwoPass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.OcrTwoPassPreferAuto, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                          IsChecked="{Binding Settings.OcrTwoPassPreferAuto, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                    <CheckBox.IsEnabled>
+                                        <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                            <Binding Path="Settings.EnableOcrBinarization" />
+                                            <Binding Path="Settings.EnableOcrTwoPass" />
+                                            <Binding Path="Settings.EnableOcrAutoThreshold" />
+                                        </MultiBinding>
+                                    </CheckBox.IsEnabled>
+                                </CheckBox>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Low threshold" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassLowThresholdSlider"
@@ -327,9 +356,26 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            Value="{Binding Settings.OcrTwoPassLowThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            Value="{Binding Settings.OcrTwoPassLowThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <Slider.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableOcrBinarization" />
+                                                <Binding Path="Settings.EnableOcrTwoPass" />
+                                            </MultiBinding>
+                                        </Slider.IsEnabled>
+                                    </Slider>
                                     <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
+                                               Text="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="High threshold" Width="150" VerticalAlignment="Center" />
@@ -341,9 +387,26 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            Value="{Binding Settings.OcrTwoPassHighThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            Value="{Binding Settings.OcrTwoPassHighThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <Slider.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableOcrBinarization" />
+                                                <Binding Path="Settings.EnableOcrTwoPass" />
+                                            </MultiBinding>
+                                        </Slider.IsEnabled>
+                                    </Slider>
                                     <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
+                                               Text="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
@@ -355,9 +418,34 @@
                                             TickFrequency="5"
                                             SmallChange="1"
                                             LargeChange="10"
-                                            Value="{Binding Settings.OcrBinarizationThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            Value="{Binding Settings.OcrBinarizationThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <Slider.Style>
+                                            <Style TargetType="Slider">
+                                                <Setter Property="IsEnabled" Value="False" />
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding Settings.EnableOcrBinarization}" Value="True" />
+                                                            <Condition Binding="{Binding Settings.EnableOcrAutoThreshold}" Value="False" />
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="IsEnabled" Value="True" />
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Slider.Style>
+                                    </Slider>
                                     <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrBinarizationThresholdSlider, Path=Value, StringFormat={}{0:F0}}" />
+                                               Text="{Binding ElementName=OcrBinarizationThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrBinarizationThresholdSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Gamma" Width="150" VerticalAlignment="Center" />
@@ -369,9 +457,20 @@
                                             TickFrequency="0.1"
                                             SmallChange="0.05"
                                             LargeChange="0.1"
+                                            IsEnabled="{Binding Settings.EnableOcrGamma}"
                                             Value="{Binding Settings.OcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrGammaSlider, Path=Value, StringFormat={}{0:F2}}" />
+                                               Text="{Binding ElementName=OcrGammaSlider, Path=Value, StringFormat={}{0:F2}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrGammaSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
 
                                 <Separator Margin="0,12,0,8" />
@@ -390,13 +489,24 @@
                                             TickFrequency="0.05"
                                             SmallChange="0.05"
                                             LargeChange="0.1"
+                                            IsEnabled="{Binding Settings.EnableOcrDownsampling}"
                                             Value="{Binding Settings.OcrDownsampleScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrDownsampleScaleValue"
                                                Width="48"
                                                Margin="8,0,0,0"
                                                VerticalAlignment="Center"
                                                TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}" />
+                                               Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrDownsampleScaleSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
                                 </StackPanel>
                                 <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
                                 <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="640" Height="360">
@@ -678,14 +788,16 @@
                                       <CheckBox x:Name="EnableCTranslate2Check"
                                                 Content="Enable CTranslate2 translation"
                                                 Margin="0,6,0,0"
-                                                Click="OnSettingChanged" />
+                                                IsChecked="{Binding Settings.EnableCTranslate2, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                       <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
                                                  Foreground="DimGray"
                                                  TextWrapping="Wrap"
                                                  Margin="0,4,0,0" />
                                       <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                           <TextBlock Text="Device" Width="120" VerticalAlignment="Center" />
-                                          <ComboBox x:Name="CTranslate2DeviceBox" Width="120" SelectionChanged="OnSettingChanged">
+                                          <ComboBox x:Name="CTranslate2DeviceBox" Width="120"
+                                                    SelectedValuePath="Tag"
+                                                    SelectedValue="{Binding Settings.CTranslate2DeviceTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                               <ComboBoxItem Content="CPU" Tag="cpu" />
                                               <ComboBoxItem Content="GPU" Tag="gpu" />
                                           </ComboBox>

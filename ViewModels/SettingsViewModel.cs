@@ -53,6 +53,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enablePaddleConfidenceFilter;
     [ObservableProperty] private bool _enableLlamaCppTranslation;
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
+    [ObservableProperty] private bool _enableCTranslate2;
+    [ObservableProperty] private string _cTranslate2DeviceTag = "cpu";
     [ObservableProperty] private bool _enableDeepL;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
@@ -154,6 +156,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
             EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
+            EnableCTranslate2 = settings.EnableCTranslate2;
+            CTranslate2DeviceTag = settings.CTranslate2Device;
             EnableDeepL = settings.EnableDeepL;
             EnableGemini = settings.EnableGemini;
             VerticalModeOverrideTag = settings.VerticalModeOverride switch
@@ -250,6 +254,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilter;
         settings.EnableLlamaCppTranslation = EnableLlamaCppTranslation;
         settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
+        settings.EnableCTranslate2 = EnableCTranslate2;
+        settings.CTranslate2Device = (CTranslate2DeviceTag ?? string.Empty).Trim();
         settings.EnableDeepL = EnableDeepL;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
@@ -454,6 +460,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnablePaddleConfidenceFilterChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableLlamaCppTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnLlamaSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableCTranslate2Changed(bool value) => RequestSaveOnValueChange();
+    partial void OnCTranslate2DeviceTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();

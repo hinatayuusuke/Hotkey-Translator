@@ -8354,3 +8354,41 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
 - dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
+**2026-02-14 11:31 (Asia/Taipei) — MVVM次段階実装（CTranslate2設定Binding化とOCR Preprocess状態のXAML移行）**
+
+### Summary
+- CTranslate2 設定と OCR Preprocess の有効/無効制御を Binding 化し、MainWindow.xaml.cs のイベント・表示同期ロジックをさらに削減した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 4/5/7 を継続し、OnSettingChanged と UpdateOcrPreprocessControls 依存を解消する。
+- ホットキー（F5）経由の設定変更も ViewModel を経由する状態更新に寄せる。
+
+### Changes
+- SettingsViewModel に EnableCTranslate2 / CTranslate2DeviceTag を追加し、LoadFrom/ApplyTo と保存トリガへ組み込み。
+- MainWindow.xaml の CTranslate2 チェック/デバイス選択を TwoWay Binding 化し、Click/SelectionChanged イベントを削除。
+- MainWindow.xaml の OCR Preprocess 項目に IsEnabled / Foreground の Binding・Trigger を追加。
+- BooleanAndMultiConverter を新規追加し、複数条件AND（例: Logging && PerfLog、Binarization && TwoPass）をXAML側で表現。
+- MainWindow.xaml.cs から OnSettingChanged と UpdateOcrPreprocessControls を削除し、関連呼び出しを整理。
+- OnToggleSceneAutoTranslateHotkeyPressed を、チェックボックス直接操作から SettingsViewModel.LoadFrom(settings) による同期へ変更。
+- ApplySettingsToUi / ApplyUiInputToSettings から CTranslate2 の手動UI同期・強制OFF処理を削減。
+
+### Files Touched
+- ViewModels/SettingsViewModel.cs — CTranslate2設定プロパティと AppSettings 反映ロジックを追加。
+- MainWindow.xaml — CTranslate2 と OCR Preprocess の状態制御を Binding/Trigger 化。
+- MainWindow.xaml.cs — OnSettingChanged と UpdateOcrPreprocessControls を削除、F5処理の同期経路を変更。
+- Converters/BooleanAndMultiConverter.cs — 複数 bool の AND 判定コンバータを追加。
+
+### Behavioral Impact
+- CTranslate2 設定UIはイベントハンドラなしで保存キューへ反映される。
+- OCR Preprocess の有効状態とラベル色は保存後の手動更新なしで即時反映される。
+- F5 トグル時の Scene setting 表示が ViewModel 同期経路に統一される。
+
+### Risk & Mitigation
+- Risk: XAML条件式の移行ミスで一部コントロールの有効状態が変わる可能性。
+- Mitigation: 旧 UpdateOcrPreprocessControls の条件式を同値になるよう BooleanAndMultiConverter / MultiDataTrigger で再現。
+- Risk: F5処理で設定同期タイミングが変わる可能性。
+- Mitigation: SettingsViewModel.LoadFrom(settings) により UI 表示を同一ソースで再同期し、既存の保存フローは維持。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
+- dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
