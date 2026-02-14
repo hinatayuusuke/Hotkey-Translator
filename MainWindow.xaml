@@ -825,9 +825,19 @@
                               <StackPanel x:Name="SettingsPanelTranslation"
                                           Margin="0,12,0,0"
                                           Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=2}">
-                                  <TextBlock Text="Translation (Advanced)" FontWeight="SemiBold" />
-                                  <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" Foreground="DimGray" Margin="0,6,0,6" />
-                                  <Separator Margin="0,8,0,8" />
+                                  <TextBlock Text="Translation priority" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <ListBox x:Name="TranslationPriorityList"
+                                               Width="180"
+                                               Height="80"
+                                               ItemsSource="{Binding TranslationPriority}"
+                                               SelectedIndex="{Binding SelectedTranslationPriorityIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <StackPanel Margin="6,0,0,0">
+                                          <Button Content="Up" Width="60" Command="{Binding TranslationPriorityUpCommand}" />
+                                          <Button Content="Down" Width="60" Margin="0,6,0,0" Command="{Binding TranslationPriorityDownCommand}" />
+                                      </StackPanel>
+                                  </StackPanel>
+                                  <Separator Margin="0,10,0,8" />
                                   <StackPanel Visibility="Collapsed">
                                       <TextBlock Text="Local NLLB200 (CTranslate2)" FontWeight="SemiBold" />
                                       <CheckBox x:Name="EnableCTranslate2Check"
@@ -940,18 +950,6 @@
                                     <PasswordBox x:Name="ApiKeyBox"
                                                  Width="200"
                                                  local:PasswordBoxAssistant.BoundPassword="{Binding Settings.ApiKeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                                <TextBlock Text="Translation priority" Margin="0,10,0,0" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <ListBox x:Name="TranslationPriorityList"
-                                             Width="180"
-                                             Height="80"
-                                             ItemsSource="{Binding TranslationPriority}"
-                                             SelectedIndex="{Binding SelectedTranslationPriorityIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Margin="6,0,0,0">
-                                        <Button Content="Up" Width="60" Command="{Binding TranslationPriorityUpCommand}" />
-                                        <Button Content="Down" Width="60" Margin="0,6,0,0" Command="{Binding TranslationPriorityDownCommand}" />
-                                    </StackPanel>
                                 </StackPanel>
                             </StackPanel>
 

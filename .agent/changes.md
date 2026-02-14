@@ -9871,3 +9871,31 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 21:48 (Asia/Taipei) — Translation設定の優先度UIを最上段へ移動し見出し/ステータスを削除**
+
+### Summary
+- Translation設定パネルの先頭に `Translation priority` を移動し、`Translation (Advanced)` 見出しと同パネル内ステータス表示を削除した。
+
+### Context / Goal
+- Translation設定の操作導線を簡素化し、最頻操作である優先度変更を最上段に配置する必要があった。
+- ステータス表示は既に下部バーに存在するため、設定パネル内の重複表示を除去する。
+
+### Changes
+- `SettingsPanelTranslation` 冒頭の `Translation (Advanced)` 見出しを削除。
+- `RuntimeStatus.TranslationStatusMessage` を表示していた説明行を削除。
+- `TranslationPriorityList` ブロック（ラベル + ListBox + Up/Down）を `SettingsPanelTranslation` の最上段へ移動。
+- 下段にあった既存の `Translation priority` ブロックを削除（重複回避）。
+
+### Files Touched
+- `MainWindow.xaml` — Translation設定セクションの並び替えと不要表示の削除。
+
+### Behavioral Impact
+- Translation設定を開いた際、優先度順編集が最初に見えるようになった。
+- 設定パネル内の Translation status 表示は消え、下部ステータスバー表示のみになる。
+
+### Risk & Mitigation
+- Risk: XAMLブロック移動時に `x:Name=TranslationPriorityList` の重複や参照崩れが起きる可能性。
+- Mitigation: 旧ブロックを同時削除し、ビルドでXAML整合を確認した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。
