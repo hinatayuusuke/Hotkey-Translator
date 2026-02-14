@@ -11,16 +11,53 @@
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:BooleanToGridLengthConverter x:Key="BottomDrawerRowHeightConverter"
+                                            TrueLength="220"
+                                            FalseLength="0" />
+        <Style x:Key="HeaderlessTabControlStyle" TargetType="TabControl">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TabControl">
+                        <Border BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                Background="{TemplateBinding Background}">
+                            <ContentPresenter ContentSource="SelectedContent" Margin="{TemplateBinding Padding}" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
-    <Grid Margin="12">
+    <Grid x:Name="RootLayout" Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="{Binding DataContext.IsBottomPanelOpen, ElementName=RootLayout, Converter={StaticResource BottomDrawerRowHeightConverter}}" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="580" MinWidth="380" />
-            <ColumnDefinition Width="6" />
-            <ColumnDefinition Width="*" MinWidth="260" />
+            <ColumnDefinition Width="180" MinWidth="140" />
+            <ColumnDefinition Width="*" MinWidth="640" />
         </Grid.ColumnDefinitions>
 
-        <TabControl Grid.Column="0" Margin="0,0,12,0">
-            <TabItem Header="Main">
+        <Border Grid.Row="0" Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
+            <StackPanel>
+                <TextBlock Text="Sidebar" FontWeight="SemiBold" Margin="0,0,0,8" />
+                <ListBox x:Name="HomeSidebarList"
+                         SelectedIndex="{Binding SelectedSidebarIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                    <ListBoxItem Content="Home" />
+                    <ListBoxItem Content="Trans" />
+                    <ListBoxItem Content="OCR" />
+                    <ListBoxItem Content="Hotkey" />
+                    <ListBoxItem Content="System" />
+                </ListBox>
+            </StackPanel>
+        </Border>
+
+        <TabControl Grid.Row="0"
+                    Grid.Column="1"
+                    Style="{StaticResource HeaderlessTabControlStyle}"
+                    SelectedIndex="{Binding SelectedRootTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+            <TabItem Header="Home">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
                         <TextBlock Text="Capture" FontWeight="SemiBold" />
@@ -258,7 +295,7 @@
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
 
-                        <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0">
+                        <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0" Visibility="Collapsed">
                                 <ListBox x:Name="SettingsCategoryList"
                                          SelectedIndex="{Binding SelectedSettingsCategoryIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ListBoxItem Content="OCR" />
@@ -268,7 +305,7 @@
                                 </ListBox>
                             </Border>
 
-                        <StackPanel Grid.Column="1" Margin="12,0,0,0">
+                        <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,0">
                             <StackPanel x:Name="SettingsPanelOcr"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=0}">
                                 <TextBlock Text="OCR (Advanced)" FontWeight="SemiBold" />
@@ -509,19 +546,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                                <TextBlock Text="OCR input preview" Margin="0,10,0,4" />
-                                <Border BorderBrush="#33000000" BorderThickness="1" Background="#0A000000" Width="640" Height="360">
-                                    <Grid>
-                                        <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
-                                        <TextBlock x:Name="OcrPreprocessPreviewHint"
-                                                   Text="Run OCR to update preview."
-                                                   Foreground="DimGray"
-                                                   TextAlignment="Center"
-                                                   HorizontalAlignment="Center"
-                                                   VerticalAlignment="Center"
-                                                   TextWrapping="Wrap" />
-                                    </Grid>
-                                </Border>
+                                <TextBlock Text="OCR input preview is available in the bottom drawer." Margin="0,10,0,4" Foreground="DimGray" />
 
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
@@ -1041,11 +1066,93 @@
             </TabItem>
         </TabControl>
 
-        <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" ResizeBehavior="PreviousAndNext" ResizeDirection="Columns" />
+        <Border Grid.Row="1"
+                Grid.ColumnSpan="2"
+                Margin="0,8,0,0"
+                BorderBrush="#33000000"
+                BorderThickness="1"
+                Padding="8"
+                Background="#06000000"
+                MinHeight="140"
+                Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                </Grid.ColumnDefinitions>
 
-        <TextBox x:Name="LogBox" Grid.Column="2" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" />
+                <GroupBox Grid.Column="0"
+                          Header="OCR Preview"
+                          MinWidth="220"
+                          Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid Margin="4">
+                        <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
+                        <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                   Text="Run OCR to update preview."
+                                   Foreground="DimGray"
+                                   TextAlignment="Center"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   TextWrapping="Wrap" />
+                    </Grid>
+                </GroupBox>
 
-        <Grid Grid.ColumnSpan="3" Background="Transparent" Panel.ZIndex="10"
+                <GridSplitter Grid.Column="1"
+                              Width="6"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              ResizeBehavior="PreviousAndNext"
+                              ResizeDirection="Columns">
+                    <GridSplitter.Style>
+                        <Style TargetType="GridSplitter">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Value="True">
+                                    <DataTrigger.Binding>
+                                        <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                            <Binding Path="BottomPreviewPaneVisible" />
+                                            <Binding Path="BottomLogPaneVisible" />
+                                        </MultiBinding>
+                                    </DataTrigger.Binding>
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </GridSplitter.Style>
+                </GridSplitter>
+
+                <GroupBox Grid.Column="2"
+                          Header="Log"
+                          MinWidth="220"
+                          Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBox x:Name="LogBox"
+                             Margin="4"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </GroupBox>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2"
+                Grid.ColumnSpan="2"
+                Margin="0,8,0,0"
+                BorderBrush="#33000000"
+                BorderThickness="1"
+                Padding="8,4">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Drawer" Command="{Binding ToggleBottomPanelCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <Button Content="Preview" Command="{Binding TogglePreviewPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <Button Content="Log" Command="{Binding ToggleLogPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="Transparent" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Border Background="#F8FFFFFF" Padding="24" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel>

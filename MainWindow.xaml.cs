@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -12,6 +13,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
@@ -53,6 +55,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private bool _isApplyingSettings;
+    private readonly object _previewFrameGate = new();
+    private Bitmap? _latestPreviewFrame;
+    private bool _previewFlushScheduled;
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
@@ -89,6 +94,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SyncSettingsAfterHostFailure,
             ShowLoadFailure);
         DataContext = _mainWindowViewModel;
+        _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
@@ -217,6 +223,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
         _runCoordinator.Dispose();
         _settingsChangeScheduler.CancelPending();
         _settingsChangeScheduler.Dispose();
@@ -242,6 +249,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _overlayPresenter.Updated -= OnOverlayUpdated;
         }
         _overlayWindow?.Close();
+        DisposeLatestPreviewFrame();
     }
 
     private void ShowLoadFailure(string message)
@@ -881,17 +889,116 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         try
         {
-            var source = CreateBitmapSource(bitmap);
-            Dispatcher.Invoke(() =>
+            Bitmap? staleFrame = null;
+            lock (_previewFrameGate)
             {
-                OcrPreprocessPreviewImage.Source = source;
-                OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
-            });
+                staleFrame = _latestPreviewFrame;
+                _latestPreviewFrame = (Bitmap)bitmap.Clone();
+            }
+            staleFrame?.Dispose();
+
+            // PERF: Keep only the latest frame to avoid backlog spikes when OCR previews arrive faster than UI can render.
+            if (ShouldRenderBottomPreviewPane())
+            {
+                SchedulePreviewFlush();
+            }
         }
         catch (Exception ex)
         {
-            _logger?.Error(ex, "Failed to update OCR preprocess preview.");
+            _logger?.Error(ex, "Failed to queue OCR preprocess preview.");
         }
+    }
+
+    private void OnMainWindowViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(MainWindowViewModel.IsBottomPanelOpen) or nameof(MainWindowViewModel.BottomPreviewPaneVisible))
+        {
+            if (ShouldRenderBottomPreviewPane())
+            {
+                SchedulePreviewFlush();
+            }
+        }
+    }
+
+    private bool ShouldRenderBottomPreviewPane()
+    {
+        return _mainWindowViewModel.IsBottomPanelOpen && _mainWindowViewModel.BottomPreviewPaneVisible;
+    }
+
+    private void SchedulePreviewFlush()
+    {
+        bool shouldSchedule;
+        lock (_previewFrameGate)
+        {
+            shouldSchedule = !_previewFlushScheduled && _latestPreviewFrame != null;
+            if (shouldSchedule)
+            {
+                _previewFlushScheduled = true;
+            }
+        }
+
+        if (!shouldSchedule)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FlushLatestPreviewFrame));
+    }
+
+    private void FlushLatestPreviewFrame()
+    {
+        while (true)
+        {
+            if (!ShouldRenderBottomPreviewPane())
+            {
+                lock (_previewFrameGate)
+                {
+                    _previewFlushScheduled = false;
+                }
+
+                return;
+            }
+
+            Bitmap? frame;
+            lock (_previewFrameGate)
+            {
+                frame = _latestPreviewFrame;
+                _latestPreviewFrame = null;
+                if (frame == null)
+                {
+                    _previewFlushScheduled = false;
+                    return;
+                }
+            }
+
+            try
+            {
+                var source = CreateBitmapSource(frame);
+                OcrPreprocessPreviewImage.Source = source;
+                OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "Failed to update OCR preprocess preview.");
+            }
+            finally
+            {
+                frame.Dispose();
+            }
+        }
+    }
+
+    private void DisposeLatestPreviewFrame()
+    {
+        Bitmap? staleFrame;
+        lock (_previewFrameGate)
+        {
+            staleFrame = _latestPreviewFrame;
+            _latestPreviewFrame = null;
+            _previewFlushScheduled = false;
+        }
+
+        staleFrame?.Dispose();
     }
 
     private async void OnTranslationStarted()

@@ -9566,3 +9566,149 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。
+**2026-02-14 18:35 (Asia/Taipei) — Home統合+サイドパネル+下部ドロワーUI実装案を追加**
+
+### Summary
+- `Main/Settings` 廃止と `Home + サイドパネル + 下部ドロワー` への移行計画を `Doc/` に新規作成した。
+
+### Context / Goal
+- 操作画面と設定画面の分断を解消し、UI探索コストを下げる。
+- OCRプレビューとログを全画面共通で引き出せる導線へ再設計する。
+
+### Changes
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` を新規作成。
+- 段階導入（レイアウト骨格→ドロワー→配線再接続→回帰確認）の実装手順を定義。
+- 影響範囲、リスク、DoDを明記。
+
+### Files Touched
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` — UI統合・下部ドロワー構成の実装案を追加。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時にXAML変更が大きく、レイアウト回帰が起きる可能性。
+- Mitigation: 計画内で段階導入と各段階のビルド/手動確認を必須化した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 18:44 (Asia/Taipei) — Home UI計画をPreview/Log同時表示方針へ更新**
+
+### Summary
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` を更新し、下部ドロワーを `Preview/Log` 同時表示（2ペイン）前提に変更した。
+
+### Context / Goal
+- ログとプレビューを同時に見たい運用要件に合わせ、排他切替案から同時表示案へ計画を修正する。
+- 比率調整と個別折りたたみを組み合わせ、観測性と作業性を両立する。
+
+### Changes
+- 概要/ゴール/アーキテクチャを「2ペイン同時表示 + GridSplitter可変」へ更新。
+- UI状態/コマンド設計を `BottomPreviewPaneVisible`, `BottomLogPaneVisible`, 比率保持へ更新。
+- 実装手順を「切替UI」から「同時表示+Splitter+個別折りたたみ」へ変更。
+- リスクに同時表示時の負荷増加を追加し、更新間引きの緩和策を追記。
+- DoD を同時表示・比率変更・個別折りたたみ対応へ更新。
+
+### Files Touched
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` — 下部ドロワー方針を同時表示モデルへ更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時に同時表示で描画負荷が増える可能性。
+- Mitigation: 計画で非表示ペインの更新間引きを明示した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 18:50 (Asia/Taipei) — Home UI計画に運用前提（最新保持/非永続/欠落許容/左サイド）を反映**
+
+### Summary
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` にユーザー指定の運用前提と、実装時の不変条件を反映した。
+
+### Context / Goal
+- プレビュー/ログ同時表示方針を具体化する際、更新戦略・状態管理・ログ保証範囲を明示して実装ブレを防ぐ必要があった。
+- 指定された前提（最新のみ保持、ドロワー状態非永続、起動初期ログ欠落許容、左サイド固定）を計画に固定化する。
+
+### Changes
+- 前提・仮定へ以下を追加。
+  - サイドパネル左固定
+  - プレビュー最新のみ保持（フレーム間引き許容）
+  - ドロワー状態を `settings.json` 非保存
+  - 起動初期ログの全件表示非保証
+- レイアウト構成を「左サイドパネル + 中央/右コンテンツ」に明記。
+- UI状態に不変条件（両ペイン同時折りたたみ禁止、比率クランプ、非永続）を追加。
+- 表示仕様/実装手順/リスク/DoDを同前提に合わせて更新。
+
+### Files Touched
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` — 運用前提と不変条件、DoDを更新。
+
+### Behavioral Impact
+- ドキュメント更新のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時に状態管理の不変条件が漏れ、両ペイン非表示などの不整合が起こる可能性。
+- Mitigation: 計画にMUST不変条件を明文化し、DoDに自動補正要件を追加した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 19:08 (Asia/Taipei) — Homeサイドバー/下部ドロワーUI実装（開閉・個別表示・最新プレビュー保持）**
+
+### Summary
+- `Doc/Home_SidePanel_BottomDrawer_UI_Plan.md` に沿って、Home統合UIの下部ドロワー操作性とプレビュー更新制御を実装した。
+
+### Context / Goal
+- Main/Settings分断を解消した新レイアウト上で、Preview/Log を常時アクセス可能かつ同時表示できる導線が必要だった。
+- 指定要件（左サイド固定、ドロワー状態非永続、起動初期ログ欠落許容、プレビュー最新保持）を満たす実装に寄せる。
+
+### Changes
+- `MainWindowViewModel` に下部ドロワー状態を追加（開閉、Preview表示、Log表示）し、不変条件を実装。
+- ドロワーが開いている時に両ペイン同時非表示にならない自動補正を追加。
+- `MainWindow.xaml` の下部領域を状態連動化し、Preview/Log 個別表示と同時表示を切替可能にした。
+- ステータスバーに `Drawer/Preview/Log` トグル操作を追加。
+- `MainWindow.xaml.cs` のOCRプレビュー更新を「最新のみ保持」に変更し、中間フレームを破棄するようにした。
+- `BooleanToGridLengthConverter` を追加し、ドロワー行高さとペイン幅の状態連動に使用。
+
+### Files Touched
+- `ViewModels/MainWindowViewModel.cs` — 下部ドロワー状態・トグルコマンド・不変条件を追加。
+- `MainWindow.xaml` — Home/Settings再配置済みレイアウトに下部ドロワー開閉/個別表示トグルを実装。
+- `MainWindow.xaml.cs` — OCRプレビュー更新を最新フレーム優先に変更し、可視状態でのみフラッシュする制御を追加。
+- `Converters/BooleanToGridLengthConverter.cs` — bool値をGridLengthに変換するコンバータを追加。
+
+### Behavioral Impact
+- 下部ドロワーはUIから開閉可能になり、Preview/Log を個別に表示/非表示できる。
+- ドロワー開時に両ペイン同時非表示にはならず、片側表示へ自動補正される。
+- OCRプレビューは最新フレームのみを表示対象として処理し、連続更新時のUI詰まりを抑制する。
+- ドロワー状態は `settings.json` に保存されない（セッション内のみ）。
+
+### Risk & Mitigation
+- Risk: 行高さバインディングやペイン可視制御の組み合わせでレイアウト崩れが起きる可能性。
+- Mitigation: `dotnet build` でXAML/C#整合を確認し、可視状態の不変条件をViewModel側で強制。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 20:12 (Asia/Taipei) — マルチプラットフォーム向けCapture/Hotkey/Overlay抽象化案を追加**
+
+### Summary
+- `Capture / Hotkey / Overlay` のインターフェース化に向けた大まかな実装案を `Doc/` に新規追加した。
+
+### Context / Goal
+- 将来のマルチプラットフォーム化を見据え、OS依存点をどの順で分離するかを明確化する必要があった。
+- 既存Windows互換を維持しながら、`Ports & Adapters` へ段階移行する計画を定義する。
+
+### Changes
+- `Abstractions` 層を中心にした構成（interface + platform-neutral DTO）を提案。
+- Windows 実装を Adapter 化し、Application 側を interface 依存へ移す段階手順を定義。
+- `Capture/Hotkey/Overlay` それぞれの高レベルI/F案、リスク、DoD を整理。
+
+### Files Touched
+- `Doc/CrossPlatform_CaptureHotkeyOverlay_Abstraction_Plan.md` — 新規作成（大枠の実装計画）。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 抽象化の粒度が粗いと、実装時に責務境界が再び曖昧になる可能性。
+- Mitigation: Step分割とDoDを明示し、Windows互換確認を各ステップの出口条件にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
