@@ -9408,3 +9408,34 @@ ull logger が固定されていた。
 - `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py OcrServiceVL/.testpic/test4.png ... --no-use-layout-detection` 実行: `recognized_lines=1` を確認。
 - `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py OcrServiceVL/.testpic/test4.png ... --use-layout-detection` 実行: `recognized_lines=0`（モデル応答が空）を確認。
 - `dotnet build Hotkey-Translator.csproj` 実行: 失敗（`Hotkey-Translator.exe` が実行中プロセスにロックされコピー不可）。
+**2026-02-14 17:24 (Asia/Taipei) — test_ocr_vl_engineにPaddleOCR-VL生出力ダンプ引数を追加**
+
+### Summary
+- `OcrServiceVL/test_ocr_vl_engine.py` に raw出力確認用オプションを追加し、PaddleOCR-VLの生レスポンスを表示/保存できるようにした。
+
+### Context / Goal
+- parser調整前後の比較で、正規化前の `page/json/res/markdown` を直接確認したい要望があった。
+- 既存の認識結果出力 (`lines`) は維持しつつ、必要時のみ raw を取れるようにする。
+
+### Changes
+- CLI引数 `--dump-raw`, `--raw-output-json`, `--raw-pretty` を追加。
+- `predict_iter` の生ページを取得する `_predict_pages` を追加（テストスクリプト内のみ）。
+- 生ページのJSON化ヘルパー (`_to_jsonable`, `_extract_raw_page`) を追加。
+- `--dump-raw` 時は raw を先に表示/保存し、その同一推論ページから `lines` を生成して通常の件数表示も継続。
+
+### Files Touched
+- `OcrServiceVL/test_ocr_vl_engine.py` — rawダンプ用引数と生ページ抽出ロジックを追加。
+
+### Behavioral Impact
+- 通常実行（`--dump-raw` なし）の挙動は変更なし。
+- `--dump-raw` ありの場合、正規化前のPaddleOCR-VL生出力を標準出力/JSONファイルに保存できる。
+
+### Risk & Mitigation
+- Risk: raw JSON が大きくなり標準出力が読みにくくなる可能性。
+- Mitigation: `--raw-output-json` を用意し、ファイル保存運用を可能にした。
+- Risk: テストスクリプトが内部属性（`_engine`, `_predict_kwargs`, `_extract_lines`）に依存する。
+- Mitigation: 本変更はテスト専用スクリプトに限定し、本番サーバコードへは影響させない。
+
+### Tests / Verification
+- `uv run --project OcrServiceVL python -m py_compile OcrServiceVL/test_ocr_vl_engine.py` 実行: 成功。
+- `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py --help` 実行: 追加引数の表示を確認。

@@ -1,8 +1,13 @@
 import argparse
+import io
 import json
+import os
 import sys
+import tempfile
 from pathlib import Path
+from typing import Any
 
+from PIL import Image
 from ocr_vl_engine import PaddleOcrVlEngine
 
 
@@ -96,7 +101,61 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print traceback on failure.",
     )
+    parser.add_argument(
+        "--dump-raw",
+        action="store_true",
+        help="Dump raw PaddleOCR-VL page outputs before parser normalization.",
+    )
+    parser.add_argument(
+        "--raw-output-json",
+        type=Path,
+        default=None,
+        help="Optional path to save dumped raw PaddleOCR-VL output JSON.",
+    )
+    parser.add_argument(
+        "--raw-pretty",
+        action="store_true",
+        help="Pretty-print raw PaddleOCR-VL output JSON.",
+    )
     return parser.parse_args()
+
+
+def _to_jsonable(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(k): _to_jsonable(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_to_jsonable(v) for v in value]
+    return str(value)
+
+
+def _extract_raw_page(page: Any) -> dict[str, Any]:
+    raw: dict[str, Any] = {"type": str(type(page))}
+    if isinstance(page, dict):
+        raw["page"] = _to_jsonable(page)
+    for attr in ("json", "res", "markdown", "data"):
+        value = getattr(page, attr, None)
+        if value is not None:
+            raw[attr] = _to_jsonable(value)
+    return raw
+
+
+def _predict_pages(engine: PaddleOcrVlEngine, image_bytes: bytes) -> list[Any]:
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    with tempfile.NamedTemporaryFile(prefix="ocr_vl_test_", suffix=".png", delete=False) as tmp:
+        temp_path = tmp.name
+        image.save(tmp, format="PNG")
+
+    try:
+        return list(engine._engine.predict_iter(temp_path, **engine._predict_kwargs))
+    finally:
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
 
 
 def main() -> int:
@@ -122,8 +181,29 @@ def main() -> int:
             use_tensorrt=args.use_tensorrt,
             precision=args.precision,
         )
-        result_json = engine.recognize(image_bytes)
-        result = json.loads(result_json)
+        if args.dump_raw:
+            pages = _predict_pages(engine, image_bytes)
+            raw_dump = {"pages": [_extract_raw_page(page) for page in pages]}
+            lines = []
+            for page in pages:
+                lines.extend(engine._extract_lines(page))
+            result = {"lines": lines}
+
+            raw_dumped = json.dumps(
+                raw_dump,
+                ensure_ascii=False,
+                indent=2 if args.raw_pretty else None,
+            )
+            print(raw_dumped)
+            if args.raw_output_json is not None:
+                raw_out = args.raw_output_json.expanduser().resolve()
+                raw_out.parent.mkdir(parents=True, exist_ok=True)
+                raw_out.write_text(raw_dumped, encoding="utf-8")
+                print(f"saved_raw_json={raw_out}")
+        else:
+            result_json = engine.recognize(image_bytes)
+            result = json.loads(result_json)
+
         lines = result.get("lines", [])
         print(f"recognized_lines={len(lines)}")
 
