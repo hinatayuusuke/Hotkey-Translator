@@ -58,6 +58,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly object _previewFrameGate = new();
     private Bitmap? _latestPreviewFrame;
     private bool _previewFlushScheduled;
+    private OcrPreviewZoomWindow? _ocrPreviewZoomWindow;
     private bool _drawerAutoExpanded;
     private double _drawerAutoExpandedDelta;
     private double _drawerAutoExpandedTargetHeight;
@@ -230,6 +231,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        if (_ocrPreviewZoomWindow != null)
+        {
+            _ocrPreviewZoomWindow.Closed -= OnOcrPreviewZoomWindowClosed;
+            _ocrPreviewZoomWindow.Close();
+            _ocrPreviewZoomWindow = null;
+        }
+
         _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
         _runCoordinator.Dispose();
         _settingsChangeScheduler.CancelPending();
@@ -937,6 +945,50 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return _mainWindowViewModel.IsBottomPanelOpen && _mainWindowViewModel.BottomPreviewPaneVisible;
     }
 
+    private void OnOcrPreviewClicked(object sender, MouseButtonEventArgs e)
+    {
+        ShowOcrPreviewZoomWindow();
+        e.Handled = true;
+    }
+
+    private void ShowOcrPreviewZoomWindow()
+    {
+        if (_ocrPreviewZoomWindow == null)
+        {
+            // WHY: Keep a single zoom window instance so preview updates can be pushed consistently.
+            _ocrPreviewZoomWindow = new OcrPreviewZoomWindow
+            {
+                Owner = this
+            };
+            _ocrPreviewZoomWindow.Closed += OnOcrPreviewZoomWindowClosed;
+        }
+
+        _ocrPreviewZoomWindow.SetImage(OcrPreprocessPreviewImage.Source);
+        if (!_ocrPreviewZoomWindow.IsVisible)
+        {
+            _ocrPreviewZoomWindow.Show();
+            return;
+        }
+
+        if (_ocrPreviewZoomWindow.WindowState == WindowState.Minimized)
+        {
+            _ocrPreviewZoomWindow.WindowState = WindowState.Normal;
+        }
+
+        _ocrPreviewZoomWindow.Activate();
+    }
+
+    private void OnOcrPreviewZoomWindowClosed(object? sender, EventArgs e)
+    {
+        if (_ocrPreviewZoomWindow == null)
+        {
+            return;
+        }
+
+        _ocrPreviewZoomWindow.Closed -= OnOcrPreviewZoomWindowClosed;
+        _ocrPreviewZoomWindow = null;
+    }
+
     private void SyncWindowSizeForBottomDrawer()
     {
         if (_mainWindowViewModel.IsBottomPanelOpen)
@@ -1128,6 +1180,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 var source = CreateBitmapSource(frame);
                 OcrPreprocessPreviewImage.Source = source;
                 OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
+                _ocrPreviewZoomWindow?.SetImage(source);
             }
             catch (Exception ex)
             {

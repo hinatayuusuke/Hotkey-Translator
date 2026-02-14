@@ -9772,3 +9772,40 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 21:16 (Asia/Taipei) — OCRプレビューのクリック拡大ウィンドウ（ホイールズーム）を追加**
+
+### Summary
+- Drawer内OCRプレビューをクリックすると、別ウィンドウで拡大表示できる機能を追加した（ホイールズーム対応）。
+
+### Context / Goal
+- Drawer高さを固定寄りにする運用でも、プレビュー詳細確認の導線を確保する必要があった。
+- まずは最小仕様として、クリックで拡大表示 + ホイールズームのみを実装する。
+
+### Changes
+- `MainWindow.xaml` の OCR Preview コンテナにクリックイベントを追加。
+- `MainWindow.xaml.cs` に拡大ウィンドウの単一インスタンス管理を追加（生成/再表示/クローズ時解放）。
+- OCRプレビュー更新時に、開いている拡大ウィンドウへ最新画像を同期するようにした。
+- `UI/OcrPreviewZoomWindow.xaml(.cs)` を新規作成し、以下を実装。
+  - 画像表示（ScrollViewer + Image）
+  - ホイールズーム（0.2x〜8.0x）
+  - 画像未取得時プレースホルダ表示
+  - 現在ズーム率表示
+
+### Files Touched
+- `MainWindow.xaml` — OCRプレビュークリックイベントを追加。
+- `MainWindow.xaml.cs` — 拡大ウィンドウ起動/同期/解放ロジックを追加。
+- `UI/OcrPreviewZoomWindow.xaml` — 拡大表示ウィンドウを新規追加。
+- `UI/OcrPreviewZoomWindow.xaml.cs` — ホイールズームと表示状態制御を新規追加。
+
+### Behavioral Impact
+- Drawer内OCRプレビューをクリックすると、拡大ウィンドウが開く。
+- 拡大ウィンドウは単一インスタンスで再利用される。
+- OCR更新時は拡大ウィンドウ表示中の画像も最新に追従する。
+- ドラッグ移動（パン）は未実装。
+
+### Risk & Mitigation
+- Risk: 複数拡大ウィンドウが開いて更新同期が複雑化する可能性。
+- Mitigation: 単一インスタンス運用に固定し、Close時に参照を解放する実装にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。

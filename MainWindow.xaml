@@ -12,7 +12,7 @@
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:BooleanToGridLengthConverter x:Key="BottomDrawerRowHeightConverter"
-                                            TrueLength="220"
+                                            TrueLength="300"
                                             FalseLength="0" />
         <Style x:Key="HeaderlessTabControlStyle" TargetType="TabControl">
             <Setter Property="Template">
@@ -1087,7 +1087,9 @@
                           Header="OCR Preview"
                           MinWidth="220"
                           Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid Margin="4">
+                    <Grid Margin="4"
+                          Cursor="Hand"
+                          MouseLeftButtonUp="OnOcrPreviewClicked">
                         <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
                         <TextBlock x:Name="OcrPreprocessPreviewHint"
                                    Text="Run OCR to update preview."
