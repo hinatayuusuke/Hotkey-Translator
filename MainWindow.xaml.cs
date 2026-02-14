@@ -641,21 +641,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void SetBusyOverlay(bool visible, string? message)
     {
-        if (BusyOverlay == null || BusyOverlayText == null)
-        {
-            return;
-        }
-
         if (!Dispatcher.CheckAccess())
         {
             Dispatcher.Invoke(() => SetBusyOverlay(visible, message));
             return;
         }
 
-        BusyOverlay.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        _mainWindowViewModel.RuntimeStatus.IsBusy = visible;
         if (!string.IsNullOrWhiteSpace(message))
         {
-            BusyOverlayText.Text = message;
+            _mainWindowViewModel.RuntimeStatus.BusyMessage = message;
         }
     }
 
@@ -791,18 +786,19 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         if (!settings.EnableRoi)
         {
-            RoiStatusText.Text = "ROI: disabled";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = "ROI: disabled";
             return;
         }
 
         if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
-            RoiStatusText.Text = "ROI: not set";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = "ROI: not set";
             return;
         }
 
         var roi = settings.NormalizedRoi.Value;
-        RoiStatusText.Text = $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
+        _mainWindowViewModel.RuntimeStatus.RoiStatusMessage =
+            $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
     }
 
     private void UpdateTranslationStatus(AppSettings settings)
@@ -816,7 +812,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var deepLStatus = settings.EnableDeepL
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
-        TranslationStatusText.Text = $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus}";
+        _mainWindowViewModel.RuntimeStatus.TranslationStatusMessage =
+            $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus}";
     }
 
     private void ReloadLlamaModelOptions(AppSettings settings)

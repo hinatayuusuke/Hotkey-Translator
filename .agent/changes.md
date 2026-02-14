@@ -8460,3 +8460,71 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:45 (Asia/Taipei) — MVVM次段階実装（RuntimeStatusの表示Binding化）**
+
+### Summary
+- ROI/翻訳ステータス表示と Busy Overlay 表示を `RuntimeStatusViewModel` バインディングへ移し、`MainWindow.xaml.cs` の UI 直接更新を削減した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 5/6/7 を継続し、MainWindow を View + Composition Root に近づける。
+- 表示更新責務を ViewModel 側へ集約し、MainWindow の TextBlock/Visibility 直接操作を減らす。
+
+### Changes
+- `RuntimeStatusViewModel` に `RoiStatusMessage` / `TranslationStatusMessage` を追加。
+- `MainWindow.xaml` で以下を Binding 化。
+- `RoiStatusText.Text -> RuntimeStatus.RoiStatusMessage`
+- `TranslationStatusText.Text -> RuntimeStatus.TranslationStatusMessage`
+- `BusyOverlay.Visibility -> RuntimeStatus.IsBusy`（BooleanToVisibilityConverter 経由）
+- `BusyOverlayText.Text -> RuntimeStatus.BusyMessage`
+- `MainWindow.xaml.cs` の `SetBusyOverlay` は View コントロール直接更新をやめ、`RuntimeStatus` プロパティ更新へ変更。
+- `UpdateRoiStatus` / `UpdateTranslationStatus` も `RuntimeStatus` 更新へ変更。
+
+### Files Touched
+- `ViewModels/RuntimeStatusViewModel.cs` — ROI/翻訳ステータスメッセージの公開プロパティを追加。
+- `MainWindow.xaml` — ステータス表示と Busy Overlay の可視状態を RuntimeStatus バインディングへ変更。
+- `MainWindow.xaml.cs` — Busy/ROI/翻訳ステータスの反映先を ViewModel に置換。
+
+### Behavioral Impact
+- ステータス表示更新は ViewModel 経由の単一経路になり、UIコントロール直接更新依存が減る。
+- Busy Overlay の表示制御がバインディング駆動になり、View側責務が明確化される。
+
+### Risk & Mitigation
+- Risk: BusyMessage が未設定のまま表示される可能性。
+- Mitigation: 既存の `SetBusyOverlay` でメッセージ指定時のみ更新する挙動を維持し、既存呼び出しとの互換を保つ。
+- Risk: バインディング変更で初期表示が変わる可能性。
+- Mitigation: ViewModel の初期値を従来表示文言（ROI: not set / Translation status: unknown）に合わせる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:46 (Asia/Taipei) — MVVM次段階実装（Status表示Binding化の仕上げ）**
+
+### Summary
+- RuntimeStatus バインディング移行後の不要な `x:Name` を整理し、View 側のコードビハインド依存をさらに削減した。
+
+### Context / Goal
+- 直前に実施した RuntimeStatus バインディング移行を仕上げ、MainWindow の UI 要素参照を最小化する。
+- View の責務を「見た目定義 + Binding」に寄せる。
+
+### Changes
+- `MainWindow.xaml` から以下の未使用 `x:Name` を削除。
+- `RoiStatusText`
+- `TranslationStatusText`
+- `BusyOverlay`
+- `BusyOverlayText`
+- 既存バインディング（`RuntimeStatus.*`）は維持し、表示挙動は変更しない。
+
+### Files Touched
+- `MainWindow.xaml` — 未使用 name フィールドを削除して View の参照面を縮小。
+
+### Behavioral Impact
+- 画面表示の機能差分はない。
+- 自動生成されるコードビハインドフィールドが減り、View の直接参照余地が減る。
+
+### Risk & Mitigation
+- Risk: XAML name 削除で将来コード参照が追加された場合にコンパイルエラー化する可能性。
+- Mitigation: 現在参照が存在しないことを全検索で確認済み。必要時は Binding優先で追加する方針を維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
