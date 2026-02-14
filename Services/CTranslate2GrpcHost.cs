@@ -12,8 +12,8 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class CTranslate2GrpcHost : GrpcHostBase
 {
-    public CTranslate2GrpcHost(AppLogger? logger = null)
-        : base(logger)
+    public CTranslate2GrpcHost(Func<AppLogger?>? loggerAccessor = null)
+        : base(loggerAccessor)
     {
     }
 

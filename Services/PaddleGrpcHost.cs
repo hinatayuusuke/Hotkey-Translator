@@ -13,8 +13,8 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class PaddleGrpcHost : GrpcHostBase
 {
-    public PaddleGrpcHost(AppLogger? logger = null)
-        : base(logger)
+    public PaddleGrpcHost(Func<AppLogger?>? loggerAccessor = null)
+        : base(loggerAccessor)
     {
     }
 

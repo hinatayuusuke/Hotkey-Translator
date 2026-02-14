@@ -9192,3 +9192,40 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行: 0 warning / 0 error。
 - dotnet run --project Hotkey-Translator.csproj --no-build を8秒監視: RUNNING_OK_NO_EARLY_CRASH。
+**2026-02-14 15:08 (Asia/Taipei) — gRPC Hostログ欠落修正（logger参照を遅延評価化）**
+
+### Summary
+- PaddleOCR/LlamaCpp 起動時ログがログウィンドウに出ない問題を修正し、gRPC host が最新 AppLogger を参照できるようにした。
+
+### Context / Goal
+- ResourceHostFacade 構築時点では MainWindow._logger が未初期化のため、hostへ 
+ull logger が固定されていた。
+- host起動・ready・stdout/stderr ログを UI ログへ復帰させる。
+
+### Changes
+- GrpcHostBase の logger保持を AppLogger? 固定値から Func<AppLogger?> の遅延評価へ変更。
+- 各 host コンストラクタ (PaddleGrpcHost / PaddleVlGrpcHost / CTranslate2GrpcHost / LlamaGrpcHost) を accessor受け取りへ更新。
+- ResourceHostFacade で host生成時に _loggerAccessor() ではなく _loggerAccessor を渡すよう変更。
+- WHYコメントを追加し、OnLoaded 後の logger 割り当てを反映する意図を明示。
+
+### Files Touched
+- Services/GrpcHost/GrpcHostBase.cs — logger参照方式を遅延評価へ変更。
+- Services/PaddleGrpcHost.cs — コンストラクタ引数を logger accessor 化。
+- Services/PaddleVlGrpcHost.cs — コンストラクタ引数を logger accessor 化。
+- Services/CTranslate2GrpcHost.cs — コンストラクタ引数を logger accessor 化。
+- Services/LlamaGrpcHost.cs — コンストラクタ引数を logger accessor 化。
+- Services/Application/ResourceHostFacade.cs — host生成時の logger引き渡しを修正。
+
+### Behavioral Impact
+- gRPC host の stage=grpc_host ... と host出力ログが、MainWindow の logger 初期化後にログウィンドウへ表示されるようになる。
+- host制御ロジック（起動条件・停止条件）自体は変更なし。
+
+### Risk & Mitigation
+- Risk: logger accessor 呼び出し増加による微小なオーバーヘッド。
+- Mitigation: アクセサは単純な参照取得のみで、hostイベント頻度に対して影響は限定的。
+- Risk: 実行中プロセスが Hotkey-Translator.exe をロックしている状態でビルド警告が出る。
+- Mitigation: ビルドは成功しており、検証時は警告内容を記録した。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行: 0 error（Hotkey-Translator.exe ロックに伴う MSB3026 warning は発生）。
+- dotnet run --project Hotkey-Translator.csproj --no-build を8秒監視: RUNNING_OK_NO_EARLY_CRASH。

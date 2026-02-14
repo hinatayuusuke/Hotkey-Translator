@@ -45,10 +45,11 @@ internal sealed class ResourceHostFacade : IDisposable
         _showLoadFailure = showLoadFailure;
 
         _hostOrchestrator = new GrpcHostOrchestrator(_loggerAccessor, _setBusyOverlay, _showLoadFailure);
-        _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor());
-        _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor());
-        _ct2GrpcHost = new CTranslate2GrpcHost(_loggerAccessor());
-        _llamaGrpcHost = new LlamaGrpcHost(_loggerAccessor());
+        // WHY: Host instances can be created before OnLoaded assigns AppLogger; use accessor to avoid capturing null.
+        _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor);
+        _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor);
+        _ct2GrpcHost = new CTranslate2GrpcHost(_loggerAccessor);
+        _llamaGrpcHost = new LlamaGrpcHost(_loggerAccessor);
         _hostRegistry = new GrpcHostRegistry(BuildHostDescriptors());
     }
 

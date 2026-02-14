@@ -11,17 +11,18 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
 {
     private readonly object _sync = new();
     private readonly List<DateTimeOffset> _restartHistory = new();
+    private readonly Func<AppLogger?> _loggerAccessor;
     private Process? _process;
     private CancellationTokenSource? _monitorCts;
     private Task? _monitorTask;
     private bool _stopping;
 
-    protected GrpcHostBase(AppLogger? logger)
+    protected GrpcHostBase(Func<AppLogger?>? loggerAccessor = null)
     {
-        Logger = logger;
+        _loggerAccessor = loggerAccessor ?? (() => null);
     }
 
-    protected AppLogger? Logger { get; }
+    protected AppLogger? Logger => _loggerAccessor();
 
     protected abstract string HostId { get; }
 

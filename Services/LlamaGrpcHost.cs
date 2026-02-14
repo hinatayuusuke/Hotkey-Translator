@@ -52,8 +52,8 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private string? _trackedLlamaServerPath;
     private AppLogger? _logger => Logger;
 
-    public LlamaGrpcHost(AppLogger? logger = null)
-        : base(logger)
+    public LlamaGrpcHost(Func<AppLogger?>? loggerAccessor = null)
+        : base(loggerAccessor)
     {
     }
 
