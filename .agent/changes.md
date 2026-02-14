@@ -8392,3 +8392,37 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
 - dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
+**2026-02-14 11:40 (Asia/Taipei) — MVVM次段階実装（翻訳優先度のViewModel移管完了）**
+
+### Summary
+- 翻訳優先度リストの状態管理と並び替え操作を MainWindow.xaml.cs から MainWindowViewModel へ移し、UI を完全に Binding 駆動へ統一した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の未完了項目として残っていた「翻訳優先度の責務分離」を完了させる。
+- `_translationPriority` 参照欠落によるビルドエラーを解消し、保存フローを ViewModel 中心に整える。
+
+### Changes
+- MainWindowViewModel に翻訳優先度用の `TranslationPriority` / `SelectedTranslationPriorityIndex` / 並び替えロジックを実装済み構成として確定。
+- MainWindow.xaml の `TranslationPriorityList` を `ItemsSource` / `SelectedIndex` の TwoWay Binding に変更。
+- MainWindow.xaml.cs の `_translationPriority` フィールド・上下移動メソッド・ItemsSource 手動設定を削除。
+- MainWindow.xaml.cs の `ApplyTranslationPriority` と `GetTranslationPriority` を ViewModel API 経由へ置換。
+
+### Files Touched
+- `ViewModels/MainWindowViewModel.cs` — 翻訳優先度コレクション・選択状態・移動コマンド処理・保存要求連携を実装。
+- `MainWindow.xaml` — 翻訳優先度 ListBox を ViewModel プロパティに Binding。
+- `MainWindow.xaml.cs` — 旧コレクション依存を除去し、翻訳優先度の読取/反映を ViewModel API に置換。
+
+### Behavioral Impact
+- 翻訳優先度の表示・選択・上下移動は ViewModel の単一ソースで管理される。
+- 設定保存時の `TranslationPriority` は ViewModel コレクションから取得され、従来と同じ既定値フォールバックを維持する。
+
+### Risk & Mitigation
+- Risk: ListBox の選択Index同期不整合により並び替え操作が無効化される可能性。
+- Mitigation: `SelectedTranslationPriorityIndex` を TwoWay Binding し、移動後に ViewModel 側で選択Indexを再設定。
+- Risk: 既存起動中プロセスによるビルド出力ロックで検証が不安定になる可能性。
+- Mitigation: 出力先を分離したビルドでコンパイル確認後、通常ビルド成功も再確認。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\\Debug\\mvvmcheck\\` 実行: 0 warning / 0 error。
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

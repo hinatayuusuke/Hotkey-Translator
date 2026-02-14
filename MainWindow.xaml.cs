@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -52,7 +51,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private bool _overlayEnabled = true;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
-    private readonly ObservableCollection<string> _translationPriority = new();
     private bool _isApplyingSettings;
     private int _logLineCount;
     private const int OverlayBaselineDelayMs = 150;
@@ -81,8 +79,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             RunOnceAsync,
             SelectRoiAsync,
             SwapLanguages,
-            MoveTranslationPriorityUp,
-            MoveTranslationPriorityDown,
+            RequestSettingsSave,
             ReloadLlamaModelsAsync,
             RestartLlamaCppAsync,
             StopLlamaServerAsync,
@@ -127,7 +124,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var settings = _settingsService.Settings;
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         ApplySettingsToUi(settings);
-        TranslationPriorityList.ItemsSource = _translationPriority;
         settingsChanged |= await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
         {
@@ -975,26 +971,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         var ordered = NormalizeTranslationPriority(settings);
         settings.TranslationPriority = ordered.ToList();
-        _translationPriority.Clear();
-        foreach (var name in ordered)
-        {
-            _translationPriority.Add(name);
-        }
-
-        if (_translationPriority.Count > 0)
-        {
-            TranslationPriorityList.SelectedIndex = 0;
-        }
+        _mainWindowViewModel.ResetTranslationPriority(ordered);
     }
 
     private List<string> GetTranslationPriority()
     {
-        if (_translationPriority.Count == 0)
-        {
-            return new List<string>(TranslationProviderNames.Defaults);
-        }
-
-        return _translationPriority.ToList();
+        return _mainWindowViewModel.GetTranslationPriorityOrDefault(TranslationProviderNames.Defaults);
     }
 
     private static List<string> NormalizeTranslationPriority(AppSettings settings)
@@ -1030,36 +1012,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         return ordered;
-    }
-
-    private void MoveTranslationPriorityUp()
-    {
-        var index = TranslationPriorityList.SelectedIndex;
-        if (index <= 0)
-        {
-            return;
-        }
-
-        var item = _translationPriority[index];
-        _translationPriority.RemoveAt(index);
-        _translationPriority.Insert(index - 1, item);
-        TranslationPriorityList.SelectedIndex = index - 1;
-        RequestSettingsSave();
-    }
-
-    private void MoveTranslationPriorityDown()
-    {
-        var index = TranslationPriorityList.SelectedIndex;
-        if (index < 0 || index >= _translationPriority.Count - 1)
-        {
-            return;
-        }
-
-        var item = _translationPriority[index];
-        _translationPriority.RemoveAt(index);
-        _translationPriority.Insert(index + 1, item);
-        TranslationPriorityList.SelectedIndex = index + 1;
-        RequestSettingsSave();
     }
 
     private async Task ReloadLlamaModelsAsync()
