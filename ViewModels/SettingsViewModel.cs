@@ -50,6 +50,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _paddleDetectionModelName = "PP-OCRv5_mobile_det";
     [ObservableProperty] private string _paddleRecognitionModelName = "PP-OCRv5_server_rec";
     [ObservableProperty] private string _paddleVlPipelineVersion = "v1.5";
+    [ObservableProperty] private string _paddleVlUseLayoutDetectionModeTag = "auto";
+    [ObservableProperty] private string _paddleVlPrecisionTag = "fp16";
     [ObservableProperty] private bool _enablePaddleConfidenceFilter;
     [ObservableProperty] private bool _enableLlamaCppTranslation;
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
@@ -153,6 +155,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             PaddleDetectionModelName = settings.PaddleTextDetectionModelName;
             PaddleRecognitionModelName = settings.PaddleTextRecognitionModelName;
             PaddleVlPipelineVersion = settings.PaddleVlPipelineVersion;
+            PaddleVlUseLayoutDetectionModeTag = ToPaddleVlLayoutDetectionModeTag(settings.PaddleVlUseLayoutDetection);
+            PaddleVlPrecisionTag = NormalizePaddleVlPrecisionTag(settings.PaddleVlPrecision);
             EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
             EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
@@ -251,6 +255,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.PaddleTextDetectionModelName = PaddleDetectionModelName;
         settings.PaddleTextRecognitionModelName = PaddleRecognitionModelName;
         settings.PaddleVlPipelineVersion = PaddleVlPipelineVersion;
+        settings.PaddleVlUseLayoutDetection = ParsePaddleVlLayoutDetectionModeTag(PaddleVlUseLayoutDetectionModeTag);
+        settings.PaddleVlPrecision = NormalizePaddleVlPrecisionTag(PaddleVlPrecisionTag);
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilter;
         settings.EnableLlamaCppTranslation = EnableLlamaCppTranslation;
         settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
@@ -457,6 +463,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnPaddleDetectionModelNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnPaddleRecognitionModelNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnPaddleVlPipelineVersionChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlUseLayoutDetectionModeTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleVlPrecisionTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnablePaddleConfidenceFilterChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableLlamaCppTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnLlamaSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
@@ -728,6 +736,33 @@ internal sealed partial class SettingsViewModel : ObservableObject
     {
         var normalized = (value ?? string.Empty).Trim();
         return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
+    }
+
+    private static string ToPaddleVlLayoutDetectionModeTag(bool? value)
+    {
+        return value switch
+        {
+            true => "true",
+            false => "false",
+            _ => "auto"
+        };
+    }
+
+    private static bool? ParsePaddleVlLayoutDetectionModeTag(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized switch
+        {
+            "true" => true,
+            "false" => false,
+            _ => null
+        };
+    }
+
+    private static string NormalizePaddleVlPrecisionTag(string? value)
+    {
+        var normalized = (value ?? string.Empty).Trim().ToLowerInvariant();
+        return normalized == "fp16" ? "fp16" : "fp32";
     }
 
     private void RequestSaveOnValueChange()

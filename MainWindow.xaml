@@ -771,6 +771,25 @@
                                                Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                       <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
                                   </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Layout detection" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlUseLayoutDetectionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlUseLayoutDetectionModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="Auto" Tag="auto" />
+                                          <ComboBoxItem Content="Enable" Tag="true" />
+                                          <ComboBoxItem Content="Disable" Tag="false" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Precision" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlPrecisionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlPrecisionTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="fp16" Tag="fp16" />
+                                          <ComboBoxItem Content="fp32" Tag="fp32" />
+                                      </ComboBox>
+                                  </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                       <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
                                       <Button Content="設定を反映して再起動" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />

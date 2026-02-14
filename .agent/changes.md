@@ -9473,3 +9473,68 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。
+**2026-02-14 17:54 (Asia/Taipei) — PaddleOCR-VL UI露出（LayoutDetection/Precision）実装案を追加**
+
+### Summary
+- `PaddleVlUseLayoutDetection` と `PaddleVlPrecision` をUI公開するための実装計画を `Doc/` に新規作成した。
+
+### Context / Goal
+- 現状は `PaddleOCR-VL` の一部ランタイム設定のみUIで変更可能で、`UseLayoutDetection` と `Precision` は非公開。
+- 運用時に画像特性や環境差へ即応できるよう、UIから設定変更可能にする実装手順を整理する。
+
+### Changes
+- 新規ドキュメント `Doc/PaddleOCR_VL_RuntimeControls_UI_Exposure_Plan.md` を作成。
+- `bool?` を維持するため `UseLayoutDetection` を `Auto/ON/OFF` の3値UIとする設計を明記。
+- `Precision(fp16/fp32)` のUI露出、ViewModel配線、設定正規化、検証手順をステップ化。
+
+### Files Touched
+- `Doc/PaddleOCR_VL_RuntimeControls_UI_Exposure_Plan.md` — PaddleOCR-VL Runtime Controls UI露出の実装案を追加。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時に `bool?` を2値化して `Auto(null)` 意味を失う可能性。
+- Mitigation: 計画内で `ComboBox(auto/true/false)` の3値UIを前提に定義した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 17:58 (Asia/Taipei) — PaddleOCR-VLのLayoutDetection/PrecisionをUI公開**
+
+### Summary
+- `Settings > PaddleOCR-VL` に `Layout detection` と `Precision` を追加し、保存/再起動で反映できるようにした。
+
+### Context / Goal
+- `PaddleVlUseLayoutDetection` と `PaddleVlPrecision` は設定値として存在するがUI未露出で、運用中に切替できなかった。
+- 既存MVVM保存フローを維持しつつ、UIから変更可能にする。
+
+### Changes
+- `MainWindow.xaml` の PaddleOCR-VL セクションへ以下を追加。
+  - `Layout detection` (`Auto/Enable/Disable` -> `auto/true/false`)
+  - `Precision` (`fp16/fp32`)
+- `SettingsViewModel` に以下を追加。
+  - `PaddleVlUseLayoutDetectionModeTag` / `PaddleVlPrecisionTag` のObservableProperty
+  - `LoadFrom` / `ApplyTo` の相互変換配線
+  - 変更時の保存トリガ (`On...Changed`)
+  - 変換ヘルパー（3値bool<->tag, precision正規化）
+- `PaddleOcrSettingsRule` にCPU時の `fp16` 安全補正を追加。
+  - `PaddleVlDevice` が `cpu*` かつ `PaddleVlPrecision=fp16` の場合は `fp32` に正規化。
+
+### Files Touched
+- `MainWindow.xaml` — PaddleOCR-VL設定UIに `Layout detection` / `Precision` を追加。
+- `ViewModels/SettingsViewModel.cs` — 新規UIプロパティとLoad/Apply/保存トリガを追加。
+- `Services/Settings/Rules/PaddleOcrSettingsRule.cs` — CPU+fp16の安全補正を追加。
+
+### Behavioral Impact
+- ユーザーはUIから `PaddleVlUseLayoutDetection` と `PaddleVlPrecision` を変更できる。
+- `Layout detection` は `Auto(null)` を保持できる（3値UI）。
+- `device=cpu` で `precision=fp16` を保存しても、正規化で `fp32` に補正される。
+
+### Risk & Mitigation
+- Risk: 2値UIにすると `Auto(null)` を失う可能性。
+- Mitigation: `ComboBox(auto/true/false)` で3値を明示保持。
+- Risk: CPU環境で `fp16` が不安定。
+- Mitigation: 設定正規化で `fp32` へ自動補正。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。

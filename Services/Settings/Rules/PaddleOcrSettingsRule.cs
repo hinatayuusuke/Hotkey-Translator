@@ -103,6 +103,14 @@ internal sealed class PaddleOcrSettingsRule : ISettingsRule
             }
         }
 
+        if (settings.PaddleVlDevice.StartsWith("cpu", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(settings.PaddleVlPrecision, "fp16", StringComparison.OrdinalIgnoreCase))
+        {
+            // WHY: fp16 on CPU backends is unstable/non-portable; keep first-run and manual edits safe.
+            settings.PaddleVlPrecision = "fp32";
+            changed = true;
+        }
+
         if (changed)
         {
             report.Add(RuleId, "Paddle OCR/VL settings were normalized.");
