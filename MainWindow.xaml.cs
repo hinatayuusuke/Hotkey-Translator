@@ -1,19 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
-using System.Windows.Media.Imaging;
-using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
@@ -55,21 +49,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private bool _isApplyingSettings;
-    private readonly object _previewFrameGate = new();
-    private Bitmap? _latestPreviewFrame;
-    private bool _previewFlushScheduled;
-    private OcrPreviewZoomWindow? _ocrPreviewZoomWindow;
-    private bool _drawerAutoExpanded;
-    private double _drawerAutoExpandedDelta;
-    private double _drawerAutoExpandedTargetHeight;
-    private bool _drawerResizeScheduled;
+    private readonly DrawerLayoutController _drawerLayoutController;
+    private readonly PreviewZoomCoordinator _previewZoomCoordinator;
+    private readonly PreviewFrameDispatcher _previewFrameDispatcher;
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 200;
     private const double DrawerAutoResizeTolerance = 12.0;
-    private const double DrawerAutoResizeFallbackHeight = 220.0;
+    private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
 
     public MainWindow()
@@ -101,6 +90,19 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SyncSettingsAfterHostFailure,
             ShowLoadFailure);
         DataContext = _mainWindowViewModel;
+        _drawerLayoutController = new DrawerLayoutController(
+            this,
+            Dispatcher,
+            () => _mainWindowViewModel.IsBottomPanelOpen,
+            () => BottomDrawerBorder.ActualHeight,
+            DrawerAutoResizeFallbackHeight,
+            DrawerAutoResizeTolerance);
+        _previewZoomCoordinator = new PreviewZoomCoordinator(this);
+        _previewFrameDispatcher = new PreviewFrameDispatcher(
+            Dispatcher,
+            ShouldRenderBottomPreviewPane,
+            ApplyPreviewBitmapSource,
+            ex => _logger?.Error(ex, "Failed to update OCR preprocess preview."));
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
@@ -226,18 +228,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
-        SyncWindowSizeForBottomDrawer();
+        _drawerLayoutController.SyncForCurrentState();
     }
 
     private void OnClosed(object? sender, EventArgs e)
     {
-        if (_ocrPreviewZoomWindow != null)
-        {
-            _ocrPreviewZoomWindow.Closed -= OnOcrPreviewZoomWindowClosed;
-            _ocrPreviewZoomWindow.Close();
-            _ocrPreviewZoomWindow = null;
-        }
-
+        _previewZoomCoordinator.Dispose();
+        _previewFrameDispatcher.Dispose();
+        _drawerLayoutController.Reset();
         _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
         _runCoordinator.Dispose();
         _settingsChangeScheduler.CancelPending();
@@ -264,7 +262,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _overlayPresenter.Updated -= OnOverlayUpdated;
         }
         _overlayWindow?.Close();
-        DisposeLatestPreviewFrame();
     }
 
     private void ShowLoadFailure(string message)
@@ -900,312 +897,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _logger?.SetEnabled(enabled);
     }
 
-    private void OnOcrPreprocessPreviewReady(Bitmap bitmap)
-    {
-        try
-        {
-            Bitmap? staleFrame = null;
-            lock (_previewFrameGate)
-            {
-                staleFrame = _latestPreviewFrame;
-                _latestPreviewFrame = (Bitmap)bitmap.Clone();
-            }
-            staleFrame?.Dispose();
-
-            // PERF: Keep only the latest frame to avoid backlog spikes when OCR previews arrive faster than UI can render.
-            if (ShouldRenderBottomPreviewPane())
-            {
-                SchedulePreviewFlush();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Failed to queue OCR preprocess preview.");
-        }
-    }
-
-    private void OnMainWindowViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(MainWindowViewModel.IsBottomPanelOpen))
-        {
-            SyncWindowSizeForBottomDrawer();
-        }
-
-        if (e.PropertyName is nameof(MainWindowViewModel.IsBottomPanelOpen) or nameof(MainWindowViewModel.BottomPreviewPaneVisible))
-        {
-            if (ShouldRenderBottomPreviewPane())
-            {
-                SchedulePreviewFlush();
-            }
-        }
-    }
-
-    private bool ShouldRenderBottomPreviewPane()
-    {
-        return _mainWindowViewModel.IsBottomPanelOpen && _mainWindowViewModel.BottomPreviewPaneVisible;
-    }
-
-    private void OnOcrPreviewClicked(object sender, MouseButtonEventArgs e)
-    {
-        ShowOcrPreviewZoomWindow();
-        e.Handled = true;
-    }
-
-    private void ShowOcrPreviewZoomWindow()
-    {
-        if (_ocrPreviewZoomWindow == null)
-        {
-            // WHY: Keep a single zoom window instance so preview updates can be pushed consistently.
-            _ocrPreviewZoomWindow = new OcrPreviewZoomWindow
-            {
-                Owner = this
-            };
-            _ocrPreviewZoomWindow.Closed += OnOcrPreviewZoomWindowClosed;
-        }
-
-        _ocrPreviewZoomWindow.SetImage(OcrPreprocessPreviewImage.Source);
-        if (!_ocrPreviewZoomWindow.IsVisible)
-        {
-            _ocrPreviewZoomWindow.Show();
-            return;
-        }
-
-        if (_ocrPreviewZoomWindow.WindowState == WindowState.Minimized)
-        {
-            _ocrPreviewZoomWindow.WindowState = WindowState.Normal;
-        }
-
-        _ocrPreviewZoomWindow.Activate();
-    }
-
-    private void OnOcrPreviewZoomWindowClosed(object? sender, EventArgs e)
-    {
-        if (_ocrPreviewZoomWindow == null)
-        {
-            return;
-        }
-
-        _ocrPreviewZoomWindow.Closed -= OnOcrPreviewZoomWindowClosed;
-        _ocrPreviewZoomWindow = null;
-    }
-
-    private void SyncWindowSizeForBottomDrawer()
-    {
-        if (_mainWindowViewModel.IsBottomPanelOpen)
-        {
-            ScheduleDrawerAutoExpand();
-            return;
-        }
-
-        TryRestoreWindowHeightForDrawerClose();
-    }
-
-    private void ScheduleDrawerAutoExpand()
-    {
-        if (_drawerResizeScheduled || _drawerAutoExpanded || WindowState != WindowState.Normal)
-        {
-            return;
-        }
-
-        _drawerResizeScheduled = true;
-        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
-        {
-            _drawerResizeScheduled = false;
-            TryAutoExpandWindowForDrawerOpen();
-        }));
-    }
-
-    private void TryAutoExpandWindowForDrawerOpen()
-    {
-        if (!_mainWindowViewModel.IsBottomPanelOpen || _drawerAutoExpanded || WindowState != WindowState.Normal)
-        {
-            return;
-        }
-
-        var currentHeight = ResolveCurrentWindowHeight();
-        var workArea = SystemParameters.WorkArea;
-        var maxHeight = Math.Max(MinHeight, workArea.Height);
-        if (currentHeight >= maxHeight - 1)
-        {
-            return;
-        }
-
-        var desiredIncrease = ResolveDrawerExpansionHeight();
-        if (desiredIncrease <= 0)
-        {
-            return;
-        }
-
-        var expandedHeight = Math.Min(currentHeight + desiredIncrease, maxHeight);
-        var appliedIncrease = expandedHeight - currentHeight;
-        if (appliedIncrease <= 1)
-        {
-            return;
-        }
-
-        Height = expandedHeight;
-        KeepWindowWithinWorkArea(expandedHeight, workArea);
-        _drawerAutoExpanded = true;
-        _drawerAutoExpandedDelta = appliedIncrease;
-        _drawerAutoExpandedTargetHeight = expandedHeight;
-    }
-
-    private void TryRestoreWindowHeightForDrawerClose()
-    {
-        if (!_drawerAutoExpanded || _drawerAutoExpandedDelta <= 0)
-        {
-            return;
-        }
-
-        if (WindowState != WindowState.Normal)
-        {
-            ResetDrawerAutoResizeState();
-            return;
-        }
-
-        var currentHeight = ResolveCurrentWindowHeight();
-        var isNearAutoExpandedHeight =
-            Math.Abs(currentHeight - _drawerAutoExpandedTargetHeight) <= DrawerAutoResizeTolerance;
-        if (isNearAutoExpandedHeight)
-        {
-            var workArea = SystemParameters.WorkArea;
-            var restoredHeight = Math.Max(MinHeight, currentHeight - _drawerAutoExpandedDelta);
-            restoredHeight = Math.Min(restoredHeight, workArea.Height);
-            Height = restoredHeight;
-            KeepWindowWithinWorkArea(restoredHeight, workArea);
-        }
-
-        ResetDrawerAutoResizeState();
-    }
-
-    private double ResolveDrawerExpansionHeight()
-    {
-        var measured = BottomDrawerBorder.ActualHeight;
-        if (measured > 0)
-        {
-            return measured;
-        }
-
-        return DrawerAutoResizeFallbackHeight;
-    }
-
-    private double ResolveCurrentWindowHeight()
-    {
-        if (!double.IsNaN(Height) && Height > 0)
-        {
-            return Height;
-        }
-
-        if (ActualHeight > 0)
-        {
-            return ActualHeight;
-        }
-
-        return Math.Max(MinHeight, DrawerAutoResizeFallbackHeight);
-    }
-
-    private void KeepWindowWithinWorkArea(double windowHeight, Rect workArea)
-    {
-        var currentTop = Top;
-        if (double.IsNaN(currentTop))
-        {
-            return;
-        }
-
-        var minTop = workArea.Top;
-        var maxTop = Math.Max(minTop, workArea.Bottom - windowHeight);
-        var clampedTop = Math.Min(Math.Max(currentTop, minTop), maxTop);
-        if (Math.Abs(clampedTop - currentTop) > 0.5)
-        {
-            Top = clampedTop;
-        }
-    }
-
-    private void ResetDrawerAutoResizeState()
-    {
-        _drawerAutoExpanded = false;
-        _drawerAutoExpandedDelta = 0;
-        _drawerAutoExpandedTargetHeight = 0;
-        _drawerResizeScheduled = false;
-    }
-
-    private void SchedulePreviewFlush()
-    {
-        bool shouldSchedule;
-        lock (_previewFrameGate)
-        {
-            shouldSchedule = !_previewFlushScheduled && _latestPreviewFrame != null;
-            if (shouldSchedule)
-            {
-                _previewFlushScheduled = true;
-            }
-        }
-
-        if (!shouldSchedule)
-        {
-            return;
-        }
-
-        Dispatcher.BeginInvoke(DispatcherPriority.Background, new Action(FlushLatestPreviewFrame));
-    }
-
-    private void FlushLatestPreviewFrame()
-    {
-        while (true)
-        {
-            if (!ShouldRenderBottomPreviewPane())
-            {
-                lock (_previewFrameGate)
-                {
-                    _previewFlushScheduled = false;
-                }
-
-                return;
-            }
-
-            Bitmap? frame;
-            lock (_previewFrameGate)
-            {
-                frame = _latestPreviewFrame;
-                _latestPreviewFrame = null;
-                if (frame == null)
-                {
-                    _previewFlushScheduled = false;
-                    return;
-                }
-            }
-
-            try
-            {
-                var source = CreateBitmapSource(frame);
-                OcrPreprocessPreviewImage.Source = source;
-                OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
-                _ocrPreviewZoomWindow?.SetImage(source);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Error(ex, "Failed to update OCR preprocess preview.");
-            }
-            finally
-            {
-                frame.Dispose();
-            }
-        }
-    }
-
-    private void DisposeLatestPreviewFrame()
-    {
-        Bitmap? staleFrame;
-        lock (_previewFrameGate)
-        {
-            staleFrame = _latestPreviewFrame;
-            _latestPreviewFrame = null;
-            _previewFlushScheduled = false;
-        }
-
-        staleFrame?.Dispose();
-    }
-
     private async void OnTranslationStarted()
     {
         if (!_runCoordinator.IsRunning)
@@ -1243,33 +934,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         SetBusyOverlay(true, "OCR running...");
-    }
-
-    private static BitmapSource CreateBitmapSource(Bitmap bitmap)
-    {
-        var rect = new Rectangle(0, 0, bitmap.Width, bitmap.Height);
-        var data = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppPArgb);
-        try
-        {
-            var stride = Math.Abs(data.Stride);
-            var buffer = new byte[stride * bitmap.Height];
-            Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
-            var source = BitmapSource.Create(
-                bitmap.Width,
-                bitmap.Height,
-                bitmap.HorizontalResolution,
-                bitmap.VerticalResolution,
-                System.Windows.Media.PixelFormats.Pbgra32,
-                null,
-                buffer,
-                stride);
-            source.Freeze();
-            return source;
-        }
-        finally
-        {
-            bitmap.UnlockBits(data);
-        }
     }
 
     private readonly record struct HotkeyConfig(

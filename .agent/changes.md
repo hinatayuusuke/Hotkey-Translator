@@ -9809,3 +9809,65 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 21:22 (Asia/Taipei) — MainWindow.xaml.cs 第2ラウンド再リファクタ案を追加**
+
+### Summary
+- `MainWindow.xaml.cs` の再肥大化対策として、Round2 の段階的リファクタリング実装案を `Doc/` に新規追加した。
+
+### Context / Goal
+- Drawer制御とPreview拡大制御の追加で `MainWindow.xaml.cs` への責務再集約が進み、将来変更時の衝突リスクが上がっていた。
+- 境界責務を維持しつつ、画面固有ロジックを専用コンポーネントへ抽出する計画を定義する。
+
+### Changes
+- `MainWindow` に残す責務（Composition Root / Lifecycle / WPF境界）を前提にした再分割方針を記載。
+- `DrawerLayoutController` / `PreviewZoomCoordinator` / `PreviewFrameDispatcher` 抽出案を定義。
+- partial分割 -> controller移送 -> 回帰確認までのステップを具体化。
+- リスク、緩和策、DoD を今回の再肥大化課題に合わせて整理。
+
+### Files Touched
+- `Doc/MainWindow_XamlCs_Refactoring_Round2_Plan.md` — 新規作成（Round2実装案）。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 計画だけで止まり、分割しても実質改善が出ない可能性。
+- Mitigation: DoDに「partial分割のみで完了にしない」条件を明示した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 21:33 (Asia/Taipei) — MainWindow.xaml.cs Round2: Drawer/Preview責務を専用コンポーネントへ抽出**
+
+### Summary
+- `Doc/MainWindow_XamlCs_Refactoring_Round2_Plan.md` に沿って、Drawerレイアウト制御・Preview拡大制御・Previewフレーム反映を `MainWindow` から抽出した。
+
+### Context / Goal
+- `MainWindow.xaml.cs` に Drawer/Preview の詳細ロジックが再集約し、変更衝突と回帰リスクが高まっていた。
+- Window境界責務を維持しつつ、画面固有ロジックをサービスへ分離して保守性を改善する。
+
+### Changes
+- `DrawerLayoutController` を新規追加し、Drawer開閉時のWindow高さ自動拡張/復元ロジックを移管。
+- `PreviewZoomCoordinator` を新規追加し、拡大プレビューWindowの単一インスタンス管理を移管。
+- `PreviewFrameDispatcher` を新規追加し、OCRプレビューの latest-only キュー/ディスパッチを移管。
+- `MainWindow` は各コンポーネントを生成・購読・破棄する境界責務へ縮退。
+- `OnOcrPreprocessPreviewReady` / `OnMainWindowViewModelPropertyChanged` / `OnOcrPreviewClicked` を `MainWindow.Preview.cs` に分離。
+- `Doc/MainWindow_View_Boundary.md` を更新し、今回移管した責務を明記。
+
+### Files Touched
+- `MainWindow.xaml.cs` — Drawer/Preview詳細処理を削減し、サービス委譲へ変更。
+- `MainWindow.Preview.cs` — Preview関連イベントと反映橋渡しを分離。
+- `Services/Application/DrawerLayoutController.cs` — Drawer自動リサイズ制御を新規追加。
+- `Services/Application/PreviewZoomCoordinator.cs` — 拡大プレビューWindow制御を新規追加。
+- `Services/Application/PreviewFrameDispatcher.cs` — latest-onlyプレビュー反映制御を新規追加。
+- `Doc/MainWindow_View_Boundary.md` — 境界責務の最新状態に更新。
+
+### Behavioral Impact
+- 既存機能（Drawer開閉時の高さ調整、プレビュークリック拡大、最新プレビュー反映）は互換動作を維持。
+- 実装責務が分離されたことで、今後のDrawer/Preview変更が `MainWindow.xaml.cs` へ波及しにくくなった。
+
+### Risk & Mitigation
+- Risk: 抽出時のイベント購読/解除漏れで二重反応やリークが起きる可能性。
+- Mitigation: `MainWindow.OnClosed` で `PreviewZoomCoordinator.Dispose()` / `PreviewFrameDispatcher.Dispose()` / `DrawerLayoutController.Reset()` を明示実行する構造にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。
