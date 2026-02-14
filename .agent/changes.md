@@ -8750,3 +8750,171 @@ aw_tokens > soft_no_split_tokens.
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
 - `MainWindow.xaml.cs` 行数確認: 901行。
+**2026-02-14 12:23 (Asia/Taipei) — 推奨実案ドキュメント作成（Post-Refactor安定化計画）**
+
+### Summary
+- 追加リファクタ方針として、構造分割より品質安定化を優先する推奨実案を `Doc/` に新規出力した。
+
+### Context / Goal
+- ユーザー要望に基づき、現状モジュールに対する次段階の推奨実装案を文書化する。
+- テスト整備・失敗時フロー統一・責務境界文書化を中心に、費用対効果の高い実行計画を提示する。
+
+### Changes
+- `Doc/MVVM_PostRefactor_Stabilization_Plan.md` を新規追加。
+- 実装案テンプレート（概要〜DoD）に沿って、ゴール/非ゴール、手順、リスク、影響範囲を整理。
+
+### Files Touched
+- `Doc/MVVM_PostRefactor_Stabilization_Plan.md` — Post-refactor安定化に向けた推奨実案を新規作成。
+
+### Behavioral Impact
+- 実行時挙動の変更はない（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 文書のみ先行して実装差分が伴わない可能性。
+- Mitigation: DoDにテスト追加・境界文書更新・build/run確認を明記し、実装時のチェック項目を固定。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみのため）。
+**2026-02-14 12:33 (Asia/Taipei) — Layer2 Orchestrationリファクタリング実装案の作成**
+
+### Summary
+- マスタープランを参照し、層2（Orchestration）向けの段階的リファクタリング実装案を `Doc/` に新規作成した。
+
+### Context / Goal
+- `Doc/Refactoring_Layers_1to5_Master_Plan.md` の Phase 2 方針を具体化し、実行可能な Layer2 計画に落とし込む。
+- `PipelineOrchestrator` / `SceneTextSnapshotService` の責務分離と回帰リスク低減の実行手順を明文化する。
+
+### Changes
+- `Doc/Refactoring_Layer2_Orchestration_Plan.md` を新規追加。
+- 実装案テンプレート（概要〜DoD）に沿って、ゴール/非ゴール、提案アーキテクチャ、I/F案、ステップ分割、リスク、影響範囲を記述。
+
+### Files Touched
+- `Doc/Refactoring_Layer2_Orchestration_Plan.md` — 層2の実装案を新規作成。
+
+### Behavioral Impact
+- 実行時挙動の変更はない（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 文書のみ先行し、実装時に範囲が広がる可能性。
+- Mitigation: 非ゴールとStep分割（1ステップ1責務）を明記し、フェーズ逸脱を防ぐ。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみのため）。
+**2026-02-14 12:42 (Asia/Taipei) — Layer2 Step1実装（PipelineExecutionContext/PipelineStageResult導入）**
+
+### Summary
+- Refactoring_Layer2_Orchestration_Plan の Step 1 として、Orchestration層の中間受け皿DTOを追加し、`PipelineOrchestrator` に最小導入した。
+
+### Context / Goal
+- 層2の段階移行に向け、既存挙動を変えずにステージ分割可能な土台を作る。
+- `RunOnceAsync` 内の中間データを将来ステージへ渡せる形で保持する。
+
+### Changes
+- `Services/Orchestration/PipelineExecutionContext.cs` を新規追加。
+- settings/options、ROI、OCR結果、diff対象、翻訳結果、overlay項目などの中間状態プロパティを定義。
+- `Services/Orchestration/PipelineStageResult.cs` を新規追加。
+- `PipelineStopReason` / `PipelineOverlayAction` / `PipelineStageResult` を定義。
+- `Services/PipelineOrchestrator.cs` を更新。
+- `PipelineExecutionContext` を `RunOnceAsync` 冒頭で生成。
+- 既存処理の主要ポイント（capture/roi/hash/ocr/group/diff/translate/overlay）で context に状態を格納。
+- 実行ロジック・分岐・return 条件は変更せず、挙動互換を維持。
+
+### Files Touched
+- `Services/Orchestration/PipelineExecutionContext.cs` — 新規。実行コンテキストDTOを追加。
+- `Services/Orchestration/PipelineStageResult.cs` — 新規。ステージ結果DTO/enumを追加。
+- `Services/PipelineOrchestrator.cs` — context 生成と中間状態格納を追加。
+
+### Behavioral Impact
+- 実行時挙動の機能差分はない（内部データ保持の追加のみ）。
+- Layer2 Step2以降（停止理由の状態化・ステージ抽出）へ進める前提が整う。
+
+### Risk & Mitigation
+- Risk: context 保持追加による副作用（状態更新漏れ/順序依存）。
+- Mitigation: 既存 return 分岐は変更せず、読み取り専用に近い受け皿として最小導入に留めた。
+- Risk: 型追加で依存関係が複雑化。
+- Mitigation: `Services/Orchestration` 配下に限定配置し、現時点で外部公開I/Fは増やしていない。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 12:48 (Asia/Taipei) — Layer2 Step3実装（OCR/Group/Diffのステージ抽出）**
+
+### Summary
+- `PipelineOrchestrator` の OCR→Group→Diff 責務をステージへ委譲し、重複ロジックを削減した。
+
+### Context / Goal
+- Layer2 Step3 の目的は、`RunOnceAsync` 内の中核分岐を段階責務へ分離し、追跡性と保守性を上げること。
+- あわせて `RunWithReadingUnitsAsync` の diff 判定を共通化し、同一ロジックの二重管理を解消する。
+
+### Changes
+- `Services/Orchestration/Stages/DiffStage.cs` を新規追加。
+- `OcrDiffService` を用いた差分抽出と changed unit 解決を `DiffStage` へ集約。
+- `Services/PipelineOrchestrator.cs` を更新。
+- `OcrAndGroupStage` / `DiffStage` をフィールドとして導入し、`RunOnceAsync` の OCR/Group/Diff を委譲。
+- Paddle confidence filter ログ、NoText 判定、diff ログは既存挙動を維持したままステージ出力を利用。
+- `RunWithReadingUnitsAsync` の diff 判定も `DiffStage` 利用へ変更。
+- Orchestrator 内で不要になった `ResolveChangedUnitIds` を削除し、差分責務を一本化。
+
+### Files Touched
+- `Services/Orchestration/Stages/DiffStage.cs` — 新規。Diff判定と changed unit 算出を実装。
+- `Services/PipelineOrchestrator.cs` — ステージ委譲への差し替えと重複ヘルパー削除。
+
+### Behavioral Impact
+- 利用者観点の動作は維持（OCR/翻訳/Overlay の出力仕様は不変）。
+- 内部構造として OCR/Group/Diff の責務境界が明確になり、次ステップ（Translate/Overlay 抽出）へ移行しやすくなった。
+
+### Risk & Mitigation
+- Risk: ステージ化によりログ順序やタイミング計測の値が微妙に変わる可能性。
+- Mitigation: 既存ログ文言を維持し、Perf値は各ステージ計測値を同じ項目へ反映。
+- Risk: changed unit 算出の移設で diff 結果が変わる可能性。
+- Mitigation: 算出ロジックを同等移植し、`RunOnceAsync` と `RunWithReadingUnitsAsync` の双方で同一ステージを利用。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 12:54 (Asia/Taipei) — Layer2 Step4-6実装（Translate/Overlay抽出・Scene共通化・PerfProbe分離）**
+
+### Summary
+- Layer2 の残ステップを進め、翻訳/Overlay責務をステージ化し、Scene側OCR処理共通化とPerf計測分離を実装した。
+
+### Context / Goal
+- Step4: `PipelineOrchestrator` から Translate / Overlay の責務を分離する。
+- Step5: `SceneTextSnapshotService` の Stage B OCR/Group 処理重複を共通ステージへ寄せる。
+- Step6: Perf計測ノイズを専用コンポーネントへ隔離して可読性を上げる。
+
+### Changes
+- `Services/Orchestration/Stages/TranslateStage.cs` を新規追加。
+- 旧 `ResolveTranslationsAsync` ロジック（cache参照、pending抽出、翻訳呼び出し、payloadログ）を移設。
+- `TranslationStarted/Completed` は Orchestrator からコールバック注入し、既存イベント契約を維持。
+- `Services/Orchestration/Stages/OverlayStage.cs` を新規追加。
+- Overlay item 構築と update 呼び出しを集約し、`TrySetOverlayTextMode` 含め Orchestrator から利用。
+- `Services/SceneTextSnapshotService.cs` を更新。
+- Stage B OCR/Group/ReadingUnit 構築を `OcrAndGroupStage` 経由へ変更し、重複実装を削除。
+- `Services/Orchestration/PipelinePerfProbe.cs` を新規追加。
+- queue/capture/crop/ocr/group/diff/overlay/total 計測を集約し、閾値超過時ログ出力を継続。
+- `Services/PipelineOrchestrator.cs` を更新。
+- Translate/Overlay/Perf の旧直書きロジックを削除し、各ステージ/Probeへ委譲。
+
+### Files Touched
+- `Services/Orchestration/Stages/TranslateStage.cs` — 新規。翻訳キャッシュ・翻訳実行ステージを実装。
+- `Services/Orchestration/Stages/OverlayStage.cs` — 新規。overlay項目構築と描画呼び出しを実装。
+- `Services/Orchestration/PipelinePerfProbe.cs` — 新規。Perf計測と閾値ログ出力を実装。
+- `Services/PipelineOrchestrator.cs` — Translate/Overlay/Perf責務をステージへ移譲し、旧ヘルパー群を削除。
+- `Services/SceneTextSnapshotService.cs` — `OcrAndGroupStage` を利用して Stage B OCR経路を共通化。
+
+### Behavioral Impact
+- OCR/翻訳/Overlay の外部挙動は維持。
+- 内部的に責務分割が進み、`PipelineOrchestrator` のロジック追跡性が向上。
+- Scene snapshot 側のOCR前処理経路が Pipeline と同一実装を共有するため、今後の調整差分源を低減。
+
+### Risk & Mitigation
+- Risk: 翻訳キャッシュの状態保持位置変更でヒット挙動が変わる可能性。
+- Mitigation: 旧ロジックを等価移植し、同じキー生成・pending条件・fallback再適用順序を維持。
+- Risk: Overlay item 生成移設で表示整形が変わる可能性。
+- Mitigation: 既存の改行正規化ロジックを `OverlayStage` にそのまま移植。
+- Risk: PerfProbe化でログ出力条件が変わる可能性。
+- Mitigation: 同一閾値条件・同一ログ項目名で出力。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.Orchestration.Stages;
 
 namespace Hotkey_Translator.Services;
 
@@ -23,6 +24,7 @@ public sealed class SceneTextSnapshotService
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly ReadingUnitBuilder _readingUnitBuilder = new();
+    private readonly OcrAndGroupStage _ocrAndGroupStage;
     private readonly AppLogger? _logger;
 
     public SceneTextSnapshotService(
@@ -38,6 +40,7 @@ public sealed class SceneTextSnapshotService
             new OcrCandidateScorer(),
             logger);
         _lineGrouper = lineGrouper;
+        _ocrAndGroupStage = new OcrAndGroupStage(_ocrPreprocessCoordinator, _lineGrouper, _readingUnitBuilder);
         _logger = logger;
     }
 
@@ -63,10 +66,11 @@ public sealed class SceneTextSnapshotService
             roiScreen.Height);
 
         using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-        OcrPassResult passResult;
+        OcrAndGroupStageOutput stageOutput;
         try
         {
-            passResult = await _ocrPreprocessCoordinator.RunAsync(roiBitmap, settings, cancellationToken).ConfigureAwait(false);
+            stageOutput = await _ocrAndGroupStage.ExecuteAsync(roiBitmap, roiScreen, settings, cancellationToken)
+                .ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -74,35 +78,13 @@ public sealed class SceneTextSnapshotService
             throw;
         }
 
-        var ocrInput = passResult.Input;
+        var ocrInput = stageOutput.OcrInput;
         try
         {
-            var rawLines = passResult.Result.Lines;
-            if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleConfidenceFilter)
-            {
-                var threshold = Math.Clamp(settings.PaddleConfidenceThreshold, 0.0, 1.0);
-                rawLines = rawLines
-                    .Where(line => line.Confidence >= threshold)
-                    .ToList();
-            }
-
-            var mappedLines = rawLines
-                .Select(line => line with
-                {
-                    Rect = new Rect(
-                        line.Rect.X + roiScreen.X,
-                        line.Rect.Y + roiScreen.Y,
-                        line.Rect.Width,
-                        line.Rect.Height)
-                })
-                .ToList();
-
-            var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
-            var readingUnits = _readingUnitBuilder.Build(groupedLines, settings).ToList();
-            var blocks = BuildBlocks(readingUnits);
+            var blocks = BuildBlocks(stageOutput.ReadingUnits);
             return new SceneTextSnapshot(
                 blocks,
-                readingUnits,
+                stageOutput.ReadingUnits,
                 roiScreen,
                 overlayClipScreen,
                 DateTime.UtcNow,

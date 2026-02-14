@@ -8,6 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.Orchestration;
+using Hotkey_Translator.Services.Orchestration.Stages;
 
 namespace Hotkey_Translator.Services;
 
@@ -37,19 +39,18 @@ public sealed class PipelineOrchestrator
     private readonly OcrEngine _ocrEngine;
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
-    private readonly NormalizationService _normalizationService;
     private readonly OcrPreprocessService _ocrPreprocessService;
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly ReadingUnitBuilder _readingUnitBuilder;
-    private readonly CacheRepository _cacheRepository;
-    private readonly CacheKeyBuilder _cacheKeyBuilder;
-    private readonly TranslationFallbackService _translationService;
+    private readonly OcrAndGroupStage _ocrAndGroupStage;
+    private readonly DiffStage _diffStage;
+    private readonly TranslateStage _translateStage;
     private readonly OverlayPresenter _overlayPresenter;
+    private readonly OverlayStage _overlayStage;
     private readonly SettingsService _settingsService;
     private readonly AppLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
-    private readonly Dictionary<string, string> _lastTranslations = new(StringComparer.Ordinal);
     private IReadOnlyList<OverlayItem> _lastOverlayItems = Array.Empty<OverlayItem>();
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
@@ -95,17 +96,17 @@ public sealed class PipelineOrchestrator
         _ocrEngine = ocrEngine;
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
-        _normalizationService = normalizationService;
+        _logger = logger;
         _ocrPreprocessService = ocrPreprocessService;
         _ocrPreprocessCoordinator = new OcrPreprocessCoordinator(_ocrEngine, _ocrPreprocessService, new OcrCandidateScorer(), _logger);
         _lineGrouper = lineGrouper;
         _readingUnitBuilder = new ReadingUnitBuilder();
-        _cacheRepository = cacheRepository;
-        _cacheKeyBuilder = cacheKeyBuilder;
-        _translationService = translationService;
+        _ocrAndGroupStage = new OcrAndGroupStage(_ocrPreprocessCoordinator, _lineGrouper, _readingUnitBuilder);
+        _diffStage = new DiffStage(_ocrDiffService);
+        _translateStage = new TranslateStage(normalizationService, cacheRepository, cacheKeyBuilder, translationService, _logger);
         _overlayPresenter = overlayPresenter;
+        _overlayStage = new OverlayStage(_overlayPresenter);
         _settingsService = settingsService;
-        _logger = logger;
     }
 
     public Task RunOnceAsync(CancellationToken cancellationToken)
@@ -120,28 +121,17 @@ public sealed class PipelineOrchestrator
         waitStopwatch.Stop();
         Bitmap? roiSnapshot = null;
         Rect roiSnapshotBounds = default;
-        var perfActive = false;
-        var queueWaitMs = 0L;
-        long captureMs = 0;
-        long cropMs = 0;
-        long ocrMs = 0;
-        long groupMs = 0;
-        long diffMs = 0;
-        long overlayMs = 0;
-        Stopwatch? totalStopwatch = null;
-        int perfThresholdMs = 0;
+        PipelinePerfProbe? perfProbe = null;
         try
         {
             var settings = _settingsService.Settings;
+            var context = new PipelineExecutionContext(settings, options, DateTimeOffset.UtcNow);
+            context.FinalStageResult = PipelineStageResult.ContinueExecution();
             var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
-            perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
-            totalStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+            perfProbe = new PipelinePerfProbe(perfEnabled, settings.OcrPerfLogThresholdMs);
             _logger.Info(
                 $"Run context: trigger={options.Trigger}, suppress transient UI={options.SuppressTransientUiFeedback}.");
-            if (perfEnabled)
-            {
-                queueWaitMs = waitStopwatch.ElapsedMilliseconds;
-            }
+            perfProbe.RecordQueueWait(waitStopwatch);
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
 
             if (options.IsEnabled)
@@ -158,30 +148,37 @@ public sealed class PipelineOrchestrator
                 }
             }
 
-            Stopwatch? captureStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+            var captureStopwatch = perfProbe.BeginStep();
             using var frame = _captureManager.Capture(settings);
-            if (perfEnabled && captureStopwatch != null)
-            {
-                captureStopwatch.Stop();
-                captureMs = captureStopwatch.ElapsedMilliseconds;
-            }
+            context.Frame = frame;
+            perfProbe.RecordCapture(captureStopwatch);
 
             if (frame.IsBlack)
             {
                 _logger.Info($"Black frame detected from {frame.ProviderKind}. Keeping last overlay.");
+                context.FinalStageResult = PipelineStageResult.Stop(
+                    PipelineStopReason.BlackFrame,
+                    PipelineOverlayAction.ShowLast,
+                    "Black frame detected.");
                 _overlayPresenter.ShowLast();
                 return;
             }
 
             RememberPreferredProvider(settings, frame.ProviderKind);
             var roiScreen = GetRoiBounds(settings, frame.Bounds);
+            context.RoiScreen = roiScreen;
             if (roiScreen.IsEmpty)
             {
                 _logger.Info("ROI is outside capture bounds.");
+                context.FinalStageResult = PipelineStageResult.Stop(
+                    PipelineStopReason.RoiOutOfBounds,
+                    PipelineOverlayAction.ShowLast,
+                    "ROI is outside capture bounds.");
                 _overlayPresenter.ShowLast();
                 return;
             }
             var overlayClipScreen = ResolveOverlayClipScreenRect(settings, frame.Bounds);
+            context.OverlayClipScreen = overlayClipScreen;
 
             var roiInFrame = new Rect(
                 roiScreen.X - frame.Bounds.X,
@@ -189,15 +186,13 @@ public sealed class PipelineOrchestrator
                 roiScreen.Width,
                 roiScreen.Height);
 
-            Stopwatch? cropStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
+            var cropStopwatch = perfProbe.BeginStep();
             using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
-            if (perfEnabled && cropStopwatch != null)
-            {
-                cropStopwatch.Stop();
-                cropMs = cropStopwatch.ElapsedMilliseconds;
-            }
+            perfProbe.RecordCrop(cropStopwatch);
             roiSnapshot = (Bitmap)roiBitmap.Clone();
             roiSnapshotBounds = roiScreen;
+            context.RoiSnapshot = roiSnapshot;
+            context.RoiSnapshotBounds = roiSnapshotBounds;
 
             if (settings.PhashThreshold >= 0)
             {
@@ -205,54 +200,54 @@ public sealed class PipelineOrchestrator
                 if (!options.SkipPhash && _lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
                 {
                     _logger.Info("pHash unchanged; keeping last overlay.");
+                    context.FinalStageResult = PipelineStageResult.Stop(
+                        PipelineStopReason.UnchangedHash,
+                        PipelineOverlayAction.ShowLast,
+                        "pHash unchanged.");
                     _overlayPresenter.ShowLast();
                     return;
                 }
 
                 _lastHash = hash;
+                context.RoiHash = hash;
             }
             else
             {
                 _lastHash = null;
             }
 
-            var ocrStopwatch = Stopwatch.StartNew();
-            perfActive = perfEnabled;
-            OcrResultModel ocrResult;
             Bitmap? ocrInput = null;
             try
             {
-                var passResult = await _ocrPreprocessCoordinator.RunAsync(roiBitmap, settings, cancellationToken)
+                var ocrStageOutput = await _ocrAndGroupStage.ExecuteAsync(roiBitmap, roiScreen, settings, cancellationToken)
                     .ConfigureAwait(false);
-                ocrResult = passResult.Result;
-                ocrInput = passResult.Input;
+                context.OcrResult = ocrStageOutput.OcrResult;
+                context.GroupedLines = ocrStageOutput.GroupedLines;
+                context.ReadingUnits = ocrStageOutput.ReadingUnits;
+                ocrInput = ocrStageOutput.OcrInput;
 
                 NotifyOcrPreprocessPreview(ocrInput);
 
-                ocrStopwatch.Stop();
-                if (perfEnabled)
+                if (perfProbe.Enabled)
                 {
-                    ocrMs = ocrStopwatch.ElapsedMilliseconds;
+                    perfProbe.RecordOcr(ocrStageOutput.OcrElapsedMs);
+                    perfProbe.RecordGroup(ocrStageOutput.GroupElapsedMs);
                 }
-                _logger.Info($"OCR completed: {ocrResult.Lines.Count} lines in {ocrStopwatch.ElapsedMilliseconds} ms.");
-                var rawLines = ocrResult.Lines;
-                if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleConfidenceFilter)
+                _logger.Info($"OCR completed: {ocrStageOutput.RawLineCount} lines in {ocrStageOutput.OcrElapsedMs} ms.");
+                if (ocrStageOutput.PaddleConfidenceThreshold.HasValue &&
+                    ocrStageOutput.FilteredLineCount != ocrStageOutput.RawLineCount)
                 {
-                    var threshold = Math.Clamp(settings.PaddleConfidenceThreshold, 0.0, 1.0);
-                    var filtered = rawLines
-                        .Where(line => line.Confidence >= threshold)
-                        .ToList();
-                    if (filtered.Count != rawLines.Count)
-                    {
-                        _logger.Info($"Paddle confidence filter: {filtered.Count}/{rawLines.Count} lines kept (threshold={threshold:0.00}).");
-                    }
-
-                    rawLines = filtered;
+                    var threshold = ocrStageOutput.PaddleConfidenceThreshold.Value;
+                    _logger.Info($"Paddle confidence filter: {ocrStageOutput.FilteredLineCount}/{ocrStageOutput.RawLineCount} lines kept (threshold={threshold:0.00}).");
                 }
 
-                if (rawLines.Count == 0)
+                if (ocrStageOutput.FilteredLineCount == 0)
                 {
                     _logger.Info("OCR returned no lines after confidence filtering.");
+                    context.FinalStageResult = PipelineStageResult.Stop(
+                        PipelineStopReason.NoTextDetected,
+                        PipelineOverlayAction.Clear,
+                        "OCR returned no lines after confidence filtering.");
                     _overlayPresenter.ClearOverlay();
                     if (!options.SuppressTransientUiFeedback)
                     {
@@ -265,29 +260,17 @@ public sealed class PipelineOrchestrator
                     return;
                 }
 
-                var mappedLines = rawLines
-                    .Select(line => line with
-                    {
-                        Rect = new Rect(
-                            line.Rect.X + roiScreen.X,
-                            line.Rect.Y + roiScreen.Y,
-                            line.Rect.Width,
-                            line.Rect.Height)
-                    })
-                    .ToList();
-
-                var groupStopwatch = Stopwatch.StartNew();
-                var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
-                var readingUnits = _readingUnitBuilder.Build(groupedLines, settings).ToList();
-                groupStopwatch.Stop();
-                if (perfEnabled)
-                {
-                    groupMs = groupStopwatch.ElapsedMilliseconds;
-                }
-                _logger.Info($"OCR grouped: {groupedLines.Count} lines, {readingUnits.Count} reading units in {groupStopwatch.ElapsedMilliseconds} ms.");
+                var groupedLines = ocrStageOutput.GroupedLines;
+                var readingUnits = ocrStageOutput.ReadingUnits;
+                _logger.Info(
+                    $"OCR grouped: {groupedLines.Count} lines, {readingUnits.Count} reading units in {ocrStageOutput.GroupElapsedMs} ms.");
                 if (readingUnits.Count == 0)
                 {
                     _logger.Info("OCR returned no lines.");
+                    context.FinalStageResult = PipelineStageResult.Stop(
+                        PipelineStopReason.NoTextDetected,
+                        PipelineOverlayAction.Clear,
+                        "OCR returned no reading units.");
                     _overlayPresenter.ClearOverlay();
                     if (!options.SuppressTransientUiFeedback)
                     {
@@ -300,45 +283,41 @@ public sealed class PipelineOrchestrator
                     return;
                 }
 
-                Stopwatch? diffStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-                var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
-                var changedUnitIds = ResolveChangedUnitIds(readingUnits, groupedLines, changedLines, options.SkipOcrDiff);
-                if (perfEnabled && diffStopwatch != null)
+                var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff);
+                context.ChangedUnitIds = diffOutput.ChangedUnitIds;
+                context.IsDiffUnchanged = diffOutput.ChangedUnitIds.Count == 0;
+                if (perfProbe.Enabled)
                 {
-                    diffStopwatch.Stop();
-                    diffMs = diffStopwatch.ElapsedMilliseconds;
+                    perfProbe.RecordDiff(diffOutput.ElapsedMs);
                 }
-                _logger.Info($"OCR diff: {changedLines.Count} changed lines, {changedUnitIds.Count} changed units of {readingUnits.Count} total.");
-                Dictionary<int, string> translations;
-                if (options.SkipTranslation)
+                _logger.Info(
+                    $"OCR diff: {diffOutput.ChangedLines.Count} changed lines, {diffOutput.ChangedUnitIds.Count} changed units of {readingUnits.Count} total.");
+                var translations = await _translateStage.ExecuteAsync(
+                        readingUnits,
+                        diffOutput.ChangedUnitIds,
+                        settings,
+                        options,
+                        cancellationToken,
+                        () => TranslationStarted?.Invoke(),
+                        () => TranslationCompleted?.Invoke())
+                    .ConfigureAwait(false);
+                context.Translations.Clear();
+                foreach (var pair in translations)
                 {
-                    translations = new Dictionary<int, string>();
-                }
-                else
-                {
-                    translations = await ResolveTranslationsAsync(
-                            readingUnits,
-                            changedUnitIds,
-                            settings,
-                            options,
-                            options.SkipTranslationCache,
-                            cancellationToken)
-                        .ConfigureAwait(false);
+                    context.Translations[pair.Key] = pair.Value;
                 }
 
                 _lastReadingUnits = readingUnits.ToList();
                 _lastOverlayTranslations = new Dictionary<int, string>(translations);
                 _lastOverlayRoiScreen = roiScreen;
                 _lastOverlayClipScreen = overlayClipScreen;
-                var overlayItems = BuildOverlayItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+                var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+                context.OverlayItems = overlayItems;
                 _lastOverlayItems = overlayItems;
-                Stopwatch? overlayStopwatch = perfEnabled ? Stopwatch.StartNew() : null;
-                _overlayPresenter.Update(overlayItems, overlayClipScreen);
-                if (perfEnabled && overlayStopwatch != null)
-                {
-                    overlayStopwatch.Stop();
-                    overlayMs = overlayStopwatch.ElapsedMilliseconds;
-                }
+                var overlayStopwatch = perfProbe.BeginStep();
+                _overlayStage.Update(overlayItems, overlayClipScreen);
+                context.FinalStageResult = PipelineStageResult.ContinueExecution();
+                perfProbe.RecordOverlay(overlayStopwatch);
             }
             finally
             {
@@ -360,15 +339,7 @@ public sealed class PipelineOrchestrator
         }
         finally
         {
-            if (totalStopwatch != null)
-            {
-                totalStopwatch.Stop();
-                if (perfActive && totalStopwatch.ElapsedMilliseconds >= perfThresholdMs)
-                {
-                    _logger.Info($"[Perf] QueueWait={queueWaitMs}ms, Capture={captureMs}ms, Crop={cropMs}ms, OCR={ocrMs}ms, " +
-                                 $"Group={groupMs}ms, Diff={diffMs}ms, Overlay={overlayMs}ms (total={totalStopwatch.ElapsedMilliseconds}ms).");
-                }
-            }
+            perfProbe?.LogIfThresholdExceeded(_logger);
 
             if (roiSnapshot != null)
             {
@@ -407,14 +378,14 @@ public sealed class PipelineOrchestrator
             }
 
             _overlayTextMode = mode;
-            var overlayItems = BuildOverlayItems(
+            var overlayItems = _overlayStage.BuildItems(
                 _lastReadingUnits,
                 _lastOverlayTranslations,
                 _lastOverlayRoiScreen,
                 _settingsService.Settings,
                 _overlayTextMode);
             _lastOverlayItems = overlayItems;
-            _overlayPresenter.Update(overlayItems, _lastOverlayClipScreen);
+            _overlayStage.Update(overlayItems, _lastOverlayClipScreen);
             return true;
         }
         finally
@@ -434,6 +405,12 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
+            var context = new PipelineExecutionContext(settings, options, DateTimeOffset.UtcNow)
+            {
+                RoiScreen = roiScreen,
+                OverlayClipScreen = overlayClipScreen,
+                FinalStageResult = PipelineStageResult.ContinueExecution()
+            };
             _logger.Info(
                 $"Run context: trigger={options.Trigger}, suppress transient UI={options.SuppressTransientUiFeedback}, precomputed payload=true.");
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
@@ -441,6 +418,10 @@ public sealed class PipelineOrchestrator
             if (readingUnits.Count == 0)
             {
                 _logger.Info("Precomputed scene payload returned no reading units.");
+                context.FinalStageResult = PipelineStageResult.Stop(
+                    PipelineStopReason.NoTextDetected,
+                    PipelineOverlayAction.Clear,
+                    "Precomputed scene payload returned no reading units.");
                 _overlayPresenter.ClearOverlay();
                 return;
             }
@@ -448,35 +429,37 @@ public sealed class PipelineOrchestrator
             var groupedLines = readingUnits
                 .Select(unit => new OcrLine(unit.Text, unit.Rect, 1.0f, Math.Max(1, unit.LineCount), unit.LineHeight))
                 .ToList();
-            var changedLines = options.SkipOcrDiff ? groupedLines : _ocrDiffService.FilterChangedLines(groupedLines);
-            var changedUnitIds = ResolveChangedUnitIds(readingUnits, groupedLines, changedLines, options.SkipOcrDiff);
+            var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff);
+            context.GroupedLines = groupedLines;
+            context.ReadingUnits = readingUnits;
+            context.ChangedUnitIds = diffOutput.ChangedUnitIds;
+            context.IsDiffUnchanged = diffOutput.ChangedUnitIds.Count == 0;
             _logger.Info(
-                $"Precomputed payload diff: {changedLines.Count} changed lines, {changedUnitIds.Count} changed units of {readingUnits.Count} total.");
+                $"Precomputed payload diff: {diffOutput.ChangedLines.Count} changed lines, {diffOutput.ChangedUnitIds.Count} changed units of {readingUnits.Count} total.");
 
-            Dictionary<int, string> translations;
-            if (options.SkipTranslation)
+            var translations = await _translateStage.ExecuteAsync(
+                    readingUnits,
+                    diffOutput.ChangedUnitIds,
+                    settings,
+                    options,
+                    cancellationToken,
+                    () => TranslationStarted?.Invoke(),
+                    () => TranslationCompleted?.Invoke())
+                .ConfigureAwait(false);
+            foreach (var pair in translations)
             {
-                translations = new Dictionary<int, string>();
-            }
-            else
-            {
-                translations = await ResolveTranslationsAsync(
-                        readingUnits,
-                        changedUnitIds,
-                        settings,
-                        options,
-                        options.SkipTranslationCache,
-                        cancellationToken)
-                    .ConfigureAwait(false);
+                context.Translations[pair.Key] = pair.Value;
             }
 
             _lastReadingUnits = readingUnits.ToList();
             _lastOverlayTranslations = new Dictionary<int, string>(translations);
             _lastOverlayRoiScreen = roiScreen;
             _lastOverlayClipScreen = overlayClipScreen;
-            var overlayItems = BuildOverlayItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+            var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+            context.OverlayItems = overlayItems;
             _lastOverlayItems = overlayItems;
-            _overlayPresenter.Update(overlayItems, overlayClipScreen);
+            _overlayStage.Update(overlayItems, overlayClipScreen);
+            context.FinalStageResult = PipelineStageResult.ContinueExecution();
         }
         catch (OperationCanceledException)
         {
@@ -549,146 +532,6 @@ public sealed class PipelineOrchestrator
         _ = _settingsService.SaveAsync();
     }
 
-    private async Task<Dictionary<int, string>> ResolveTranslationsAsync(
-        IReadOnlyList<ReadingUnit> units,
-        IReadOnlySet<int> changedUnitIds,
-        AppSettings settings,
-        ForceRunOptions options,
-        bool skipTranslationCache,
-        CancellationToken cancellationToken)
-    {
-        var translations = new Dictionary<int, string>();
-        var pending = new List<PendingTranslation>();
-        var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var unit in units)
-        {
-            var normalized = _normalizationService.Normalize(unit.Text);
-            if (string.IsNullOrWhiteSpace(normalized))
-            {
-                continue;
-            }
-
-            var key = _cacheKeyBuilder.Build(settings, normalized);
-            if (!skipTranslationCache)
-            {
-                var cached = await _cacheRepository.TryGetAsync(key, cancellationToken).ConfigureAwait(false);
-                if (!string.IsNullOrWhiteSpace(cached))
-                {
-                    translations[unit.Id] = cached;
-                    _lastTranslations[normalized] = cached;
-                    continue;
-                }
-
-                if (_lastTranslations.TryGetValue(normalized, out var last))
-                {
-                    translations[unit.Id] = last;
-                    continue;
-                }
-            }
-
-            if (changedUnitIds.Contains(unit.Id) && pendingNormalized.Add(normalized))
-            {
-                pending.Add(new PendingTranslation(unit.Id, unit.Text, normalized, key));
-            }
-        }
-
-        if (pending.Count == 0)
-        {
-            _logger.Info($"Translation skipped: no pending items (changed {changedUnitIds.Count}, total {units.Count}).");
-            return translations;
-        }
-
-        _logger.Info($"Translation pending: {pending.Count} items.");
-        var pendingTexts = pending.Select(item => item.SourceText).ToList();
-        _logger.Info(BuildTranslationPayloadLog(pending));
-        TranslationStarted?.Invoke();
-        IReadOnlyDictionary<string, string> results;
-        try
-        {
-            results = await _translationService.TranslateAsync(pendingTexts, settings, options, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            TranslationCompleted?.Invoke();
-        }
-        foreach (var item in pending)
-        {
-            if (!results.TryGetValue(item.SourceText, out var translated) || string.IsNullOrWhiteSpace(translated))
-            {
-                continue;
-            }
-
-            await _cacheRepository.SaveAsync(item.CacheKey, translated, cancellationToken).ConfigureAwait(false);
-            _lastTranslations[item.Normalized] = translated;
-            translations[item.UnitId] = translated;
-        }
-
-        if (skipTranslationCache)
-        {
-            return translations;
-        }
-
-        foreach (var unit in units)
-        {
-            var normalized = _normalizationService.Normalize(unit.Text);
-            if (_lastTranslations.TryGetValue(normalized, out var translated))
-            {
-                translations[unit.Id] = translated;
-            }
-        }
-
-        return translations;
-    }
-
-    private static string GetOverlayText(
-        ReadingUnit unit,
-        Dictionary<int, string> translations,
-        OverlayTextMode mode)
-    {
-        var text = mode == OverlayTextMode.Translated && translations.TryGetValue(unit.Id, out var translated)
-            ? translated
-            : unit.Text;
-        return NormalizeOverlayText(text, unit.LineCount);
-    }
-
-    private static IReadOnlyList<OverlayItem> BuildOverlayItems(
-        IReadOnlyList<ReadingUnit> readingUnits,
-        Dictionary<int, string> translations,
-        Rect roiScreen,
-        AppSettings settings,
-        OverlayTextMode mode)
-    {
-        if (!settings.EnableFixedRoiOverlay)
-        {
-            return readingUnits
-                .Select(unit => new OverlayItem(GetOverlayText(unit, translations, mode), unit.Rect, unit.LineCount, unit.LineHeight))
-                .ToList();
-        }
-
-        if (readingUnits.Count == 0)
-        {
-            return Array.Empty<OverlayItem>();
-        }
-
-        var lines = new List<string>(readingUnits.Count);
-        foreach (var unit in readingUnits)
-        {
-            var text = GetOverlayText(unit, translations, mode);
-            if (!string.IsNullOrWhiteSpace(text))
-            {
-                lines.Add(text);
-            }
-        }
-
-        var combined = lines.Count == 0 ? string.Empty : string.Join(Environment.NewLine, lines);
-        var lineCount = Math.Max(1, readingUnits.Sum(unit => Math.Max(1, unit.LineCount)));
-        var lineHeights = readingUnits.Select(unit => unit.LineHeight).Where(height => height > 0).ToList();
-        var lineHeight = lineHeights.Count > 0 ? lineHeights.Average() : 0;
-
-        return new[] { new OverlayItem(combined, roiScreen, lineCount, lineHeight) };
-    }
-
     private void NotifyOcrPreprocessPreview(Bitmap ocrInput)
     {
         if (OcrPreprocessPreviewReady == null)
@@ -707,172 +550,4 @@ public sealed class PipelineOrchestrator
         _lastRoiSnapshot = snapshot;
         _lastRoiBounds = bounds;
     }
-
-    private static string NormalizeOverlayText(string text, int lineCount)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return text;
-        }
-
-        var lines = text
-            .Replace("\r\n", "\n")
-            .Replace('\r', '\n')
-            .Split('\n', StringSplitOptions.None)
-            .Select(line => line.Trim())
-            .Where(line => line.Length > 0)
-            .ToList();
-
-        if (lines.Count == 0)
-        {
-            return string.Empty;
-        }
-
-        if (lineCount <= 1)
-        {
-            return string.Join(" ", lines);
-        }
-
-        if (lines.Count <= lineCount)
-        {
-            return text;
-        }
-
-        // WHY: Constrain translated line breaks to the OCR line count to reduce overflow.
-        var head = lines.Take(lineCount - 1);
-        var tail = string.Join(" ", lines.Skip(lineCount - 1));
-        return string.Join(Environment.NewLine, head.Append(tail));
-    }
-
-    private static HashSet<int> ResolveChangedUnitIds(
-        IReadOnlyList<ReadingUnit> units,
-        IReadOnlyList<OcrLine> groupedLines,
-        IReadOnlyList<OcrLine> changedLines,
-        bool skipOcrDiff)
-    {
-        if (skipOcrDiff)
-        {
-            return units.Select(unit => unit.Id).ToHashSet();
-        }
-
-        if (changedLines.Count == 0)
-        {
-            return new HashSet<int>();
-        }
-
-        var changedLineSet = new HashSet<OcrLine>(changedLines);
-        var changedUnitIds = new HashSet<int>();
-        foreach (var unit in units)
-        {
-            foreach (var sourceIndex in unit.SourceIndices)
-            {
-                if (sourceIndex < 0 || sourceIndex >= groupedLines.Count)
-                {
-                    continue;
-                }
-
-                if (changedLineSet.Contains(groupedLines[sourceIndex]))
-                {
-                    changedUnitIds.Add(unit.Id);
-                    break;
-                }
-            }
-        }
-
-        return changedUnitIds;
-    }
-
-    private static string BuildTranslationPayloadLog(IReadOnlyList<PendingTranslation> pending)
-    {
-        const int maxPreviewItems = 10;
-        const int maxPreviewChars = 180;
-
-        var builder = new StringBuilder();
-        builder.Append("Translation request payload preview: ");
-        var previewCount = Math.Min(maxPreviewItems, pending.Count);
-        for (var i = 0; i < previewCount; i++)
-        {
-            var item = pending[i];
-            var (leadingSpaces, trailingSpaces, maxConsecutiveSpaces) = GetSpaceStats(item.SourceText);
-            var textPreview = ToVisiblePreview(item.SourceText, maxPreviewChars, out var truncated);
-            if (i > 0)
-            {
-                builder.Append(" | ");
-            }
-
-            // WHY: Make spacing and line breaks explicit to diagnose vertical reading-unit text shaping before translation.
-            builder.Append(
-                $"unit={item.UnitId}, len={item.SourceText.Length}, leadSp={leadingSpaces}, trailSp={trailingSpaces}, maxSpRun={maxConsecutiveSpaces}, text=\"{textPreview}");
-            if (truncated)
-            {
-                builder.Append("...(truncated)");
-            }
-            builder.Append('"');
-        }
-
-        if (pending.Count > previewCount)
-        {
-            builder.Append($" | ... {pending.Count - previewCount} more item(s)");
-        }
-
-        return builder.ToString();
-    }
-
-    private static (int Leading, int Trailing, int MaxRun) GetSpaceStats(string text)
-    {
-        var leading = 0;
-        while (leading < text.Length && text[leading] == ' ')
-        {
-            leading++;
-        }
-
-        var trailing = 0;
-        var trailingIndex = text.Length - 1;
-        while (trailingIndex >= 0 && text[trailingIndex] == ' ')
-        {
-            trailing++;
-            trailingIndex--;
-        }
-
-        var maxRun = 0;
-        var currentRun = 0;
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (text[i] == ' ')
-            {
-                currentRun++;
-                if (currentRun > maxRun)
-                {
-                    maxRun = currentRun;
-                }
-            }
-            else
-            {
-                currentRun = 0;
-            }
-        }
-
-        return (leading, trailing, maxRun);
-    }
-
-    private static string ToVisiblePreview(string text, int maxChars, out bool truncated)
-    {
-        var escaped = text
-            .Replace("\\", "\\\\", StringComparison.Ordinal)
-            .Replace("\r", "\\r", StringComparison.Ordinal)
-            .Replace("\n", "\\n", StringComparison.Ordinal)
-            .Replace("\t", "\\t", StringComparison.Ordinal)
-            .Replace(" ", "<sp>", StringComparison.Ordinal);
-
-        if (escaped.Length <= maxChars)
-        {
-            truncated = false;
-            return escaped;
-        }
-
-        truncated = true;
-        return escaped[..maxChars];
-    }
-
-    private sealed record PendingTranslation(int UnitId, string SourceText, string Normalized, string CacheKey);
 }
