@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Hotkey_Translator"
         mc:Ignorable="d"
-        Title="Hotkey Translator" Height="640" Width="1080">
+        Title="Hotkey Translator" Height="740" Width="1080">
     <Window.Resources>
         <local:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
@@ -40,9 +40,9 @@
         </Grid.ColumnDefinitions>
 
         <Border Grid.Row="0" Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0" Margin="0,0,8,0">
-            <StackPanel>
-                <TextBlock Text="Sidebar" FontWeight="SemiBold" Margin="0,0,0,8" />
+            <Grid>
                 <ListBox x:Name="HomeSidebarList"
+                         VerticalAlignment="Stretch"
                          SelectedIndex="{Binding SelectedSidebarIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                     <ListBoxItem Content="Home" />
                     <ListBoxItem Content="Trans" />
@@ -50,7 +50,7 @@
                     <ListBoxItem Content="Hotkey" />
                     <ListBoxItem Content="System" />
                 </ListBox>
-            </StackPanel>
+            </Grid>
         </Border>
 
         <TabControl Grid.Row="0"

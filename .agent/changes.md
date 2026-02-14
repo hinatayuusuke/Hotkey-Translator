@@ -9955,3 +9955,30 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 22:19 (Asia/Taipei) — サイドバー見出し削除と全高追従レイアウト化**
+
+### Summary
+- 左サイドバーのタイトルを削除し、サイドバー内リストがウィンドウ高さに追従するようにした。
+
+### Context / Goal
+- サイドバーの見出し行をなくし、表示領域を有効活用したい。
+- 左枠を右ペイン同様に高さいっぱいで使い、ウィンドウサイズ変更時に自然に追従させたい。
+
+### Changes
+- Sidebar タイトル (TextBlock) を削除。
+- サイドバー内部コンテナを StackPanel から Grid に変更。
+- HomeSidebarList に VerticalAlignment="Stretch" を付与し、高さ追従を明示。
+
+### Files Touched
+- MainWindow.xaml — 左サイドバーの見出し削除と全高追従レイアウトへ変更。
+
+### Behavioral Impact
+- 左サイドバーの先頭見出しが表示されなくなる。
+- サイドバー領域がウィンドウ高に合わせて伸縮し、リスト表示の追従性が上がる。
+
+### Risk & Mitigation
+- Risk: サイドバー項目数が増えた場合に表示領域を超える可能性。
+- Mitigation: ListBox の既定スクロール挙動を維持しているため、超過時はスクロールで対応できる。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。
