@@ -8528,3 +8528,72 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:50 (Asia/Taipei) — MVVM次段階実装（ApplyUiInputToSettings依存の解体）**
+
+### Summary
+- `SettingsUiController` の保存処理から `ISettingsUiBridge.ApplyUiInputToSettings` 依存を外し、ViewModel反映アクション注入へ置換した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の DoD にある `ApplyUiInputToSettings` 依存解消に向けて、Bridge責務を縮小する。
+- 設定保存時のデータ反映を「UI Bridge呼び出し」から「明示的なSettings反映アクション」へ切り替える。
+
+### Changes
+- `ISettingsUiBridge` から `ApplyUiInputToSettings` を削除。
+- `SettingsUiController` コンストラクタに `Action<AppSettings> applySettingsInput` を追加し、`SaveFromUiAsync` で使用。
+- `MainWindow` から `SettingsUiController` 生成時に `ApplyViewModelInputToSettings` を注入。
+- `MainWindow.xaml.cs` の明示インターフェース実装 `ISettingsUiBridge.ApplyUiInputToSettings` を削除。
+- `ApplyUiInputToSettings` を `ApplyViewModelInputToSettings` にリネームし、翻訳優先度反映を ViewModel API 直呼びに統一。
+
+### Files Touched
+- `Services/Application/SettingsUiController.cs` — Bridge API を縮小し、設定反映をアクション注入へ変更。
+- `MainWindow.xaml.cs` — Controller初期化と反映メソッド名を更新し、Bridge実装を削除。
+
+### Behavioral Impact
+- 設定保存時の挙動は維持されるが、`SettingsUiController` が UI Bridge の特定メソッドに依存しなくなる。
+- TranslationPriority を含む設定反映は ViewModel起点で一貫化される。
+
+### Risk & Mitigation
+- Risk: 注入アクションの差し替え漏れで保存時反映が実行されない可能性。
+- Mitigation: コンストラクタ引数を必須化し、ビルドでコンパイル時検知可能にした。
+- Risk: 変更直後の保存フロー回帰。
+- Mitigation: build/run スモークで起動直後クラッシュがないことを確認。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:52 (Asia/Taipei) — MVVM次段階実装（Llamaモデル選択UIのBinding駆動化）**
+
+### Summary
+- Llamaモデル選択UIを `ComboBoxItem` 手動生成/選択から、ViewModelコレクションの Binding 駆動に移行した。
+
+### Context / Goal
+- MainWindow の UI部品直接操作を減らし、MVVM の責務分離を進める。
+- 既存の「選択モデルが欠損している場合に `(missing)` 表示で残す」挙動は維持する。
+
+### Changes
+- `MainWindowViewModel` に `LlamaModelOption` と `ObservableCollection<LlamaModelOption> LlamaModelOptions` を追加。
+- `ResetLlamaModelOptions(...)` を追加し、モデル候補リスト更新を ViewModel 経由に統一。
+- `MainWindow.xaml` の `LlamaModelBox` を `ItemsSource` / `DisplayMemberPath` / `SelectedValuePath` Binding 化。
+- `MainWindow.xaml.cs` の `ReloadLlamaModelOptions` を書き換え、`LlamaModelBox.Items` の直接編集を削除。
+- `GetSelectedTag` / `SetComboBoxByTag` ヘルパーを削除。
+- 併せて `DisablePaddleOcr` / `DisablePaddleVlOcr` の `OcrEngineBox` 直接操作を削除し、`SettingsViewModel.LoadFrom(settings)` 同期へ統一。
+
+### Files Touched
+- `ViewModels/MainWindowViewModel.cs` — Llama モデル選択肢コレクションと更新メソッドを追加。
+- `MainWindow.xaml` — Llama モデル選択 ComboBox の Binding 定義へ変更。
+- `MainWindow.xaml.cs` — Llama モデルリスト反映処理を ViewModel 更新へ変更し、不要ヘルパーを削除。Paddle失敗時のUI同期も ViewModel 経由へ変更。
+
+### Behavioral Impact
+- Llamaモデル候補は ViewModel の単一状態として管理される。
+- 欠損モデルは引き続き `(missing)` 表示で選択状態を維持できる。
+- Paddle host 起動失敗時の OCR engine 切替反映も、コントロール直接更新ではなく Binding 同期で反映される。
+
+### Risk & Mitigation
+- Risk: モデル候補更新時に選択値が失われる可能性。
+- Mitigation: `ReloadLlamaModelOptions` 内で正規化済み選択値を `Settings.LlamaSelectedModelFileName` に再代入し、候補外の場合は先頭へフォールバック。
+- Risk: Binding 切替で初期表示が崩れる可能性。
+- Mitigation: build/run スモークで起動時クラッシュなしを確認。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

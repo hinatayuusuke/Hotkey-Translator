@@ -65,7 +65,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     public MainWindow()
     {
-        _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger);
+        _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger, ApplyViewModelInputToSettings);
         // WHY: XAML initialization can raise ValueChanged handlers before constructor finishes.
         _settingsChangeScheduler = new SettingsChangeScheduler(
             Dispatcher,
@@ -434,17 +434,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void DisablePaddleOcr(AppSettings settings)
     {
         settings.OcrEngine = OcrEngineKind.WinRt;
-        _isApplyingSettings = true;
-        SetComboBoxByTag(OcrEngineBox, "WinRt");
-        _isApplyingSettings = false;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
     }
 
     private void DisablePaddleVlOcr(AppSettings settings)
     {
         settings.OcrEngine = OcrEngineKind.WinRt;
-        _isApplyingSettings = true;
-        SetComboBoxByTag(OcrEngineBox, "WinRt");
-        _isApplyingSettings = false;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
     }
 
     private void DisableCTranslate2(AppSettings settings)
@@ -710,8 +706,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         set => _isApplyingSettings = value;
     }
 
-    void ISettingsUiBridge.ApplyUiInputToSettings(AppSettings settings) => ApplyUiInputToSettings(settings);
-
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
@@ -818,11 +812,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void ReloadLlamaModelOptions(AppSettings settings)
     {
-        if (LlamaModelBox == null)
-        {
-            return;
-        }
-
         var fallback = SettingsUiController.NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
         var selectedFromViewModel = _mainWindowViewModel.Settings.LlamaSelectedModelFileName;
         var selectedModel = string.IsNullOrWhiteSpace(selectedFromViewModel)
@@ -830,42 +819,36 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             : selectedFromViewModel;
         var selected = _llamaModelCatalog.NormalizeModelFileName(selectedModel, fallback);
         var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames(settings.LlamaGrpcProjectDir);
+        var modelOptions = modelFileNames
+            .Select(fileName => new LlamaModelOption(fileName, fileName))
+            .ToList();
+        if (!modelFileNames.Contains(selected, StringComparer.OrdinalIgnoreCase))
+        {
+            // WHY: Keep broken selections visible so users can recover from missing model files.
+            modelOptions.Add(new LlamaModelOption(selected, $"{selected} (missing)"));
+        }
+
         var previousApplyingState = _isApplyingSettings;
         _isApplyingSettings = true;
         try
         {
-            LlamaModelBox.Items.Clear();
-            foreach (var fileName in modelFileNames)
+            _mainWindowViewModel.ResetLlamaModelOptions(modelOptions);
+            var resolvedSelection = modelOptions.Count == 0
+                ? fallback
+                : selected;
+            if (modelOptions.Count > 0 &&
+                !modelOptions.Any(option => string.Equals(option.Value, selected, StringComparison.OrdinalIgnoreCase)))
             {
-                LlamaModelBox.Items.Add(new ComboBoxItem
-                {
-                    Content = fileName,
-                    Tag = fileName
-                });
+                resolvedSelection = modelOptions[0].Value;
             }
 
-            if (!modelFileNames.Contains(selected, StringComparer.OrdinalIgnoreCase))
-            {
-                // WHY: Keep broken selections visible so users can recover from missing model files.
-                LlamaModelBox.Items.Add(new ComboBoxItem
-                {
-                    Content = $"{selected} (missing)",
-                    Tag = selected
-                });
-            }
-
-            SetComboBoxByTag(LlamaModelBox, selected);
-            if (LlamaModelBox.SelectedItem == null && LlamaModelBox.Items.Count > 0)
-            {
-                LlamaModelBox.SelectedIndex = 0;
-            }
+            _mainWindowViewModel.Settings.LlamaSelectedModelFileName = resolvedSelection;
+            settings.LlamaSelectedModelFileName = resolvedSelection;
         }
         finally
         {
             _isApplyingSettings = previousApplyingState;
         }
-
-        settings.LlamaSelectedModelFileName = GetSelectedTag(LlamaModelBox, fallback);
     }
 
     private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
@@ -920,39 +903,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settingsViewModel.TargetLanguageCustom = sourceCustom;
     }
 
-    private static string GetSelectedTag(ComboBox comboBox, string fallback)
-    {
-        if (comboBox.SelectedItem is ComboBoxItem item && item.Tag is string tag)
-        {
-            return tag;
-        }
-
-        return fallback;
-    }
-
-    private static void SetComboBoxByTag(ComboBox comboBox, string tag)
-    {
-        foreach (var item in comboBox.Items)
-        {
-            if (item is ComboBoxItem comboItem && comboItem.Tag is string itemTag && itemTag == tag)
-            {
-                comboBox.SelectedItem = comboItem;
-                return;
-            }
-        }
-    }
-
-
     private void ApplyTranslationPriority(AppSettings settings)
     {
         var ordered = NormalizeTranslationPriority(settings);
         settings.TranslationPriority = ordered.ToList();
         _mainWindowViewModel.ResetTranslationPriority(ordered);
-    }
-
-    private List<string> GetTranslationPriority()
-    {
-        return _mainWindowViewModel.GetTranslationPriorityOrDefault(TranslationProviderNames.Defaults);
     }
 
     private static List<string> NormalizeTranslationPriority(AppSettings settings)
@@ -1157,10 +1112,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return _settingsUiController.SaveFromUiAsync();
     }
 
-    private void ApplyUiInputToSettings(AppSettings settings)
+    private void ApplyViewModelInputToSettings(AppSettings settings)
     {
         _mainWindowViewModel.Settings.ApplyTo(settings);
-        settings.TranslationPriority = GetTranslationPriority();
+        settings.TranslationPriority =
+            _mainWindowViewModel.GetTranslationPriorityOrDefault(TranslationProviderNames.Defaults);
     }
 
     private void ApplyRuntimeStateAfterSave(AppSettings settings)

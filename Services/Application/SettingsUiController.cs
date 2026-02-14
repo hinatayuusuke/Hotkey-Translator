@@ -11,7 +11,6 @@ internal interface ISettingsUiBridge
 {
     bool IsLoaded { get; }
     bool IsApplyingSettings { get; set; }
-    void ApplyUiInputToSettings(AppSettings settings);
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
@@ -28,15 +27,18 @@ internal sealed class SettingsUiController
     private readonly SettingsService _settingsService;
     private readonly ISettingsUiBridge _bridge;
     private readonly Func<AppLogger?> _loggerAccessor;
+    private readonly Action<AppSettings> _applySettingsInput;
 
     public SettingsUiController(
         SettingsService settingsService,
         ISettingsUiBridge bridge,
-        Func<AppLogger?> loggerAccessor)
+        Func<AppLogger?> loggerAccessor,
+        Action<AppSettings> applySettingsInput)
     {
         _settingsService = settingsService;
         _bridge = bridge;
         _loggerAccessor = loggerAccessor;
+        _applySettingsInput = applySettingsInput;
     }
 
     public bool NormalizeOnLoad(AppSettings settings)
@@ -68,7 +70,7 @@ internal sealed class SettingsUiController
         try
         {
             var settings = _settingsService.Settings;
-            _bridge.ApplyUiInputToSettings(settings);
+            _applySettingsInput(settings);
 
             NormalizeSceneChangeModeSettings(settings);
 

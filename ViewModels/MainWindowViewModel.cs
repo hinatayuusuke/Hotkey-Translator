@@ -8,6 +8,8 @@ using CommunityToolkit.Mvvm.Input;
 
 namespace Hotkey_Translator.ViewModels;
 
+internal sealed record LlamaModelOption(string Value, string Display);
+
 internal sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly Action _requestSettingsSave;
@@ -35,6 +37,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         _requestSettingsSave = requestSettingsSave;
         Settings = settings;
         RuntimeStatus = runtimeStatus;
+        LlamaModelOptions = new ObservableCollection<LlamaModelOption>();
         TranslationPriority = new ObservableCollection<string>();
         RunOnceCommand = new AsyncRelayCommand(runOnceAsync);
         SelectRoiCommand = new AsyncRelayCommand(selectRoiAsync);
@@ -52,6 +55,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public SettingsViewModel Settings { get; }
 
     public RuntimeStatusViewModel RuntimeStatus { get; }
+
+    public ObservableCollection<LlamaModelOption> LlamaModelOptions { get; }
 
     public ObservableCollection<string> TranslationPriority { get; }
 
@@ -96,6 +101,15 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         }
 
         return TranslationPriority.ToList();
+    }
+
+    public void ResetLlamaModelOptions(IEnumerable<LlamaModelOption> values)
+    {
+        LlamaModelOptions.Clear();
+        foreach (var value in values)
+        {
+            LlamaModelOptions.Add(value);
+        }
     }
 
     private void MoveTranslationPriorityUp()

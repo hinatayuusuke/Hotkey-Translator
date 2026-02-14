@@ -820,7 +820,9 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
                                       <ComboBox x:Name="LlamaModelBox" Width="320"
-                                                SelectedValuePath="Tag"
+                                                ItemsSource="{Binding LlamaModelOptions}"
+                                                DisplayMemberPath="Display"
+                                                SelectedValuePath="Value"
                                                 SelectedValue="{Binding Settings.LlamaSelectedModelFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                       <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadLlamaModelsCommand}" />
                                   </StackPanel>
