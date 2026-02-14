@@ -9229,3 +9229,31 @@ ull logger が固定されていた。
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行: 0 error（Hotkey-Translator.exe ロックに伴う MSB3026 warning は発生）。
 - dotnet run --project Hotkey-Translator.csproj --no-build を8秒監視: RUNNING_OK_NO_EARLY_CRASH。
+**2026-02-14 15:36 (Asia/Taipei) — ocr_vl_engine.py テストCLI追加**
+
+### Summary
+- OcrServiceVL/ocr_vl_engine.py を直接検証するため、全主要パラメータをCLI指定できるテストスクリプトを追加した。
+
+### Context / Goal
+- ユーザー要望により PaddleOcrVlEngine の初期化・推論を手元で再現しやすい入口を用意する。
+- device/pipeline_version/HPI/TensorRT 等の挙動を引数で切り替えて切り分け可能にする。
+
+### Changes
+- OcrServiceVL/test_ocr_vl_engine.py を新規追加。
+- PaddleOcrVlEngine の全実質パラメータ（device, pipeline-version, max-pixels, layout-threshold, max-new-tokens, merge-layout-blocks, use-ocr-for-image-block, use-layout-detection, enable-hpi, use-tensorrt, precision）をCLI引数化。
+- --output-json / --pretty / --traceback を追加し、結果保存と障害解析を容易化。
+- 実行後に close() を必ず呼ぶ後始末を追加。
+
+### Files Touched
+- OcrServiceVL/test_ocr_vl_engine.py — ocr_vl_engine.py テスト用CLIを追加。
+
+### Behavioral Impact
+- 本体アプリ動作は不変。
+- 開発者が uv run で ocr_vl_engine.py の推論経路を直接検証できるようになった。
+
+### Risk & Mitigation
+- Risk: 不正な引数値で実行時エラーが発生する可能性。
+- Mitigation: argparse の型/choices制約と --traceback で切り分け可能にした。
+
+### Tests / Verification
+- uv run --project OcrServiceVL python OcrServiceVL/test_ocr_vl_engine.py --help 実行: 引数一覧が期待通り表示されることを確認。

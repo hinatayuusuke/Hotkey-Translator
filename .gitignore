@@ -19,6 +19,7 @@ TranslationService/models/
 docignore/
 .venv/
 .uv-sync.state
+outputs/
 
 # User-specific files
 *.rsuser

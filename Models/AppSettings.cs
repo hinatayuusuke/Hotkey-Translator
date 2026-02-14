@@ -129,7 +129,7 @@ public sealed class AppSettings
     public bool? PaddleVlUseLayoutDetection { get; set; }
     public bool PaddleVlEnableHpi { get; set; } = true;
     public bool? PaddleVlUseTensorrt { get; set; }
-    public string? PaddleVlPrecision { get; set; } = "fp32";
+    public string? PaddleVlPrecision { get; set; } = "fp16";
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
     public string FlorenceUvPath { get; set; } = "uv";
     public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";

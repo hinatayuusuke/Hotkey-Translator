@@ -242,6 +242,34 @@ wheels = [
 ]
 
 [[package]]
+name = "grpcio"
+version = "1.78.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/06/8a/3d098f35c143a89520e568e6539cc098fcd294495910e359889ce8741c84/grpcio-1.78.0.tar.gz", hash = "sha256:7382b95189546f375c174f53a5fa873cef91c4b8005faa05cc5b3beea9c4f1c5", size = 12852416, upload-time = "2026-02-06T09:57:18.093Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/6e/8052e3a28eb6a820c372b2eb4b5e32d195c661e137d3eca94d534a4cfd8a/grpcio-1.78.0-cp311-cp311-win32.whl", hash = "sha256:6092beabe1966a3229f599d7088b38dfc8ffa1608b5b5cdda31e591e6500f856", size = 4076503, upload-time = "2026-02-06T09:55:21.521Z" },
+    { url = "https://files.pythonhosted.org/packages/08/62/f22c98c5265dfad327251fa2f840b591b1df5f5e15d88b19c18c86965b27/grpcio-1.78.0-cp311-cp311-win_amd64.whl", hash = "sha256:1afa62af6e23f88629f2b29ec9e52ec7c65a7176c1e0a83292b93c76ca882558", size = 4799767, upload-time = "2026-02-06T09:55:24.107Z" },
+]
+
+[[package]]
+name = "grpcio-tools"
+version = "1.78.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "grpcio", marker = "sys_platform == 'win32'" },
+    { name = "protobuf", marker = "sys_platform == 'win32'" },
+    { name = "setuptools", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/d1/cbefe328653f746fd319c4377836a25ba64226e41c6a1d7d5cdbc87a459f/grpcio_tools-1.78.0.tar.gz", hash = "sha256:4b0dd86560274316e155d925158276f8564508193088bc43e20d3f5dff956b2b", size = 5393026, upload-time = "2026-02-06T09:59:59.53Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b2/55/3fbf6b26ab46fc79e1e6f7f4e0993cf540263dad639290299fad374a0829/grpcio_tools-1.78.0-cp311-cp311-win32.whl", hash = "sha256:28f71f591f7f39555863ced84fcc209cbf4454e85ef957232f43271ee99af577", size = 993804, upload-time = "2026-02-06T09:58:13.698Z" },
+    { url = "https://files.pythonhosted.org/packages/73/86/4affe006d9e1e9e1c6653d6aafe2f8b9188acb2b563cd8ed3a2c7c0e8aec/grpcio_tools-1.78.0-cp311-cp311-win_amd64.whl", hash = "sha256:5a6de495dabf86a3b40b9a7492994e1232b077af9d63080811838b781abbe4e8", size = 1158566, upload-time = "2026-02-06T09:58:15.721Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -572,6 +600,8 @@ name = "paddleocr-vl-test"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "grpcio", marker = "sys_platform == 'win32'" },
+    { name = "grpcio-tools", marker = "sys_platform == 'win32'" },
     { name = "numpy", marker = "sys_platform == 'win32'" },
     { name = "nvidia-cublas-cu11", marker = "sys_platform == 'win32'" },
     { name = "nvidia-cuda-runtime-cu11", marker = "sys_platform == 'win32'" },
@@ -579,10 +609,13 @@ dependencies = [
     { name = "paddleocr", extra = ["doc-parser"], marker = "sys_platform == 'win32'" },
     { name = "paddlepaddle-gpu", marker = "sys_platform == 'win32'" },
     { name = "paddlex", extra = ["ocr"], marker = "sys_platform == 'win32'" },
+    { name = "pillow", marker = "sys_platform == 'win32'" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "grpcio", specifier = ">=1.76.0" },
+    { name = "grpcio-tools", specifier = ">=1.76.0" },
     { name = "numpy", specifier = "<2" },
     { name = "nvidia-cublas-cu11", marker = "sys_platform == 'win32'", specifier = "==11.11.3.6" },
     { name = "nvidia-cuda-runtime-cu11", marker = "sys_platform == 'win32'", specifier = "==11.8.89" },
@@ -590,6 +623,7 @@ requires-dist = [
     { name = "paddleocr", extras = ["doc-parser"], specifier = ">=3.4.0,<3.5.0" },
     { name = "paddlepaddle-gpu", marker = "sys_platform == 'win32'", specifier = "==3.3.0", index = "https://www.paddlepaddle.org.cn/packages/stable/cu118/" },
     { name = "paddlex", extras = ["ocr"], specifier = "==3.4.1" },
+    { name = "pillow", specifier = ">=12.1.0" },
 ]
 
 [[package]]
