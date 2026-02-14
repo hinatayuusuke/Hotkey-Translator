@@ -9712,3 +9712,63 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+**2026-02-14 20:25 (Asia/Taipei) — Drawer UX改善案（2ボタン化 + 表示時自動高さ拡張）を追加**
+
+### Summary
+- `Preview/Log` 2ボタン導線と、Drawer表示時のWindow自動高さ拡張を含む実装案を `Doc/` に新規追加した。
+
+### Context / Goal
+- 現状の `Drawer/Preview/Log` 3ボタン構成は操作意図が分散し、UX上の迷いが生じやすい。
+- Drawer表示時に上部設定領域が圧縮される課題を緩和し、被せ感の少ない表示にする。
+
+### Changes
+- `Drawer` ボタンを廃止し、`Preview/Log` トグルだけで Drawer 開閉を導出する操作モデルを定義。
+- Drawer open/close に連動した Window 高さ自動拡張・復元（WorkingAreaクランプ付き）方針を定義。
+- 実装ステップ、リスク、DoD を整理した。
+
+### Files Touched
+- `Doc/Home_BottomDrawer_UX_Adjustment_Plan.md` — 新規作成（UX改善の実装案）。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 自動リサイズと手動リサイズが干渉し、Windowサイズが不安定になる可能性。
+- Mitigation: 自動加算分のみ追跡して復元する設計を計画に明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 20:38 (Asia/Taipei) — Bottom Drawer UX調整実装（2ボタン化 + 表示時自動高さ拡張）**
+
+### Summary
+- `Doc/Home_BottomDrawer_UX_Adjustment_Plan.md` に基づき、Drawer操作を `Preview/Log` 2ボタンへ統合し、表示時にWindow高さを自動拡張する挙動を実装した。
+
+### Context / Goal
+- `Drawer/Preview/Log` の3ボタン導線は操作意図が分散し、UX上の迷いが出やすかった。
+- Drawer表示時に上部設定領域が圧縮されるため、表示時にWindow高さを安全に増やして圧迫感を減らす必要があった。
+
+### Changes
+- `MainWindow.xaml` のステータスバーから `Drawer` ボタンを削除し、`Preview` / `Log` の2ボタン導線へ変更。
+- `MainWindowViewModel` から `ToggleBottomPanelCommand` を削除し、`Preview/Log` 表示状態から `IsBottomPanelOpen` を導出する遷移へ変更。
+- 両ペインOFF時はDrawerを自動クローズ、いずれかON時はDrawerを自動オープンする同期ロジックへ更新。
+- `MainWindow.xaml.cs` に Drawer open/close 連動の Window 高さ自動拡張/復元を追加。
+- 自動拡張は `WorkingArea` クランプ付きで適用し、復元は「自動拡張分のみ」を戻すことで手動リサイズを尊重するようにした。
+- 起動直後（Loaded）にもDrawer表示状態に応じて自動拡張が走るよう同期呼び出しを追加。
+
+### Files Touched
+- `MainWindow.xaml` — Drawerボタン削除、下部Drawerホストに `x:Name` を追加。
+- `ViewModels/MainWindowViewModel.cs` — 2ボタン導線へ状態遷移を変更、不要コマンド削除。
+- `MainWindow.xaml.cs` — Drawer開閉時のWindow自動リサイズ制御を追加。
+
+### Behavioral Impact
+- UI操作は `Preview` と `Log` の2ボタンに統一された。
+- `Preview` / `Log` のどちらかをONにするとDrawerが自動表示される。
+- `Preview` / `Log` を両方OFFにするとDrawerが自動非表示になる。
+- Drawer表示時にWindow高さが可能な範囲で拡張され、上部設定領域の圧縮が緩和される。
+
+### Risk & Mitigation
+- Risk: 自動リサイズとユーザー手動リサイズが衝突し、閉じる時に不自然なサイズ戻りが起こる可能性。
+- Mitigation: 自動拡張した目標高さと差分を追跡し、復元は近傍一致時に限定した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` を実行し、0 warnings / 0 errors を確認。

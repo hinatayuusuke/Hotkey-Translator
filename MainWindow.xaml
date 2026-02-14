@@ -1066,7 +1066,8 @@
             </TabItem>
         </TabControl>
 
-        <Border Grid.Row="1"
+        <Border x:Name="BottomDrawerBorder"
+                Grid.Row="1"
                 Grid.ColumnSpan="2"
                 Margin="0,8,0,0"
                 BorderBrush="#33000000"
@@ -1144,7 +1145,6 @@
             <DockPanel LastChildFill="False">
                 <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Content="Drawer" Command="{Binding ToggleBottomPanelCommand}" Padding="8,0" Margin="0,0,8,0" />
                     <Button Content="Preview" Command="{Binding TogglePreviewPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
                     <Button Content="Log" Command="{Binding ToggleLogPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
                     <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />

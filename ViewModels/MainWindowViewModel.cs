@@ -66,7 +66,6 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         StopLlamaServerCommand = new AsyncRelayCommand(stopLlamaServerAsync);
         RestartPaddleOcrHostsCommand = new AsyncRelayCommand(restartPaddleOcrHostsAsync);
         StopPaddleVlHostCommand = new RelayCommand(stopPaddleVlHost);
-        ToggleBottomPanelCommand = new RelayCommand(ToggleBottomPanel);
         TogglePreviewPaneCommand = new RelayCommand(TogglePreviewPane);
         ToggleLogPaneCommand = new RelayCommand(ToggleLogPane);
         SaveSettingsCommand = new AsyncRelayCommand(saveSettingsAsync);
@@ -102,8 +101,6 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public IAsyncRelayCommand RestartPaddleOcrHostsCommand { get; }
 
     public IRelayCommand StopPaddleVlHostCommand { get; }
-
-    public IRelayCommand ToggleBottomPanelCommand { get; }
 
     public IRelayCommand TogglePreviewPaneCommand { get; }
 
@@ -169,11 +166,6 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         TranslationPriority.Insert(index + 1, item);
         SelectedTranslationPriorityIndex = index + 1;
         _requestSettingsSave();
-    }
-
-    private void ToggleBottomPanel()
-    {
-        IsBottomPanelOpen = !IsBottomPanelOpen;
     }
 
     private void TogglePreviewPane()
@@ -284,8 +276,6 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                 BottomLogPaneVisible = false;
                 return;
             }
-
-            EnsureAnyBottomPaneVisible();
         }
         finally
         {
@@ -323,22 +313,14 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                 return;
             }
 
-            EnsureAnyBottomPaneVisible();
+            if (!BottomPreviewPaneVisible && !BottomLogPaneVisible)
+            {
+                IsBottomPanelOpen = false;
+            }
         }
         finally
         {
             _suppressBottomDrawerSync = false;
         }
-    }
-
-    private void EnsureAnyBottomPaneVisible()
-    {
-        if (BottomPreviewPaneVisible || BottomLogPaneVisible)
-        {
-            return;
-        }
-
-        // WHY: Avoid invalid state where the drawer is open but both panes are hidden.
-        BottomLogPaneVisible = true;
     }
 }

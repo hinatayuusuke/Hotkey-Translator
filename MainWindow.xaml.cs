@@ -58,11 +58,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly object _previewFrameGate = new();
     private Bitmap? _latestPreviewFrame;
     private bool _previewFlushScheduled;
+    private bool _drawerAutoExpanded;
+    private double _drawerAutoExpandedDelta;
+    private double _drawerAutoExpandedTargetHeight;
+    private bool _drawerResizeScheduled;
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 200;
+    private const double DrawerAutoResizeTolerance = 12.0;
+    private const double DrawerAutoResizeFallbackHeight = 220.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
 
     public MainWindow()
@@ -219,6 +225,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
+        SyncWindowSizeForBottomDrawer();
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -911,6 +918,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnMainWindowViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(MainWindowViewModel.IsBottomPanelOpen))
+        {
+            SyncWindowSizeForBottomDrawer();
+        }
+
         if (e.PropertyName is nameof(MainWindowViewModel.IsBottomPanelOpen) or nameof(MainWindowViewModel.BottomPreviewPaneVisible))
         {
             if (ShouldRenderBottomPreviewPane())
@@ -923,6 +935,146 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private bool ShouldRenderBottomPreviewPane()
     {
         return _mainWindowViewModel.IsBottomPanelOpen && _mainWindowViewModel.BottomPreviewPaneVisible;
+    }
+
+    private void SyncWindowSizeForBottomDrawer()
+    {
+        if (_mainWindowViewModel.IsBottomPanelOpen)
+        {
+            ScheduleDrawerAutoExpand();
+            return;
+        }
+
+        TryRestoreWindowHeightForDrawerClose();
+    }
+
+    private void ScheduleDrawerAutoExpand()
+    {
+        if (_drawerResizeScheduled || _drawerAutoExpanded || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        _drawerResizeScheduled = true;
+        Dispatcher.BeginInvoke(DispatcherPriority.Loaded, new Action(() =>
+        {
+            _drawerResizeScheduled = false;
+            TryAutoExpandWindowForDrawerOpen();
+        }));
+    }
+
+    private void TryAutoExpandWindowForDrawerOpen()
+    {
+        if (!_mainWindowViewModel.IsBottomPanelOpen || _drawerAutoExpanded || WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        var currentHeight = ResolveCurrentWindowHeight();
+        var workArea = SystemParameters.WorkArea;
+        var maxHeight = Math.Max(MinHeight, workArea.Height);
+        if (currentHeight >= maxHeight - 1)
+        {
+            return;
+        }
+
+        var desiredIncrease = ResolveDrawerExpansionHeight();
+        if (desiredIncrease <= 0)
+        {
+            return;
+        }
+
+        var expandedHeight = Math.Min(currentHeight + desiredIncrease, maxHeight);
+        var appliedIncrease = expandedHeight - currentHeight;
+        if (appliedIncrease <= 1)
+        {
+            return;
+        }
+
+        Height = expandedHeight;
+        KeepWindowWithinWorkArea(expandedHeight, workArea);
+        _drawerAutoExpanded = true;
+        _drawerAutoExpandedDelta = appliedIncrease;
+        _drawerAutoExpandedTargetHeight = expandedHeight;
+    }
+
+    private void TryRestoreWindowHeightForDrawerClose()
+    {
+        if (!_drawerAutoExpanded || _drawerAutoExpandedDelta <= 0)
+        {
+            return;
+        }
+
+        if (WindowState != WindowState.Normal)
+        {
+            ResetDrawerAutoResizeState();
+            return;
+        }
+
+        var currentHeight = ResolveCurrentWindowHeight();
+        var isNearAutoExpandedHeight =
+            Math.Abs(currentHeight - _drawerAutoExpandedTargetHeight) <= DrawerAutoResizeTolerance;
+        if (isNearAutoExpandedHeight)
+        {
+            var workArea = SystemParameters.WorkArea;
+            var restoredHeight = Math.Max(MinHeight, currentHeight - _drawerAutoExpandedDelta);
+            restoredHeight = Math.Min(restoredHeight, workArea.Height);
+            Height = restoredHeight;
+            KeepWindowWithinWorkArea(restoredHeight, workArea);
+        }
+
+        ResetDrawerAutoResizeState();
+    }
+
+    private double ResolveDrawerExpansionHeight()
+    {
+        var measured = BottomDrawerBorder.ActualHeight;
+        if (measured > 0)
+        {
+            return measured;
+        }
+
+        return DrawerAutoResizeFallbackHeight;
+    }
+
+    private double ResolveCurrentWindowHeight()
+    {
+        if (!double.IsNaN(Height) && Height > 0)
+        {
+            return Height;
+        }
+
+        if (ActualHeight > 0)
+        {
+            return ActualHeight;
+        }
+
+        return Math.Max(MinHeight, DrawerAutoResizeFallbackHeight);
+    }
+
+    private void KeepWindowWithinWorkArea(double windowHeight, Rect workArea)
+    {
+        var currentTop = Top;
+        if (double.IsNaN(currentTop))
+        {
+            return;
+        }
+
+        var minTop = workArea.Top;
+        var maxTop = Math.Max(minTop, workArea.Bottom - windowHeight);
+        var clampedTop = Math.Min(Math.Max(currentTop, minTop), maxTop);
+        if (Math.Abs(clampedTop - currentTop) > 0.5)
+        {
+            Top = clampedTop;
+        }
+    }
+
+    private void ResetDrawerAutoResizeState()
+    {
+        _drawerAutoExpanded = false;
+        _drawerAutoExpandedDelta = 0;
+        _drawerAutoExpandedTargetHeight = 0;
+        _drawerResizeScheduled = false;
     }
 
     private void SchedulePreviewFlush()
