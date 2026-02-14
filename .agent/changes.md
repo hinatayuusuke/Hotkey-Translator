@@ -9982,3 +9982,36 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 22:41 (Asia/Taipei) — Bottom DrawerにPinnedサムネタブを実装**
+
+### Summary
+- Drawer左ペインを OCR/Pinned タブ化し、固定ウィンドウの1回サムネ表示と解除/失敗メッセージ表示を実装した。
+
+### Context / Goal
+- 右側Log固定のまま、左側でOCRプレビューと固定サムネを切替表示したい。
+- 固定サムネは即時更新ではなく、固定時の1回取得のみで十分という要件。
+
+### Changes
+- Drawer左ペインの GroupBox 内を TabControl 化し、OCR と Pinned の2タブを追加。
+- Pinned タブに PinnedCaptureThumbnailImage と PinnedCaptureThumbnailHint を追加し、空状態メッセージを表示可能にした。
+- ロックホットキー処理の戻り値を FixedCaptureWindowSpec? に変更し、成功時に1回だけサムネ取得する導線を追加。
+- 解除ホットキー処理後に 固定対象なし を表示するクリア処理を追加。
+- サムネ取得失敗時はログ出力し、UIに サムネ取得失敗 を表示するフォールバックを追加。
+
+### Files Touched
+- MainWindow.xaml — Drawer左ペインを OCR/Pinned タブUIへ変更。
+- MainWindow.Preview.cs — Pinnedサムネ更新/クリア/取得処理とクリック拡大イベントを追加。
+- MainWindow.xaml.cs — Lock/Unlockホットキー後にPinnedサムネ状態を更新する呼び出しを追加。
+- Services/Application/HotkeyCommandController.cs — ロック処理の戻り値を FixedCaptureWindowSpec? に変更。
+
+### Behavioral Impact
+- Drawer左ペインで OCR と Pinned を切替表示できる。
+- 固定ロック成功時に、固定対象のサムネが Pinned タブに表示される。
+- 固定解除時は 固定対象なし、取得失敗時は サムネ取得失敗 が表示される。
+
+### Risk & Mitigation
+- Risk: ウィンドウサムネ取得（CopyFromScreen）が対象状態によって失敗する可能性。
+- Mitigation: 失敗時は例外をログ化し、UIは必ずメッセージ表示へフォールバックする。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。

@@ -1088,21 +1088,37 @@
                 </Grid.ColumnDefinitions>
 
                 <GroupBox Grid.Column="0"
-                          Header="OCR Preview"
+                          Header="Preview"
                           MinWidth="220"
                           Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid Margin="4"
-                          Cursor="Hand"
-                          MouseLeftButtonUp="OnOcrPreviewClicked">
-                        <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
-                        <TextBlock x:Name="OcrPreprocessPreviewHint"
-                                   Text="Run OCR to update preview."
-                                   Foreground="DimGray"
-                                   TextAlignment="Center"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   TextWrapping="Wrap" />
-                    </Grid>
+                    <TabControl Margin="4" x:Name="BottomPreviewTabControl">
+                        <TabItem Header="OCR">
+                            <Grid Cursor="Hand"
+                                  MouseLeftButtonUp="OnOcrPreviewClicked">
+                                <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
+                                <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                           Text="Run OCR to update preview."
+                                           Foreground="DimGray"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                        <TabItem Header="Pinned">
+                            <Grid Cursor="Hand"
+                                  MouseLeftButtonUp="OnPinnedPreviewClicked">
+                                <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
+                                <TextBlock x:Name="PinnedCaptureThumbnailHint"
+                                           Text="No fixed target"
+                                           Foreground="DimGray"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </GroupBox>
 
                 <GridSplitter Grid.Column="1"

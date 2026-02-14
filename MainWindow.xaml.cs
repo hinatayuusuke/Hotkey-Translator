@@ -311,12 +311,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
-        await _hotkeyCommandController.HandleLockCaptureWindowHotkeyAsync().ConfigureAwait(true);
+        var spec = await _hotkeyCommandController.HandleLockCaptureWindowHotkeyAsync().ConfigureAwait(true);
+        UpdatePinnedThumbnailFromLockResult(spec);
     }
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleUnlockCaptureWindowHotkeyAsync().ConfigureAwait(true);
+        ClearPinnedCaptureThumbnail("No fixed target");
     }
 
     private async void OnSelectRoiHotkeyPressed(object? sender, EventArgs e)

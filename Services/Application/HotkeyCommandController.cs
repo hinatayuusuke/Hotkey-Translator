@@ -145,7 +145,7 @@ internal sealed class HotkeyCommandController
         await _saveSettingsAsync().ConfigureAwait(true);
     }
 
-    public async Task HandleLockCaptureWindowHotkeyAsync()
+    public async Task<FixedCaptureWindowSpec?> HandleLockCaptureWindowHotkeyAsync()
     {
         var settings = _settingsAccessor();
         if (_windowBindingService.TryBindForegroundWindow(settings, out var spec, out var reason))
@@ -153,10 +153,11 @@ internal sealed class HotkeyCommandController
             _appendLog(
                 $"Capture window locked: hwnd=0x{spec.Hwnd:X} pid={spec.ProcessId} class=\"{spec.ClassName}\" title=\"{spec.WindowTitle}\".");
             await _saveSettingsAsync().ConfigureAwait(true);
-            return;
+            return spec;
         }
 
         _appendLog($"Capture window lock failed: {reason ?? "unknown"}.");
+        return null;
     }
 
     public async Task HandleUnlockCaptureWindowHotkeyAsync()
