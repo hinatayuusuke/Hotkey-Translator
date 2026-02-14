@@ -9439,3 +9439,37 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `uv run --project OcrServiceVL python -m py_compile OcrServiceVL/test_ocr_vl_engine.py` 実行: 成功。
 - `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py --help` 実行: 追加引数の表示を確認。
+**2026-02-14 17:41 (Asia/Taipei) — 初回起動時のPaddleOCR-VL既定値を現行運用値へ調整**
+
+### Summary
+- `settings.json` が未作成の初回起動時のみ、PaddleOCR-VL の既定値を現在運用中の推奨値に合わせて適用するようにした。
+
+### Context / Goal
+- 初回起動直後のPaddleOCR-VL設定を、現在の `settings.json` で安定運用している値へ揃えたい。
+- 既存ユーザーの保存済み設定は上書きせず、初回のみ反映したい。
+
+### Changes
+- `SettingsService.LoadAsync()` の `loaded is null` 分岐で `new AppSettings()` 直返しをやめ、`CreateFirstRunDefaults()` を経由するよう変更。
+- `CreateFirstRunDefaults()` を追加し、PaddleOCR-VL 初期値を以下に設定:
+  - `PaddleVlMaxPixels=500000`
+  - `PaddleVlMaxNewTokens=512`
+  - `PaddleVlMergeLayoutBlocks=false`
+  - `PaddleVlUseLayoutDetection=true`
+  - `PaddleVlEnableHpi=false`
+  - `PaddleVlLayoutThreshold=null`
+  - `PaddleVlUseOcrForImageBlock=null`
+  - `PaddleVlUseTensorrt=null`
+
+### Files Touched
+- `Services/SettingsService.cs` — 初回起動時のPaddleOCR-VL既定値注入ロジックを追加。
+
+### Behavioral Impact
+- `settings.json` が存在しない新規環境でのみ、PaddleOCR-VLの初期状態が現行推奨値で立ち上がる。
+- 既存の `settings.json` を持つ環境の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 初回値変更により従来デフォルトとの差分が発生する。
+- Mitigation: 適用対象を「`loaded is null` のみ」に限定し、既存設定を保護した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。

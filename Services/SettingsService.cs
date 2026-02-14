@@ -42,7 +42,7 @@ public sealed class SettingsService
         var loaded = await _repository.LoadAsync(CancellationToken.None).ConfigureAwait(false);
         if (loaded is null)
         {
-            Settings = new AppSettings();
+            Settings = CreateFirstRunDefaults();
             return;
         }
 
@@ -57,6 +57,23 @@ public sealed class SettingsService
         }
 
         Settings = loaded;
+    }
+
+    private static AppSettings CreateFirstRunDefaults()
+    {
+        var settings = new AppSettings();
+
+        // WHY: keep first-run PaddleOCR-VL behavior aligned with current recommended operational profile.
+        settings.PaddleVlMaxPixels = 500000;
+        settings.PaddleVlLayoutThreshold = null;
+        settings.PaddleVlMaxNewTokens = 512;
+        settings.PaddleVlMergeLayoutBlocks = false;
+        settings.PaddleVlUseOcrForImageBlock = null;
+        settings.PaddleVlUseLayoutDetection = true;
+        settings.PaddleVlEnableHpi = false;
+        settings.PaddleVlUseTensorrt = null;
+
+        return settings;
     }
 
     public async Task SaveAsync()
