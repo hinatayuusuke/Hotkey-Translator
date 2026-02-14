@@ -1,98 +1,30 @@
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.GrpcHost;
 using Hotkey_Translator.TranslationGrpc;
 
 namespace Hotkey_Translator.Services;
 
-public sealed class CTranslate2GrpcHost : IDisposable
+internal sealed class CTranslate2GrpcHost : GrpcHostBase
 {
-    private readonly AppLogger? _logger;
-    private readonly object _lock = new();
-    private readonly List<DateTimeOffset> _restartHistory = new();
-    private Process? _process;
-    private CancellationTokenSource? _monitorCts;
-    private Task? _monitorTask;
-    private bool _stopping;
-
     public CTranslate2GrpcHost(AppLogger? logger = null)
+        : base(logger)
     {
-        _logger = logger;
     }
 
-    public bool IsRunning => _process is { HasExited: false };
+    protected override string HostId => "ct2_grpc";
 
-    public async Task StartAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override bool IsEnabled(AppSettings settings)
     {
-        if (!settings.EnableCTranslate2)
-        {
-            return;
-        }
-
-        // WHY: gRPC over localhost uses HTTP/2 without TLS by default.
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
-        lock (_lock)
-        {
-            if (_process is { HasExited: false })
-            {
-                return;
-            }
-        }
-
-        StartProcess(settings);
-        await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-        EnsureMonitor(settings);
+        return settings.EnableCTranslate2;
     }
 
-    public void Stop()
-    {
-        lock (_lock)
-        {
-            _stopping = true;
-        }
-
-        _monitorCts?.Cancel();
-        try
-        {
-            _monitorTask?.Wait(TimeSpan.FromSeconds(2));
-        }
-        catch
-        {
-            // Ignore shutdown wait failures.
-        }
-
-        lock (_lock)
-        {
-            try
-            {
-                if (_process is { HasExited: false })
-                {
-                    _process.Kill(true);
-                }
-            }
-            catch
-            {
-                // Ignore kill failures during shutdown.
-            }
-
-            _process?.Dispose();
-            _process = null;
-        }
-    }
-
-    public void Dispose()
-    {
-        Stop();
-        _monitorCts?.Dispose();
-    }
-
-    private void StartProcess(AppSettings settings)
+    protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var projectDir = ResolveDirectory(settings.CTranslate2GrpcProjectDir);
         var script = string.IsNullOrWhiteSpace(settings.CTranslate2GrpcServerScript) ? "server.py" : settings.CTranslate2GrpcServerScript.Trim();
@@ -112,10 +44,10 @@ public sealed class CTranslate2GrpcHost : IDisposable
         var device = string.IsNullOrWhiteSpace(settings.CTranslate2Device) ? "cpu" : settings.CTranslate2Device.Trim();
         var precision = string.IsNullOrWhiteSpace(settings.CTranslate2Precision) ? "int8" : settings.CTranslate2Precision.Trim();
 
-        _logger?.Info($"Starting CTranslate2 gRPC (device={device}, precision={precision}).");
+        Logger?.Info($"Starting CTranslate2 gRPC (device={device}, precision={precision}).");
         if (settings.EnableCTranslate2AutoDownload && string.IsNullOrWhiteSpace(modelDir))
         {
-            _logger?.Info("CTranslate2 auto-download enabled (model cache will be created if missing).");
+            Logger?.Info("CTranslate2 auto-download enabled (model cache will be created if missing).");
         }
 
         var startInfo = new ProcessStartInfo
@@ -148,44 +80,17 @@ public sealed class CTranslate2GrpcHost : IDisposable
             startInfo.ArgumentList.Add("--model-dir");
             startInfo.ArgumentList.Add(modelDir);
         }
+
         if (settings.EnableCTranslate2AutoDownload)
         {
             startInfo.ArgumentList.Add("--auto-download");
         }
 
-        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                _logger?.Info($"[CT2Grpc] {args.Data}");
-            }
-        };
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                _logger?.Info($"[CT2Grpc] {args.Data}");
-            }
-        };
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start CTranslate2 gRPC server process.");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        lock (_lock)
-        {
-            _process?.Dispose();
-            _process = process;
-            _stopping = false;
-        }
+        var process = StartProcessWithLogging(startInfo, "CT2Grpc");
+        return Task.FromResult(process);
     }
 
-    private async Task WaitForReadyAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
         var timeoutMs = Math.Max(1000, settings.CTranslate2GrpcReadyTimeoutMs);
@@ -201,7 +106,7 @@ public sealed class CTranslate2GrpcHost : IDisposable
                 var reply = await client.HealthAsync(new HealthRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (reply.Ready)
                 {
-                    _logger?.Info($"CTranslate2 gRPC ready: {reply.Message}");
+                    Logger?.Info($"CTranslate2 gRPC ready: {reply.Message}");
                     return;
                 }
             }
@@ -216,87 +121,11 @@ public sealed class CTranslate2GrpcHost : IDisposable
         throw new TimeoutException("CTranslate2 gRPC server did not become ready in time.");
     }
 
-    private void EnsureMonitor(AppSettings settings)
+    protected override GrpcHostRestartPolicy GetRestartPolicy(AppSettings settings)
     {
-        if (_monitorCts != null)
-        {
-            return;
-        }
-
-        _monitorCts = new CancellationTokenSource();
-        _monitorTask = Task.Run(() => MonitorLoopAsync(settings, _monitorCts.Token));
-    }
-
-    private async Task MonitorLoopAsync(AppSettings settings, CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            Process? process;
-            lock (_lock)
-            {
-                process = _process;
-            }
-
-            if (process == null)
-            {
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            try
-            {
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            lock (_lock)
-            {
-                if (_stopping)
-                {
-                    return;
-                }
-            }
-
-            _logger?.Info($"CTranslate2 gRPC exited with code {process.ExitCode}.");
-            if (!CanRestart(settings))
-            {
-                _logger?.Info("CTranslate2 gRPC restart limit reached.");
-                return;
-            }
-
-            try
-            {
-                StartProcess(settings);
-                await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Info($"CTranslate2 gRPC restart failed: {ex.Message}");
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private bool CanRestart(AppSettings settings)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var window = TimeSpan.FromSeconds(Math.Max(1, settings.CTranslate2GrpcRestartWindowSeconds));
-        _restartHistory.RemoveAll(time => now - time > window);
-        if (_restartHistory.Count >= settings.CTranslate2GrpcRestartMax)
-        {
-            return false;
-        }
-
-        _restartHistory.Add(now);
-        return true;
+        return new GrpcHostRestartPolicy(
+            Math.Max(1, settings.CTranslate2GrpcRestartMax),
+            TimeSpan.FromSeconds(Math.Max(1, settings.CTranslate2GrpcRestartWindowSeconds)));
     }
 
     private static string ResolveEndpoint(AppSettings settings)

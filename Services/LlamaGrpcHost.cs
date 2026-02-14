@@ -12,11 +12,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.GrpcHost;
 using Hotkey_Translator.TranslationGrpc;
 
 namespace Hotkey_Translator.Services;
 
-public sealed class LlamaGrpcHost : IDisposable
+internal sealed class LlamaGrpcHost : GrpcHostBase
 {
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
     private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
@@ -46,98 +47,24 @@ public sealed class LlamaGrpcHost : IDisposable
     };
 
     private readonly LlamaModelCatalog _modelCatalog = new();
-    private readonly AppLogger? _logger;
     private readonly object _lock = new();
-    private readonly List<DateTimeOffset> _restartHistory = new();
-    private Process? _process;
-    private CancellationTokenSource? _monitorCts;
-    private Task? _monitorTask;
-    private bool _stopping;
     private int? _trackedLlamaServerPid;
     private string? _trackedLlamaServerPath;
+    private AppLogger? _logger => Logger;
 
     public LlamaGrpcHost(AppLogger? logger = null)
+        : base(logger)
     {
-        _logger = logger;
     }
 
-    public bool IsRunning => _process is { HasExited: false };
+    protected override string HostId => "llama_grpc";
 
-    public async Task StartAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override bool IsEnabled(AppSettings settings)
     {
-        if (!settings.EnableLlamaCppTranslation)
-        {
-            return;
-        }
-
-        // WHY: gRPC over localhost uses HTTP/2 without TLS by default.
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
-        lock (_lock)
-        {
-            if (_process is { HasExited: false })
-            {
-                return;
-            }
-        }
-
-        await StartProcessAsync(settings, cancellationToken).ConfigureAwait(false);
-        await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-        EnsureMonitor(settings);
+        return settings.EnableLlamaCppTranslation;
     }
 
-    public void Stop()
-    {
-        lock (_lock)
-        {
-            _stopping = true;
-        }
-
-        _monitorCts?.Cancel();
-        try
-        {
-            _monitorTask?.Wait(TimeSpan.FromSeconds(2));
-        }
-        catch
-        {
-            // Ignore shutdown wait failures.
-        }
-
-        lock (_lock)
-        {
-            try
-            {
-                if (_process is { HasExited: false })
-                {
-                    _process.Kill(true);
-                }
-            }
-            catch
-            {
-                // Ignore kill failures during shutdown.
-            }
-
-            _process?.Dispose();
-            _process = null;
-        }
-
-        // WHY: If the parent process has already exited unexpectedly, llama-server can remain orphaned.
-        // Track and terminate the child process explicitly as a shutdown fallback.
-        TryKillTrackedLlamaServer();
-
-        lock (_lock)
-        {
-            _trackedLlamaServerPid = null;
-        }
-    }
-
-    public void Dispose()
-    {
-        Stop();
-        _monitorCts?.Dispose();
-    }
-
-    private async Task StartProcessAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override async Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var projectDir = ResolveDirectory(settings.LlamaGrpcProjectDir);
         var script = string.IsNullOrWhiteSpace(settings.LlamaGrpcServerScript) ? "server.py" : settings.LlamaGrpcServerScript.Trim();
@@ -223,41 +150,11 @@ public sealed class LlamaGrpcHost : IDisposable
         startInfo.ArgumentList.Add(settings.LlamaTopK.ToString());
         startInfo.ArgumentList.Add("--repeat-penalty");
         startInfo.ArgumentList.Add(settings.LlamaRepeatPenalty.ToString("0.###"));
-        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                TryTrackLlamaServerPid(args.Data);
-                _logger?.Info($"[LlamaGrpc] {args.Data}");
-            }
-        };
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                TryTrackLlamaServerPid(args.Data);
-                _logger?.Info($"[LlamaGrpc] {args.Data}");
-            }
-        };
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start Llama gRPC server process.");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        lock (_lock)
-        {
-            _process?.Dispose();
-            _process = process;
-            _stopping = false;
-        }
+        var process = StartProcessWithLogging(startInfo, "LlamaGrpc");
+        return process;
     }
 
-    private async Task WaitForReadyAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
         var timeoutMs = Math.Max(1000, settings.LlamaGrpcReadyTimeoutMs);
@@ -288,87 +185,27 @@ public sealed class LlamaGrpcHost : IDisposable
         throw new TimeoutException("Llama gRPC server did not become ready in time.");
     }
 
-    private void EnsureMonitor(AppSettings settings)
+    protected override GrpcHostRestartPolicy GetRestartPolicy(AppSettings settings)
     {
-        if (_monitorCts != null)
-        {
-            return;
-        }
-
-        _monitorCts = new CancellationTokenSource();
-        _monitorTask = Task.Run(() => MonitorLoopAsync(settings, _monitorCts.Token));
+        return new GrpcHostRestartPolicy(
+            Math.Max(1, settings.LlamaGrpcRestartMax),
+            TimeSpan.FromSeconds(Math.Max(1, settings.LlamaGrpcRestartWindowSeconds)));
     }
 
-    private async Task MonitorLoopAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override void OnAfterStop()
     {
-        while (!cancellationToken.IsCancellationRequested)
+        // WHY: If the parent process has already exited unexpectedly, llama-server can remain orphaned.
+        // Track and terminate the child process explicitly as a shutdown fallback.
+        TryKillTrackedLlamaServer();
+        lock (_lock)
         {
-            Process? process;
-            lock (_lock)
-            {
-                process = _process;
-            }
-
-            if (process == null)
-            {
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            try
-            {
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            lock (_lock)
-            {
-                if (_stopping)
-                {
-                    return;
-                }
-            }
-
-            _logger?.Info($"Llama gRPC exited with code {process.ExitCode}.");
-            if (!CanRestart(settings))
-            {
-                _logger?.Info("Llama gRPC restart limit reached.");
-                return;
-            }
-
-            try
-            {
-                await StartProcessAsync(settings, cancellationToken).ConfigureAwait(false);
-                await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Info($"Llama gRPC restart failed: {ex.Message}");
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-            }
+            _trackedLlamaServerPid = null;
         }
     }
 
-    private bool CanRestart(AppSettings settings)
+    protected override void OnProcessOutputLine(string line, bool isError)
     {
-        var now = DateTimeOffset.UtcNow;
-        var window = TimeSpan.FromSeconds(Math.Max(1, settings.LlamaGrpcRestartWindowSeconds));
-        _restartHistory.RemoveAll(time => now - time > window);
-        if (_restartHistory.Count >= settings.LlamaGrpcRestartMax)
-        {
-            return false;
-        }
-
-        _restartHistory.Add(now);
-        return true;
+        TryTrackLlamaServerPid(line);
     }
 
     private static string ResolveEndpoint(AppSettings settings)

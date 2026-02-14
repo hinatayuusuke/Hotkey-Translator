@@ -9024,3 +9024,80 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 14:23 (Asia/Taipei) — Layer4実装案作成（gRPC Host基盤共通化計画）**
+
+### Summary
+- Master Plan を参考に、第四層（gRPC Host）向けの段階実装案を `Doc/Refactoring_Layer4_GrpcHost_Plan.md` として新規作成した。
+
+### Context / Goal
+- `Paddle/PaddleVL/CT2/Llama` の Host 管理に重複している起動・監視・再起動・ヘルスチェック責務を共通化する計画を明文化する。
+- `ResourceHostFacade` の分岐肥大化を抑え、追加Host時の横展開漏れを減らす。
+
+### Changes
+- `Doc/Refactoring_Layer4_GrpcHost_Plan.md` を新規作成。
+- 提案アーキテクチャとして `IGrpcHostLifecycle` / `GrpcHostBase` / `GrpcHostRestartPolicy` / `GrpcHostDescriptor` / `GrpcHostOrchestrator` を定義。
+- Step1〜Step7（ログ固定→共通基盤導入→Host移行→旧経路削除）を段階化。
+- リスク、緩和策、影響範囲、DoD、ロールバック方針を整理。
+
+### Files Touched
+- `Doc/Refactoring_Layer4_GrpcHost_Plan.md` — 層4向け実装案をテンプレート準拠で追加。
+
+### Behavioral Impact
+- 実行時挙動の変更はない（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 現行Host差分の把握不足による計画の抽象化過多。
+- Mitigation: `Paddle/PaddleVL/CT2/Llama` 各Hostと `ResourceHostFacade` の現行実装を踏まえて、共通化対象と固有処理境界を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 14:33 (Asia/Taipei) — Layer4実装（gRPC Host共通基盤化 Step1-7）**
+
+### Summary
+- `Paddle/PaddleVL/CT2/Llama` Host の重複処理を共通基盤へ寄せ、`ResourceHostFacade` を registry/orchestrator 駆動へ置換した。
+
+### Context / Goal
+- 各 gRPC Host に重複していた start/ready/monitor/restart/stop の実装を共通化し、横展開漏れを減らす。
+- `ResourceHostFacade` の起動分岐を縮小し、失敗時 disable 挙動を宣言的に統一する。
+
+### Changes
+- `Services/GrpcHost/` を新規追加。
+- `IGrpcHostLifecycle`, `GrpcHostRestartPolicy`, `GrpcHostBase` を追加し、共通ライフサイクル基盤を実装。
+- `GrpcHostDescriptor`, `GrpcHostRegistry`, `GrpcHostOrchestrator` を追加し、Host管理の宣言的構成を導入。
+- `Services/PaddleGrpcHost.cs` を `GrpcHostBase` 継承へ移行。
+- `Services/PaddleVlGrpcHost.cs` を `GrpcHostBase` 継承へ移行。
+- `Services/CTranslate2GrpcHost.cs` を `GrpcHostBase` 継承へ移行。
+- `Services/LlamaGrpcHost.cs` を `GrpcHostBase` 継承へ移行。
+- Llama固有処理（uv sync/model検証/CUDA検証/orphan kill）は派生側に保持し、`OnAfterStop` / `OnProcessOutputLine` フックへ移設。
+- `Services/Application/ResourceHostFacade.cs` を更新。
+- 旧 `TryStartXxx` 分岐を削除し、`GrpcHostRegistry` + `GrpcHostOrchestrator` による起動管理へ置換。
+- Host競合停止順（Paddle↔PaddleVL、Llama開始前CT2停止）を descriptor で明示。
+- 起動失敗時の disable/action は descriptor 経由で統一。
+
+### Files Touched
+- `Services/GrpcHost/IGrpcHostLifecycle.cs` — Hostライフサイクル契約を追加。
+- `Services/GrpcHost/GrpcHostRestartPolicy.cs` — 再起動ポリシーDTOを追加。
+- `Services/GrpcHost/GrpcHostBase.cs` — 共通起動/監視/再起動/停止基盤を実装。
+- `Services/GrpcHost/GrpcHostDescriptor.cs` — Host宣言モデルを追加。
+- `Services/GrpcHost/GrpcHostRegistry.cs` — Descriptor管理を追加。
+- `Services/GrpcHost/GrpcHostOrchestrator.cs` — Host起動オーケストレーションを追加。
+- `Services/PaddleGrpcHost.cs` — 共通基盤継承へ移行。
+- `Services/PaddleVlGrpcHost.cs` — 共通基盤継承へ移行。
+- `Services/CTranslate2GrpcHost.cs` — 共通基盤継承へ移行。
+- `Services/LlamaGrpcHost.cs` — 共通基盤継承へ移行（Llama固有処理は保持）。
+- `Services/Application/ResourceHostFacade.cs` — registry/orchestrator 駆動へ置換。
+
+### Behavioral Impact
+- ResourceHostFacade の外部操作（起動/停止/失敗時設定OFF）は維持。
+- Hostログに `stage=grpc_host host=<id> event=<...>` を追加し、start/ready/exit/restart 系イベントの追跡性が向上。
+- CTranslate2 退役方針（`ShouldLoadCTranslate2=false`）は維持。
+
+### Risk & Mitigation
+- Risk: 共通化により Llama 固有処理が欠落する可能性。
+- Mitigation: preflight/モデル処理を派生側に残し、停止後 orphan kill は `OnAfterStop` で維持。
+- Risk: ResourceHostFacade 置換で競合停止順が変わる可能性。
+- Mitigation: descriptor の `StopBeforeStartHostIds` で順序を明示し、旧挙動（Paddle↔PaddleVL、Llama前CT2停止）を維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

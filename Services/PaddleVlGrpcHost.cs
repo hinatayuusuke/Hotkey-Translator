@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -8,92 +8,25 @@ using System.Threading.Tasks;
 using Grpc.Net.Client;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.OcrGrpc;
+using Hotkey_Translator.Services.GrpcHost;
 
 namespace Hotkey_Translator.Services;
 
-public sealed class PaddleVlGrpcHost : IDisposable
+internal sealed class PaddleVlGrpcHost : GrpcHostBase
 {
-    private readonly AppLogger? _logger;
-    private readonly object _lock = new();
-    private readonly List<DateTimeOffset> _restartHistory = new();
-    private Process? _process;
-    private CancellationTokenSource? _monitorCts;
-    private Task? _monitorTask;
-    private bool _stopping;
-
     public PaddleVlGrpcHost(AppLogger? logger = null)
+        : base(logger)
     {
-        _logger = logger;
     }
 
-    public bool IsRunning => _process is { HasExited: false };
+    protected override string HostId => "paddle_vl_grpc";
 
-    public async Task StartAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override bool IsEnabled(AppSettings settings)
     {
-        if (!settings.EnablePaddleVlGrpcHost)
-        {
-            return;
-        }
-
-        // WHY: gRPC over localhost uses HTTP/2 without TLS by default.
-        AppContext.SetSwitch("System.Net.Http.SocketsHttpHandler.Http2UnencryptedSupport", true);
-
-        lock (_lock)
-        {
-            if (_process is { HasExited: false })
-            {
-                return;
-            }
-        }
-
-        StartProcess(settings);
-        await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-        EnsureMonitor(settings);
+        return settings.EnablePaddleVlGrpcHost;
     }
 
-    public void Stop()
-    {
-        lock (_lock)
-        {
-            _stopping = true;
-        }
-
-        _monitorCts?.Cancel();
-        try
-        {
-            _monitorTask?.Wait(TimeSpan.FromSeconds(2));
-        }
-        catch
-        {
-            // Ignore shutdown wait failures.
-        }
-
-        lock (_lock)
-        {
-            try
-            {
-                if (_process is { HasExited: false })
-                {
-                    _process.Kill(true);
-                }
-            }
-            catch
-            {
-                // Ignore kill failures during shutdown.
-            }
-
-            _process?.Dispose();
-            _process = null;
-        }
-    }
-
-    public void Dispose()
-    {
-        Stop();
-        _monitorCts?.Dispose();
-    }
-
-    private void StartProcess(AppSettings settings)
+    protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var projectDir = ResolveDirectory(settings.PaddleVlGrpcProjectDir);
         var script = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcServerScript) ? "server.py" : settings.PaddleVlGrpcServerScript.Trim();
@@ -165,39 +98,11 @@ public sealed class PaddleVlGrpcHost : IDisposable
             startInfo.ArgumentList.Add(maxNewTokens.Value.ToString());
         }
 
-        var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
-        process.OutputDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                _logger?.Info($"[PaddleVlGrpc] {args.Data}");
-            }
-        };
-        process.ErrorDataReceived += (_, args) =>
-        {
-            if (!string.IsNullOrWhiteSpace(args.Data))
-            {
-                _logger?.Info($"[PaddleVlGrpc] {args.Data}");
-            }
-        };
-
-        if (!process.Start())
-        {
-            throw new InvalidOperationException("Failed to start PaddleOCR-VL gRPC server process.");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        lock (_lock)
-        {
-            _process?.Dispose();
-            _process = process;
-            _stopping = false;
-        }
+        var process = StartProcessWithLogging(startInfo, "PaddleVlGrpc");
+        return Task.FromResult(process);
     }
 
-    private async Task WaitForReadyAsync(AppSettings settings, CancellationToken cancellationToken)
+    protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
         var timeoutMs = Math.Max(1000, settings.PaddleVlGrpcReadyTimeoutMs);
@@ -213,7 +118,7 @@ public sealed class PaddleVlGrpcHost : IDisposable
                 var reply = await client.HealthAsync(new HealthRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (reply.Ready)
                 {
-                    _logger?.Info($"PaddleOCR-VL gRPC ready: {reply.Message}");
+                    Logger?.Info($"PaddleOCR-VL gRPC ready: {reply.Message}");
                     return;
                 }
             }
@@ -228,87 +133,11 @@ public sealed class PaddleVlGrpcHost : IDisposable
         throw new TimeoutException("PaddleOCR-VL gRPC server did not become ready in time.");
     }
 
-    private void EnsureMonitor(AppSettings settings)
+    protected override GrpcHostRestartPolicy GetRestartPolicy(AppSettings settings)
     {
-        if (_monitorCts != null)
-        {
-            return;
-        }
-
-        _monitorCts = new CancellationTokenSource();
-        _monitorTask = Task.Run(() => MonitorLoopAsync(settings, _monitorCts.Token));
-    }
-
-    private async Task MonitorLoopAsync(AppSettings settings, CancellationToken cancellationToken)
-    {
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            Process? process;
-            lock (_lock)
-            {
-                process = _process;
-            }
-
-            if (process == null)
-            {
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
-            try
-            {
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-
-            lock (_lock)
-            {
-                if (_stopping)
-                {
-                    return;
-                }
-            }
-
-            _logger?.Info($"PaddleOCR-VL gRPC exited with code {process.ExitCode}.");
-            if (!CanRestart(settings))
-            {
-                _logger?.Info("PaddleOCR-VL gRPC restart limit reached.");
-                return;
-            }
-
-            try
-            {
-                StartProcess(settings);
-                await WaitForReadyAsync(settings, cancellationToken).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger?.Info($"PaddleOCR-VL gRPC restart failed: {ex.Message}");
-                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
-            }
-        }
-    }
-
-    private bool CanRestart(AppSettings settings)
-    {
-        var now = DateTimeOffset.UtcNow;
-        var window = TimeSpan.FromSeconds(Math.Max(1, settings.PaddleVlGrpcRestartWindowSeconds));
-        _restartHistory.RemoveAll(time => now - time > window);
-        if (_restartHistory.Count >= settings.PaddleVlGrpcRestartMax)
-        {
-            return false;
-        }
-
-        _restartHistory.Add(now);
-        return true;
+        return new GrpcHostRestartPolicy(
+            Math.Max(1, settings.PaddleVlGrpcRestartMax),
+            TimeSpan.FromSeconds(Math.Max(1, settings.PaddleVlGrpcRestartWindowSeconds)));
     }
 
     private static string ResolveEndpoint(AppSettings settings)
