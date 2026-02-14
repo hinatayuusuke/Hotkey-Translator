@@ -8278,3 +8278,40 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
 - dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
+**2026-02-14 03:08 (Asia/Taipei) — MVVM次段階実装（Hotkey/Password のイベント依存撤去）**
+
+### Summary
+- Hotkey と API Key 入力を SettingsViewModel の TwoWay Binding に移し、MainWindow.xaml.cs のイベント駆動同期を削減した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 3/4/7 を前進させ、OnSettingLostFocus / OnHotkeySelectionChanged 依存を解消する。
+- 設定反映経路を SettingsViewModel.LoadFrom/ApplyTo に集約し、View の責務を軽くする。
+
+### Changes
+- MainWindow.xaml の PasswordBox 2箇所を BoundPassword TwoWay Binding 化し、LostFocus イベントを削除。
+- Hotkey 9系統（キー + Ctrl/Alt/Shift）をすべて Settings.* バインドへ移行し、SelectionChanged/Click イベントを削除。
+- UI/PasswordBoxAssistant.cs を追加し、PasswordBox の双方向バインドを可能化。
+- SettingsViewModel に API Key/Hotkey 用プロパティ群を追加し、LoadFrom/ApplyTo へ取り込み。
+- SettingsViewModel に Hotkey 修飾子の parse/build ロジックを追加し、AppSettings との文字列表現変換を集約。
+- MainWindow.xaml.cs から Hotkey/Password の手動同期メソッドを削除（ApplyHotkeySettingsToUi, ApplyHotkeySettingsFromUi, OnSettingLostFocus, OnHotkeySelectionChanged など）。
+
+### Files Touched
+- MainWindow.xaml — PasswordBox/Hotkey UI を ViewModel バインドへ変更。
+- ViewModels/SettingsViewModel.cs — API Key/Hotkey プロパティ、Load/Apply マッピング、修飾子変換を追加。
+- MainWindow.xaml.cs — 削除済みイベントハンドラ・手動同期ロジックを整理。
+- UI/PasswordBoxAssistant.cs — PasswordBox 向け添付プロパティを新規追加。
+
+### Behavioral Impact
+- Hotkey 設定変更は ViewModel 経由で debounce 保存され、保存後の hotkey 再登録フローにそのまま連結される。
+- DeepL/Gemini API key は PasswordBox のバインディング経由で AppSettings に反映される。
+- OnSettingChanged は CTranslate2 の未移行 UI 向けにのみ残る。
+
+### Risk & Mitigation
+- Risk: Password を文字列バインドすることでメモリ上の平文保持時間が増える。
+- Mitigation: PasswordBoxAssistant に SECURITY コメントを明示し、同期用途に限定して短いライフサイクルで扱う。
+- Risk: Hotkey 修飾子の文字列表現差異で既存値が崩れる可能性。
+- Mitigation: Ctrl/Control/Alt/Shift を許容する parser と、未指定時 None へ戻す builder を実装。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
+- dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。

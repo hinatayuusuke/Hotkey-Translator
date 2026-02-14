@@ -94,6 +94,44 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaTopKText = string.Empty;
     [ObservableProperty] private string _llamaRepeatPenaltyText = string.Empty;
     [ObservableProperty] private string _deepLEndpointText = string.Empty;
+    [ObservableProperty] private string _deepLApiKeyText = string.Empty;
+    [ObservableProperty] private string _apiKeyText = string.Empty;
+    [ObservableProperty] private string _hotkeyRunOnceKey = "F8";
+    [ObservableProperty] private bool _hotkeyRunOnceCtrl;
+    [ObservableProperty] private bool _hotkeyRunOnceAlt;
+    [ObservableProperty] private bool _hotkeyRunOnceShift;
+    [ObservableProperty] private string _hotkeyToggleOverlayKey = "F9";
+    [ObservableProperty] private bool _hotkeyToggleOverlayCtrl;
+    [ObservableProperty] private bool _hotkeyToggleOverlayAlt;
+    [ObservableProperty] private bool _hotkeyToggleOverlayShift;
+    [ObservableProperty] private string _hotkeyForceRunKey = "F10";
+    [ObservableProperty] private bool _hotkeyForceRunCtrl;
+    [ObservableProperty] private bool _hotkeyForceRunAlt;
+    [ObservableProperty] private bool _hotkeyForceRunShift;
+    [ObservableProperty] private string _hotkeyForceGeminiStrictKey = "F10";
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictCtrl;
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictAlt;
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictShift = true;
+    [ObservableProperty] private string _hotkeyOcrOnlyKey = "F11";
+    [ObservableProperty] private bool _hotkeyOcrOnlyCtrl;
+    [ObservableProperty] private bool _hotkeyOcrOnlyAlt;
+    [ObservableProperty] private bool _hotkeyOcrOnlyShift;
+    [ObservableProperty] private string _hotkeyToggleSceneAutoTranslateKey = "F5";
+    [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateCtrl;
+    [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateAlt;
+    [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateShift;
+    [ObservableProperty] private string _hotkeySelectRoiKey = "F6";
+    [ObservableProperty] private bool _hotkeySelectRoiCtrl;
+    [ObservableProperty] private bool _hotkeySelectRoiAlt;
+    [ObservableProperty] private bool _hotkeySelectRoiShift;
+    [ObservableProperty] private string _hotkeyLockCaptureWindowKey = "F7";
+    [ObservableProperty] private bool _hotkeyLockCaptureWindowCtrl;
+    [ObservableProperty] private bool _hotkeyLockCaptureWindowAlt;
+    [ObservableProperty] private bool _hotkeyLockCaptureWindowShift;
+    [ObservableProperty] private string _hotkeyUnlockCaptureWindowKey = "F7";
+    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowCtrl;
+    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowAlt;
+    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift = true;
 
     public void LoadFrom(AppSettings settings)
     {
@@ -162,6 +200,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaTopKText = settings.LlamaTopK.ToString();
             LlamaRepeatPenaltyText = settings.LlamaRepeatPenalty.ToString("0.###");
             DeepLEndpointText = settings.DeepLEndpoint;
+            DeepLApiKeyText = settings.DeepLApiKey ?? string.Empty;
+            ApiKeyText = settings.ApiKey ?? string.Empty;
             PaddleConfidenceThreshold = settings.PaddleConfidenceThreshold;
             OcrBinarizationThreshold = settings.OcrBinarizationThreshold;
             OcrGamma = settings.OcrGamma;
@@ -174,6 +214,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             SceneChangeThreshold = settings.SceneChangeThreshold;
             SceneChangeWatchIntervalMs = settings.SceneChangeWatchIntervalMs;
             SceneChangeWatchPhashThreshold = settings.SceneChangeWatchPhashThreshold;
+            AssignHotkeySettings(settings);
             AssignLanguageSettings(settings);
         }
         finally
@@ -352,6 +393,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         }
 
         settings.DeepLEndpoint = (DeepLEndpointText ?? string.Empty).Trim();
+        settings.DeepLApiKey = DeepLApiKeyText ?? string.Empty;
+        settings.ApiKey = ApiKeyText ?? string.Empty;
+        ApplyHotkeySettings(settings);
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThreshold, 2);
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThreshold);
         settings.OcrGamma = Math.Round(OcrGamma, 2);
@@ -448,6 +492,44 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnLlamaTopKTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaRepeatPenaltyTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnDeepLApiKeyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnApiKeyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunOnceKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunOnceCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunOnceAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunOnceShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleOverlayKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleOverlayCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleOverlayAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleOverlayShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceGeminiStrictKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceGeminiStrictCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceGeminiStrictAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceGeminiStrictShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyOcrOnlyKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyOcrOnlyCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyOcrOnlyAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyOcrOnlyShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleSceneAutoTranslateKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleSceneAutoTranslateCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleSceneAutoTranslateAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleSceneAutoTranslateShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectRoiKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectRoiAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectRoiShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyLockCaptureWindowKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyLockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyLockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyLockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyUnlockCaptureWindowKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyUnlockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeAutoHideChanged(bool value)
     {
@@ -495,6 +577,149 @@ internal sealed partial class SettingsViewModel : ObservableObject
         }
 
         RequestSaveOnValueChange();
+    }
+
+    private void AssignHotkeySettings(AppSettings settings)
+    {
+        HotkeyRunOnceKey = NormalizeHotkeyKey(settings.HotkeyRunOnceKey, "F8");
+        AssignHotkeyModifiers(settings.HotkeyRunOnceModifiers, out var runOnceCtrl, out var runOnceAlt, out var runOnceShift);
+        HotkeyRunOnceCtrl = runOnceCtrl;
+        HotkeyRunOnceAlt = runOnceAlt;
+        HotkeyRunOnceShift = runOnceShift;
+
+        HotkeyToggleOverlayKey = NormalizeHotkeyKey(settings.HotkeyToggleOverlayKey, "F9");
+        AssignHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, out var toggleOverlayCtrl, out var toggleOverlayAlt,
+            out var toggleOverlayShift);
+        HotkeyToggleOverlayCtrl = toggleOverlayCtrl;
+        HotkeyToggleOverlayAlt = toggleOverlayAlt;
+        HotkeyToggleOverlayShift = toggleOverlayShift;
+
+        HotkeyForceRunKey = NormalizeHotkeyKey(settings.HotkeyForceRunKey, "F10");
+        AssignHotkeyModifiers(settings.HotkeyForceRunModifiers, out var forceRunCtrl, out var forceRunAlt, out var forceRunShift);
+        HotkeyForceRunCtrl = forceRunCtrl;
+        HotkeyForceRunAlt = forceRunAlt;
+        HotkeyForceRunShift = forceRunShift;
+
+        HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(settings.HotkeyForceGeminiStrictKey, "F10");
+        AssignHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, out var forceGeminiCtrl, out var forceGeminiAlt,
+            out var forceGeminiShift);
+        HotkeyForceGeminiStrictCtrl = forceGeminiCtrl;
+        HotkeyForceGeminiStrictAlt = forceGeminiAlt;
+        HotkeyForceGeminiStrictShift = forceGeminiShift;
+
+        HotkeyOcrOnlyKey = NormalizeHotkeyKey(settings.HotkeyOcrOnlyKey, "F11");
+        AssignHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, out var ocrOnlyCtrl, out var ocrOnlyAlt, out var ocrOnlyShift);
+        HotkeyOcrOnlyCtrl = ocrOnlyCtrl;
+        HotkeyOcrOnlyAlt = ocrOnlyAlt;
+        HotkeyOcrOnlyShift = ocrOnlyShift;
+
+        HotkeyToggleSceneAutoTranslateKey = NormalizeHotkeyKey(settings.HotkeyToggleSceneAutoTranslateKey, "F5");
+        AssignHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers, out var sceneToggleCtrl, out var sceneToggleAlt,
+            out var sceneToggleShift);
+        HotkeyToggleSceneAutoTranslateCtrl = sceneToggleCtrl;
+        HotkeyToggleSceneAutoTranslateAlt = sceneToggleAlt;
+        HotkeyToggleSceneAutoTranslateShift = sceneToggleShift;
+
+        HotkeySelectRoiKey = NormalizeHotkeyKey(settings.HotkeySelectRoiKey, "F6");
+        AssignHotkeyModifiers(settings.HotkeySelectRoiModifiers, out var selectRoiCtrl, out var selectRoiAlt, out var selectRoiShift);
+        HotkeySelectRoiCtrl = selectRoiCtrl;
+        HotkeySelectRoiAlt = selectRoiAlt;
+        HotkeySelectRoiShift = selectRoiShift;
+
+        HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyLockCaptureWindowKey, "F7");
+        AssignHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, out var lockWindowCtrl, out var lockWindowAlt,
+            out var lockWindowShift);
+        HotkeyLockCaptureWindowCtrl = lockWindowCtrl;
+        HotkeyLockCaptureWindowAlt = lockWindowAlt;
+        HotkeyLockCaptureWindowShift = lockWindowShift;
+
+        HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyUnlockCaptureWindowKey, "F7");
+        AssignHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, out var unlockWindowCtrl, out var unlockWindowAlt,
+            out var unlockWindowShift);
+        HotkeyUnlockCaptureWindowCtrl = unlockWindowCtrl;
+        HotkeyUnlockCaptureWindowAlt = unlockWindowAlt;
+        HotkeyUnlockCaptureWindowShift = unlockWindowShift;
+    }
+
+    private void ApplyHotkeySettings(AppSettings settings)
+    {
+        settings.HotkeyRunOnceKey = NormalizeHotkeyKey(HotkeyRunOnceKey, "F8");
+        settings.HotkeyRunOnceModifiers = BuildHotkeyModifiers(HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        settings.HotkeyToggleOverlayKey = NormalizeHotkeyKey(HotkeyToggleOverlayKey, "F9");
+        settings.HotkeyToggleOverlayModifiers = BuildHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt,
+            HotkeyToggleOverlayShift);
+        settings.HotkeyForceRunKey = NormalizeHotkeyKey(HotkeyForceRunKey, "F10");
+        settings.HotkeyForceRunModifiers = BuildHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        settings.HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(HotkeyForceGeminiStrictKey, "F10");
+        settings.HotkeyForceGeminiStrictModifiers = BuildHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt,
+            HotkeyForceGeminiStrictShift);
+        settings.HotkeyOcrOnlyKey = NormalizeHotkeyKey(HotkeyOcrOnlyKey, "F11");
+        settings.HotkeyOcrOnlyModifiers = BuildHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        settings.HotkeyToggleSceneAutoTranslateKey =
+            NormalizeHotkeyKey(HotkeyToggleSceneAutoTranslateKey, "F5");
+        settings.HotkeyToggleSceneAutoTranslateModifiers =
+            BuildHotkeyModifiers(HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt,
+                HotkeyToggleSceneAutoTranslateShift);
+        settings.HotkeySelectRoiKey = NormalizeHotkeyKey(HotkeySelectRoiKey, "F6");
+        settings.HotkeySelectRoiModifiers = BuildHotkeyModifiers(HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        settings.HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(HotkeyLockCaptureWindowKey, "F7");
+        settings.HotkeyLockCaptureWindowModifiers =
+            BuildHotkeyModifiers(HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
+        settings.HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(HotkeyUnlockCaptureWindowKey, "F7");
+        settings.HotkeyUnlockCaptureWindowModifiers =
+            BuildHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
+    }
+
+    private static void AssignHotkeyModifiers(string modifiers, out bool ctrl, out bool alt, out bool shift)
+    {
+        ctrl = false;
+        alt = false;
+        shift = false;
+        var tokens = (modifiers ?? string.Empty).Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries);
+        foreach (var token in tokens)
+        {
+            var normalized = token.Trim();
+            if (normalized.Equals("Ctrl", StringComparison.OrdinalIgnoreCase) ||
+                normalized.Equals("Control", StringComparison.OrdinalIgnoreCase))
+            {
+                ctrl = true;
+            }
+            else if (normalized.Equals("Alt", StringComparison.OrdinalIgnoreCase))
+            {
+                alt = true;
+            }
+            else if (normalized.Equals("Shift", StringComparison.OrdinalIgnoreCase))
+            {
+                shift = true;
+            }
+        }
+    }
+
+    private static string BuildHotkeyModifiers(bool ctrl, bool alt, bool shift)
+    {
+        var parts = new List<string>(3);
+        if (ctrl)
+        {
+            parts.Add("Control");
+        }
+
+        if (alt)
+        {
+            parts.Add("Alt");
+        }
+
+        if (shift)
+        {
+            parts.Add("Shift");
+        }
+
+        return parts.Count == 0 ? "None" : string.Join(", ", parts);
+    }
+
+    private static string NormalizeHotkeyKey(string value, string fallback)
+    {
+        var normalized = (value ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
     }
 
     private void RequestSaveOnValueChange()

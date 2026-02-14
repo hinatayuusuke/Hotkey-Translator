@@ -824,11 +824,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SetComboBoxByTag(CTranslate2DeviceBox, settings.CTranslate2Device);
         }
         ReloadLlamaModelOptions(settings);
-        DeepLApiKeyBox.Password = settings.DeepLApiKey ?? string.Empty;
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
-        ApiKeyBox.Password = settings.ApiKey ?? string.Empty;
-        ApplyHotkeySettingsToUi(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateOcrPreprocessControls(settings);
@@ -963,11 +960,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settings.LlamaGrpcServerScript);
     }
 
-    private void OnHotkeySelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        RequestSettingsSave();
-    }
-
     private void SwapLanguages()
     {
         var settingsViewModel = _mainWindowViewModel.Settings;
@@ -977,51 +969,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settingsViewModel.SourceLanguageCustom = settingsViewModel.TargetLanguageCustom;
         settingsViewModel.TargetLanguageTag = sourceTag;
         settingsViewModel.TargetLanguageCustom = sourceCustom;
-    }
-
-    private void ApplyHotkeySettingsToUi(AppSettings settings)
-    {
-        SetHotkeyKey(HotkeyRunOnceKeyBox, settings.HotkeyRunOnceKey);
-        SetHotkeyKey(HotkeyToggleOverlayKeyBox, settings.HotkeyToggleOverlayKey);
-        SetHotkeyKey(HotkeyForceRunKeyBox, settings.HotkeyForceRunKey);
-        SetHotkeyKey(HotkeyForceGeminiStrictKeyBox, settings.HotkeyForceGeminiStrictKey);
-        SetHotkeyKey(HotkeyOcrOnlyKeyBox, settings.HotkeyOcrOnlyKey);
-        SetHotkeyKey(HotkeyToggleSceneAutoTranslateKeyBox, settings.HotkeyToggleSceneAutoTranslateKey);
-        SetHotkeyKey(HotkeySelectRoiKeyBox, settings.HotkeySelectRoiKey);
-        SetHotkeyKey(HotkeyLockCaptureWindowKeyBox, settings.HotkeyLockCaptureWindowKey);
-        SetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox, settings.HotkeyUnlockCaptureWindowKey);
-
-        SetHotkeyModifiers(settings.HotkeyRunOnceModifiers, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
-        SetHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
-        SetHotkeyModifiers(settings.HotkeyForceRunModifiers, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
-        SetHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
-        SetHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
-        SetHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers, HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
-        SetHotkeyModifiers(settings.HotkeySelectRoiModifiers, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
-        SetHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
-        SetHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
-    }
-
-    private void ApplyHotkeySettingsFromUi(AppSettings settings)
-    {
-        settings.HotkeyRunOnceKey = GetHotkeyKey(HotkeyRunOnceKeyBox);
-        settings.HotkeyRunOnceModifiers = GetHotkeyModifiers(HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
-        settings.HotkeyToggleOverlayKey = GetHotkeyKey(HotkeyToggleOverlayKeyBox);
-        settings.HotkeyToggleOverlayModifiers = GetHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
-        settings.HotkeyForceRunKey = GetHotkeyKey(HotkeyForceRunKeyBox);
-        settings.HotkeyForceRunModifiers = GetHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
-        settings.HotkeyForceGeminiStrictKey = GetHotkeyKey(HotkeyForceGeminiStrictKeyBox);
-        settings.HotkeyForceGeminiStrictModifiers = GetHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
-        settings.HotkeyOcrOnlyKey = GetHotkeyKey(HotkeyOcrOnlyKeyBox);
-        settings.HotkeyOcrOnlyModifiers = GetHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
-        settings.HotkeyToggleSceneAutoTranslateKey = GetHotkeyKey(HotkeyToggleSceneAutoTranslateKeyBox);
-        settings.HotkeyToggleSceneAutoTranslateModifiers = GetHotkeyModifiers(HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
-        settings.HotkeySelectRoiKey = GetHotkeyKey(HotkeySelectRoiKeyBox);
-        settings.HotkeySelectRoiModifiers = GetHotkeyModifiers(HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
-        settings.HotkeyLockCaptureWindowKey = GetHotkeyKey(HotkeyLockCaptureWindowKeyBox);
-        settings.HotkeyLockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
-        settings.HotkeyUnlockCaptureWindowKey = GetHotkeyKey(HotkeyUnlockCaptureWindowKeyBox);
-        settings.HotkeyUnlockCaptureWindowModifiers = GetHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
     }
 
     private static string GetSelectedTag(ComboBox comboBox, string fallback)
@@ -1046,58 +993,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private static void SetHotkeyKey(ComboBox comboBox, string key)
-    {
-        if (comboBox.Items.Count == 0)
-        {
-            return;
-        }
-
-        foreach (var item in comboBox.Items)
-        {
-            if (string.Equals(item?.ToString(), key, StringComparison.OrdinalIgnoreCase))
-            {
-                comboBox.SelectedItem = item;
-                return;
-            }
-        }
-
-        comboBox.SelectedIndex = 0;
-    }
-
-    private static string GetHotkeyKey(ComboBox comboBox)
-    {
-        return comboBox.SelectedItem?.ToString() ?? "F8";
-    }
-
-    private static void SetHotkeyModifiers(string value, CheckBox ctrl, CheckBox alt, CheckBox shift)
-    {
-        var modifiers = ParseModifiers(value);
-        ctrl.IsChecked = modifiers.HasFlag(ModifierKeys.Control);
-        alt.IsChecked = modifiers.HasFlag(ModifierKeys.Alt);
-        shift.IsChecked = modifiers.HasFlag(ModifierKeys.Shift);
-    }
-
-    private static string GetHotkeyModifiers(CheckBox ctrl, CheckBox alt, CheckBox shift)
-    {
-        var modifiers = ModifierKeys.None;
-        if (ctrl.IsChecked == true)
-        {
-            modifiers |= ModifierKeys.Control;
-        }
-
-        if (alt.IsChecked == true)
-        {
-            modifiers |= ModifierKeys.Alt;
-        }
-
-        if (shift.IsChecked == true)
-        {
-            modifiers |= ModifierKeys.Shift;
-        }
-
-        return modifiers == ModifierKeys.None ? "None" : modifiers.ToString();
-    }
 
     private void ApplyTranslationPriority(AppSettings settings)
     {
@@ -1344,11 +1239,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private void OnSettingLostFocus(object sender, RoutedEventArgs e)
-    {
-        RequestSettingsSave();
-    }
-
     private void RequestSettingsSave()
     {
         _settingsChangeScheduler.RequestSave();
@@ -1375,11 +1265,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.Settings.ApplyTo(settings);
 
         settings.EnableCTranslate2 = false;
-
-        settings.DeepLApiKey = DeepLApiKeyBox.Password;
         settings.TranslationPriority = GetTranslationPriority();
-        settings.ApiKey = ApiKeyBox.Password;
-        ApplyHotkeySettingsFromUi(settings);
     }
 
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
