@@ -44,6 +44,17 @@ internal sealed class DrawerLayoutController
         TryRestoreWindowHeightForDrawerClose();
     }
 
+    public void SyncStartupState()
+    {
+        if (!_isDrawerOpenAccessor() || _drawerAutoExpanded || _window.WindowState != WindowState.Normal)
+        {
+            return;
+        }
+
+        // WHY: Apply startup drawer expansion before first render to avoid visible "short -> expanded" resize flicker.
+        TryAutoExpandWindowForDrawerOpen();
+    }
+
     public void Reset()
     {
         _drawerAutoExpanded = false;

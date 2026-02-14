@@ -10285,3 +10285,31 @@ ull logger が固定されていた。
   - ####123abc -> 123abc
   - C## language は変更なし
   - Unicodeエスケープ経由の日本語 ### 行頭は除去される
+**2026-02-15 00:50 (Asia/Taipei) — 起動時Drawerの初期高さジャンプ解消**
+
+### Summary
+- 起動時にウィンドウが一度低く表示された後で伸びる挙動を、表示前の先行拡張で解消した。
+
+### Context / Goal
+- 起動直後に「短い高さ -> 拡張」の視覚ジャンプが発生していた。
+- 起動時は最初から拡張後サイズで表示し、既存のDrawer開閉時の自動リサイズ挙動は維持したい。
+
+### Changes
+- DrawerLayoutController に起動時同期用 SyncStartupState() を追加。
+- SyncStartupState() で Drawer が開いている場合に同期的に高さ拡張を適用するようにした。
+- MainWindow コンストラクタで SyncStartupState() を呼び、初回描画前に高さを確定するようにした。
+
+### Files Touched
+- Services/Application/DrawerLayoutController.cs — 起動時同期メソッドを追加し、初回表示前拡張を可能にした。
+- MainWindow.xaml.cs — DrawerLayoutController 初期化直後に起動時同期を呼ぶよう変更した。
+
+### Behavioral Impact
+- 起動時の高さジャンプが減り、初回表示が安定する。
+- Drawer開閉時の既存の自動拡張/復元ロジックは継続して動作する。
+
+### Risk & Mitigation
+- Risk: 起動時に常に拡張することで、画面高さが小さい環境で収まりにくくなる可能性。
+- Mitigation: 既存の WorkArea クランプ処理をそのまま利用し、画面外にはみ出さないよう維持した。
+
+### Tests / Verification
+- dotnet build を実行し、成功（Warnings 0 / Errors 0）を確認。

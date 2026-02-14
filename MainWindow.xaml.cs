@@ -97,6 +97,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => BottomDrawerBorder.ActualHeight,
             DrawerAutoResizeFallbackHeight,
             DrawerAutoResizeTolerance);
+        _drawerLayoutController.SyncStartupState();
         _previewZoomCoordinator = new PreviewZoomCoordinator(this);
         _previewFrameDispatcher = new PreviewFrameDispatcher(
             Dispatcher,
