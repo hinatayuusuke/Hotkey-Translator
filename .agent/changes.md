@@ -10340,3 +10340,31 @@ ull logger が固定されていた。
 ### Tests / Verification
 - dotnet build を実行し、成功（Warnings 0 / Errors 0）を確認。
 - MainWindow.xaml 内で Text="{Binding Settings...} の PropertyChanged 残存がないことを確認。
+**2026-02-15 01:17 (Asia/Taipei) — Hotkey行のGrid化でラベル見切れを解消**
+
+### Summary
+- Hotkey設定の行レイアウトを StackPanel から3列 Grid へ変更し、長いラベルの見切れを解消した。
+
+### Context / Goal
+- Hotkey画面で Force Gemini (strict) などの長いラベルが右側で切れて読みにくかった。
+- ラベル列幅を安定させ、キー/修飾子の列も縦に揃えたい。
+
+### Changes
+- SettingsPanelHotkeys 内の各行を Grid レイアウトに再構成（Label / Key / Modifiers の3列）。
+- ラベル列に MinWidth=170 を設定し、長文ラベルでも省略されにくい幅を確保。
+- 既存の ComboBox / CheckBox の x:Name とバインディングは維持し、コードビハインド連携を破壊しないようにした。
+
+### Files Touched
+- MainWindow.xaml — Hotkeyセクションの行コンテナをGridに置換し、列レイアウトを固定化。
+
+### Behavioral Impact
+- Hotkeyラベルの視認性が改善し、行ごとの揃いが安定する。
+- Hotkey設定値の保存・動作仕様自体は変更なし。
+
+### Risk & Mitigation
+- Risk: 低幅ウィンドウ時に修飾子列の横幅が不足する可能性。
+- Mitigation: ラベル幅を最小値に留め、修飾子列は * で伸縮可能にしてレイアウト余地を確保。
+
+### Tests / Verification
+- dotnet build は実行中プロセスが Hotkey-Translator.exe をロックしていたため失敗（MSB3021/MSB3027）。
+- dotnet build -p:UseAppHost=false でビルド成功（XAMLコンパイル含む、warning 1）。
