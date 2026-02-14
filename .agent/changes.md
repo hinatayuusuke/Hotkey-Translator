@@ -8669,3 +8669,45 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 12:13 (Asia/Taipei) — MVVM次段階実装（HotkeyCommandController抽出）**
+
+### Summary
+- Hotkeyイベントの実処理を `HotkeyCommandController` に抽出し、`MainWindow.xaml.cs` のハンドラを薄い委譲へ置換した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 6/7 を進め、MainWindow のイベントハンドラ肥大を抑える。
+- F8/F10/F11/F5/F6/F7/F9 系の既存挙動を維持しつつ Application 層へ責務移動する。
+
+### Changes
+- `Services/Application/HotkeyCommandController.cs` を新規追加。
+- 実処理を以下へ移設。
+- Run once（初回/通常）
+- Force run
+- Force Gemini strict
+- Overlay text mode toggle
+- Scene auto-translate toggle
+- Capture window lock / unlock
+- Select ROI
+- Overlay show/hide toggle
+- `MainWindow.xaml.cs` に `HotkeyCommandController` フィールドを追加し、依存を注入。
+- `OnHotkeyPressed` / `OnForceRunHotkeyPressed` / `OnForceGeminiStrictHotkeyPressed` / `OnOcrOnlyHotkeyPressed` / `OnToggleSceneAutoTranslateHotkeyPressed` / `OnLockCaptureWindowHotkeyPressed` / `OnUnlockCaptureWindowHotkeyPressed` / `OnSelectRoiHotkeyPressed` / `OnToggleOverlayHotkeyPressed` を委譲化。
+- `EnsureTranslatedOverlayForRunHotkeys` を MainWindow から削除（controller 内部に移動）。
+
+### Files Touched
+- `Services/Application/HotkeyCommandController.cs` — 新規。Hotkey系コマンド実処理を集約。
+- `MainWindow.xaml.cs` — Hotkeyハンドラを controller 委譲に置換し、重複ロジックを削減。
+
+### Behavioral Impact
+- Hotkeyのユーザー挙動（ログ文言、実行ガード、設定保存タイミング）は維持される。
+- MainWindow 側はイベント入口のみになり、責務境界が明確になる。
+
+### Risk & Mitigation
+- Risk: 抽出時の依存注入漏れで一部ホットキーが無効になる可能性。
+- Mitigation: 既存ハンドラを全件置換後に `BuildHotkeyRegistrations` の参照を確認し、ビルドで型整合を検証。
+- Risk: 非同期 hotkey 実行時の挙動差異。
+- Mitigation: 既存 `async void` ハンドラは維持し、内部実装を `Task` 委譲に留めて呼び出し順序を保持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+- `MainWindow.xaml.cs` 行数確認: 972行。

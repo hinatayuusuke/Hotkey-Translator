@@ -40,6 +40,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly SettingsUiController _settingsUiController;
     private readonly ResourceHostFacade _resourceHostFacade;
     private readonly ResourceHostCommandController _resourceHostCommandController;
+    private readonly HotkeyCommandController _hotkeyCommandController;
     private readonly SettingsChangeScheduler _settingsChangeScheduler;
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
@@ -121,6 +122,24 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             AppendLog,
             ShowLoadFailure,
             () => _logger);
+        _hotkeyCommandController = new HotkeyCommandController(
+            () => _runCoordinator.HasRunOnce,
+            RunOnceAsync,
+            options => RunOnceAsync(options),
+            () => _pipeline,
+            () => _overlayTextMode,
+            mode => _overlayTextMode = mode,
+            () => _settingsService.Settings,
+            settings => _mainWindowViewModel.Settings.LoadFrom(settings),
+            UpdateAutoHideWatcher,
+            ClearSceneChangeAutoTranslatePending,
+            _windowBindingService,
+            () => _settingsService.SaveAsync(),
+            SelectRoiAsync,
+            () => _overlayPresenter,
+            () => _overlayEnabled,
+            enabled => _overlayEnabled = enabled,
+            AppendLog);
         sceneChangeController = _sceneChangeController;
         PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
@@ -245,140 +264,47 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
     {
-        EnsureTranslatedOverlayForRunHotkeys();
-        if (!_runCoordinator.HasRunOnce)
-        {
-            AppendLog("F8: Run once (first run).");
-            await RunOnceAsync().ConfigureAwait(true);
-            return;
-        }
-
-        AppendLog("F8: Run once.");
-        await RunOnceAsync().ConfigureAwait(true);
+        await _hotkeyCommandController.HandleRunOnceHotkeyAsync().ConfigureAwait(true);
     }
 
     private async void OnForceRunHotkeyPressed(object? sender, EventArgs e)
     {
-        EnsureTranslatedOverlayForRunHotkeys();
-        AppendLog("Force run: skip pHash, OCR diff, translation cache.");
-        await RunOnceAsync(new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true, SkipTranslation: false))
-            .ConfigureAwait(true);
+        await _hotkeyCommandController.HandleForceRunHotkeyAsync().ConfigureAwait(true);
     }
 
     private async void OnForceGeminiStrictHotkeyPressed(object? sender, EventArgs e)
     {
-        EnsureTranslatedOverlayForRunHotkeys();
-        AppendLog("Force Gemini strict run: skip pHash, OCR diff, translation cache.");
-        await RunOnceAsync(new ForceRunOptions(
-                SkipPhash: true,
-                SkipOcrDiff: true,
-                SkipTranslationCache: true,
-                SkipTranslation: false,
-                ForceGeminiStrict: true))
-            .ConfigureAwait(true);
+        await _hotkeyCommandController.HandleForceGeminiStrictHotkeyAsync().ConfigureAwait(true);
     }
 
     private void OnOcrOnlyHotkeyPressed(object? sender, EventArgs e)
     {
-        if (_pipeline == null)
-        {
-            return;
-        }
-
-        var nextMode = _overlayTextMode == OverlayTextMode.Translated
-            ? OverlayTextMode.Source
-            : OverlayTextMode.Translated;
-
-        if (!_pipeline.TrySetOverlayTextMode(nextMode, out var reason))
-        {
-            AppendLog(reason ?? "Overlay text toggle ignored.");
-            return;
-        }
-
-        _overlayTextMode = nextMode;
-        AppendLog($"Overlay text mode: {_overlayTextMode}.");
+        _hotkeyCommandController.HandleOverlayTextHotkey();
     }
 
     private async void OnToggleSceneAutoTranslateHotkeyPressed(object? sender, EventArgs e)
     {
-        var settings = _settingsService.Settings;
-        var nextEnabled = !settings.EnableSceneChangeAutoTranslate;
-        settings.EnableSceneChangeAutoTranslate = nextEnabled;
-        if (nextEnabled)
-        {
-            settings.EnableSceneChangeAutoHide = false;
-        }
-        else
-        {
-            ClearSceneChangeAutoTranslatePending("auto-translate disabled");
-        }
-
-        // WHY: Keep hotkey-driven toggles on the same state path as UI binding.
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-
-        UpdateAutoHideWatcher(settings);
-        AppendLog(nextEnabled
-            ? "Scene change auto-translate enabled (F5). Auto-hide disabled."
-            : "Scene change auto-translate disabled (F5).");
-        await _settingsService.SaveAsync().ConfigureAwait(true);
+        await _hotkeyCommandController.HandleToggleSceneAutoTranslateHotkeyAsync().ConfigureAwait(true);
     }
 
     private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
-        var settings = _settingsService.Settings;
-        if (_windowBindingService.TryBindForegroundWindow(settings, out var spec, out var reason))
-        {
-            AppendLog(
-                $"Capture window locked: hwnd=0x{spec.Hwnd:X} pid={spec.ProcessId} class=\"{spec.ClassName}\" title=\"{spec.WindowTitle}\".");
-            await _settingsService.SaveAsync().ConfigureAwait(true);
-            return;
-        }
-
-        AppendLog($"Capture window lock failed: {reason ?? "unknown"}.");
+        await _hotkeyCommandController.HandleLockCaptureWindowHotkeyAsync().ConfigureAwait(true);
     }
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
-        var settings = _settingsService.Settings;
-        if (!settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowHandle == 0)
-        {
-            AppendLog("Capture window lock already cleared.");
-            return;
-        }
-
-        _windowBindingService.ClearBinding(settings);
-        AppendLog("Capture window unlocked.");
-        await _settingsService.SaveAsync().ConfigureAwait(true);
+        await _hotkeyCommandController.HandleUnlockCaptureWindowHotkeyAsync().ConfigureAwait(true);
     }
 
     private async void OnSelectRoiHotkeyPressed(object? sender, EventArgs e)
     {
-        await SelectRoiAsync().ConfigureAwait(true);
-    }
-
-    private void EnsureTranslatedOverlayForRunHotkeys()
-    {
-        if (_pipeline == null || _overlayTextMode == OverlayTextMode.Translated)
-        {
-            return;
-        }
-
-        if (_pipeline.TrySetOverlayTextMode(OverlayTextMode.Translated, out _, allowModeUpdateWithoutData: true))
-        {
-            _overlayTextMode = OverlayTextMode.Translated;
-        }
+        await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
     }
 
     private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
     {
-        if (_overlayPresenter == null)
-        {
-            return;
-        }
-
-        _overlayEnabled = !_overlayEnabled;
-        _overlayPresenter.SetEnabled(_overlayEnabled);
-        AppendLog(_overlayEnabled ? "Overlay shown." : "Overlay hidden.");
+        _hotkeyCommandController.HandleToggleOverlayHotkey();
     }
 
     private void EnableOverlay()
