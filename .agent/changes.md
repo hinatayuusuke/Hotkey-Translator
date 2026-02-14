@@ -8426,3 +8426,37 @@ aw_tokens > soft_no_split_tokens.
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\\Debug\\mvvmcheck\\` 実行: 0 warning / 0 error。
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:43 (Asia/Taipei) — MVVM次段階実装（設定正規化時のUI直接操作削減）**
+
+### Summary
+- 設定正規化後のUI同期で残っていたチェックボックス直接操作を削減し、`SettingsViewModel.LoadFrom` 経由へ統一した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 6/7 を進めるため、MainWindow の View 依存責務をさらに縮小する。
+- `SettingsUiController` の `ApplySceneChangeModeToUi` 依存を除去し、保存後再同期経路を一本化する。
+
+### Changes
+- `ISettingsUiBridge` から `ApplySceneChangeModeToUi` を削除し、`SettingsUiController.SaveFromUiAsync` での呼び出しを廃止。
+- Scene mode 正規化は `NormalizeSceneChangeModeSettings(settings)` のみ実行し、UI反映は既存 `ApplyRuntimeStateAfterSave -> Settings.LoadFrom(settings)` に集約。
+- `MainWindow.xaml.cs` の以下をコントロール直接代入から ViewModel再同期へ置換。
+- `DisableCTranslate2` / `DisableLlamaTranslation`。
+- `SelectRoiAsync` の ROI有効化反映。
+- `RestartLlamaCppAsync` / `StopLlamaServerAsync` の Llama有効フラグ更新。
+
+### Files Touched
+- `Services/Application/SettingsUiController.cs` — Bridge API を簡素化し、scene mode 正規化後のUI直接反映処理を削除。
+- `MainWindow.xaml.cs` — チェックボックス直接代入を削除し、`SettingsViewModel.LoadFrom(settings)` 経由の同期へ変更。
+
+### Behavioral Impact
+- scene mode 競合（auto-hide/auto-translate同時ON）正規化時のUI同期は保存後再同期経路に一本化される。
+- Llama/CTranslate2/ROI の内部状態変更時も、View の個別コントロール操作なしで設定UIが追従する。
+
+### Risk & Mitigation
+- Risk: 正規化直後のUI表示反映タイミングが遅れる可能性。
+- Mitigation: 保存フロー内の `ApplyRuntimeStateAfterSave` が同一トランザクション内で `LoadFrom` を実施し、表示差分を吸収。
+- Risk: Bridge インターフェース変更による実装漏れ。
+- Mitigation: `ApplySceneChangeModeToUi` 参照を全検索し未参照を確認、ビルドで型整合性を検証。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

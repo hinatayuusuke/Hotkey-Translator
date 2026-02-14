@@ -450,24 +450,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void DisableCTranslate2(AppSettings settings)
     {
         settings.EnableCTranslate2 = false;
-        _isApplyingSettings = true;
-        if (EnableCTranslate2Check != null)
-        {
-            EnableCTranslate2Check.IsChecked = false;
-        }
-        _isApplyingSettings = false;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateTranslationStatus(settings);
     }
 
     private void DisableLlamaTranslation(AppSettings settings)
     {
         settings.EnableLlamaCppTranslation = false;
-        _isApplyingSettings = true;
-        if (EnableLlamaCppCheck != null)
-        {
-            EnableLlamaCppCheck.IsChecked = false;
-        }
-        _isApplyingSettings = false;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateTranslationStatus(settings);
     }
 
@@ -727,12 +717,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     void ISettingsUiBridge.ApplyUiInputToSettings(AppSettings settings) => ApplyUiInputToSettings(settings);
 
-    void ISettingsUiBridge.ApplySceneChangeModeToUi(AppSettings settings)
-    {
-        EnableSceneChangeAutoHideCheck.IsChecked = settings.EnableSceneChangeAutoHide;
-        EnableSceneChangeAutoTranslateCheck.IsChecked = settings.EnableSceneChangeAutoTranslate;
-    }
-
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
@@ -778,12 +762,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settings.NormalizedRoi = selector.SelectedNormalizedRect;
             var roiWasDisabled = !settings.EnableRoi;
             settings.EnableRoi = true;
-            if (EnableRoiCheck != null)
-            {
-                _isApplyingSettings = true;
-                EnableRoiCheck.IsChecked = true;
-                _isApplyingSettings = false;
-            }
+            _mainWindowViewModel.Settings.LoadFrom(settings);
 
             UpdateRoiStatus(settings);
             await _settingsService.SaveAsync().ConfigureAwait(true);
@@ -1035,10 +1014,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _llamaHostConfig = null;
 
             // WHY: Manual restart is expected to keep Llama enabled after this action.
-            var previousApplyingState = _isApplyingSettings;
-            _isApplyingSettings = true;
-            EnableLlamaCppCheck.IsChecked = true;
-            _isApplyingSettings = previousApplyingState;
+            var settings = _settingsService.Settings;
+            settings.EnableLlamaCppTranslation = true;
+            _mainWindowViewModel.Settings.LoadFrom(settings);
 
             await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
             AppendLog("Llama.cpp restarted.");
@@ -1067,10 +1045,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _llamaHostConfig = null;
 
             // WHY: Keep persisted settings consistent with the explicit stop action.
-            var previousApplyingState = _isApplyingSettings;
-            _isApplyingSettings = true;
-            EnableLlamaCppCheck.IsChecked = false;
-            _isApplyingSettings = previousApplyingState;
+            var settings = _settingsService.Settings;
+            settings.EnableLlamaCppTranslation = false;
+            _mainWindowViewModel.Settings.LoadFrom(settings);
 
             await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
             AppendLog("llama-server stopped.");

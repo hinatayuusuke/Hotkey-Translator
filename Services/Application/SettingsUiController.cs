@@ -12,7 +12,6 @@ internal interface ISettingsUiBridge
     bool IsLoaded { get; }
     bool IsApplyingSettings { get; set; }
     void ApplyUiInputToSettings(AppSettings settings);
-    void ApplySceneChangeModeToUi(AppSettings settings);
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
@@ -71,11 +70,7 @@ internal sealed class SettingsUiController
             var settings = _settingsService.Settings;
             _bridge.ApplyUiInputToSettings(settings);
 
-            var normalizedSceneChangeMode = NormalizeSceneChangeModeSettings(settings);
-            if (normalizedSceneChangeMode)
-            {
-                _bridge.ApplySceneChangeModeToUi(settings);
-            }
+            NormalizeSceneChangeModeSettings(settings);
 
             if (!settings.EnableSceneChangeAutoTranslate)
             {
