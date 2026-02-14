@@ -7,6 +7,9 @@ namespace Hotkey_Translator.ViewModels;
 
 internal sealed partial class MainWindowViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private int _selectedSettingsCategoryIndex;
+
     public MainWindowViewModel(
         SettingsViewModel settings,
         RuntimeStatusViewModel runtimeStatus,

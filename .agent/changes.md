@@ -8315,3 +8315,42 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
 - dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。
+**2026-02-14 11:23 (Asia/Taipei) — MVVM次段階実装（カテゴリ表示Binding化とScene/SmallBox UI状態のXAML移行）**
+
+### Summary
+- Settingsカテゴリ切替と一部UI有効/無効制御をコードビハインドからXAML Bindingへ移し、MainWindow.xaml.cs の表示制御責務を削減した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 5/7 を継続し、OnSettingsCategoryChanged 系のイベント駆動表示更新を解消する。
+- UpdateSmallBoxReadabilityControls / UpdateSceneChangeControls を廃止し、XAMLトリガで状態制御する。
+
+### Changes
+- MainWindowViewModel に SelectedSettingsCategoryIndex を追加。
+- MainWindow.xaml の SettingsCategoryList を SelectedIndex TwoWay Binding 化し、カテゴリ選択イベント依存を削除。
+- 各 Settings パネル（OCR/Paddle/Translation/Hotkeys）の Visibility を IntToVisibilityConverter で Binding 制御に変更。
+- SmallTextThresholdSlider の IsEnabled と値表示色を XAML Binding/DataTrigger で制御。
+- Scene Change の各スライダー IsEnabled を BooleanOrMultiConverter（auto-hide OR auto-translate）で制御し、値表示色も DataTrigger 化。
+- MainWindow.xaml.cs から EnsureSettingsCategorySelection / OnSettingsCategoryChanged / UpdateSettingsCategoryPanels を削除。
+- MainWindow.xaml.cs から UpdateSmallBoxReadabilityControls / UpdateSceneChangeControls を削除し、関連呼び出しも整理。
+
+### Files Touched
+- ViewModels/MainWindowViewModel.cs — SelectedSettingsCategoryIndex を追加。
+- MainWindow.xaml — Settingsカテゴリ表示と Scene/SmallBox UI状態制御を Binding 化。
+- MainWindow.xaml.cs — 旧カテゴリ表示更新メソッドと SmallBox/Scene 制御メソッドを削除。
+- Converters/IntToVisibilityConverter.cs — カテゴリIndex→Visibility変換を追加。
+- Converters/BooleanOrMultiConverter.cs — Scene watcher有効判定（OR）用のMultiValueConverterを追加。
+
+### Behavioral Impact
+- Settingsタブのカテゴリ切替は ViewModel の SelectedSettingsCategoryIndex で状態管理される。
+- Scene Change と SmallBox の有効/無効表示が保存時の手動再計算なしで即時UI反映される。
+- MainWindow.xaml.cs の UI 表示更新ロジックが縮小され、View責務が明確化される。
+
+### Risk & Mitigation
+- Risk: 変換ロジック誤りでパネル表示が崩れる可能性。
+- Mitigation: IntToVisibilityConverter を単純な一致判定に限定し、Binding先を SelectedSettingsCategoryIndex に統一。
+- Risk: Scene watcher有効判定の差異でスライダー有効状態が変わる可能性。
+- Mitigation: 既存ロジック（auto-hide OR auto-translate）を BooleanOrMultiConverter でそのまま再現。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行:   warning / 0 error。
+- dotnet run --project Hotkey-Translator.csproj --no-build を6秒監視で実行し、RUNNING_OK_NO_EARLY_CRASH を確認。

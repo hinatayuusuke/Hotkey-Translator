@@ -128,7 +128,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         ApplySettingsToUi(settings);
         TranslationPriorityList.ItemsSource = _translationPriority;
-        EnsureSettingsCategorySelection();
         settingsChanged |= await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
         {
@@ -569,7 +568,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
         _isApplyingSettings = false;
 
-        UpdateSceneChangeControls(settings);
         UpdateAutoHideWatcher(settings);
         AppendLog(nextEnabled
             ? "Scene change auto-translate enabled (F5). Auto-hide disabled."
@@ -829,8 +827,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateOcrPreprocessControls(settings);
-        UpdateSmallBoxReadabilityControls(settings);
-        UpdateSceneChangeControls(settings);
         UpdateRoiStatus(settings);
         _isApplyingSettings = false;
     }
@@ -1276,8 +1272,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
         UpdateOcrPreprocessControls(settings);
-        UpdateSmallBoxReadabilityControls(settings);
-        UpdateSceneChangeControls(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
     }
@@ -1439,47 +1433,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         return string.Join("+", parts);
-    }
-
-    private void UpdateSmallBoxReadabilityControls(AppSettings settings)
-    {
-        if (EnableSmallBoxReadabilityBoostCheck == null || SmallTextThresholdSlider == null || SmallTextThresholdValue == null)
-        {
-            return;
-        }
-
-        var enabled = settings.EnableSmallBoxReadabilityBoost;
-        SmallTextThresholdSlider.IsEnabled = enabled;
-        SmallTextThresholdValue.Foreground = enabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-    }
-
-    private void UpdateSceneChangeControls(AppSettings settings)
-    {
-        if (EnableSceneChangeAutoHideCheck == null || EnableSceneChangeAutoTranslateCheck == null ||
-            EnableSceneChangeTextWeightedCheck == null ||
-            SceneChangeThresholdSlider == null || SceneChangeThresholdValue == null ||
-            SceneChangeWatchIntervalSlider == null || SceneChangeWatchIntervalValue == null ||
-            SceneChangeWatchPhashSlider == null || SceneChangeWatchPhashValue == null)
-        {
-            return;
-        }
-
-        var sceneWatcherEnabled = settings.EnableSceneChangeAutoHide || settings.EnableSceneChangeAutoTranslate;
-        EnableSceneChangeTextWeightedCheck.IsEnabled = settings.EnableSceneChangeAutoHide;
-        SceneChangeThresholdSlider.IsEnabled = sceneWatcherEnabled;
-        SceneChangeThresholdValue.Foreground = sceneWatcherEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        SceneChangeWatchIntervalSlider.IsEnabled = sceneWatcherEnabled;
-        SceneChangeWatchIntervalValue.Foreground = sceneWatcherEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
-        SceneChangeWatchPhashSlider.IsEnabled = sceneWatcherEnabled;
-        SceneChangeWatchPhashValue.Foreground = sceneWatcherEnabled
-            ? System.Windows.Media.Brushes.Black
-            : System.Windows.Media.Brushes.DimGray;
     }
 
     private void OnOverlayShown() => _sceneChangeController.OnOverlayShown();
@@ -1754,36 +1707,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             bitmap.UnlockBits(data);
         }
-    }
-
-    private void EnsureSettingsCategorySelection()
-    {
-        if (SettingsCategoryList.SelectedIndex < 0)
-        {
-            SettingsCategoryList.SelectedIndex = 0;
-        }
-
-        UpdateSettingsCategoryPanels();
-    }
-
-    private void OnSettingsCategoryChanged(object sender, SelectionChangedEventArgs e)
-    {
-        UpdateSettingsCategoryPanels();
-    }
-
-    private void UpdateSettingsCategoryPanels()
-    {
-        if (SettingsCategoryList == null || SettingsPanelOcr == null || SettingsPanelPaddle == null ||
-            SettingsPanelTranslation == null || SettingsPanelHotkeys == null)
-        {
-            return;
-        }
-
-        var index = SettingsCategoryList.SelectedIndex;
-        SettingsPanelOcr.Visibility = index == 0 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelPaddle.Visibility = index == 1 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelTranslation.Visibility = index == 2 ? Visibility.Visible : Visibility.Collapsed;
-        SettingsPanelHotkeys.Visibility = index == 3 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private readonly record struct CTranslate2HostConfig(
