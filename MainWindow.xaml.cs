@@ -34,14 +34,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private PipelineOrchestrator? _pipeline;
     private OcrEngine? _ocrEngine;
     private SceneTextSnapshotService? _sceneTextSnapshotService;
-    private PaddleGrpcHost? _paddleGrpcHost;
-    private PaddleVlGrpcHost? _paddleVlGrpcHost;
-    private CTranslate2GrpcHost? _ct2GrpcHost;
-    private LlamaGrpcHost? _llamaGrpcHost;
     private readonly HotkeyController _hotkeyController;
     private readonly UiLogController _uiLogController;
     private readonly SceneChangeController _sceneChangeController;
     private readonly SettingsUiController _settingsUiController;
+    private readonly ResourceHostFacade _resourceHostFacade;
     private readonly SettingsChangeScheduler _settingsChangeScheduler;
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
@@ -59,9 +56,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 400;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
-    private CTranslate2HostConfig? _ct2HostConfig;
-    private LlamaHostConfig? _llamaHostConfig;
-    private readonly SemaphoreSlim _resourceLoadGate = new(1, 1);
 
     public MainWindow()
     {
@@ -86,6 +80,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             RestartPaddleOcrHostsAsync,
             StopPaddleVlHost,
             SaveSettingsImmediatelyAsync);
+        _resourceHostFacade = new ResourceHostFacade(
+            () => _logger,
+            SetBusyOverlay,
+            SyncSettingsAfterHostFailure,
+            ShowLoadFailure);
         DataContext = _mainWindowViewModel;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
@@ -124,7 +123,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var settings = _settingsService.Settings;
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         ApplySettingsToUi(settings);
-        settingsChanged |= await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+        settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
         {
             await _settingsService.SaveAsync().ConfigureAwait(true);
@@ -196,10 +195,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _cacheRepository?.Dispose();
         _ocrEngine?.Dispose();
         _httpClient.Dispose();
-        _paddleGrpcHost?.Stop();
-        _paddleVlGrpcHost?.Stop();
-        _ct2GrpcHost?.Stop();
-        _llamaGrpcHost?.Stop();
+        _resourceHostFacade.Dispose();
         if (_pipeline != null)
         {
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
@@ -215,248 +211,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayWindow?.Close();
     }
 
-    private async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
-    {
-        if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) &&
-            !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
-        {
-            return false;
-        }
-
-        await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
-        var overlayShown = false;
-        var settingsChanged = false;
-        try
-        {
-            if (ShouldLoadPaddle(settings))
-            {
-                if (_paddleVlGrpcHost is { IsRunning: true })
-                {
-                    _logger?.Info("Stopping PaddleOCR-VL host before loading PaddleOCR.");
-                    _paddleVlGrpcHost.Stop();
-                }
-
-                _paddleGrpcHost ??= new PaddleGrpcHost(_logger);
-                if (_paddleGrpcHost is not { IsRunning: true })
-                {
-                    SetBusyOverlay(true, "Loading PaddleOCR...");
-                    overlayShown = true;
-                    if (!await TryStartPaddleGrpcHostAsync(settings).ConfigureAwait(true))
-                    {
-                        settingsChanged = true;
-                    }
-                }
-            }
-            else if (ShouldLoadPaddleVl(settings))
-            {
-                if (_paddleGrpcHost is { IsRunning: true })
-                {
-                    _logger?.Info("Stopping PaddleOCR host before loading PaddleOCR-VL.");
-                    _paddleGrpcHost.Stop();
-                }
-
-                _paddleVlGrpcHost ??= new PaddleVlGrpcHost(_logger);
-                if (_paddleVlGrpcHost is not { IsRunning: true })
-                {
-                    SetBusyOverlay(true, "Loading PaddleOCR-VL...");
-                    overlayShown = true;
-                    if (!await TryStartPaddleVlGrpcHostAsync(settings).ConfigureAwait(true))
-                    {
-                        settingsChanged = true;
-                    }
-                }
-            }
-
-            if (ShouldLoadCTranslate2(settings))
-            {
-                _ct2GrpcHost ??= new CTranslate2GrpcHost(_logger);
-                var config = BuildCTranslate2HostConfig(settings);
-                if (_ct2GrpcHost is { IsRunning: true })
-                {
-                    if (_ct2HostConfig.HasValue && !_ct2HostConfig.Value.Equals(config))
-                    {
-                        // NOTE: Keep the host resident until restart; apply changes on next launch.
-                        _logger?.Info("CTranslate2 settings changed; reload deferred until restart.");
-                    }
-                }
-                else
-                {
-                    SetBusyOverlay(true, "Loading CTranslate2...");
-                    overlayShown = true;
-                    if (await TryStartCTranslate2GrpcHostAsync(settings).ConfigureAwait(true))
-                    {
-                        _ct2HostConfig = config;
-                    }
-                    else
-                    {
-                        settingsChanged = true;
-                    }
-                }
-            }
-
-            if (ShouldLoadLlama(settings))
-            {
-                if (_ct2GrpcHost is { IsRunning: true })
-                {
-                    _logger?.Info("Stopping CTranslate2 host to avoid VRAM contention with Llama.");
-                    _ct2GrpcHost.Stop();
-                    _ct2HostConfig = null;
-                }
-
-                _llamaGrpcHost ??= new LlamaGrpcHost(_logger);
-                var config = BuildLlamaHostConfig(settings);
-                if (_llamaGrpcHost is { IsRunning: true })
-                {
-                    if (_llamaHostConfig.HasValue && !_llamaHostConfig.Value.Equals(config))
-                    {
-                        // NOTE: Keep the host resident until restart; apply changes on next launch.
-                        _logger?.Info("Llama settings changed; reload deferred until restart.");
-                    }
-                }
-                else
-                {
-                    SetBusyOverlay(true, "Loading Llama.cpp...");
-                    overlayShown = true;
-                    if (await TryStartLlamaGrpcHostAsync(settings).ConfigureAwait(true))
-                    {
-                        _llamaHostConfig = config;
-                    }
-                    else
-                    {
-                        settingsChanged = true;
-                    }
-                }
-            }
-        }
-        finally
-        {
-            if (overlayShown)
-            {
-                SetBusyOverlay(false, null);
-            }
-            _resourceLoadGate.Release();
-        }
-
-        return settingsChanged;
-    }
-
-    private static bool ShouldLoadPaddle(AppSettings settings)
-    {
-        return settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost;
-    }
-
-    private static bool ShouldLoadPaddleVl(AppSettings settings)
-    {
-        return settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost;
-    }
-
-    private static bool ShouldLoadCTranslate2(AppSettings settings)
-    {
-        // WHY: CTranslate2 translation path is retired; keep host disabled even if legacy settings remain.
-        return false;
-    }
-
-    private static bool ShouldLoadLlama(AppSettings settings)
-    {
-        return settings.EnableLlamaCppTranslation;
-    }
-
-    private async Task<bool> TryStartPaddleGrpcHostAsync(AppSettings settings)
-    {
-        try
-        {
-            await _paddleGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Paddle gRPC host failed to start.");
-            _paddleGrpcHost?.Stop();
-            DisablePaddleOcr(settings);
-            ShowLoadFailure("Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.");
-            return false;
-        }
-    }
-
-    private async Task<bool> TryStartPaddleVlGrpcHostAsync(AppSettings settings)
-    {
-        try
-        {
-            await _paddleVlGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "PaddleOCR-VL gRPC host failed to start.");
-            _paddleVlGrpcHost?.Stop();
-            DisablePaddleVlOcr(settings);
-            ShowLoadFailure("Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.");
-            return false;
-        }
-    }
-
-    private async Task<bool> TryStartCTranslate2GrpcHostAsync(AppSettings settings)
-    {
-        try
-        {
-            await _ct2GrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "CTranslate2 gRPC host failed to start.");
-            _ct2GrpcHost?.Stop();
-            _ct2HostConfig = null;
-            DisableCTranslate2(settings);
-            ShowLoadFailure("Failed to load CTranslate2. The setting has been turned OFF. See the logs for details.");
-            return false;
-        }
-    }
-
-    private async Task<bool> TryStartLlamaGrpcHostAsync(AppSettings settings)
-    {
-        try
-        {
-            await _llamaGrpcHost!.StartAsync(settings, CancellationToken.None).ConfigureAwait(true);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Llama gRPC host failed to start.");
-            _llamaGrpcHost?.Stop();
-            _llamaHostConfig = null;
-            DisableLlamaTranslation(settings);
-            ShowLoadFailure("Failed to load Llama.cpp. The setting has been turned OFF. See the logs for details.");
-            return false;
-        }
-    }
-
-    private void DisablePaddleOcr(AppSettings settings)
-    {
-        settings.OcrEngine = OcrEngineKind.WinRt;
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-    }
-
-    private void DisablePaddleVlOcr(AppSettings settings)
-    {
-        settings.OcrEngine = OcrEngineKind.WinRt;
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-    }
-
-    private void DisableCTranslate2(AppSettings settings)
-    {
-        settings.EnableCTranslate2 = false;
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-        UpdateTranslationStatus(settings);
-    }
-
-    private void DisableLlamaTranslation(AppSettings settings)
-    {
-        settings.EnableLlamaCppTranslation = false;
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-        UpdateTranslationStatus(settings);
-    }
-
     private void ShowLoadFailure(string message)
     {
         if (!Dispatcher.CheckAccess())
@@ -466,6 +220,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         MessageBox.Show(this, message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)
+    {
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+        if (updateTranslationStatus)
+        {
+            UpdateTranslationStatus(settings);
+        }
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
@@ -707,7 +470,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     }
 
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
-    Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => EnsureResourceHostsAsync(settings);
+    Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
     void ISettingsUiBridge.AppendLog(string message) => AppendLog(message);
     void ISettingsUiBridge.TryUpdateHotkeys(AppSettings settings) => TryUpdateHotkeys(settings);
@@ -851,47 +614,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
-    {
-        SettingsUiController.NormalizeCTranslate2Settings(settings);
-        return new CTranslate2HostConfig(
-            settings.CTranslate2Device,
-            settings.CTranslate2Precision,
-            settings.CTranslate2ModelId,
-            settings.CTranslate2ModelDir,
-            settings.CTranslate2GrpcEndpoint,
-            settings.CTranslate2GrpcHost,
-            settings.CTranslate2GrpcPort,
-            settings.CTranslate2GrpcProjectDir,
-            settings.CTranslate2GrpcUvPath,
-            settings.CTranslate2GrpcServerScript);
-    }
-
-    private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
-    {
-        SettingsUiController.NormalizeLlamaSettings(settings);
-        return new LlamaHostConfig(
-            settings.LlamaHost,
-            settings.LlamaPort,
-            settings.LlamaContextSize,
-            settings.LlamaGpuLayers,
-            settings.LlamaThreads,
-            settings.LlamaParallel,
-            settings.LlamaBatchSize,
-            settings.LlamaMaxTokens,
-            settings.LlamaTemperature,
-            settings.LlamaTopP,
-            settings.LlamaTopK,
-            settings.LlamaRepeatPenalty,
-            settings.LlamaSelectedModelFileName,
-            settings.LlamaGrpcEndpoint,
-            settings.LlamaGrpcHost,
-            settings.LlamaGrpcPort,
-            settings.LlamaGrpcProjectDir,
-            settings.LlamaGrpcUvPath,
-            settings.LlamaGrpcServerScript);
-    }
-
     private void SwapLanguages()
     {
         var settingsViewModel = _mainWindowViewModel.Settings;
@@ -962,8 +684,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         try
         {
             SetBusyOverlay(true, "Restarting Llama.cpp...");
-            _llamaGrpcHost?.Stop();
-            _llamaHostConfig = null;
+            _resourceHostFacade.StopLlama();
 
             // WHY: Manual restart is expected to keep Llama enabled after this action.
             var settings = _settingsService.Settings;
@@ -993,8 +714,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         try
         {
-            _llamaGrpcHost?.Stop();
-            _llamaHostConfig = null;
+            _resourceHostFacade.StopLlama();
 
             // WHY: Keep persisted settings consistent with the explicit stop action.
             var settings = _settingsService.Settings;
@@ -1032,13 +752,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var settings = _settingsService.Settings;
             if (settings.OcrEngine == OcrEngineKind.Paddle)
             {
-                _paddleGrpcHost?.Stop();
-                _paddleVlGrpcHost?.Stop();
+                _resourceHostFacade.StopPaddle();
+                _resourceHostFacade.StopPaddleVl();
             }
             else if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
             {
-                _paddleVlGrpcHost?.Stop();
-                _paddleGrpcHost?.Stop();
+                _resourceHostFacade.StopPaddleVl();
+                _resourceHostFacade.StopPaddle();
             }
             else
             {
@@ -1046,7 +766,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 return;
             }
 
-            await EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
             AppendLog("OCR host restarted with latest settings.");
         }
         catch (Exception ex)
@@ -1073,7 +793,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        if (_paddleVlGrpcHost is not { IsRunning: true })
+        if (!_resourceHostFacade.IsPaddleVlRunning)
         {
             AppendLog("PaddleOCR-VL host stop skipped: host is not running.");
             return;
@@ -1081,7 +801,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         try
         {
-            _paddleVlGrpcHost.Stop();
+            _resourceHostFacade.StopPaddleVl();
             AppendLog("PaddleOCR-VL host stopped.");
         }
         catch (Exception ex)
@@ -1514,39 +1234,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             bitmap.UnlockBits(data);
         }
     }
-
-    private readonly record struct CTranslate2HostConfig(
-        string Device,
-        string Precision,
-        string ModelId,
-        string? ModelDir,
-        string Endpoint,
-        string Host,
-        int Port,
-        string ProjectDir,
-        string UvPath,
-        string ServerScript);
-
-    private readonly record struct LlamaHostConfig(
-        string Host,
-        int Port,
-        int ContextSize,
-        int GpuLayers,
-        int Threads,
-        int Parallel,
-        int BatchSize,
-        int MaxTokens,
-        double Temperature,
-        double TopP,
-        int TopK,
-        double RepeatPenalty,
-        string ModelFileName,
-        string Endpoint,
-        string GrpcHost,
-        int GrpcPort,
-        string ProjectDir,
-        string UvPath,
-        string ServerScript);
 
     private readonly record struct HotkeyConfig(
         Key RunOnceKey,

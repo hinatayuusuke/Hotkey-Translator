@@ -8597,3 +8597,42 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 11:59 (Asia/Taipei) — MVVM次段階実装（ResourceHostFacade抽出でMainWindow責務を縮小）**
+
+### Summary
+- gRPCホストのロード/再起動/停止制御を `ResourceHostFacade` に集約し、`MainWindow.xaml.cs` から `EnsureResourceHostsAsync` 一式を削除した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 6/7 に沿って、MainWindow を View + Composition Root に近づける。
+- ホスト制御（Paddle/PaddleVL/CTranslate2/Llama）に関する大きな手続きロジックを専用サービスへ移す。
+
+### Changes
+- `Services/Application/ResourceHostFacade.cs` を新規追加。
+- `EnsureResourceHostsAsync` / `ShouldLoad*` / `TryStart*` / host stop / failure時設定巻き戻しをFacadeへ移設。
+- `MainWindow.xaml.cs` から以下を削除または置換。
+- 旧 `EnsureResourceHostsAsync` 一式（ShouldLoad/TryStart/Disable群）を削除。
+- 旧 `BuildCTranslate2HostConfig` / `BuildLlamaHostConfig` を削除。
+- 旧 host config record (`CTranslate2HostConfig` / `LlamaHostConfig`) を削除。
+- `MainWindow` に `ResourceHostFacade` フィールドを追加し、constructorで注入初期化。
+- `OnClosed` は個別 host stop から `ResourceHostFacade.Dispose()` に置換。
+- `RestartLlamaCppAsync` / `StopLlamaServerAsync` / `RestartPaddleOcrHostsAsync` / `StopPaddleVlHost` をFacade API呼び出しへ置換。
+- `ISettingsUiBridge.EnsureResourceHostsAsync` はFacade委譲に変更。
+- host起動失敗時UI同期用に `SyncSettingsAfterHostFailure(AppSettings,bool)` を追加。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — 新規。リソースホスト制御の集約。
+- `MainWindow.xaml.cs` — host制御ロジックを削減しFacade委譲へ変更。
+
+### Behavioral Impact
+- ホスト起動/停止と失敗時の設定巻き戻し挙動は維持しつつ、実装責務がFacadeに集約される。
+- `MainWindow` はホスト制御の詳細から解放され、イベント配線・UI境界責務に寄る。
+
+### Risk & Mitigation
+- Risk: 移設時の分岐漏れで host 起動条件やエラーハンドリングが変わる可能性。
+- Mitigation: 既存ロジックをFacadeへ等価移植し、失敗時の設定無効化とユーザー向けエラー表示を同一メッセージで維持。
+- Risk: 再起動/停止コマンドの参照先変更による回帰。
+- Mitigation: 各コマンドをFacade APIへ置換後にビルド・起動スモークを実施。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
