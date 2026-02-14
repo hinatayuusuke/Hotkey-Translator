@@ -71,7 +71,10 @@ internal sealed class OcrAndGroupStage
             .ToList();
 
         var groupStopwatch = Stopwatch.StartNew();
-        var groupedLines = _lineGrouper.MergeLines(mappedLines, settings).ToList();
+        // WHY: PaddleOCR-VL tends to return already consolidated text blocks; additional merge can over-merge.
+        var groupedLines = settings.OcrEngine == OcrEngineKind.PaddleVllm
+            ? mappedLines
+            : _lineGrouper.MergeLines(mappedLines, settings).ToList();
         var readingUnits = _readingUnitBuilder.Build(groupedLines, settings).ToList();
         groupStopwatch.Stop();
 

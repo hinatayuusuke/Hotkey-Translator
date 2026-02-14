@@ -9538,3 +9538,31 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。
+**2026-02-14 18:12 (Asia/Taipei) — PaddleOCR-VL時のみline mergeをスキップ**
+
+### Summary
+- `OcrAndGroupStage` で `OcrEngineKind.PaddleVllm` の場合に限り line merge を通さないように変更した。
+
+### Context / Goal
+- PaddleOCR-VL は出力が既に段落寄りで、汎用 merge を重ねると過結合しやすい。
+- VL経路のみ既定で merge OFF 相当の挙動にして可読性低下を抑える。
+
+### Changes
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` の groupedLines 生成を分岐。
+  - `PaddleVllm` のとき: `mappedLines` をそのまま採用。
+  - それ以外: 既存どおり `_lineGrouper.MergeLines(...)` を適用。
+- WHYコメントを追加して実装意図（VLでの過結合回避）を明示。
+
+### Files Touched
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — PaddleVllm時のみmergeスキップ分岐を追加。
+
+### Behavioral Impact
+- OCRエンジンが `PaddleVllm` のとき、line mergeは実行されない。
+- WinRT/Paddleなど他エンジンのmerge挙動は変更なし。
+
+### Risk & Mitigation
+- Risk: 既存のVL運用でmerge前提に調整していた表示が変わる可能性。
+- Mitigation: 変更対象を `PaddleVllm` のみへ限定し、他エンジンへの影響を遮断した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false` 実行: 成功（0 warning / 0 error）。
