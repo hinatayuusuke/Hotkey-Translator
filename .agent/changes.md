@@ -9899,3 +9899,59 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build` を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 22:02 (Asia/Taipei) — OCR設定パネルを2カラム化**
+
+### Summary
+- OCR設定パネルを2カラムレイアウトへ変更し、視認性を改善した。
+
+### Context / Goal
+- OCR設定項目が縦に長く、一覧性が低下していた。
+- Paddle/Paddle-VL 設定は現状のまま維持し、OCRパネルのみを先行して整理する。
+
+### Changes
+- SettingsPanelOcr の直下に2カラム Grid を追加。
+- 左カラムに OCR (Advanced) と Performance を配置。
+- 右カラムに OCR Preprocess (Binarization) 以降の既存設定群を配置。
+- 既存の設定バインディング・x:Name は変更せず維持。
+
+### Files Touched
+- MainWindow.xaml — SettingsPanelOcr を2カラム構成へ変更（Paddle/Paddle-VL 側は未変更）。
+
+### Behavioral Impact
+- OCR設定タブで同時に見える情報量が増え、スクロール依存が軽減される。
+- 設定値の保存・反映ロジックは変更なし。
+
+### Risk & Mitigation
+- Risk: XAMLレイアウト再構成により表示崩れが発生する可能性。
+- Mitigation: 既存コントロール定義は保持し、dotnet build でXAML整合を確認済み。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 22:12 (Asia/Taipei) — OCR設定の左右配置を再調整（Performance右・前処理/自動化左）**
+
+### Summary
+- OCR設定2カラムの配置を再編し、Performance を右列へ、OCR Preprocess と Scene Change Automation を左列へ移動した。
+
+### Context / Goal
+- 操作頻度と設定の意味で、前処理・自動翻訳/非表示の自動化を左側に寄せたい要望があった。
+- 既存のバインディングや制御ロジックは維持したまま、視認性のみ改善する。
+
+### Changes
+- SettingsPanelOcr を2カラム Grid 構成のまま、セクション配置を入れ替え。
+- 左列: OCR (Advanced) + OCR Preprocess (Binarization) + Scene Change Automation。
+- 右列: Performance + OCR Input + Overlay Layout。
+- 途中で発生したXAML文字列破損を復旧し、既存日本語表示を維持。
+
+### Files Touched
+- MainWindow.xaml — OCR設定セクションの左右再配置と整合修正。
+
+### Behavioral Impact
+- OCR設定画面で前処理/自動化関連が左列に集約され、Performance は右列へ移動。
+- 機能仕様・保存値・コマンド動作は変更なし。
+
+### Risk & Mitigation
+- Risk: 大きなXAMLブロック移動時のレイアウト崩れや要素参照切れ。
+- Mitigation: x:Name とバインディングを維持し、dotnet build でXAML整合を確認。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。

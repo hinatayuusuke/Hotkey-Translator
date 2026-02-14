@@ -308,6 +308,14 @@
                         <StackPanel Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,0">
                             <StackPanel x:Name="SettingsPanelOcr"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=0}">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="24" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+
                                 <TextBlock Text="OCR (Advanced)" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
@@ -329,36 +337,6 @@
                                         <ComboBoxItem Content="Horizontal (forced)" Tag="Horizontal" />
                                     </ComboBox>
                                 </StackPanel>
-
-                                <Separator Margin="0,10,0,8" />
-                                <TextBlock Text="Performance" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
-                                          IsEnabled="{Binding Settings.EnableLogging}"
-                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
-                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <TextBox.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                                <Binding Path="Settings.EnableLogging" />
-                                                <Binding Path="Settings.EnableOcrPerfLog" />
-                                            </MultiBinding>
-                                        </TextBox.IsEnabled>
-                                        <TextBox.Style>
-                                            <Style TargetType="TextBox">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBox.Style>
-                                    </TextBox>
-                                </StackPanel>
-
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0"
@@ -510,82 +488,6 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-
-                                <Separator Margin="0,12,0,8" />
-                                <TextBlock Text="OCR Input" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableOcrDownsamplingCheck"
-                                          Content="Downsample OCR input"
-                                          Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableOcrDownsampling, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Downsample scale" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="OcrDownsampleScaleSlider"
-                                            Width="180"
-                                            Minimum="0.5"
-                                            Maximum="1.0"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="0.05"
-                                            SmallChange="0.05"
-                                            LargeChange="0.1"
-                                            IsEnabled="{Binding Settings.EnableOcrDownsampling}"
-                                            Value="{Binding Settings.OcrDownsampleScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock x:Name="OcrDownsampleScaleValue"
-                                               Width="48"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
-                                               Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=OcrDownsampleScaleSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                                <TextBlock Text="OCR input preview is available in the bottom drawer." Margin="0,10,0,4" Foreground="DimGray" />
-
-                                <Separator Margin="0,12,0,8" />
-                                <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="SmallTextThresholdSlider"
-                                            Width="180"
-                                            Minimum="8"
-                                            Maximum="48"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="1"
-                                            SmallChange="1"
-                                            LargeChange="2"
-                                            IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
-                                            Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock x:Name="SmallTextThresholdValue"
-                                               Width="48"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
-                                               Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-
                                 <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
@@ -689,6 +591,110 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                <TextBlock Text="Performance" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
+                                          IsEnabled="{Binding Settings.EnableLogging}"
+                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
+                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <TextBox.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableLogging" />
+                                                <Binding Path="Settings.EnableOcrPerfLog" />
+                                            </MultiBinding>
+                                        </TextBox.IsEnabled>
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                </StackPanel>
+                                <Separator Margin="0,12,0,8" />
+                                <TextBlock Text="OCR Input" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableOcrDownsamplingCheck"
+                                          Content="Downsample OCR input"
+                                          Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrDownsampling, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Downsample scale" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrDownsampleScaleSlider"
+                                            Width="180"
+                                            Minimum="0.5"
+                                            Maximum="1.0"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="0.05"
+                                            SmallChange="0.05"
+                                            LargeChange="0.1"
+                                            IsEnabled="{Binding Settings.EnableOcrDownsampling}"
+                                            Value="{Binding Settings.OcrDownsampleScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock x:Name="OcrDownsampleScaleValue"
+                                               Width="48"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrDownsampleScaleSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                                <TextBlock Text="OCR input preview is available in the bottom drawer." Margin="0,10,0,4" Foreground="DimGray" />
+                                <Separator Margin="0,12,0,8" />
+                                <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="SmallTextThresholdSlider"
+                                            Width="180"
+                                            Minimum="8"
+                                            Maximum="48"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="1"
+                                            SmallChange="1"
+                                            LargeChange="2"
+                                            IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
+                                            Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock x:Name="SmallTextThresholdValue"
+                                               Width="48"
+                                               Margin="8,0,0,0"
+                                               VerticalAlignment="Center"
+                                               TextAlignment="Right"
+                                               Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                                    </StackPanel>
+                                </Grid>
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle"
