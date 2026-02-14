@@ -8951,3 +8951,76 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 13:21 (Asia/Taipei) — Layer3実装案作成（Capture層リファクタリング計画）**
+
+### Summary
+- Master Plan を基に、層3（Capture）向けの具体的な段階実装案を `Doc/Refactoring_Layer3_Capture_Plan.md` として新規作成した。
+
+### Context / Goal
+- `CaptureManager` に集中している provider選択・cooldown・black判定を責務分離し、回帰リスクを下げる実装計画を明文化する。
+- 層2完了後に着手可能な粒度で、段階移行とロールバック性を担保する。
+
+### Changes
+- `Doc/Refactoring_Layer3_Capture_Plan.md` を新規作成。
+- 提案アーキテクチャとして `CaptureTargetResolver` / `CaptureProviderSelector` / `ICapturePolicy` / `CaptureProviderStateStore` / `CaptureAttemptCoordinator` / `CaptureExecutionTrace` を定義。
+- Step1〜Step7 の段階実装、非機能要件、リスク緩和、影響範囲、DoD を整理。
+
+### Files Touched
+- `Doc/Refactoring_Layer3_Capture_Plan.md` — 層3の実装案をテンプレート準拠で追加。
+
+### Behavioral Impact
+- 実行時挙動の変更はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 章立ての過不足により実装時の解釈ぶれが出る可能性。
+- Mitigation: 既存コード（`CaptureManager` / DXGI/WGC/GDI provider）の現状整理を前提に、責務境界とステップを明示した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 13:30 (Asia/Taipei) — Layer3実装（Capture責務分離 Step1-7）**
+
+### Summary
+- `CaptureManager` の分岐を Capture専用コンポーネントへ分離し、Step1〜Step7（ログ固定〜旧経路削除）を一括実装した。
+
+### Context / Goal
+- `CaptureManager` に集中していた provider選択・target解決・cooldown/black判定・試行ループ責務を分離し、回帰時の追跡性を上げる。
+- Auto/Fixed provider、DXGI timeout特例、black frame threshold の挙動互換を維持する。
+
+### Changes
+- `Services/Capture/` 配下に Capture層の責務分離コンポーネントを新規追加。
+- `CaptureTargetResolver` で固定ウィンドウ解決を抽出（Step2）。
+- `CaptureProviderSelector` で provider順序決定を抽出（Step3）。
+- `ICapturePolicy` / `DefaultCapturePolicy` で cooldown・black判定ポリシーを抽出（Step4）。
+- `CaptureProviderStateStore` で provider runtime state を抽出（Step5）。
+- `CaptureAttemptCoordinator` で provider試行ループを抽出（Step6）。
+- `CaptureAttemptResult` / `CaptureExecutionTrace` / `CaptureExecutionOutcome` を追加し、失敗理由追跡を標準化（Step7）。
+- `Services/CaptureManager.cs` を facade 化し、内部を上記コンポーネントへ委譲。
+- captureログを `stage=capture` キー付きで統一し、skip/fail/black/success/all_failed を機械判定可能にした（Step1）。
+
+### Files Touched
+- `Services/CaptureManager.cs` — 旧直書き分岐を削除し、Capture責務コンポーネントへの委譲に変更。
+- `Services/Capture/CaptureAttemptCoordinator.cs` — provider試行ループと black/cooldown 判定連携を実装。
+- `Services/Capture/CaptureProviderSelector.cs` — Auto/Fixed provider順序決定を実装。
+- `Services/Capture/CaptureTargetResolver.cs` — CaptureRequest と固定ウィンドウ解決を実装。
+- `Services/Capture/ICapturePolicy.cs` — capture policy 契約を定義。
+- `Services/Capture/DefaultCapturePolicy.cs` — DXGI timeout特例を含む既定ポリシー実装。
+- `Services/Capture/CaptureProviderStateStore.cs` — provider状態（black count / cooldown / failure reason）管理を実装。
+- `Services/Capture/CaptureFailureReason.cs` — 失敗理由enumを追加。
+- `Services/Capture/CaptureAttemptResult.cs` — provider試行結果DTOを追加。
+- `Services/Capture/CaptureExecutionTrace.cs` — 実行trace要約を追加。
+- `Services/Capture/CaptureExecutionOutcome.cs` — capture実行結果DTOを追加。
+
+### Behavioral Impact
+- 外部I/F（`CaptureManager.Capture/GetCaptureBounds`）は維持。
+- Auto/Fixed provider 選択、DXGI timeout の cooldown非適用、black frame閾値による cooldown 開始の挙動は維持。
+- ログ粒度が増え、capture失敗時に provider別理由を追跡しやすくなった。
+
+### Risk & Mitigation
+- Risk: 分割後に cooldown/black判定条件が変わる可能性。
+- Mitigation: 旧条件（DXGI timeout除外、black threshold比較、cooldown秒数）を `DefaultCapturePolicy` に等価移植。
+- Risk: ログ増加によるノイズ。
+- Mitigation: `stage=capture` プレフィックスで機械抽出可能にし、調査時のみフィルタできる形に統一。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
