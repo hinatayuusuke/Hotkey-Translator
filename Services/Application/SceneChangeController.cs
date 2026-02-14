@@ -6,6 +6,7 @@ using System.Windows;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
+using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -36,6 +37,7 @@ internal sealed class SceneChangeController : IDisposable
     private readonly Func<bool> _isRunInProgress;
     private readonly Action<string> _appendLog;
     private readonly Action<bool> _setOverlayEnabledState;
+    private readonly FeatureSettingsProvider _featureSettingsProvider = new();
 
     private DispatcherTimer? _autoHideTimer;
     private bool _autoHideTickInProgress;
@@ -103,7 +105,8 @@ internal sealed class SceneChangeController : IDisposable
             return;
         }
 
-        var intervalMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        var scene = _featureSettingsProvider.GetScene(settings);
+        var intervalMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
         _autoHideTimer.Interval = TimeSpan.FromMilliseconds(intervalMs);
         if (!_autoHideTimer.IsEnabled)
         {
@@ -144,7 +147,8 @@ internal sealed class SceneChangeController : IDisposable
     public bool TryDrainPendingAutoTranslate()
     {
         var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoTranslate)
+        var scene = _featureSettingsProvider.GetScene(settings);
+        if (!scene.EnableSceneChangeAutoTranslate)
         {
             ClearPendingAutoTranslate("auto-translate disabled");
             return false;
@@ -160,7 +164,7 @@ internal sealed class SceneChangeController : IDisposable
             return false;
         }
 
-        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        var cooldownMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
         var now = DateTime.UtcNow;
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
@@ -318,12 +322,13 @@ internal sealed class SceneChangeController : IDisposable
         }
 
         var settings = _settingsService.Settings;
-        if (!ShouldWatchSceneChanges(settings))
+        var scene = _featureSettingsProvider.GetScene(settings);
+        if (!ShouldWatchSceneChanges(scene))
         {
             return;
         }
 
-        if (settings.EnableSceneChangeAutoTranslate && TryDrainPendingAutoTranslate())
+        if (scene.EnableSceneChangeAutoTranslate && TryDrainPendingAutoTranslate())
         {
             // WHY: A drain already scheduled a run for this tick; skip duplicate scene-change processing.
             return;
@@ -422,13 +427,13 @@ internal sealed class SceneChangeController : IDisposable
 
             _loggerAccessor()?.Info($"Scene change Stage A passed (diff {visualDiff}, threshold {visualThreshold}).");
 
-            if (!settings.EnableSceneChangeSemanticGate || _snapshotServiceAccessor() == null)
+            if (!scene.EnableSceneChangeSemanticGate || _snapshotServiceAccessor() == null)
             {
                 TriggerSceneChangeAction(settings, visualDiff, visualThreshold, semanticPayload: null);
                 return;
             }
 
-            await HandleSceneChangeWithSemanticGateAsync(settings, visualDiff, visualThreshold).ConfigureAwait(true);
+            await HandleSceneChangeWithSemanticGateAsync(settings, scene, visualDiff, visualThreshold).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -440,8 +445,17 @@ internal sealed class SceneChangeController : IDisposable
         }
     }
 
-    private async Task HandleSceneChangeWithSemanticGateAsync(AppSettings settings, int diff, int threshold)
+    private async Task HandleSceneChangeWithSemanticGateAsync(
+        AppSettings settings,
+        SceneFeatureSettings scene,
+        int diff,
+        int threshold)
     {
+        if (!scene.EnableSceneChangeSemanticGate)
+        {
+            return;
+        }
+
         var snapshotService = _snapshotServiceAccessor();
         if (snapshotService == null)
         {
@@ -518,24 +532,30 @@ internal sealed class SceneChangeController : IDisposable
 
     private bool ShouldWatchSceneChanges(AppSettings settings)
     {
-        if (settings.EnableSceneChangeAutoTranslate)
+        return ShouldWatchSceneChanges(_featureSettingsProvider.GetScene(settings));
+    }
+
+    private bool ShouldWatchSceneChanges(SceneFeatureSettings scene)
+    {
+        if (scene.EnableSceneChangeAutoTranslate)
         {
             return true;
         }
 
-        return settings.EnableSceneChangeAutoHide && _overlayVisible;
+        return scene.EnableSceneChangeAutoHide && _overlayVisible;
     }
 
     private void QueueSceneChangeAutoTranslate(int diff, int threshold, SceneTextSnapshot? semanticPayload)
     {
         var settings = _settingsService.Settings;
-        if (!settings.EnableSceneChangeAutoTranslate)
+        var scene = _featureSettingsProvider.GetScene(settings);
+        if (!scene.EnableSceneChangeAutoTranslate)
         {
             ClearPendingAutoTranslate("auto-translate disabled");
             return;
         }
 
-        var cooldownMs = Math.Clamp(settings.SceneChangeWatchIntervalMs, 200, 10000);
+        var cooldownMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
         var now = DateTime.UtcNow;
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)

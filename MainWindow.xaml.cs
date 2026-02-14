@@ -15,6 +15,7 @@ using System.Windows.Media.Imaging;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
+using Hotkey_Translator.Services.Settings;
 using Hotkey_Translator.UI;
 using Hotkey_Translator.ViewModels;
 
@@ -514,7 +515,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void ReloadLlamaModelOptions(AppSettings settings)
     {
-        var fallback = SettingsUiController.NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
+        var fallback = SettingsHostNormalizer.NormalizeLlamaModelFileName(DefaultLlamaModelFileName);
         var selectedFromViewModel = _mainWindowViewModel.Settings.LlamaSelectedModelFileName;
         var selectedModel = string.IsNullOrWhiteSpace(selectedFromViewModel)
             ? settings.LlamaSelectedModelFileName

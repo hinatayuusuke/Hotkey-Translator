@@ -9101,3 +9101,94 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を8秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 14:41 (Asia/Taipei) — Layer5実装案作成（Settings層モジュール化計画）**
+
+### Summary
+- Master Plan を参考に、第五層（Settings）向けの段階実装案を `Doc/Refactoring_Layer5_Settings_Plan.md` として新規作成した。
+
+### Context / Goal
+- `AppSettings` / `SettingsService` / `SettingsUiController` に分散している正規化・互換・秘匿化責務を集約する計画を明文化する。
+- 既存 `settings.json` 互換を維持しつつ、設定追加時の保守コストを下げる。
+
+### Changes
+- `Doc/Refactoring_Layer5_Settings_Plan.md` を新規作成。
+- 提案アーキテクチャとして `ISettingsRepository` / `ISecretProtector` / `AppSettingsValidator` / `AppSettingsMigrator` / `FeatureSettings` / `SettingsFacade` を定義。
+- Step1〜Step7（ログ固定→責務分離→validator化→migrator化→呼び出し口統一→旧経路削除）を段階化。
+- 非機能要件、リスク緩和、影響範囲、DoD、ロールバック方針を整理。
+
+### Files Touched
+- `Doc/Refactoring_Layer5_Settings_Plan.md` — 層5向け実装案をテンプレート準拠で追加。
+
+### Behavioral Impact
+- 実行時挙動の変更はない（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 現行の正規化責務分散を過小評価すると計画の実効性が落ちる可能性。
+- Mitigation: `SettingsService` と `SettingsUiController` の実装実態（DPAPI、Normalize群、互換処理）を踏まえて責務境界を明示した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 15:00 (Asia/Taipei) — Layer5 Settings Step5/Step7 実装（FeatureSettings適用と旧正規化経路削除）**
+
+### Summary
+- Layer5 Settings 計画の未完了だった Step5/Step7 を実装し、FeatureSettings の利用拡大と SettingsUiController の旧static正規化経路削除を完了した。
+
+### Context / Goal
+- SettingsFacade + Validator + Migrator へ設定正規化責務を一本化し、UI層の互換API依存をなくす。
+- Resource/Scene/Pipeline 実行系で機能単位設定ビューを使い、AppSettings 直接依存を段階的に縮小する。
+
+### Changes
+- ResourceHostFacade に FeatureSettingsProvider を導入し、Host起動条件判定を HostFeatureSettings 経由へ変更。
+- ResourceHostFacade の host config 生成時正規化を SettingsUiController.Normalize* から SettingsHostNormalizer 直接呼び出しへ置換。
+- SceneChangeController に FeatureSettingsProvider を導入し、watcher有効判定・クールダウン・semantic gate 判定を SceneFeatureSettings 経由へ変更。
+- MainWindowRunCoordinator に FeatureSettingsProvider を導入し、scene semantic payload 再利用判定で SceneFeatureSettings を利用。
+- MainWindow.xaml.cs の Llamaモデル名fallback正規化を SettingsHostNormalizer 直接呼び出しへ置換。
+- SettingsUiController から互換static正規化メソッド群（Normalize*）を削除。
+- HotkeyDefaultsRule の未使用コードを整理。
+
+### Files Touched
+- Services/Application/ResourceHostFacade.cs — Host判定を feature view 経由へ変更し、旧UI static正規化依存を除去。
+- Services/Application/SceneChangeController.cs — Scene watcher 判定・間隔参照を SceneFeatureSettings 経由へ変更。
+- Services/Application/MainWindowRunCoordinator.cs — Scene semantic payload 再利用判定に feature view を適用。
+- Services/Application/SettingsUiController.cs — 旧static正規化APIを削除し、UI保存トリガ責務に限定。
+- MainWindow.xaml.cs — Llamaモデル名正規化呼び出し先を SettingsHostNormalizer に変更。
+- Services/Settings/Rules/HotkeyDefaultsRule.cs — 未使用メソッド/usingを削除。
+
+### Behavioral Impact
+- 設定ロード/保存時の正規化導線は SettingsFacade 経由に統一され、UI層の静的互換経路は廃止された。
+- Host起動判定とScene監視判定が feature settings view に集約され、将来の設定追加時の影響点が明確になった。
+
+### Risk & Mitigation
+- Risk: 判定経路変更によりScene watcherやHost起動タイミングが変わる可能性。
+- Mitigation: 既存条件式と同じロジックを feature view へ写像し、dotnet build で回帰の一次確認を実施。
+- Risk: static正規化API削除漏れによるビルドエラー。
+- Mitigation: 参照箇所を全検索し、呼び出し先を SettingsHostNormalizer に全面置換した。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行: 0 warning / 0 error。
+**2026-02-14 15:01 (Asia/Taipei) — Layer5 Step5追補（PipelineOrchestratorへのFeatureSettings適用）**
+
+### Summary
+- Layer5 Step5 の対象を補完し、PipelineOrchestrator でも FeatureSettings 参照を開始した。
+
+### Context / Goal
+- Step5 の「主要利用箇所で feature view 参照を開始」を PipelineOrchestrator まで拡張する。
+- 設定取得の責務境界を揃えて、今後の設定追加時の影響範囲を限定する。
+
+### Changes
+- PipelineOrchestrator に FeatureSettingsProvider を導入。
+- 実行時に GetOcr(settings) を取得し、Paddle系の信頼度フィルタログ分岐で OcrFeatureSettings.OcrEngine を参照するよう変更。
+
+### Files Touched
+- Services/PipelineOrchestrator.cs — OCR機能設定を feature view 経由で参照する導線を追加。
+
+### Behavioral Impact
+- OCR実行結果自体は変えず、Paddle系判定の参照元を FeatureSettings に寄せた。
+
+### Risk & Mitigation
+- Risk: OCRログ分岐条件の変更によりログ出力頻度が変わる可能性。
+- Mitigation: 既存のPaddle系条件と同義の OcrEngine 判定を使用し、回帰を最小化。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj 実行: 0 warning / 0 error。
+- dotnet run --project Hotkey-Translator.csproj --no-build を8秒監視: RUNNING_OK_NO_EARLY_CRASH。

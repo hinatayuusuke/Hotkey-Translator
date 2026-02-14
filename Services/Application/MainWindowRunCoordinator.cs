@@ -3,6 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
+using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -16,6 +17,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly Func<SceneTextSnapshot?> _consumePendingSemanticPayload;
     private readonly Func<bool> _tryDrainPendingSceneAutoTranslate;
+    private readonly FeatureSettingsProvider _featureSettingsProvider = new();
 
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
@@ -70,8 +72,15 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
         try
         {
+            var sceneSettings = _featureSettingsProvider.GetScene(settings);
             var payloadCandidate = semanticPayload ?? _consumePendingSemanticPayload();
-            if (TryResolveSceneSemanticPayload(settings, options, payloadCandidate, out var reusablePayload, out var reason))
+            if (TryResolveSceneSemanticPayload(
+                    settings,
+                    sceneSettings,
+                    options,
+                    payloadCandidate,
+                    out var reusablePayload,
+                    out var reason))
             {
                 _loggerAccessor()?.Info(
                     $"Scene semantic payload reused for auto-translate (units={reusablePayload.ReadingUnits.Count}, age={(DateTime.UtcNow - reusablePayload.CapturedAtUtc).TotalMilliseconds:0}ms).");
@@ -116,6 +125,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
     private static bool TryResolveSceneSemanticPayload(
         AppSettings settings,
+        SceneFeatureSettings sceneSettings,
         ForceRunOptions options,
         SceneTextSnapshot? payload,
         out SceneTextSnapshot reusablePayload,
@@ -136,7 +146,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
             return false;
         }
 
-        if (!settings.EnableSceneChangeSemanticGate)
+        if (!sceneSettings.EnableSceneChangeSemanticGate)
         {
             reason = "semantic gate disabled";
             return false;

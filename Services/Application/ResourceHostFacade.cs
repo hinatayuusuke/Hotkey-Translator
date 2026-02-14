@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.GrpcHost;
+using Hotkey_Translator.Services.Settings;
+using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -26,6 +28,7 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly CTranslate2GrpcHost _ct2GrpcHost;
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
+    private readonly FeatureSettingsProvider _featureSettingsProvider = new();
 
     private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
@@ -178,25 +181,34 @@ internal sealed class ResourceHostFacade : IDisposable
         };
     }
 
-    private static bool ShouldLoadPaddle(AppSettings settings)
+    private bool ShouldLoadPaddle(AppSettings settings)
     {
-        return settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost;
+        var host = _featureSettingsProvider.GetHost(settings);
+        return host.OcrEngine == OcrEngineKind.Paddle && host.EnablePaddleGrpcHost;
     }
 
-    private static bool ShouldLoadPaddleVl(AppSettings settings)
+    private bool ShouldLoadPaddleVl(AppSettings settings)
     {
-        return settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost;
+        var host = _featureSettingsProvider.GetHost(settings);
+        return host.OcrEngine == OcrEngineKind.PaddleVllm && host.EnablePaddleVlGrpcHost;
     }
 
-    private static bool ShouldLoadCTranslate2(AppSettings settings)
+    private bool ShouldLoadCTranslate2(AppSettings settings)
     {
+        var host = _featureSettingsProvider.GetHost(settings);
+        if (!host.EnableCTranslate2)
+        {
+            return false;
+        }
+
         // WHY: CTranslate2 translation path is retired; keep host disabled even if legacy settings remain.
         return false;
     }
 
-    private static bool ShouldLoadLlama(AppSettings settings)
+    private bool ShouldLoadLlama(AppSettings settings)
     {
-        return settings.EnableLlamaCppTranslation;
+        var host = _featureSettingsProvider.GetHost(settings);
+        return host.EnableLlamaCppTranslation;
     }
 
     private void DisablePaddleOcr(AppSettings settings)
@@ -225,7 +237,7 @@ internal sealed class ResourceHostFacade : IDisposable
 
     private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
     {
-        SettingsUiController.NormalizeCTranslate2Settings(settings);
+        _ = SettingsHostNormalizer.NormalizeCTranslate2Settings(settings);
         return new CTranslate2HostConfig(
             settings.CTranslate2Device,
             settings.CTranslate2Precision,
@@ -241,7 +253,7 @@ internal sealed class ResourceHostFacade : IDisposable
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
     {
-        SettingsUiController.NormalizeLlamaSettings(settings);
+        _ = SettingsHostNormalizer.NormalizeLlamaSettings(settings);
         return new LlamaHostConfig(
             settings.LlamaHost,
             settings.LlamaPort,

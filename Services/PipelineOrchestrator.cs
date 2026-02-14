@@ -9,6 +9,7 @@ using System.Windows;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Orchestration;
 using Hotkey_Translator.Services.Orchestration.Stages;
+using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services;
 
@@ -43,6 +44,7 @@ public sealed class PipelineOrchestrator
     private readonly OverlayPresenter _overlayPresenter;
     private readonly OverlayStage _overlayStage;
     private readonly SettingsService _settingsService;
+    private readonly FeatureSettingsProvider _featureSettingsProvider = new();
     private readonly AppLogger _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
@@ -112,6 +114,7 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
+            var ocrFeatureSettings = _featureSettingsProvider.GetOcr(settings);
             var context = new PipelineExecutionContext(settings, options, DateTimeOffset.UtcNow);
             context.FinalStageResult = PipelineStageResult.ContinueExecution();
             var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
@@ -232,7 +235,9 @@ public sealed class PipelineOrchestrator
                     perfProbe.RecordGroup(ocrStageOutput.GroupElapsedMs);
                 }
                 _logger.Info($"OCR completed: {ocrStageOutput.RawLineCount} lines in {ocrStageOutput.OcrElapsedMs} ms.");
-                if (ocrStageOutput.PaddleConfidenceThreshold.HasValue &&
+                if ((ocrFeatureSettings.OcrEngine == OcrEngineKind.Paddle ||
+                     ocrFeatureSettings.OcrEngine == OcrEngineKind.PaddleVllm) &&
+                    ocrStageOutput.PaddleConfidenceThreshold.HasValue &&
                     ocrStageOutput.FilteredLineCount != ocrStageOutput.RawLineCount)
                 {
                     var threshold = ocrStageOutput.PaddleConfidenceThreshold.Value;
