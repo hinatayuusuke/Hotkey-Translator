@@ -164,6 +164,12 @@ class PaddleOcrVlEngine:
         return candidates
 
     def _parse_page_dict(self, page: dict[str, Any]) -> list[dict[str, Any]]:
+        wrapped = page.get("res")
+        if isinstance(wrapped, dict):
+            parsed_wrapped = self._parse_page_dict(wrapped)
+            if parsed_wrapped:
+                return parsed_wrapped
+
         direct_lines = page.get("lines")
         if isinstance(direct_lines, list):
             parsed_direct = self._parse_line_list(direct_lines)
@@ -175,6 +181,12 @@ class PaddleOcrVlEngine:
             parsed_nested = self._parse_line_list(nested)
             if parsed_nested:
                 return parsed_nested
+
+        parsing_res_list = page.get("parsing_res_list")
+        if isinstance(parsing_res_list, list):
+            parsed_blocks = self._parse_parsing_res_list(parsing_res_list)
+            if parsed_blocks:
+                return parsed_blocks
 
         texts = page.get("rec_texts") or page.get("texts") or []
         scores = page.get("rec_scores") or page.get("scores") or []
@@ -201,6 +213,48 @@ class PaddleOcrVlEngine:
                     "confidence": float(score) if score is not None else 1.0,
                 }
             )
+        return lines
+
+    def _parse_parsing_res_list(self, items: list[Any]) -> list[dict[str, Any]]:
+        lines: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            raw_text = item.get("block_content") or item.get("text")
+            text = raw_text.strip() if isinstance(raw_text, str) else str(raw_text or "").strip()
+            if not text:
+                continue
+
+            box: list[float] | None = None
+            polygon = item.get("block_polygon_points") or item.get("polygon_points")
+            if isinstance(polygon, list) and len(polygon) >= 3:
+                try:
+                    box = self._poly_to_ltrbwh(polygon)
+                except Exception:
+                    box = None
+
+            if box is None:
+                raw_bbox = item.get("block_bbox") or item.get("bbox") or item.get("box")
+                box = self._bbox_to_ltrbwh(raw_bbox)
+
+            if box is None or box[2] <= 0 or box[3] <= 0:
+                continue
+
+            score = item.get("score") or item.get("confidence")
+            try:
+                confidence = float(score) if score is not None else 1.0
+            except (TypeError, ValueError):
+                confidence = 1.0
+
+            lines.append(
+                {
+                    "text": text,
+                    "box": box,
+                    "confidence": confidence,
+                }
+            )
+
         return lines
 
     @staticmethod
@@ -240,6 +294,27 @@ class PaddleOcrVlEngine:
                 }
             )
         return lines
+
+    @staticmethod
+    def _bbox_to_ltrbwh(raw_bbox: Any) -> list[float] | None:
+        if not isinstance(raw_bbox, list) or len(raw_bbox) < 4:
+            return None
+
+        try:
+            x1 = float(raw_bbox[0])
+            y1 = float(raw_bbox[1])
+            x2 = float(raw_bbox[2])
+            y2 = float(raw_bbox[3])
+        except (TypeError, ValueError):
+            return None
+
+        if x2 > x1 and y2 > y1:
+            return [x1, y1, x2 - x1, y2 - y1]
+
+        if x2 <= 0 or y2 <= 0:
+            return None
+
+        return [x1, y1, x2, y2]
 
     @staticmethod
     def _poly_to_ltrbwh(poly: Any) -> list[float]:
