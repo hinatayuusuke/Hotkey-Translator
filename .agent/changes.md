@@ -10015,3 +10015,189 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -o .\\bin\\_verify_build を実行し、0 warnings / 0 errors を確認。
+**2026-02-14 22:53 (Asia/Taipei) — 配布方式と初回Setupウィザードの大まか案を作成**
+
+### Summary
+- Setup.exe本線 + 初回Setupウィザードのハイブリッド配布案を Doc/ に新規作成した（CTranslate2除外前提）。
+
+### Context / Goal
+- インストーラー形式と実行後Setupウィザードのどちらを採用すべきかを、配布方式まで含めて整理する必要があった。
+- CTranslate2 を破棄する前提で、初期セットアップ計画から対象外にする方針を明文化する。
+
+### Changes
+- 配布方式比較（インストーラーのみ / ウィザードのみ / ハイブリッド）を整理。
+- 推奨方式をハイブリッド（Setup.exe + First-run Wizard）として明記。
+- 初回判定、ウィザードステップ、CTranslate2除外、DoD を含む計画書を新規追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — 配布・初回Setup戦略の実装計画を新規作成。
+
+### Behavioral Impact
+- 実行挙動への変更はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 計画段階のため実装制約との乖離が発生する可能性。
+- Mitigation: 実装時にStep単位で検証し、必要な差分を同Docへ追記更新する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみのため）。
+**2026-02-14 22:59 (Asia/Taipei) — 配布計画にuv運用方針とEULA注意を追記**
+
+### Summary
+- Distribution_Installer_FirstRunWizard_Plan に、ローカルuv運用方針とEULA/ライセンス同意フロー要件を追記した。
+
+### Context / Goal
+- Pythonフォルダ同梱 + Setup経由で依存/モデル準備する方針を計画へ反映する必要があった。
+- 配布時のEULA・第三者ライセンス・モデル規約同意を先に設計へ組み込む。
+
+### Changes
+- Python/uv 運用方針（ローカル同梱、グローバル非依存、初回 uv sync）を追加。
+- EULA/第三者ライセンス/モデル規約の同意設計を追加。
+- 実装ステップに uv 依存同期、モデル導線、NOTICE同梱を追加。
+- 非機能・リスク・DoD にコンプライアンス項目を追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — 配布計画へuv/EULA要件を追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 法務要件の解釈差で実装時に追加修正が必要になる可能性。
+- Mitigation: リリース前に法務チェックリスト（EULA/OSS/モデル規約）を運用し、同Docへ差分反映する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 23:06 (Asia/Taipei) — 配布計画へWinRT OCR昇格導入フローを追記**
+
+### Summary
+- 配布計画に、WinRT OCR Capability を管理者昇格PowerShellで導入する任意フローを追加した。
+
+### Context / Goal
+- 言語パック全体ではなく OCR認識エンジンのみを導入する方針を計画へ反映する必要があった。
+- EULA/注意喚起付きで安全に実行できる導線を先に定義する。
+
+### Changes
+- WinRT OCR Capability の事前チェック要件を追加。
+- Add-WindowsCapability を用いた昇格PowerShell実行設計（注意ダイアログ/同意/再チェック）を追加。
+- 実装ステップへ WinRT導線（任意）を追加し、後続ステップ番号を調整。
+- リスク/DoD に昇格実行失敗時の緩和策と完了条件を追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — WinRT OCR導入項目（昇格PowerShell）を追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 管理者権限や組織ポリシーで昇格実行が失敗する可能性。
+- Mitigation: 導入を任意にし、失敗時は手動導入手順と代替OCR導線を提示する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 23:13 (Asia/Taipei) — 配布計画へLlamaCpp初回セットアップ要件を追記**
+
+### Summary
+- Distribution_Installer_FirstRunWizard_Plan に LlamaCpp の初回チェック/起動確認/フォールバック要件を追加した。
+
+### Context / Goal
+- 初回Setup設計で LlamaCpp を明示的に考慮し、導入失敗時でもセットアップを完了できる方針を定義する必要があった。
+
+### Changes
+- 初回ウィザード責務に Paddle/WinRT/LlamaCpp の疎通対象を明記。
+- エラー/バリデーションへ Llama実行ファイル、モデル存在、起動疎通チェックを追加。
+- 疎通テスト手順へ Llama起動テストを追加。
+- リスク/DoD に Llama失敗時フォールバック要件を追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — LlamaCpp考慮項目を追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: Llamaモデル未配置や起動失敗で初回設定が中断する可能性。
+- Mitigation: Llamaを必須化せず、無効で続行できる導線を計画に明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 23:17 (Asia/Taipei) — 配布計画へLlama同梱とローカル翻訳選択導線を反映**
+
+### Summary
+- Distribution_Installer_FirstRunWizard_Plan に、LlamaCppバイナリ同梱と初回Setupでのローカル翻訳選択 + uvモデルDL方針を反映した。
+
+### Context / Goal
+- LlamaCppバイナリーを同梱し、初回セットアップでローカル翻訳選択時にモデルを準備する運用方針を明確化する必要があった。
+
+### Changes
+- インストーラー責務へ LlamaCppバイナリ同梱を追加。
+- Python/uv運用方針を「ローカル翻訳選択時にuvでLlamaモデルDL」に更新。
+- ウィザードStep3を「ローカル/クラウド選択」へ拡張。
+- 実装手順にローカル翻訳選択導線と LlamaモデルDL（uv経由）を追記。
+- インストーラー整備ステップに Llamaバイナリ配置反映を追記。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — Llama同梱/ローカル翻訳選択/uvモデルDL方針を追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: ローカル翻訳選択時のモデルDL失敗で初回導線が詰まる可能性。
+- Mitigation: 既存方針どおり任意DL + 再試行 + Llama無効で続行導線を維持する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 23:21 (Asia/Taipei) — 配布計画の自己レビュー指摘を反映**
+
+### Summary
+- Distribution_Installer_FirstRunWizard_Plan に自己レビューで指摘した矛盾/不足（Llama順序、uv役割、ライセンス、WinRT前提、DoD分岐）を反映した。
+
+### Context / Goal
+- 計画書内の実装順矛盾と要件曖昧さを解消し、実装時の手戻りを減らす必要があった。
+
+### Changes
+- Llama疎通テスト順序を整理（Step4はモデル既存時のみ、Step6でDL後に本テスト）。
+- uv sync とモデルDL処理を明確分離し、uv run <model_download_script> と検証要件を明記。
+- Llama再配布ライセンスとモデル別同意記録の要件を追記。
+- WinRT昇格導線に事前チェック（Capability/言語タグ/オンライン）を追加。
+- DoDに「ローカル翻訳選択有無での分岐条件」を追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — 自己レビュー反映の修正追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時にコマンド詳細が確定していない箇所が残る。
+- Mitigation: uv run <model_download_script> は実装時に実体スクリプト名を確定し、同Docへ確定値を反映する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-14 23:25 (Asia/Taipei) — 配布計画へPaddle/Paddle-VLモデル導線を追記**
+
+### Summary
+- Distribution_Installer_FirstRunWizard_Plan に PaddleOCR / PaddleOCR-VL モデルダウンロード導線を明示した。
+
+### Context / Goal
+- 初回セットアップで Paddle系モデル取得が主要失敗点になるため、実装計画に明示して漏れを防ぐ必要があった。
+
+### Changes
+- 初回ウィザード責務に Paddle/Paddle-VL モデル導線の明示を追加。
+- モデルDL方針を Llamaのみでなく Paddle/Paddle-VL も対象に拡張。
+- エラー/バリデーションへ Paddle系モデル未導入時の案内とフォールバック方針を追記。
+- 実装手順（モデル導線）とDoDに Paddle/Paddle-VL 項目を追加。
+
+### Files Touched
+- Doc/Distribution_Installer_FirstRunWizard_Plan.md — PaddleOCR/PaddleOCR-VL のモデル導入フローを追記。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: モデル容量増加で初回セットアップが長くなる可能性。
+- Mitigation: 任意DL・進捗表示・再試行・後回し導線を維持する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
