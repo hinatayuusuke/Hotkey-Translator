@@ -8711,3 +8711,42 @@ aw_tokens > soft_no_split_tokens.
 - `dotnet build Hotkey-Translator.csproj` 実行: 2 warnings / 0 error（起動中プロセスによる exe lock 警告）。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
 - `MainWindow.xaml.cs` 行数確認: 972行。
+**2026-02-14 12:16 (Asia/Taipei) — MVVM次段階実装（ログ表示トリム責務の外出し）**
+
+### Summary
+- LogBox への payload 反映・行数トリム責務を `UiLogViewAdapter` へ移し、`MainWindow.xaml.cs` からログ整形ユーティリティ群を削除した。
+
+### Context / Goal
+- MainWindow の残存UIロジックを削り、Doc/MVVM_Implementation_Plan.md の縮小目標（500–900レンジ）に近づける。
+- `UiLogController` の flush callback を View 専用アダプタへ分離し、MainWindow の責務を委譲中心にする。
+
+### Changes
+- `Services/Application/UiLogViewAdapter.cs` を新規追加。
+- `FlushPayload` / `TrimLogLines` / 改行カウント処理を集約。
+- `MainWindow.xaml.cs` で `_uiLogViewAdapter` フィールドを追加し、`UiLogController` 初期化時に `FlushPayload` を注入。
+- `MainWindow.xaml.cs` から以下を削除。
+- `_logLineCount` フィールド
+- `FlushLogPayload`
+- `TrimLogLines`
+- `IndexOfNthNewline`
+- `CountNewlines`
+- `CountLines`
+
+### Files Touched
+- `Services/Application/UiLogViewAdapter.cs` — 新規。LogBox表示・行数制御のアダプタを追加。
+- `MainWindow.xaml.cs` — UiLogController の flush 経路を adapter 経由へ変更し、旧ログトリム実装を削除。
+
+### Behavioral Impact
+- ログ表示のユーザー挙動（追記、自動スクロール、最大行数超過時の先頭削除）は維持される。
+- MainWindow の行数がさらに減り、UI補助ロジックの分離が進む。
+
+### Risk & Mitigation
+- Risk: アダプタ経由移行でログトリム境界が変わる可能性。
+- Mitigation: 既存アルゴリズムを同値移植し、改行ベースの行数計算・切り詰め順序を維持。
+- Risk: LogBox 未初期化時のNull参照。
+- Mitigation: `Func<TextBox?>` アクセサで毎回 null ガードを実施。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+- `MainWindow.xaml.cs` 行数確認: 901行。

@@ -35,6 +35,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private OcrEngine? _ocrEngine;
     private SceneTextSnapshotService? _sceneTextSnapshotService;
     private readonly HotkeyController _hotkeyController;
+    private readonly UiLogViewAdapter _uiLogViewAdapter;
     private readonly UiLogController _uiLogController;
     private readonly SceneChangeController _sceneChangeController;
     private readonly SettingsUiController _settingsUiController;
@@ -51,7 +52,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private bool _isApplyingSettings;
-    private int _logLineCount;
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
@@ -89,7 +89,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ShowLoadFailure);
         DataContext = _mainWindowViewModel;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
-        _uiLogController = new UiLogController(Dispatcher, FlushLogPayload, LogFlushIntervalMs);
+        _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
+        _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
         SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
@@ -867,92 +868,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void InitializeLogBuffer()
     {
         _uiLogController.Start();
-    }
-
-    private void FlushLogPayload(string payload)
-    {
-        if (LogBox == null)
-        {
-            return;
-        }
-
-        LogBox.AppendText(payload);
-        _logLineCount += CountNewlines(payload);
-        TrimLogLines(MaxLogLines);
-        LogBox.ScrollToEnd();
-    }
-
-    private void TrimLogLines(int maxLines)
-    {
-        if (maxLines <= 0 || _logLineCount <= maxLines || LogBox == null)
-        {
-            return;
-        }
-
-        var removeLines = _logLineCount - maxLines;
-        var text = LogBox.Text;
-        var cutIndex = IndexOfNthNewline(text, removeLines);
-        if (cutIndex < 0)
-        {
-            _logLineCount = CountLines(text);
-            return;
-        }
-
-        LogBox.Text = text[(cutIndex + 1)..];
-        _logLineCount = maxLines;
-    }
-
-    private static int IndexOfNthNewline(string text, int count)
-    {
-        if (string.IsNullOrEmpty(text) || count <= 0)
-        {
-            return -1;
-        }
-
-        var index = -1;
-        var remaining = count;
-        while (remaining > 0)
-        {
-            index = text.IndexOf('\n', index + 1);
-            if (index < 0)
-            {
-                return -1;
-            }
-
-            remaining--;
-        }
-
-        return index;
-    }
-
-    private static int CountNewlines(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return 0;
-        }
-
-        var count = 0;
-        foreach (var ch in text)
-        {
-            if (ch == '\n')
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private static int CountLines(string text)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return 0;
-        }
-
-        var lines = CountNewlines(text);
-        return text.EndsWith("\n", StringComparison.Ordinal) ? lines : lines + 1;
     }
 
     private void UpdateLoggingState(bool enabled)
