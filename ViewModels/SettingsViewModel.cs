@@ -75,9 +75,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
+    [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
     [ObservableProperty] private string _iouThresholdText = string.Empty;
     [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
+    [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetUnclipRatioText = string.Empty;
@@ -185,9 +187,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
+            EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
             IouThresholdText = settings.OcrIouThreshold.ToString("0.00");
             OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
+            SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
             PaddleTextDetUnclipRatioText = settings.PaddleTextDetUnclipRatio.ToString("0.###");
@@ -285,6 +289,15 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
+        settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
+        if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
+        {
+            settings.SceneChangeQuietWindowMs = 450;
+        }
+        else if (int.TryParse(SceneChangeQuietWindowMsText.Trim(), out var quietWindowMs))
+        {
+            settings.SceneChangeQuietWindowMs = quietWindowMs;
+        }
         if (int.TryParse(PhashThresholdText.Trim(), out var phashThreshold))
         {
             settings.PhashThreshold = phashThreshold;
@@ -547,6 +560,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeAutoHideChanged(bool value)
     {
         if (_suspendSceneModeSync)

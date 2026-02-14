@@ -20,7 +20,9 @@ internal sealed class FeatureSettingsProvider
             settings.EnableSceneChangeAutoHide,
             settings.EnableSceneChangeAutoTranslate,
             settings.EnableSceneChangeSemanticGate,
-            settings.SceneChangeWatchIntervalMs);
+            settings.SceneChangeWatchIntervalMs,
+            settings.EnableSceneChangeQuietWindow,
+            settings.SceneChangeQuietWindowMs);
     }
 
     public OcrFeatureSettings GetOcr(AppSettings settings)

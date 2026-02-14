@@ -14,6 +14,9 @@ internal sealed class SceneChangeController : IDisposable
 {
     private const int OverlayBaselineDelayMs = 150;
     private const int SceneChangePendingLogSuppressionMs = 2000;
+    private const int QuietWindowDefaultMs = 450;
+    private const int QuietWindowMinMs = 100;
+    private const int QuietWindowMaxMs = 3000;
 
     // WHY: Keep watcher-triggered runs on the same option profile used before extraction for behavior compatibility.
     private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
@@ -52,6 +55,8 @@ internal sealed class SceneChangeController : IDisposable
     private string? _sceneChangeAutoTranslatePendingReason;
     private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
     private SceneTextSnapshot? _sceneChangeAutoTranslatePendingPayload;
+    private bool _quietWindowPending;
+    private DateTime _quietWindowLastChangeUtc = DateTime.MinValue;
     private SceneTextSnapshot? _lastSceneTextSnapshot;
     private int _semanticCandidateStreak;
     private bool _overlayVisible;
@@ -159,13 +164,26 @@ internal sealed class SceneChangeController : IDisposable
             return false;
         }
 
+        var now = DateTime.UtcNow;
+        if (scene.EnableSceneChangeQuietWindow && _quietWindowPending)
+        {
+            var quietWindowMs = ResolveQuietWindowMs(scene);
+            if (_quietWindowLastChangeUtc == DateTime.MinValue ||
+                (now - _quietWindowLastChangeUtc).TotalMilliseconds < quietWindowMs)
+            {
+                return false;
+            }
+
+            _loggerAccessor()?.Info(
+                $"stage=scene_change event=quiet_ready quiet_ms={quietWindowMs} waited_ms={(now - _quietWindowLastChangeUtc).TotalMilliseconds:0}.");
+        }
+
         if (_isRunInProgress())
         {
             return false;
         }
 
         var cooldownMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
-        var now = DateTime.UtcNow;
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
         {
@@ -419,7 +437,10 @@ internal sealed class SceneChangeController : IDisposable
                 if (settings.EnableSceneChangeSemanticGate)
                 {
                     _semanticCandidateStreak = 0;
-                    _sceneChangeAutoTranslatePendingPayload = null;
+                    if (!_sceneChangeAutoTranslatePending)
+                    {
+                        _sceneChangeAutoTranslatePendingPayload = null;
+                    }
                 }
 
                 return;
@@ -466,7 +487,11 @@ internal sealed class SceneChangeController : IDisposable
         if (snapshot == null)
         {
             _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
+            if (!_sceneChangeAutoTranslatePending)
+            {
+                _sceneChangeAutoTranslatePendingPayload = null;
+            }
+
             _loggerAccessor()?.Info("Scene change Stage B skipped (no OCR snapshot).");
             return;
         }
@@ -476,7 +501,11 @@ internal sealed class SceneChangeController : IDisposable
             // WHY: Initialize semantic baseline first so watcher start does not trigger auto actions.
             _lastSceneTextSnapshot = snapshot;
             _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
+            if (!_sceneChangeAutoTranslatePending)
+            {
+                _sceneChangeAutoTranslatePendingPayload = null;
+            }
+
             _loggerAccessor()?.Info("Scene change Stage B baseline initialized.");
             return;
         }
@@ -485,7 +514,11 @@ internal sealed class SceneChangeController : IDisposable
         if (!comparison.SemanticChanged)
         {
             _semanticCandidateStreak = 0;
-            _sceneChangeAutoTranslatePendingPayload = null;
+            if (!_sceneChangeAutoTranslatePending)
+            {
+                _sceneChangeAutoTranslatePendingPayload = null;
+            }
+
             _lastSceneTextSnapshot = snapshot;
             _loggerAccessor()?.Info($"Scene change Stage B blocked: {comparison.Reason}.");
             return;
@@ -555,8 +588,14 @@ internal sealed class SceneChangeController : IDisposable
             return;
         }
 
-        var cooldownMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
         var now = DateTime.UtcNow;
+        if (scene.EnableSceneChangeQuietWindow)
+        {
+            MarkQuietWindowPending(scene, diff, threshold, semanticPayload, now);
+            return;
+        }
+
+        var cooldownMs = Math.Clamp(scene.SceneChangeWatchIntervalMs, 200, 10000);
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
         {
@@ -578,6 +617,23 @@ internal sealed class SceneChangeController : IDisposable
         _lastSceneChangeAutoTranslateRequestUtc = now;
         _appendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
         _ = _runOnceAsync(AutoSceneChangeRunOptions, semanticPayload);
+    }
+
+    private void MarkQuietWindowPending(
+        SceneFeatureSettings scene,
+        int diff,
+        int threshold,
+        SceneTextSnapshot? semanticPayload,
+        DateTime now)
+    {
+        var wasPending = _quietWindowPending;
+        _quietWindowPending = true;
+        _quietWindowLastChangeUtc = now;
+        MarkPendingAutoTranslate(diff, threshold, "quiet window", semanticPayload);
+        var quietWindowMs = ResolveQuietWindowMs(scene);
+        var quietEvent = wasPending ? "quiet_extended" : "quiet_pending";
+        _loggerAccessor()?.Info(
+            $"stage=scene_change event={quietEvent} quiet_ms={quietWindowMs} diff={diff} threshold={threshold}.");
     }
 
     private void MarkPendingAutoTranslate(int diff, int threshold, string reason, SceneTextSnapshot? semanticPayload)
@@ -614,5 +670,15 @@ internal sealed class SceneChangeController : IDisposable
         _sceneChangeAutoTranslatePendingReason = null;
         _sceneChangeAutoTranslatePendingPayload = null;
         _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
+        _quietWindowPending = false;
+        _quietWindowLastChangeUtc = DateTime.MinValue;
+    }
+
+    private static int ResolveQuietWindowMs(SceneFeatureSettings scene)
+    {
+        var quietWindowMs = scene.SceneChangeQuietWindowMs <= 0
+            ? QuietWindowDefaultMs
+            : scene.SceneChangeQuietWindowMs;
+        return Math.Clamp(quietWindowMs, QuietWindowMinMs, QuietWindowMaxMs);
     }
 }

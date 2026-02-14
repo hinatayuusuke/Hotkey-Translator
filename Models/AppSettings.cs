@@ -82,6 +82,8 @@ public sealed class AppSettings
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
     public int SceneChangeWatchPhashThreshold { get; set; } = 8;
     public bool EnableSceneChangeSemanticGate { get; set; } = true;
+    public bool EnableSceneChangeQuietWindow { get; set; } = true;
+    public int SceneChangeQuietWindowMs { get; set; } = 450;
     public double SceneSemanticBlockIouThreshold { get; set; } = 0.5;
     public int SceneSemanticMinChars { get; set; } = 2;
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;

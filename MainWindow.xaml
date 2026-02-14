@@ -495,6 +495,30 @@
                                 <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
+                                <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
+                                          IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
+                                          IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Quiet window (ms)" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="SceneChangeQuietWindowMsBox" Width="80"
+                                             Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                        <TextBox.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                                <Binding Path="Settings.EnableSceneChangeQuietWindow" />
+                                            </MultiBinding>
+                                        </TextBox.IsEnabled>
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                </StackPanel>
                                 <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
                                           IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

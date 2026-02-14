@@ -159,7 +159,9 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         }
 
         var ageMs = (DateTime.UtcNow - payload.CapturedAtUtc).TotalMilliseconds;
-        if (ageMs > SceneSemanticPayloadTtlMs)
+        // WHY: Quiet-window auto-scene runs intentionally wait for text stabilization, so strict payload TTL would drop useful snapshots.
+        if (ageMs > SceneSemanticPayloadTtlMs &&
+            !(options.Trigger == RunTrigger.AutoSceneChange && settings.EnableSceneChangeQuietWindow))
         {
             reason = $"payload stale ({ageMs:0} ms)";
             return false;

@@ -10368,3 +10368,104 @@ ull logger が固定されていた。
 ### Tests / Verification
 - dotnet build は実行中プロセスが Hotkey-Translator.exe をロックしていたため失敗（MSB3021/MSB3027）。
 - dotnet build -p:UseAppHost=false でビルド成功（XAMLコンパイル含む、warning 1）。
+**2026-02-15 02:33 (Asia/Taipei) — Quiet Window＋最新pending payload計画書を追加**
+
+### Summary
+- ノベルゲーム向けの Scene Change Auto-Translate 改善案（Quiet Window＋pending payload最新版採用）を Doc/ に新規出力した。
+
+### Context / Goal
+- Stage B通過直後の即時実行では、文字送り途中の途中文を拾って止まりやすい課題があった。
+- UIでON/OFF可能な形で、停止後に確定文を取りやすい方式を計画化したい。
+
+### Changes
+- Quiet Window（最後の変化からN ms無変化で実行）を中心とした設計を定義。
+- pending payload を常に最新で上書きし、実行時は最新版のみ使用する仕様を明文化。
+- EnableSceneChangeQuietWindow / SceneChangeQuietWindowMs の設定追加、UI露出、バリデーション、DoDまで記載。
+
+### Files Touched
+- Doc/SceneChange_AutoTranslate_QuietWindow_Plan.md — Quiet Window方式とpending payload最新化の実装計画を新規作成。
+
+### Behavioral Impact
+- 実行挙動の変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 既存計画との役割重複で実装時に参照先が分散する可能性。
+- Mitigation: 本計画を「Stage B品質改善（ノベル向け）」に限定し、実装時に関連Docを相互参照する前提を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-15 02:44 (Asia/Taipei) — Quiet Window計画書に自己レビュー反映（排他維持）**
+
+### Summary
+- Doc/SceneChange_AutoTranslate_QuietWindow_Plan.md に自己レビュー指摘を反映し、実装時の詰まりやすい仕様不足を補強した。
+
+### Context / Goal
+- 実装前レビューで、TTL競合・drain迂回・Stage A未通過ケース・入力値仕様不足などが判明した。
+- uto-hide / auto-translate の排他維持を前提に、実装可能性を高める必要があった。
+
+### Changes
+- 前提に「排他維持（同時有効化を扱わない）」を明記。
+- Quiet経路のTTLを通常経路と別扱いにする方針を追加。
+- TryDrainPendingAutoTranslate() 内でQuiet条件を評価する仕様を追加し、迂回実行を防止。
+- pending payload更新の単一路化（保留理由非依存）を明記。
+- Quiet window ms入力の lank/parse失敗/範囲外 ルールを追加。
+- Stage A未通過ケースは非ゴール側として明示し、推奨しきい値範囲を追記。
+
+### Files Touched
+- Doc/SceneChange_AutoTranslate_QuietWindow_Plan.md — 仕様不足の補強と排他維持方針を反映。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: 既存設計との不整合が残ると実装時に再設計が必要になる。
+- Mitigation: 先に排他維持・TTL・drain統制を明文化し、実装分岐の判断軸を固定した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-15 02:57 (Asia/Taipei) — Quiet Window自動翻訳を実装（UI設定付き）**
+
+### Summary
+- Doc/SceneChange_AutoTranslate_QuietWindow_Plan.md に基づき、Quiet Window待機実行と最新pending payload採用を本体へ実装した。
+
+### Context / Goal
+- ノベルゲームの文字送り中にStage B通過直後の即時実行が走り、途中テキストで翻訳が止まりやすかった。
+- Stage B検知後に無変化待機してから実行し、実行時は可能な限り最新payloadを使う必要があった。
+
+### Changes
+- AppSettings に EnableSceneChangeQuietWindow / SceneChangeQuietWindowMs を追加（既定: true / 450）。
+- SettingsViewModel へ対応プロパティを追加し、Load/Apply/保存トリガーを実装。
+- Scene Change UI（OCR > Scene Change Automation）に Quiet Window の ON/OFF と ms入力欄を追加。
+- SceneSemanticSettingsRule に Quiet Window ms（100..3000, fallback 450）の正規化を追加。
+- SceneChangeController に Quiet Window pending 状態を追加し、以下を実装:
+  - Stage B通過時は Quiet Window有効なら即実行せず pending 化
+  - 変化継続時は quietタイマー延長（quiet_extended）
+  - TryDrainPendingAutoTranslate() 内で quiet達成判定を実施（drain迂回防止）
+  - pending payload を更新しつつ quiet ready 後に実行
+- MainWindowRunCoordinator で auto-scene + quiet有効時の payload TTL判定を別扱いにし、quiet待機で stale 扱いになりにくいよう調整。
+
+### Files Touched
+- Models/AppSettings.cs — Quiet Window設定2項目を追加。
+- ViewModels/SettingsViewModel.cs — Quiet Window設定のUIバインド/保存ロジックを追加。
+- MainWindow.xaml — Scene Change Automationに Quiet Window UI を追加。
+- Services/Settings/Rules/SceneSemanticSettingsRule.cs — Quiet Window ms の clamp を追加。
+- Services/Settings/FeatureSettings/SceneFeatureSettings.cs — Quiet Window設定をFeatureSettingsへ追加。
+- Services/Settings/FeatureSettings/FeatureSettingsProvider.cs — SceneFeatureSettings生成に Quiet Window設定を反映。
+- Services/Application/SceneChangeController.cs — quiet pending/ready判定、payload更新、drain統制を実装。
+- Services/Application/MainWindowRunCoordinator.cs — quiet経路でpayload TTLを別扱いに調整。
+
+### Behavioral Impact
+- auto-translate + quiet有効時、Stage B変化検知後は無変化時間経過まで実行を遅延する。
+- quiet待機中に新しい変化が来た場合は待機延長し、pending payloadは最新で更新される。
+- quiet無効時は従来どおり即時実行。
+- auto-hide / auto-translate の排他仕様は維持。
+
+### Risk & Mitigation
+- Risk: quiet待機で翻訳開始が遅く感じる場合がある。
+- Mitigation: UIで ms を調整可能にし、設定正規化で過小/過大値を防止。
+
+- Risk: quiet待機中の状態遷移で pending payload が消失すると品質低下する。
+- Mitigation: pending中の不要クリアを抑制し、drain前に quiet判定を必須化した。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false 実行: 成功（0 warnings / 0 errors）。

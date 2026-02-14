@@ -4,4 +4,6 @@ internal readonly record struct SceneFeatureSettings(
     bool EnableSceneChangeAutoHide,
     bool EnableSceneChangeAutoTranslate,
     bool EnableSceneChangeSemanticGate,
-    int SceneChangeWatchIntervalMs);
+    int SceneChangeWatchIntervalMs,
+    bool EnableSceneChangeQuietWindow,
+    int SceneChangeQuietWindowMs);
