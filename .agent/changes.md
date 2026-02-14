@@ -9347,3 +9347,64 @@ ull logger が固定されていた。
 - dotnet build Hotkey-Translator.csproj 実行: 0 warning / 0 error。
 - uv run --project OcrService python -m py_compile OcrService/server.py 実行: 成功。
 - uv run --project OcrServiceVL python -m py_compile OcrServiceVL/server.py 実行: 成功。
+**2026-02-14 17:01 (Asia/Taipei) — PaddleOCR-VL layout-detectionパーサー実装案を追加**
+
+### Summary
+- `--use-layout-detection` 時のHTML/画像参照混入を抑えるための実装計画を `Doc/` に新規作成した。
+
+### Context / Goal
+- `test4.png` 検証で `<div><img ...>` 由来文字列がOCR結果に混入し、オーバーレイ表示品質を低下させていた。
+- 本件に対して、座標変更ではなく「テキスト抽出パーサーの選別強化」を段階実装できる計画を明文化する。
+
+### Changes
+- `Doc/Ocr_VL_LayoutDetection_Parser_Plan.md` を新規作成。
+- ゴール/非ゴール、提案アーキテクチャ、実装ステップ、リスク、DoD を定義。
+- allow-list/rejectルール、fallback厳格化、観測ログ設計を明記。
+
+### Files Touched
+- `Doc/Ocr_VL_LayoutDetection_Parser_Plan.md` — layout-detection時のPaddleOCR-VLパーサー改善計画を追加。
+
+### Behavioral Impact
+- ドキュメント追加のみ。実行時挙動の変更なし。
+
+### Risk & Mitigation
+- Risk: 実装時にallow-listが過剰だと正当テキストを欠落させる可能性。
+- Mitigation: 計画にラベル分布の事前観測（Step1）と段階調整を含めた。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-14 17:11 (Asia/Taipei) — PaddleOCR-VL layout-detection向けパーサー選別を実装**
+
+### Summary
+- `OcrServiceVL/ocr_vl_engine.py` に text選別・HTML/画像参照除外・観測ログを追加し、`--use-layout-detection` 時の添付文字列混入を抑止する実装を行った。
+
+### Context / Goal
+- `--use-layout-detection` 有効時に `<div ...><img ...>` 由来の非テキストが OCR line に混入し、オーバーレイ表示を汚染していた。
+- 非テキスト断片を返さない一方で、既存JSON契約 (`lines[].text/box/confidence`) を維持する。
+
+### Changes
+- `block_label` 正規化と text-like 判定 (`_is_text_like_block`) を追加（非テキスト明示ラベルのみ除外）。
+- `block_content` / `text` に対する正規化 (`_sanitize_block_text`) と HTML/画像参照パターン除外 (`_looks_like_markup_or_asset_ref`) を追加。
+- `parsing_res_list` 解析で reject理由（label/markup/empty/box）を計測し、`stage=ocr_vl_parser` ログを追加。
+- `parse_line_list` と markdown fallback でも同じ除外ルールを適用し、`<img>` 系断片をライン化しないよう統一。
+
+### Files Touched
+- `OcrServiceVL/ocr_vl_engine.py` — layout-detection時のテキスト選別/除外ロジックと統計ログを実装。
+
+### Behavioral Impact
+- OCR結果の `lines` から HTMLタグ・画像参照断片が除外される。
+- `parsing_res_list` がある場合、採用/除外統計をログで観測できる。
+- `--use-layout-detection` でモデル側がテキストを返さないケースは `lines=[]` となる（非テキスト混入より優先）。
+
+### Risk & Mitigation
+- Risk: フィルタ過剰で正当テキストが除外される可能性。
+- Mitigation: 非テキスト明示ラベルのみ除外し、未知ラベルは許容。reject内訳ログで継続調整可能にした。
+- Risk: `use_layout_detection=True` かつモデル側無検出時に0件応答となる。
+- Mitigation: これは現行モデル応答（`parsing_res_list=[]`, markdown空）に準拠し、誤テキスト返却を防ぐ設計を優先した。
+
+### Tests / Verification
+- `uv run --project OcrServiceVL python -m py_compile OcrServiceVL/ocr_vl_engine.py` 実行: 成功。
+- モック検証（`_parse_parsing_res_list`）: `image`ラベルのHTML断片を除外し、`text`ラベルのみ採用されることを確認。
+- `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py OcrServiceVL/.testpic/test4.png ... --no-use-layout-detection` 実行: `recognized_lines=1` を確認。
+- `uv run --project OcrServiceVL OcrServiceVL/test_ocr_vl_engine.py OcrServiceVL/.testpic/test4.png ... --use-layout-detection` 実行: `recognized_lines=0`（モデル応答が空）を確認。
+- `dotnet build Hotkey-Translator.csproj` 実行: 失敗（`Hotkey-Translator.exe` が実行中プロセスにロックされコピー不可）。

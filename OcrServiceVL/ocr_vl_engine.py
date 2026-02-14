@@ -1,8 +1,11 @@
 import io
 import json
+import logging
 import os
+import re
 import sys
 import tempfile
+from collections import Counter
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -10,6 +13,17 @@ from typing import Any
 from PIL import Image
 
 _DLL_DIR_HANDLES = []
+_LOGGER = logging.getLogger(__name__)
+
+# WHY: layout detection can return non-text block payloads; keep OCR lines text-focused.
+_NON_TEXT_LABEL_HINTS = ("image", "img", "table", "formula", "chart", "figure")
+_TEXT_LABEL_HINTS = ("text", "title", "paragraph", "caption", "list", "ocr")
+_MARKUP_OR_ASSET_PATTERNS = (
+    re.compile(r"<\s*/?\s*(img|div|table|figure|span|p)\b", re.IGNORECASE),
+    re.compile(r"!\[[^\]]*]\([^)]+\)"),
+    re.compile(r"\bimg_in_image_box[_\w-]*", re.IGNORECASE),
+    re.compile(r"\bsrc\s*=\s*['\"]", re.IGNORECASE),
+)
 
 
 def _candidate_site_packages() -> list[Path]:
@@ -140,8 +154,8 @@ class PaddleOcrVlEngine:
 
         markdown = getattr(page, "markdown", None)
         if isinstance(markdown, dict):
-            text = (markdown.get("markdown_texts") or "").strip()
-            if text:
+            text = self._sanitize_block_text(markdown.get("markdown_texts"))
+            if text and not self._looks_like_markup_or_asset_ref(text):
                 return [
                     {
                         "text": text,
@@ -162,6 +176,37 @@ class PaddleOcrVlEngine:
             if isinstance(value, dict):
                 candidates.append(value)
         return candidates
+
+    @staticmethod
+    def _normalize_label(value: Any) -> str:
+        if value is None:
+            return ""
+        return str(value).strip().lower()
+
+    @classmethod
+    def _is_text_like_block(cls, label: Any) -> bool:
+        normalized = cls._normalize_label(label)
+        if not normalized:
+            return True
+        if any(hint in normalized for hint in _NON_TEXT_LABEL_HINTS):
+            return False
+        if any(hint in normalized for hint in _TEXT_LABEL_HINTS):
+            return True
+        return True
+
+    @staticmethod
+    def _sanitize_block_text(raw_text: Any) -> str:
+        text = raw_text.strip() if isinstance(raw_text, str) else str(raw_text or "").strip()
+        if not text:
+            return ""
+        return " ".join(text.replace("\r", "\n").split())
+
+    @staticmethod
+    def _looks_like_markup_or_asset_ref(text: str) -> bool:
+        candidate = text.strip()
+        if not candidate:
+            return True
+        return any(pattern.search(candidate) for pattern in _MARKUP_OR_ASSET_PATTERNS)
 
     def _parse_page_dict(self, page: dict[str, Any]) -> list[dict[str, Any]]:
         wrapped = page.get("res")
@@ -217,13 +262,30 @@ class PaddleOcrVlEngine:
 
     def _parse_parsing_res_list(self, items: list[Any]) -> list[dict[str, Any]]:
         lines: list[dict[str, Any]] = []
+        labels = Counter[str]()
+        rejected_non_text = 0
+        rejected_markup = 0
+        rejected_empty = 0
+        rejected_box = 0
+
         for item in items:
             if not isinstance(item, dict):
                 continue
 
-            raw_text = item.get("block_content") or item.get("text")
-            text = raw_text.strip() if isinstance(raw_text, str) else str(raw_text or "").strip()
+            label = self._normalize_label(item.get("block_label") or item.get("label") or item.get("type"))
+            labels[label or "<none>"] += 1
+
+            if not self._is_text_like_block(label):
+                rejected_non_text += 1
+                continue
+
+            text = self._sanitize_block_text(item.get("block_content") or item.get("text"))
             if not text:
+                rejected_empty += 1
+                continue
+
+            if self._looks_like_markup_or_asset_ref(text):
+                rejected_markup += 1
                 continue
 
             box: list[float] | None = None
@@ -239,6 +301,7 @@ class PaddleOcrVlEngine:
                 box = self._bbox_to_ltrbwh(raw_bbox)
 
             if box is None or box[2] <= 0 or box[3] <= 0:
+                rejected_box += 1
                 continue
 
             score = item.get("score") or item.get("confidence")
@@ -255,16 +318,33 @@ class PaddleOcrVlEngine:
                 }
             )
 
+        if labels:
+            label_summary = ",".join(f"{name}:{count}" for name, count in labels.most_common(6))
+            _LOGGER.info(
+                "stage=ocr_vl_parser event=layout_filter_stats total=%s accepted=%s "
+                "reject_label=%s reject_markup=%s reject_empty=%s reject_box=%s labels=%s",
+                sum(labels.values()),
+                len(lines),
+                rejected_non_text,
+                rejected_markup,
+                rejected_empty,
+                rejected_box,
+                label_summary,
+            )
+
         return lines
 
-    @staticmethod
-    def _parse_line_list(items: list[Any]) -> list[dict[str, Any]]:
+    @classmethod
+    def _parse_line_list(cls, items: list[Any]) -> list[dict[str, Any]]:
         lines: list[dict[str, Any]] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
 
-            text = item.get("text")
+            text = cls._sanitize_block_text(item.get("text"))
+            if not text or cls._looks_like_markup_or_asset_ref(text):
+                continue
+
             box = item.get("box") or item.get("bbox")
             if not isinstance(box, list) or len(box) < 4:
                 continue
@@ -288,7 +368,7 @@ class PaddleOcrVlEngine:
 
             lines.append(
                 {
-                    "text": str(text) if text is not None else "",
+                    "text": text,
                     "box": [left, top, width, height],
                     "confidence": confidence_value,
                 }
