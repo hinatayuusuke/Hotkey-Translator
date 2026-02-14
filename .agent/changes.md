@@ -10254,3 +10254,34 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+**2026-02-15 00:37 (Asia/Taipei) — PaddleOCR-VLパーサーで先頭Markdown見出し記号を除去**
+
+### Summary
+- PaddleOCR-VLの認識テキスト先頭に混入する ##/### などの見出し記号を、パーサー正規化で除去する処理を追加した。
+
+### Context / Goal
+- PaddleOCR-VLが行頭に ## 系記号を返すケースがあり、翻訳・差分比較のノイズになっていた。
+- 行中の #（例: C##）は保持しつつ、行頭Markdown由来ノイズだけを除去する必要があった。
+
+### Changes
+- OcrServiceVL/ocr_vl_engine.py に先頭見出し記号除去用の正規表現を追加。
+- _sanitize_block_text を @classmethod 化し、改行単位で ##〜###### の先頭記号を除去してから空白正規化するよう変更。
+- コメントを追加し、実装理由（PaddleOCR-VLのmarkdown heading混入対策）を明記。
+
+### Files Touched
+- OcrServiceVL/ocr_vl_engine.py — 先頭Markdown見出し記号除去ロジックを追加。
+
+### Behavioral Impact
+- ## / ### など行頭見出しノイズは除去される。
+- 行中の # は保持されるため、C## 等の文字列は破壊しない。
+
+### Risk & Mitigation
+- Risk: 正規表現条件が厳しすぎる/緩すぎると誤除去・取りこぼしが発生する。
+- Mitigation: 行頭かつ #{2,6} のみに限定し、直後が英数/CJK文字のケースだけ除去するルールにした。
+
+### Tests / Verification
+- python - で PaddleOcrVlEngine._sanitize_block_text(...) を直接実行し、以下を確認。
+  - ## Hello world -> Hello world
+  - ####123abc -> 123abc
+  - C## language は変更なし
+  - Unicodeエスケープ経由の日本語 ### 行頭は除去される

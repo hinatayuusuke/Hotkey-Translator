@@ -24,6 +24,9 @@ _MARKUP_OR_ASSET_PATTERNS = (
     re.compile(r"\bimg_in_image_box[_\w-]*", re.IGNORECASE),
     re.compile(r"\bsrc\s*=\s*['\"]", re.IGNORECASE),
 )
+_LEADING_MARKDOWN_HEADING_PATTERN = re.compile(
+    r"(?m)^\s*#{2,6}\s*(?=[0-9A-Za-z\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff])"
+)
 
 
 def _candidate_site_packages() -> list[Path]:
@@ -194,12 +197,15 @@ class PaddleOcrVlEngine:
             return True
         return True
 
-    @staticmethod
-    def _sanitize_block_text(raw_text: Any) -> str:
+    @classmethod
+    def _sanitize_block_text(cls, raw_text: Any) -> str:
         text = raw_text.strip() if isinstance(raw_text, str) else str(raw_text or "").strip()
         if not text:
             return ""
-        return " ".join(text.replace("\r", "\n").split())
+        # WHY: PaddleOCR-VL can emit markdown heading markers (##/###...) at line start.
+        text = text.replace("\r", "\n")
+        text = _LEADING_MARKDOWN_HEADING_PATTERN.sub("", text)
+        return " ".join(text.split())
 
     @staticmethod
     def _looks_like_markup_or_asset_ref(text: str) -> bool:
