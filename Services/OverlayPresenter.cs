@@ -16,6 +16,8 @@ public sealed class OverlayPresenter
     private IReadOnlyList<OverlayItem> _lastItems = new List<OverlayItem>();
     private Rect? _lastSmallBoxClipScreenRect;
     private bool _isEnabled = true;
+    private bool _autoTranslateBadgeVisible;
+    private Rect? _autoTranslateBadgeAnchorScreenRect;
     private bool _perfLogEnabled;
     private int _perfLogThresholdMs;
 
@@ -44,6 +46,7 @@ public sealed class OverlayPresenter
             }
 
             _window.SetOverlayVisibility(true);
+            _window.SetAutoTranslateBadgeVisible(_autoTranslateBadgeVisible, ToWindowDipRect(_autoTranslateBadgeAnchorScreenRect) ?? Rect.Empty);
             Shown?.Invoke();
         });
     }
@@ -55,6 +58,7 @@ public sealed class OverlayPresenter
             // WHY: Keep the window resident to avoid DWM flash; only toggle overlay visibility.
             _window.UpdateItems(Array.Empty<OverlayItem>());
             _window.HideLoadingSpinner();
+            _window.SetAutoTranslateBadgeVisible(false, Rect.Empty);
             _window.SetOverlayVisibility(false);
             Hidden?.Invoke();
         });
@@ -142,6 +146,31 @@ public sealed class OverlayPresenter
         InvokeOnUi("OverlaySpinnerHide", measureRender: false, () =>
         {
             _window.HideLoadingSpinner();
+        });
+    }
+
+    public void SetAutoTranslateBadgeVisible(bool visible, Rect? anchorScreenRect = null)
+    {
+        _autoTranslateBadgeVisible = visible;
+        _autoTranslateBadgeAnchorScreenRect = NormalizeRect(anchorScreenRect);
+        if (!_isEnabled)
+        {
+            return;
+        }
+
+        InvokeOnUi("OverlayAutoBadge", measureRender: false, () =>
+        {
+            _window.SetAutoTranslateBadgeVisible(visible, ToWindowDipRect(_autoTranslateBadgeAnchorScreenRect) ?? Rect.Empty);
+        });
+    }
+
+    public void ClearAutoTranslateBadge()
+    {
+        _autoTranslateBadgeVisible = false;
+        _autoTranslateBadgeAnchorScreenRect = null;
+        InvokeOnUi("OverlayAutoBadgeClear", measureRender: false, () =>
+        {
+            _window.SetAutoTranslateBadgeVisible(false, Rect.Empty);
         });
     }
 

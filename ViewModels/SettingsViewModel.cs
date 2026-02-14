@@ -74,6 +74,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSmallBoxReadabilityBoost;
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
+    [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
@@ -186,6 +187,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSmallBoxReadabilityBoost = settings.EnableSmallBoxReadabilityBoost;
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
+            ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
@@ -288,6 +290,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoost;
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
+        settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
         if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
@@ -559,6 +562,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyUnlockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
     partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();

@@ -41,5 +41,20 @@
                       Fill="Transparent" />
             </Grid>
         </Canvas>
+        <Canvas x:Name="BadgeCanvas">
+            <Border x:Name="AutoTranslateBadgeContainer"
+                    Width="18"
+                    Height="18"
+                    Background="#CC111111"
+                    BorderBrush="#E6FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="9"
+                    Visibility="Collapsed"
+                    ToolTip="Scene auto-translate enabled">
+                <Viewbox Width="10" Height="10" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Path Fill="#FFFFFFFF" Data="M 2,1 L 8,5 L 2,9 Z" />
+                </Viewbox>
+            </Border>
+        </Canvas>
     </Grid>
 </Window>

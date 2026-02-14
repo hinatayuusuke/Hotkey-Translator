@@ -77,6 +77,7 @@ public sealed class AppSettings
     public double SmallBoxSlenderThresholdBoost { get; set; } = 1.2;
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeAutoTranslate { get; set; } = false;
+    public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
     public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;

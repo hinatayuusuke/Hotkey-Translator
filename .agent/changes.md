@@ -10469,3 +10469,186 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行: 成功（0 warnings / 0 errors）。
+**2026-02-15 03:11 (Asia/Taipei) — ForceTick自動翻訳モードの実装案Docを追加**
+
+### Summary
+- Watch Intervalごとの強制自動翻訳を最終手段として追加するための実装案を Doc/ に新規作成した。
+
+### Context / Goal
+- Quiet Windowでも取りこぼすケースに備え、判定をバイパスして定期実行するモードを検討する必要があった。
+- UI切替可能で、既存Semanticモードを既定として維持する方針を整理したい。
+
+### Changes
+- SceneChangeAutoTranslateMode（SemanticGate / ForceTick）の導入案を定義。
+- ForceTick時の挙動、UI露出、バリデーション、ログ観測点、リスク緩和を明文化。
+- 既存排他仕様（auto-hide / auto-translate）維持を前提として記載。
+
+### Files Touched
+- Doc/SceneChange_ForceTickAutoTranslate_Plan.md — ForceTick最終手段モードの実装計画を新規作成。
+
+### Behavioral Impact
+- 実行挙動への変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 強制定期実行の負荷増大・不要翻訳増加。
+- Mitigation: デフォルトをSemanticGateに固定し、UI警告とinterval下限制御を計画へ含めた。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-15 03:22 (Asia/Taipei) — AutoTranslateバッジをアイコン形式へ明確化**
+
+### Summary
+- AutoTranslate通知プランで「バッジはアイコンのみ」の方針を明文化した。
+
+### Context / Goal
+- ユーザー要望として、バッジ表示をテキストではなくアイコン形式へ統一したい。
+- 中央Busy復帰案と整合する実装案に更新したい。
+
+### Changes
+- 対象Docのタイトルを「バッジアイコン形式」へ更新。
+- バッジ表示ルール（文字常時表示なし、色/形状差分、ToolTip補助）を新設。
+- 既存章番号を調整し、既存方針との整合セクションを維持。
+
+### Files Touched
+- `Doc/AutoTranslate_CenterBusy_BadgeIcon_Plan.md` — バッジをアイコン形式で運用する実装方針を追記・整理。
+
+### Behavioral Impact
+- 実行挙動への影響なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: アイコンのみだと意味が伝わりにくい可能性。
+- Mitigation: ToolTipで補助説明を表示し、詳細はログに委譲する方針を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-15 03:27 (Asia/Taipei) — AutoTranslateバッジ方針をON/OFF表示専用へ更新**
+
+### Summary
+- AutoTranslateバッジ仕様を「自動翻訳のON/OFFで表示/非表示のみ」に簡素化した。
+
+### Context / Goal
+- ユーザー要望として、バッジは色差分や実行状態差分を持たせず、単純な表示/非表示のみにしたい。
+- 中央Busy復帰方針と矛盾しない形で実装案を明確化したい。
+
+### Changes
+- バッジ状態を `AutoOff/AutoOn` の2状態へ整理。
+- 色差分・形状差分による状態表現を非採用に変更。
+- API案を `SetAutoTranslateBadgeVisible(bool visible)` 中心に更新。
+- 連携イベントを ON/OFF 切替時のみに限定し、run開始/終了でのバッジ状態更新を除外。
+
+### Files Touched
+- `Doc/AutoTranslate_CenterBusy_BadgeIcon_Plan.md` — バッジ表示仕様をON/OFF表示専用へ修正。
+
+### Behavioral Impact
+- 実行挙動への影響なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: バッジ単体では実行中かどうかの情報が減る。
+- Mitigation: 実行中の可視化は中央Busyで担保し、詳細はログ参照とする。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-02-15 03:38 (Asia/Taipei) — AutoTranslate中央Busy復帰とバッジアイコン実装**
+
+### Summary
+- `Doc/AutoTranslate_CenterBusy_BadgeIcon_Plan.md` に沿って、中央Busy制御とAutoTranslateバッジ表示を実装した。
+
+### Context / Goal
+- 自動翻訳時の可視性不足を解消しつつ、過剰な通知を避ける必要があった。
+- バッジは実行状態差分を持たせず、AutoTranslate ON/OFF の表示/非表示だけに限定したい。
+
+### Changes
+- 設定に `ShowCenterBusyForAutoTranslate` / `ShowAutoTranslateBadgeIcon` を追加（既定 `true`）。
+- Scene Change Automation に2つのUIトグルを追加。
+- AutoSceneChange 実行時のみ中央Busyを設定値で抑制可能にし、翻訳開始/完了イベント側も同条件で中央Busy更新を抑制。
+- Overlay に右下バッジUIを追加し、`OverlayPresenter` から表示/非表示APIで制御。
+- 設定反映時（初期化/保存後）にバッジ表示を同期し、`auto_badge_visibility` ログを追加。
+
+### Files Touched
+- `Models/AppSettings.cs` — AutoTranslate中央Busy/バッジ表示の設定2項目を追加。
+- `ViewModels/SettingsViewModel.cs` — 新設定のバインド、Load/Apply、自動保存トリガーを追加。
+- `MainWindow.xaml` — Scene Change Automation に2つのチェックボックスを追加。
+- `Services/Application/MainWindowRunCoordinator.cs` — AutoSceneChange時の中央Busy表示可否制御と実行中フラグ公開を追加。
+- `MainWindow.xaml.cs` — バッジ表示同期処理、翻訳イベント時の中央Busy抑制条件、設定同期呼び出しを追加。
+- `UI/OverlayWindow.xaml` — 右下AutoTranslateバッジのアイコンUIを追加。
+- `UI/OverlayWindow.xaml.cs` — バッジ表示/非表示メソッドを追加。
+- `Services/OverlayPresenter.cs` — バッジ表示状態の保持とUI反映APIを追加。
+
+### Behavioral Impact
+- AutoTranslate が有効かつ `ShowAutoTranslateBadgeIcon=true` のとき、オーバーレイ右下に固定アイコンを表示。
+- AutoSceneChange 実行時、`ShowCenterBusyForAutoTranslate=false` なら中央Busyを表示しない。
+- 手動実行やその他経路のBusy表示は従来どおり。
+
+### Risk & Mitigation
+- Risk: バッジが実行中状態を示さないため情報量が少ない。
+- Mitigation: 実行中は中央Busyで補完し、詳細はログで追跡できる構成にした。
+
+- Risk: 設定切替とバッジ表示がずれる可能性。
+- Mitigation: 初期化時と保存反映時の双方でバッジ同期を実行し、状態ログを残す。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` を実行し、成功（0 warnings / 0 errors）。
+**2026-02-15 03:52 (Asia/Taipei) — AutoTranslateのBusyロールバックとバッジ表示確実化**
+
+### Summary
+- Busy表示拡張をロールバックし、AutoTranslateバッジのみを確実に同期表示するよう修正した。
+
+### Context / Goal
+- ユーザー方針として、中央Busy表示は不要とし、バッジ表示の確実性を優先したい。
+- 現状ではF5ホットキー経由の切替時にバッジ更新が漏れる経路があった。
+
+### Changes
+- `ShowCenterBusyForAutoTranslate` の設定項目をモデル/VM/UIから削除。
+- AutoSceneChange実行時の中央Busy表示は常に抑制し、Busy拡張を実質ロールバック。
+- F5ホットキー切替時の設定同期コールバックで、VM再読込に加えて `UpdateAutoTranslateBadgeVisibility(...)` を必ず実行するよう変更。
+
+### Files Touched
+- `Models/AppSettings.cs` — `ShowCenterBusyForAutoTranslate` を削除。
+- `ViewModels/SettingsViewModel.cs` — Busy設定のバインド/保存/変更通知を削除。
+- `MainWindow.xaml` — Busy表示トグルUIを削除。
+- `Services/Application/MainWindowRunCoordinator.cs` — AutoSceneChange時は中央Busyを表示しない制御へ整理。
+- `MainWindow.xaml.cs` — ホットキー切替経路でバッジ同期を追加。
+
+### Behavioral Impact
+- AutoTranslate ON/OFF バッジは、設定UI変更時だけでなくF5ホットキー変更時にも確実に追従する。
+- AutoSceneChange経路では中央Busyを表示しない。
+
+### Risk & Mitigation
+- Risk: ドキュメント記載（Busy設定あり）との齟齬が一時的に残る。
+- Mitigation: 実装優先で修正し、必要に応じて後続でDocを更新する。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` を実行し、成功（0 warnings / 0 errors）。
+**2026-02-15 04:04 (Asia/Taipei) — AutoTranslateバッジを対象ウィンドウ右下へ配置**
+
+### Summary
+- バッジ座標を仮想スクリーン固定から、対象ウィンドウ（capture bounds）右下アンカーへ変更した。
+
+### Context / Goal
+- バッジが見えない主因として、仮想スクリーン右下固定配置により別モニタ側へ出るケースがあった。
+- 要望どおり対象ウィンドウ右下へ表示したい。
+
+### Changes
+- OverlayバッジをCanvas配置へ変更し、座標指定で表示できるようにした。
+- `OverlayWindow.SetAutoTranslateBadgeVisible` を `visible + anchorDipRect` 受け取りに変更。
+- `OverlayPresenter` にバッジアンカー（screen rect）保持を追加し、DIP変換してウィンドウへ反映。
+- `MainWindow.UpdateAutoTranslateBadgeVisibility` で `CaptureManager.GetCaptureBounds(settings)` を使ってアンカーを渡すように変更。
+- オーバーレイ表示/更新イベントでもバッジ位置を再同期するようにし、ウィンドウ移動時の追従性を改善。
+- 初期化順を調整し、`_captureManager` 初期化後に初回バッジ同期するよう変更。
+
+### Files Touched
+- `UI/OverlayWindow.xaml` — バッジUIをCanvas配下へ移し、座標配置対応。
+- `UI/OverlayWindow.xaml.cs` — バッジ表示APIをアンカー座標対応へ変更。
+- `Services/OverlayPresenter.cs` — バッジのscreenアンカー状態を保持し、表示時にDIP変換して反映。
+- `MainWindow.xaml.cs` — バッジアンカー解決ロジックを追加し、対象ウィンドウ右下へ同期。
+
+### Behavioral Impact
+- AutoTranslateバッジは仮想スクリーン端ではなく、対象ウィンドウ右下に表示される。
+- 対象ウィンドウ座標の再解決時（オーバーレイ表示/更新）に位置が再同期される。
+
+### Risk & Mitigation
+- Risk: Capture bounds が取得できないタイミングで座標が空になる。
+- Mitigation: 既存スピナーアンカー解決へフォールバックしてバッジ消失を避ける。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` を実行し、成功（0 warnings / 0 errors）。

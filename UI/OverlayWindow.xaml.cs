@@ -42,6 +42,8 @@ public partial class OverlayWindow : Window
     private const double ToastMaxWidth = 260.0;
     private const double SpinnerSize = 24.0;
     private const double SpinnerMargin = 12.0;
+    private const double BadgeSize = 18.0;
+    private const double BadgeMargin = 12.0;
     private static readonly Duration SpinnerRotationDuration = new(TimeSpan.FromMilliseconds(900));
     private const double AutoVerticalAspectThreshold = 1.25;
     private const double DominantAxisBoostRatio = 0.90;
@@ -194,6 +196,36 @@ public partial class OverlayWindow : Window
         SpinnerContainer.Visibility = Visibility.Collapsed;
     }
 
+    public void SetAutoTranslateBadgeVisible(bool visible, Rect anchorDipRect)
+    {
+        if (AutoTranslateBadgeContainer == null)
+        {
+            return;
+        }
+
+        if (!visible)
+        {
+            AutoTranslateBadgeContainer.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var target = anchorDipRect.IsEmpty
+            ? new Rect(0, 0, Math.Max(0, ActualWidth), Math.Max(0, ActualHeight))
+            : anchorDipRect;
+        var badgeWidth = AutoTranslateBadgeContainer.Width > 0 ? AutoTranslateBadgeContainer.Width : BadgeSize;
+        var badgeHeight = AutoTranslateBadgeContainer.Height > 0 ? AutoTranslateBadgeContainer.Height : BadgeSize;
+        var left = target.X + target.Width - badgeWidth - BadgeMargin;
+        var top = target.Y + target.Height - badgeHeight - BadgeMargin;
+        var maxLeft = Math.Max(BadgeMargin, Math.Max(0, ActualWidth) - badgeWidth - BadgeMargin);
+        var maxTop = Math.Max(BadgeMargin, Math.Max(0, ActualHeight) - badgeHeight - BadgeMargin);
+        left = Math.Clamp(left, BadgeMargin, maxLeft);
+        top = Math.Clamp(top, BadgeMargin, maxTop);
+
+        Canvas.SetLeft(AutoTranslateBadgeContainer, left);
+        Canvas.SetTop(AutoTranslateBadgeContainer, top);
+        AutoTranslateBadgeContainer.Visibility = Visibility.Visible;
+    }
+
     public void ShowToast(string text, Rect anchor)
     {
         if (ToastContainer == null || ToastText == null)
@@ -246,6 +278,7 @@ public partial class OverlayWindow : Window
     {
         UpdateBounds();
         HideLoadingSpinner();
+        SetAutoTranslateBadgeVisible(false, Rect.Empty);
     }
 
     private void OnToastTimerTick(object? sender, EventArgs e)

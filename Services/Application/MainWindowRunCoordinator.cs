@@ -21,6 +21,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
+    private int _showCenterBusyForCurrentRun;
     private bool _hasRunOnce;
 
     public MainWindowRunCoordinator(
@@ -43,6 +44,9 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
     public bool IsRunning => Interlocked.CompareExchange(ref _runInProgress, 1, 1) == 1;
 
+    public bool ShouldShowCenterBusyForCurrentRun =>
+        Interlocked.CompareExchange(ref _showCenterBusyForCurrentRun, 0, 0) == 1;
+
     public async Task RunOnceAsync(ForceRunOptions options, SceneTextSnapshot? semanticPayload)
     {
         var pipeline = _pipelineAccessor();
@@ -59,12 +63,17 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
         var settings = _settingsService.Settings;
         var isFirstRun = !_hasRunOnce;
+        var showCenterBusyForCurrentRun = options.Trigger != RunTrigger.AutoSceneChange;
         _hasRunOnce = true;
         _viewBridge.EnableOverlay();
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
-        _viewBridge.SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
+        Interlocked.Exchange(ref _showCenterBusyForCurrentRun, showCenterBusyForCurrentRun ? 1 : 0);
+        if (showCenterBusyForCurrentRun)
+        {
+            _viewBridge.SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
+        }
         if (!options.SuppressTransientUiFeedback)
         {
             _viewBridge.ShowLoadingSpinnerForRun(settings);
@@ -109,7 +118,12 @@ internal sealed class MainWindowRunCoordinator : IDisposable
                 _viewBridge.HideLoadingSpinnerForRun();
             }
 
-            _viewBridge.SetBusyOverlay(false, null);
+            if (showCenterBusyForCurrentRun)
+            {
+                _viewBridge.SetBusyOverlay(false, null);
+            }
+
+            Interlocked.Exchange(ref _showCenterBusyForCurrentRun, 0);
             Interlocked.Exchange(ref _runInProgress, 0);
             _viewBridge.CancelTranslationOverlay();
             _tryDrainPendingSceneAutoTranslate();

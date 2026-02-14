@@ -148,7 +148,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _overlayTextMode,
             mode => _overlayTextMode = mode,
             () => _settingsService.Settings,
-            settings => _mainWindowViewModel.Settings.LoadFrom(settings),
+            settings =>
+            {
+                _mainWindowViewModel.Settings.LoadFrom(settings);
+                UpdateAutoTranslateBadgeVisibility(settings);
+            },
             UpdateAutoHideWatcher,
             ClearSceneChangeAutoTranslatePending,
             _windowBindingService,
@@ -191,6 +195,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
         _captureManager = new CaptureManager(frameGate, _logger);
+        UpdateAutoTranslateBadgeVisibility(settings);
         _ocrEngine = new OcrEngine(_httpClient, _logger);
         var ocrDiff = new OcrDiffService { IouThreshold = settings.OcrIouThreshold };
         _phashService = new PhashService();
@@ -500,6 +505,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateLoggingState(settings.EnableLogging);
         UpdateRoiStatus(settings);
         _isApplyingSettings = false;
+        UpdateAutoTranslateBadgeVisibility(settings);
     }
 
     private void UpdateRoiStatus(AppSettings settings)
@@ -534,6 +540,34 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             : "DeepL: disabled";
         _mainWindowViewModel.RuntimeStatus.TranslationStatusMessage =
             $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus}";
+    }
+
+    private void UpdateAutoTranslateBadgeVisibility(AppSettings settings)
+    {
+        if (_overlayPresenter == null)
+        {
+            return;
+        }
+
+        var visible = settings.EnableSceneChangeAutoTranslate && settings.ShowAutoTranslateBadgeIcon;
+        _overlayPresenter.SetAutoTranslateBadgeVisible(visible, ResolveAutoTranslateBadgeAnchorScreenRect(settings));
+    }
+
+    private Rect ResolveAutoTranslateBadgeAnchorScreenRect(AppSettings settings)
+    {
+        if (_captureManager == null)
+        {
+            return Rect.Empty;
+        }
+
+        var captureBounds = _captureManager.GetCaptureBounds(settings);
+        if (!captureBounds.IsEmpty)
+        {
+            return captureBounds;
+        }
+
+        // WHY: Keep badge visible even when capture bounds cannot be resolved.
+        return ResolveSpinnerAnchorScreenRect(settings);
     }
 
     private void ReloadLlamaModelOptions(AppSettings settings)
@@ -680,6 +714,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
+        UpdateAutoTranslateBadgeVisibility(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
     }
@@ -843,11 +878,19 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return string.Join("+", parts);
     }
 
-    private void OnOverlayShown() => _sceneChangeController.OnOverlayShown();
+    private void OnOverlayShown()
+    {
+        _sceneChangeController.OnOverlayShown();
+        UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
+    }
 
     private void OnOverlayHidden() => _sceneChangeController.OnOverlayHidden();
 
-    private void OnOverlayUpdated() => _sceneChangeController.OnOverlayUpdated();
+    private void OnOverlayUpdated()
+    {
+        _sceneChangeController.OnOverlayUpdated();
+        UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
+    }
 
     private void InitializeAutoHideWatcher(AppSettings settings) => _sceneChangeController.Initialize(settings);
 
@@ -902,7 +945,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnTranslationStarted()
     {
-        if (!_runCoordinator.IsRunning)
+        if (!_runCoordinator.IsRunning || !_runCoordinator.ShouldShowCenterBusyForCurrentRun)
         {
             return;
         }
@@ -931,7 +974,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void OnTranslationCompleted()
     {
         CancelTranslationOverlay();
-        if (!_runCoordinator.IsRunning)
+        if (!_runCoordinator.IsRunning || !_runCoordinator.ShouldShowCenterBusyForCurrentRun)
         {
             return;
         }
