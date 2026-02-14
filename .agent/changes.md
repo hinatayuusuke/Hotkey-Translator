@@ -8636,3 +8636,36 @@ aw_tokens > soft_no_split_tokens.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
 - `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。
+**2026-02-14 12:09 (Asia/Taipei) — MVVM次段階実装（ResourceHostCommandController抽出）**
+
+### Summary
+- Llama/Paddle の再起動・停止コマンド処理を `ResourceHostCommandController` へ抽出し、`MainWindow.xaml.cs` は薄い委譲に置換した。
+
+### Context / Goal
+- Doc/MVVM_Implementation_Plan.md の Step 6/7 を継続し、MainWindow の手続きロジックをさらに外出しする。
+- 既存挙動（busy overlay、保存、ログ、エラー表示、実行中ガード）を維持したまま責務分離する。
+
+### Changes
+- `Services/Application/ResourceHostCommandController.cs` を新規追加。
+- `RestartLlamaCppAsync` / `StopLlamaServerAsync` / `RestartPaddleOcrHostsAsync` / `StopPaddleVlHost` の実処理を移設。
+- `MainWindow.xaml.cs` に `ResourceHostCommandController` フィールドを追加してコンストラクタ注入。
+- MainWindow 側4メソッドは `ResourceHostCommandController` 呼び出しの1行委譲へ変更。
+- `SyncSettingsAfterHostFailure(AppSettings,bool)` をコマンド側でも再利用し、設定反映と翻訳ステータス更新を統一。
+
+### Files Touched
+- `Services/Application/ResourceHostCommandController.cs` — 新規。Resource host 操作コマンドの実処理を集約。
+- `MainWindow.xaml.cs` — controller 注入とメソッド委譲化に変更。
+
+### Behavioral Impact
+- コマンド実行時の挙動は維持（同じメッセージ、同じガード条件、同じエラー通知）。
+- MainWindow の責務はイベント接続と委譲中心になり、可読性と保守性が向上する。
+
+### Risk & Mitigation
+- Risk: 抽出時のメッセージやガード条件の差異による運用回帰。
+- Mitigation: 既存文言と条件分岐を移植時に保持し、実行中ガード・WinRT分岐・失敗ダイアログを同等実装にした。
+- Risk: コントローラ依存注入の不整合。
+- Mitigation: コンストラクタで必須依存として束ね、ビルドで型整合性を確認。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj` 実行: 0 warning / 0 error。
+- `dotnet run --project Hotkey-Translator.csproj --no-build` を6秒監視し、`RUNNING_OK_NO_EARLY_CRASH` を確認。

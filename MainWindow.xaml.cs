@@ -39,6 +39,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly SceneChangeController _sceneChangeController;
     private readonly SettingsUiController _settingsUiController;
     private readonly ResourceHostFacade _resourceHostFacade;
+    private readonly ResourceHostCommandController _resourceHostCommandController;
     private readonly SettingsChangeScheduler _settingsChangeScheduler;
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
@@ -109,6 +110,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _runCoordinator.IsRunning,
             AppendLog,
             enabled => _overlayEnabled = enabled);
+        _resourceHostCommandController = new ResourceHostCommandController(
+            _resourceHostFacade,
+            () => IsLoaded,
+            () => _runCoordinator.IsRunning,
+            () => _settingsService.Settings,
+            SyncSettingsAfterHostFailure,
+            SaveSettingsImmediatelyAsync,
+            SetBusyOverlay,
+            AppendLog,
+            ShowLoadFailure,
+            () => _logger);
         sceneChangeController = _sceneChangeController;
         PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
@@ -674,142 +686,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
     }
 
-    private async Task RestartLlamaCppAsync()
-    {
-        if (!IsLoaded)
-        {
-            return;
-        }
+    private Task RestartLlamaCppAsync() => _resourceHostCommandController.RestartLlamaCppAsync();
 
-        try
-        {
-            SetBusyOverlay(true, "Restarting Llama.cpp...");
-            _resourceHostFacade.StopLlama();
+    private Task StopLlamaServerAsync() => _resourceHostCommandController.StopLlamaServerAsync();
 
-            // WHY: Manual restart is expected to keep Llama enabled after this action.
-            var settings = _settingsService.Settings;
-            settings.EnableLlamaCppTranslation = true;
-            _mainWindowViewModel.Settings.LoadFrom(settings);
+    private Task RestartPaddleOcrHostsAsync() => _resourceHostCommandController.RestartPaddleOcrHostsAsync();
 
-            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
-            AppendLog("Llama.cpp restarted.");
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Failed to restart Llama.cpp host.");
-            ShowLoadFailure("Failed to restart Llama.cpp. See the logs for details.");
-        }
-        finally
-        {
-            SetBusyOverlay(false, null);
-        }
-    }
-
-    private async Task StopLlamaServerAsync()
-    {
-        if (!IsLoaded)
-        {
-            return;
-        }
-
-        try
-        {
-            _resourceHostFacade.StopLlama();
-
-            // WHY: Keep persisted settings consistent with the explicit stop action.
-            var settings = _settingsService.Settings;
-            settings.EnableLlamaCppTranslation = false;
-            _mainWindowViewModel.Settings.LoadFrom(settings);
-
-            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
-            AppendLog("llama-server stopped.");
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Failed to stop llama-server.");
-            ShowLoadFailure("Failed to stop llama-server. See the logs for details.");
-        }
-    }
-
-    private async Task RestartPaddleOcrHostsAsync()
-    {
-        if (!IsLoaded)
-        {
-            return;
-        }
-
-        if (_runCoordinator.IsRunning)
-        {
-            AppendLog("Restart skipped: OCR is running.");
-            return;
-        }
-
-        try
-        {
-            SetBusyOverlay(true, "Applying OCR settings and restarting host...");
-            await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
-
-            var settings = _settingsService.Settings;
-            if (settings.OcrEngine == OcrEngineKind.Paddle)
-            {
-                _resourceHostFacade.StopPaddle();
-                _resourceHostFacade.StopPaddleVl();
-            }
-            else if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
-            {
-                _resourceHostFacade.StopPaddleVl();
-                _resourceHostFacade.StopPaddle();
-            }
-            else
-            {
-                AppendLog("OCR host restart skipped: current OCR engine is WinRT.");
-                return;
-            }
-
-            await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
-            AppendLog("OCR host restarted with latest settings.");
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Failed to restart OCR host.");
-            ShowLoadFailure("Failed to restart OCR host. See the logs for details.");
-        }
-        finally
-        {
-            SetBusyOverlay(false, null);
-        }
-    }
-
-    private void StopPaddleVlHost()
-    {
-        if (!IsLoaded)
-        {
-            return;
-        }
-
-        if (_runCoordinator.IsRunning)
-        {
-            AppendLog("Stop skipped: OCR is running.");
-            return;
-        }
-
-        if (!_resourceHostFacade.IsPaddleVlRunning)
-        {
-            AppendLog("PaddleOCR-VL host stop skipped: host is not running.");
-            return;
-        }
-
-        try
-        {
-            _resourceHostFacade.StopPaddleVl();
-            AppendLog("PaddleOCR-VL host stopped.");
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error(ex, "Failed to stop PaddleOCR-VL host.");
-            ShowLoadFailure("Failed to stop PaddleOCR-VL host. See the logs for details.");
-        }
-    }
+    private void StopPaddleVlHost() => _resourceHostCommandController.StopPaddleVlHost();
 
     private void RequestSettingsSave()
     {
