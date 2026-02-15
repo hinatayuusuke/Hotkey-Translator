@@ -241,6 +241,103 @@ namespace
         return true;
     }
 
+    bool JsonUnescapeString(const std::string& input, std::string& output)
+    {
+        output.clear();
+        output.reserve(input.size());
+
+        for (std::size_t i = 0; i < input.size(); i++)
+        {
+            const char ch = input[i];
+            if (ch != '\\')
+            {
+                output.push_back(ch);
+                continue;
+            }
+
+            if (i + 1 >= input.size())
+            {
+                return false;
+            }
+
+            const char esc = input[i + 1];
+            switch (esc)
+            {
+            case '"':
+                output.push_back('"');
+                i += 1;
+                break;
+            case '\\':
+                output.push_back('\\');
+                i += 1;
+                break;
+            case '/':
+                output.push_back('/');
+                i += 1;
+                break;
+            case 'b':
+                output.push_back('\b');
+                i += 1;
+                break;
+            case 'f':
+                output.push_back('\f');
+                i += 1;
+                break;
+            case 'n':
+                output.push_back('\n');
+                i += 1;
+                break;
+            case 'r':
+                output.push_back('\r');
+                i += 1;
+                break;
+            case 't':
+                output.push_back('\t');
+                i += 1;
+                break;
+            case 'u':
+            {
+                if (i + 5 >= input.size())
+                {
+                    return false;
+                }
+
+                auto hex = [](char c) -> int
+                {
+                    if (c >= '0' && c <= '9') return c - '0';
+                    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+                    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+                    return -1;
+                };
+
+                const int h0 = hex(input[i + 2]);
+                const int h1 = hex(input[i + 3]);
+                const int h2 = hex(input[i + 4]);
+                const int h3 = hex(input[i + 5]);
+                if (h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0)
+                {
+                    return false;
+                }
+
+                const int code = (h0 << 12) | (h1 << 8) | (h2 << 4) | h3;
+                if (code < 0 || code > 0x7F)
+                {
+                    // NOTE: overlayUpdate v1 payload should be ASCII only (base64).
+                    return false;
+                }
+
+                output.push_back(static_cast<char>(code));
+                i += 5;
+                break;
+            }
+            default:
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     bool ParseAttach(const std::string& json, AttachRequest& outReq)
     {
         std::uint32_t pid = 0;
@@ -581,8 +678,18 @@ namespace
                 return;
             }
 
+            std::string rectsB64Unescaped;
+            if (!rectsB64.empty())
+            {
+                if (!JsonUnescapeString(rectsB64, rectsB64Unescaped))
+                {
+                    WriteResponse(pipe, BuildState("Failed", "overlay_unescape_failed", it->second.api, pid));
+                    return;
+                }
+            }
+
             std::vector<std::uint8_t> decoded;
-            if (!Base64Decode(rectsB64, decoded))
+            if (!Base64Decode(rectsB64Unescaped.empty() ? rectsB64 : rectsB64Unescaped, decoded))
             {
                 WriteResponse(pipe, BuildState("Failed", "overlay_decode_failed", it->second.api, pid));
                 return;

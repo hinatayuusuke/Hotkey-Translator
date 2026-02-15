@@ -11066,3 +11066,29 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false: 成功。
+**2026-02-15 20:14 (Asia/Taipei) — overlayUpdate base64 decode 失敗の修正（JSONエスケープ対応）**
+
+### Summary
+- HookHost 側で ectsB64 が JSON エスケープ（例: \/ や \u002B）されている場合でも正しくデコードできるようにした。
+
+### Context / Goal
+- stage=dx11_hook event=hook_state state=Failed reason=overlay_decode_failed が継続し、HookAgent 側へ矩形コマンドが渡らず枠描画が動かない。
+- C# から送る base64 文字列が JSON でエスケープされる場合、現状の HookHost 実装（生文字列抽出）では base64 として不正になり得る。
+
+### Changes
+- HookHost: ectsB64 を base64 decode 前に JSON 文字列として unescape（\/, \\, \uXXXX など最小対応）。
+- unescape 失敗時は overlay_unescape_failed を返す。
+
+### Files Touched
+- Native/HookHost/main.cpp — JSON unescape を追加し、base64 decode へ渡す文字列を正規化。
+
+### Behavioral Impact
+- overlayUpdate が成功しやすくなり、HookAgent(Present内)の矩形描画が動作する可能性が上がる。
+
+### Risk & Mitigation
+- Risk: 簡易パーサのため、非ASCIIや複雑なエスケープを含む文字列は弾く。
+- Mitigation: v1 の ectsB64 は base64（ASCII）前提なので仕様上問題になりにくい。
+
+### Tests / Verification
+- cmake --build Native/build --config Release: 成功。
+- dotnet build -p:UseAppHost=false: 成功（実行中は dll copy の warning が出ることがある）。
