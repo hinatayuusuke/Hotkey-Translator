@@ -11115,3 +11115,30 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false: 成功。
+**2026-02-15 20:52 (Asia/Taipei) — overlayUpdate v2(暫定): C#から共有メモリへ直接書き込み**
+
+### Summary
+- overlayUpdate の送信経路を安定化するため、C# が HT_HOOK_CMD 共有メモリへ直接 Rect コマンドを書き込む経路を追加し、既存の JSON/base64 パイプ送信はフォールバックにした。
+
+### Context / Goal
+- overlay_decode_failed のような decode/escape 系の不安定要素と、JSON/base64 のオーバーヘッドを減らしたい。
+- 「最新コマンドのみ保持」の要件は共有メモリ上書きが最も素直。
+
+### Changes
+- Dx11HookOverlayCommandWriter を追加し、Local\\HT_HOOK_CMD_1_<pid> へ header+payload を直接書き込み。
+- Dx11HookClientService.TrySendOverlayUpdate はまず共有メモリ書き込みを試し、失敗時のみ従来の overlayUpdate (pipe JSON + base64) を送信。
+- detach 時に overlay command writer を Reset。
+
+### Files Touched
+- Services/Hook/Dx11HookOverlayCommandWriter.cs — HT_HOOK_CMD 共有メモリ writer を追加。
+- Services/Hook/Dx11HookClientService.cs — 直接書き込み優先 + フォールバック送信に変更。
+
+### Behavioral Impact
+- HookHost の base64 decode が失敗しても、共有メモリ書き込みが成功すれば枠描画は継続できる。
+
+### Risk & Mitigation
+- Risk: HookHost と C# が同じ mapping を書く競合が起き得る。
+- Mitigation: C# 側を優先し、pipe 送信は「共有メモリ書き込み失敗時のみ」にして競合頻度を抑える。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false: 成功。

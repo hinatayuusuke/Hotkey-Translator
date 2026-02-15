@@ -21,6 +21,7 @@ internal sealed class Dx11HookClientService : IDisposable
 
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly SemaphoreSlim _sync = new(1, 1);
+    private readonly Dx11HookOverlayCommandWriter _overlayWriter = new();
     private NamedPipeClientStream? _pipe;
     private StreamReader? _reader;
     private StreamWriter? _writer;
@@ -152,6 +153,12 @@ internal sealed class Dx11HookClientService : IDisposable
             const int maxRects = 512;
             var count = Math.Min(rects.Count, maxRects);
             var payload = PackOverlayRectCommands(rects, count);
+
+            if (_overlayWriter.TryWrite(pid, count, payload))
+            {
+                return;
+            }
+
             var b64 = payload.Length == 0 ? string.Empty : Convert.ToBase64String(payload);
             SendCommandSync(new Dx11HookCommandEnvelope("overlayUpdate", new Dx11HookOverlayUpdateRequest(pid, count, b64)));
         }
@@ -396,6 +403,7 @@ internal sealed class Dx11HookClientService : IDisposable
 
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
+        _overlayWriter.Reset();
     }
 
     private static byte[] PackOverlayRectCommands(IReadOnlyList<Dx11HookOverlayRect> rects, int count)
@@ -489,6 +497,7 @@ internal sealed class Dx11HookClientService : IDisposable
         _disposed = true;
         _attachedPid = 0;
         DisposePipe();
+        _overlayWriter.Dispose();
         _sync.Dispose();
     }
 }
