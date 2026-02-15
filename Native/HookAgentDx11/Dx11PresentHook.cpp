@@ -42,6 +42,21 @@ namespace ht::hook::dx11
         // thread. If we hook both, we'd draw/capture twice and can produce visible flicker/ghosting.
         static thread_local int g_presentDepth = 0;
 
+        constexpr int kOverlayV2DebugSamples = 8;
+
+        struct OverlayV2DebugSample
+        {
+            std::uint64_t seq = 0;
+            std::uint32_t canvasW = 0;
+            std::uint32_t canvasH = 0;
+            std::uint32_t blocks = 0;
+            std::uint32_t textBytes = 0;
+            float x = 0.0f;
+            float y = 0.0f;
+            float w = 0.0f;
+            float h = 0.0f;
+        };
+
         struct Dx11Runtime
         {
             std::mutex mutex;
@@ -90,10 +105,15 @@ namespace ht::hook::dx11
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
             std::uint32_t lastPresentKind = 0; // 1=Present, 2=Present1
+            std::uint32_t activePresentKind = 0; // 0=auto(first seen), 1=Present, 2=Present1
 
             bool imguiInitialized = false;
             ImGuiContext* imguiContext = nullptr;
             std::uint64_t lastImGuiQpc = 0;
+
+            OverlayV2DebugSample overlayV2Debug[kOverlayV2DebugSamples]{};
+            std::uint32_t overlayV2DebugNext = 0;
+            std::uint32_t overlayV2DebugCount = 0;
         };
 
         Dx11Runtime g_rt;
@@ -361,6 +381,32 @@ namespace ht::hook::dx11
 
             rt.lastOverlayV2Seq = header.updatedSeq;
             rt.overlayV2Header = header;
+
+            // NOTE: Track recent v2 coordinates to diagnose "alternating/jittering" IPC updates.
+            {
+                const std::uint32_t slot = rt.overlayV2DebugNext % kOverlayV2DebugSamples;
+                auto& s = rt.overlayV2Debug[slot];
+                s.seq = header.updatedSeq;
+                s.canvasW = header.canvasW;
+                s.canvasH = header.canvasH;
+                s.blocks = header.textBlockCount;
+                s.textBytes = header.textBytes;
+                if (!rt.overlayV2Blocks.empty())
+                {
+                    const auto& b0 = rt.overlayV2Blocks[0];
+                    s.x = b0.x;
+                    s.y = b0.y;
+                    s.w = b0.w;
+                    s.h = b0.h;
+                }
+                else
+                {
+                    s.x = s.y = s.w = s.h = 0.0f;
+                }
+
+                rt.overlayV2DebugNext = slot + 1;
+                rt.overlayV2DebugCount = std::min<std::uint32_t>(rt.overlayV2DebugCount + 1, kOverlayV2DebugSamples);
+            }
             return true;
         }
 
@@ -539,6 +585,7 @@ namespace ht::hook::dx11
             ImGui::NewFrame();
 
             const bool testMode = ReadEnvU32(L"HT_HOOK_IMGUI_TEST", 0) != 0;
+            const bool debugMode = ReadEnvU32(L"HT_HOOK_OVL_DEBUG", 0) != 0;
             if (testMode)
             {
                 // WHY: Native-only rendering test. This isolates the rendering path from IPC/coordinate conversion.
@@ -651,6 +698,42 @@ namespace ht::hook::dx11
                 const ImU32 col = IM_COL32(10, 10, 10, 170);
                 bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
             }
+            }
+
+            if (debugMode)
+            {
+                // WHY: Diagnose IPC coordinate instability by showing recent (seq, x/y/w/h) samples on-screen.
+                ImGui::SetNextWindowPos(ImVec2(10.0f, 10.0f), ImGuiCond_Always);
+                ImGui::SetNextWindowBgAlpha(0.45f);
+                const ImGuiWindowFlags flags =
+                    ImGuiWindowFlags_NoDecoration |
+                    ImGuiWindowFlags_NoSavedSettings |
+                    ImGuiWindowFlags_NoMove |
+                    ImGuiWindowFlags_NoNav |
+                    ImGuiWindowFlags_NoInputs |
+                    ImGuiWindowFlags_AlwaysAutoResize;
+                if (ImGui::Begin("##ht_ovl_dbg", nullptr, flags))
+                {
+                    ImGui::Text("HT OVL DEBUG");
+                    ImGui::Text("present_kind=%u active=%u", rt.lastPresentKind, rt.activePresentKind);
+                    ImGui::Text("bb=%ux%u canvas=%ux%u", rt.backBufferWidth, rt.backBufferHeight, rt.overlayV2Header.canvasW, rt.overlayV2Header.canvasH);
+                    ImGui::Text("v2 seq=%llu blocks=%u text=%u",
+                        static_cast<unsigned long long>(rt.lastOverlayV2Seq),
+                        static_cast<unsigned int>(rt.overlayV2Blocks.size()),
+                        static_cast<unsigned int>(rt.overlayV2TextBlob.size()));
+
+                    const std::uint32_t count = rt.overlayV2DebugCount;
+                    const std::uint32_t last = (rt.overlayV2DebugNext == 0) ? 0 : (rt.overlayV2DebugNext - 1);
+                    for (std::uint32_t i = 0; i < std::min<std::uint32_t>(count, 6u); i++)
+                    {
+                        const std::uint32_t idx = (last + kOverlayV2DebugSamples - i) % kOverlayV2DebugSamples;
+                        const auto& s = rt.overlayV2Debug[idx];
+                        ImGui::Text("[%llu] x=%.2f y=%.2f w=%.2f h=%.2f",
+                            static_cast<unsigned long long>(s.seq),
+                            s.x, s.y, s.w, s.h);
+                    }
+                }
+                ImGui::End();
             }
 
             ImGui::Render();
@@ -923,6 +1006,18 @@ namespace ht::hook::dx11
             std::lock_guard<std::mutex> lock(g_rt.mutex);
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
+                if (g_rt.activePresentKind == 0)
+                {
+                    // WHY: Some titles call both Present and Present1 (not necessarily nested). If we draw on both,
+                    // we can render two different overlay snapshots within the same frame, which looks like
+                    // offset/ghosted text. Stick to the first present kind we observe unless overridden.
+                    g_rt.activePresentKind = 1;
+                }
+                if (g_rt.activePresentKind != 1)
+                {
+                    return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+                }
+
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 1;
@@ -962,6 +1057,15 @@ namespace ht::hook::dx11
             std::lock_guard<std::mutex> lock(g_rt.mutex);
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
+                if (g_rt.activePresentKind == 0)
+                {
+                    g_rt.activePresentKind = 2;
+                }
+                if (g_rt.activePresentKind != 2)
+                {
+                    return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+                }
+
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 2;
@@ -1159,6 +1263,11 @@ namespace ht::hook::dx11
         g_rt.captureIntervalQpc = (g_rt.qpcFreq != 0) ? (g_rt.qpcFreq / g_rt.configuredFpsLimit) : 0;
         g_rt.lastConfigQpc = 0;
         g_rt.overlayEnabled = true;
+        g_rt.activePresentKind = ReadEnvU32(L"HT_HOOK_PRESENT_KIND", 0);
+        if (g_rt.activePresentKind != 0 && g_rt.activePresentKind != 1 && g_rt.activePresentKind != 2)
+        {
+            g_rt.activePresentKind = 0;
+        }
 
         void** vtable = nullptr;
         void** vtable1 = nullptr;

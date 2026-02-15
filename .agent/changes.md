@@ -11362,3 +11362,114 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 00:34 (Asia/Taipei) — v2 overlay座標の整数スナップ（ジッタ/二重見え対策）**
+
+### Summary
+- Screen→Canvas 変換後の v2 overlay 座標を整数ピクセルにスナップし、サブピクセル由来の視覚的な二重表示/ちらつきを減らす。
+
+### Context / Goal
+- ネイティブ固定テキスト描画は安定しているが、通常モード（IPC由来座標）では同じテキストがズレて重なってちらつく。
+- まず座標の微小ジッタ/サブピクセル座標を潰して挙動が改善するか確認したい。
+
+### Changes
+- ScreenRect→CanvasRect の算出結果を x/y/w/h ともに整数へ丸め、範囲内にクランプしてから Hook へ渡す。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — `TryBuildHookCanvasRect` で整数スナップを適用。
+
+### Behavioral Impact
+- Hook overlay の描画矩形が整数ピクセルに揃う（サブピクセル位置の描画は行われない）。
+
+### Risk & Mitigation
+- Risk: 端で 1px 程度の位置/サイズ誤差が出る可能性。
+- Mitigation: まずは安定性優先。必要なら左上はFloor/右下はCeilのようなポリシーに調整する。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 00:38 (Asia/Taipei) — 通常モードの二重/ちらつき調査: 座標スナップをロールバックしPresent経路を単一化**
+
+### Summary
+- 整数スナップ変更を取り消し、Present/Present1 の両方で描画される可能性を減らすため、DX11フック側で「最初に観測したpresent経路のみ」描画/キャプチャするようにした。
+
+### Context / Goal
+- ネイティブ固定テキストは安定するが、IPC由来の通常モードでは同テキストがズレて重なってちらつく。
+- 同一フレーム中に Present と Present1 の両方で別スナップショットを描画している可能性を潰して確認したい。
+
+### Changes
+- C#:
+  - v2 overlay の座標を整数スナップする変更をロールバック（挙動変化を最小化して次の要因を調査）。
+- Native(DX11 hook):
+  - `activePresentKind` を導入し、デフォルトは最初に観測した present 経路(1=Present / 2=Present1)に固定。
+  - 環境変数 `HT_HOOK_PRESENT_KIND` で強制指定可能（0=auto, 1=Present, 2=Present1）。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — 座標整数スナップをロールバック。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — present経路の単一化（activePresentKind）と環境変数オーバーライドを追加。
+
+### Behavioral Impact
+- 一部タイトルで Present と Present1 の両方が呼ばれる場合でも、overlay/capture は片方に限定され二重描画の可能性が減る。
+
+### Risk & Mitigation
+- Risk: タイトルによっては選ばれた経路側では想定の描画/キャプチャが行われない可能性。
+- Mitigation: `HT_HOOK_PRESENT_KIND` で 1/2 を手動で切り替えて検証できる。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
+- `cmake --build .\\Native\\build --config Release`: 成成功。
+
+**2026-02-16 00:52 (Asia/Taipei) — Flip model対応: current backbufferへ描画/キャプチャ**
+
+### Summary
+- Flip model swapchain で backbuffer がローテーションするケースに対応し、常に現在の backbuffer index を使って capture と overlay(ImGui/v1) を行うようにした。
+
+### Context / Goal
+- 固定テキスト描画は安定だが、通常モードでは座標がズレて重なりちらつく。
+- `GetBuffer(0)` を固定で使うと flip model で別バッファに描いてしまい、古い/新しい overlay が交互に出てゴースト化する可能性がある。
+
+### Changes
+- `IDXGISwapChain3` が利用可能な場合 `GetCurrentBackBufferIndex()` を使い、RTV を buffer index ごとにキャッシュ。
+- overlay(v1 ClearView / ImGui) と capture の両方で current backbuffer index を使用。
+- swapchain が変わった場合は RTV キャッシュと swapchain3 をリセットして作り直す。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — current backbuffer index 対応（RTVを複数保持、capture/overlayで使用）。
+
+### Behavioral Impact
+- Flip model のタイトルで overlay/capture のフレーム整合性が上がり、ゴースト/ちらつきが改善する可能性がある。
+
+### Risk & Mitigation
+- Risk: タイトルによって swapchain3 が取得できない/BufferCount が想定外で処理が外れる可能性。
+- Mitigation: swapchain3 が無い場合は従来通り index=0 にフォールバックし、RTV範囲外は 0 番にフォールバックする。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 01:16 (Asia/Taipei) — IPC座標ジッタ調査: v2座標のオンスクリーンデバッグ表示**
+
+### Summary
+- flip model 対応（current backbuffer index）の試行をロールバックし、IPC(v2)更新で座標が交互に揺れているかを確認するためのオンスクリーンデバッグ表示を追加した。
+
+### Context / Goal
+- テストモード（固定テキスト）は安定だが、通常モード（IPC由来）ではテキストがズレて重なってちらつく。
+- まず IPC 更新が「2種類の座標を交互に出している」等のジッタを起こしていないかを、ゲーム内で数値として確認したい。
+
+### Changes
+- `HT_HOOK_OVL_DEBUG=1` のとき、直近の v2 overlay 更新サンプル（updatedSeq と x/y/w/h）を画面左上に表示。
+- 新しい v2 更新を受け取るたびに、直近N件（固定長リングバッファ）へ (seq, canvasW/H, blockCount, textBytes, block0のx/y/w/h) を記録。
+- 直近の flip model(current backbuffer index) 対応コードは取り下げ、比較検証しやすい状態に戻した。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — v2座標サンプルの記録とオンスクリーン表示を追加、flip model 試行をロールバック。
+
+### Behavioral Impact
+- `HT_HOOK_OVL_DEBUG=1` の場合のみ、ゲーム内にデバッグ情報（数値テキスト）が追加表示される。
+
+### Risk & Mitigation
+- Risk: デバッグ表示が有効だと描画コストが僅かに増える。
+- Mitigation: 環境変数で明示的に有効化した場合のみ表示。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
