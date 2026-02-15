@@ -11610,3 +11610,57 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 02:33 (Asia/Taipei) — 12段階フォントロード+PushFontでper-window描画（FontScale廃止）**
+
+### Summary
+- per-window ルートの利点（矩形内/折返し/NoInputs）を維持しつつ、`SetWindowFontScale` を廃止して 12 段階のフォントを事前ロードし、ブロックごとに `PushFont/PopFont` で切替える方式に変更した。
+
+### Context / Goal
+- `HT_HOOK_OVL_TEXT_DRAWLIST=1` で二重/ちらつきが解消したことから、per-window + FontScale 経路が不安定要因と判断。
+- ただし per-window のレイアウト利点は維持したい。
+
+### Changes
+- ImGui初期化時に同一フォントファイルから 12 段階（12,14,...,34px）のフォントをロードし、`fontPx` に最も近いフォントを選択して描画。
+- per-window 描画で `SetWindowFontScale` を削除し、代わりに `PushFont/PopFont` を使用。
+- `HT_HOOK_OVL_TEXT_DRAWLIST` はフォールバックとして残し、デフォルトは per-window 描画に戻した。
+- デバッグUIに block0 の desired/selected フォントサイズと steps を表示。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — 12段階フォントロード、フォント選択、per-window描画のFontScale廃止。
+
+### Behavioral Impact
+- 通常は per-window で描画され、フォントサイズは近似段階に丸められる（12段階）。
+- 問題のあるタイトルは `HT_HOOK_OVL_TEXT_DRAWLIST=1` で DrawList 経路へ切替可能。
+
+### Risk & Mitigation
+- Risk: フォントを複数サイズロードするため、初回初期化コストとアトラスサイズが増える。
+- Mitigation: 初期化時1回のみ。必要なら段階数やサイズレンジを設定化する。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 02:36 (Asia/Taipei) — 12段階フォントサイズを14〜72へ再マッピング**
+
+### Summary
+- 12段階フォントサイズのテーブルを 14〜72（両端含む、線形）へ再マッピングし、より広い `fontPx` 範囲を `PushFont` でカバーできるようにした。
+
+### Context / Goal
+- オーバーレイの `fontPx` が 34px を超えるケースに備え、12段階を 14〜72 の範囲に広げたい。
+
+### Changes
+- ImGui初期化時に作成する 12段階フォントサイズを `[14..72]` に変更（線形補間）。
+- probe フォントは最小サイズ（14px）を使用し、既存の `PushFont/PopFont` 選択ロジックは維持。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — フォントサイズ配列を14〜72へ変更。
+
+### Behavioral Impact
+- `fontPx` が大きいブロックでも近いサイズのフォントを選べる。
+
+### Risk & Mitigation
+- Risk: 72px までのフォントをアトラスに含めるため初期化コスト/VRAMが増える可能性。
+- Mitigation: 初期化時1回のみ。必要なら上限や段階数を設定化する。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。

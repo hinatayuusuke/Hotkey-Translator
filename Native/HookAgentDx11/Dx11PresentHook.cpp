@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <cinttypes>
@@ -45,6 +46,7 @@ namespace ht::hook::dx11
 
         constexpr int kOverlayV2DebugSamples = 8;
         constexpr int kPresentDebugSamples = 16;
+        constexpr int kOverlayFontSteps = 12;
 
         struct OverlayV2DebugSample
         {
@@ -71,6 +73,15 @@ namespace ht::hook::dx11
             std::uint32_t bbW = 0;
             std::uint32_t bbH = 0;
             std::uint64_t ovlSeq = 0;
+        };
+
+        struct OverlayFontSet
+        {
+            const char* path = nullptr;
+            int face = 0;
+            float sizesPx[kOverlayFontSteps]{};
+            ImFont* fonts[kOverlayFontSteps]{};
+            std::uint32_t count = 0;
         };
 
         struct Dx11Runtime
@@ -126,6 +137,9 @@ namespace ht::hook::dx11
             bool imguiInitialized = false;
             ImGuiContext* imguiContext = nullptr;
             std::uint64_t lastImGuiQpc = 0;
+            OverlayFontSet overlayFonts{};
+            float lastBlock0DesiredFontPx = 0.0f;
+            float lastBlock0SelectedFontPx = 0.0f;
 
             OverlayV2DebugSample overlayV2Debug[kOverlayV2DebugSamples]{};
             std::uint32_t overlayV2DebugNext = 0;
@@ -179,6 +193,36 @@ namespace ht::hook::dx11
         std::uint32_t ForceAlpha(std::uint32_t argb, std::uint32_t a)
         {
             return (argb & 0x00FFFFFFu) | ((a & 0xFFu) << 24);
+        }
+
+        ImFont* SelectOverlayFontLocked(Dx11Runtime& rt, float desiredPx)
+        {
+            ImGuiIO& io = ImGui::GetIO();
+            if (desiredPx <= 0.0f || rt.overlayFonts.count == 0)
+            {
+                return io.FontDefault;
+            }
+
+            ImFont* best = nullptr;
+            float bestDist = 1.0e9f;
+            for (std::uint32_t i = 0; i < rt.overlayFonts.count; i++)
+            {
+                ImFont* f = rt.overlayFonts.fonts[i];
+                const float sz = rt.overlayFonts.sizesPx[i];
+                if (f == nullptr || sz <= 0.0f)
+                {
+                    continue;
+                }
+
+                const float d = std::fabs(sz - desiredPx);
+                if (best == nullptr || d < bestDist)
+                {
+                    best = f;
+                    bestDist = d;
+                }
+            }
+
+            return (best != nullptr) ? best : io.FontDefault;
         }
 
         void RecordPresentDebugLocked(Dx11Runtime& rt, IDXGISwapChain* swap, std::uint32_t kind)
@@ -237,6 +281,9 @@ namespace ht::hook::dx11
             rt.imguiInitialized = false;
             rt.imguiContext = nullptr;
             rt.lastImGuiQpc = 0;
+            rt.overlayFonts = {};
+            rt.lastBlock0DesiredFontPx = 0.0f;
+            rt.lastBlock0SelectedFontPx = 0.0f;
         }
 
         void ResetDeviceStateLocked(Dx11Runtime& rt)
@@ -530,8 +577,23 @@ namespace ht::hook::dx11
                 builder.BuildRanges(&s_glyphRanges);
             }
 
-            ImFont* font = nullptr;
+            // NOTE: 12-step mapping in [14..72] inclusive (linear). This favors stability over perfect matching
+            // and avoids runtime font scaling.
+            static float kFontSizesPx[kOverlayFontSteps]{};
+            static bool kFontSizesInited = false;
+            if (!kFontSizesInited)
+            {
+                for (int i = 0; i < kOverlayFontSteps; i++)
+                {
+                    const float t = (kOverlayFontSteps > 1) ? (static_cast<float>(i) / static_cast<float>(kOverlayFontSteps - 1)) : 0.0f;
+                    kFontSizesPx[i] = 14.0f + (72.0f - 14.0f) * t;
+                }
+                kFontSizesInited = true;
+            }
+
+            ImFont* fontDefault = nullptr;
             const char* loadedPath = nullptr;
+            int loadedFace = 0;
             for (const char* path : fontCandidates)
             {
                 const DWORD attr = GetFileAttributesA(path);
@@ -547,23 +609,66 @@ namespace ht::hook::dx11
                 for (int face = 0; face < faceMax; face++)
                 {
                     cfg.FontNo = face;
-                    font = io.Fonts->AddFontFromFileTTF(path, 22.0f, &cfg, s_glyphRanges.Data);
-                    if (font != nullptr)
+                    ImFont* test = io.Fonts->AddFontFromFileTTF(path, kFontSizesPx[0], &cfg, s_glyphRanges.Data);
+                    if (test == nullptr)
                     {
-                        loadedPath = path;
-                        break;
+                        continue;
                     }
+
+                    // WHY: Avoid SetWindowFontScale. Preload multiple sizes and pick nearest per block.
+                    loadedPath = path;
+                    loadedFace = face;
+                    rt.overlayFonts = {};
+                    rt.overlayFonts.path = loadedPath;
+                    rt.overlayFonts.face = loadedFace;
+                    rt.overlayFonts.count = kOverlayFontSteps;
+                    for (std::uint32_t i = 0; i < kOverlayFontSteps; i++)
+                    {
+                        rt.overlayFonts.sizesPx[i] = kFontSizesPx[i];
+                        rt.overlayFonts.fonts[i] = nullptr;
+                    }
+
+                    // Reuse the probe font for slot 0.
+                    rt.overlayFonts.fonts[0] = test;
+
+                    for (std::uint32_t i = 0; i < kOverlayFontSteps; i++)
+                    {
+                        if (rt.overlayFonts.fonts[i] != nullptr)
+                        {
+                            continue;
+                        }
+                        cfg.FontNo = loadedFace;
+                        rt.overlayFonts.fonts[i] = io.Fonts->AddFontFromFileTTF(path, kFontSizesPx[i], &cfg, s_glyphRanges.Data);
+                    }
+
+                    // Pick a readable default size near 24px.
+                    std::uint32_t bestIdx = 0;
+                    float bestDist = 1.0e9f;
+                    for (std::uint32_t i = 0; i < kOverlayFontSteps; i++)
+                    {
+                        const float d = std::fabs(kFontSizesPx[i] - 24.0f);
+                        if (i == 0 || d < bestDist)
+                        {
+                            bestIdx = i;
+                            bestDist = d;
+                        }
+                    }
+                    fontDefault = rt.overlayFonts.fonts[bestIdx];
+
+                    break;
                 }
-                if (font != nullptr)
+                if (loadedPath != nullptr)
                 {
                     break;
                 }
             }
-            if (font != nullptr)
+            if (fontDefault != nullptr)
             {
-                io.FontDefault = font;
+                io.FontDefault = fontDefault;
                 std::string msg = "HT HookAgentDx11: ImGui font loaded: ";
                 msg += (loadedPath != nullptr ? loadedPath : "(unknown)");
+                msg += " face=";
+                msg += std::to_string(loadedFace);
                 msg += "\n";
                 OutputDebugStringA(msg.c_str());
             }
@@ -650,9 +755,9 @@ namespace ht::hook::dx11
             const bool forceOpaqueBg = ReadEnvU32(L"HT_HOOK_OVL_FORCE_OPAQUE_BG", 0) != 0;
             const bool skipText = ReadEnvU32(L"HT_HOOK_OVL_SKIP_TEXT", 0) != 0;
             const bool forceAsciiText = ReadEnvU32(L"HT_HOOK_OVL_FORCE_ASCII_TEXT", 0) != 0;
-            // WHY: Prefer DrawList text rendering by default; it avoids the per-window FontScale path that can
-            // produce visually duplicated/flickering text in some titles.
-            const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 1) != 0;
+            // WHY: Per-window text makes wrap/clip/NoInputs straightforward. DrawList path is a compatibility
+            // fallback for titles where the window path misbehaves.
+            const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 0) != 0;
             const bool ignoreFontPx = ReadEnvU32(L"HT_HOOK_OVL_IGNORE_FONT_PX", 0) != 0;
             if (testMode)
             {
@@ -691,9 +796,16 @@ namespace ht::hook::dx11
                     const float pad = std::max(0.0f, b.paddingPx);
                     const float rounding = std::max(0.0f, b.roundingPx);
                     const float baseFontPx = ImGui::GetFontSize();
-                    const float fontPx = (ignoreFontPx || b.fontPx <= 0.0f) ? baseFontPx : b.fontPx;
+                    const float desiredFontPx = (ignoreFontPx || b.fontPx <= 0.0f) ? 0.0f : b.fontPx;
+                    ImFont* selectedFont = SelectOverlayFontLocked(rt, desiredFontPx);
+                    const float selectedFontPx = (selectedFont != nullptr) ? selectedFont->LegacySize : baseFontPx;
                     const float innerW = std::max(1.0f, b.w - (pad * 2.0f));
                     const float innerH = std::max(1.0f, b.h - (pad * 2.0f));
+                    if (i == 0)
+                    {
+                        rt.lastBlock0DesiredFontPx = (desiredFontPx > 0.0f) ? desiredFontPx : baseFontPx;
+                        rt.lastBlock0SelectedFontPx = selectedFontPx;
+                    }
 
                     const ImVec2 p0(b.x, b.y);
                     const ImVec2 p1(b.x + b.w, b.y + b.h);
@@ -737,8 +849,8 @@ namespace ht::hook::dx11
                         const float wrapW = (b.wrap != 0) ? innerW : 0.0f;
                         const ImVec4 clip(pos.x, pos.y, pos.x + innerW, pos.y + innerH);
                         fg->AddText(
-                            ImGui::GetFont(),
-                            fontPx,
+                            selectedFont != nullptr ? selectedFont : ImGui::GetFont(),
+                            selectedFontPx,
                             pos,
                             ArgbToImU32(b.fgArgb),
                             textBegin,
@@ -766,9 +878,11 @@ namespace ht::hook::dx11
                     std::snprintf(name, sizeof(name), "##ht_ovl_v2_%zu", i);
                     if (ImGui::Begin(name, nullptr, flags))
                     {
-                        // WHY: We don't have multi-size fonts yet; approximate using per-window font scaling.
-                        const float scale = fontPx / std::max(1.0f, baseFontPx);
-                        ImGui::SetWindowFontScale(std::max(0.5f, std::min(scale, 3.0f)));
+                        // WHY: Prefer selecting a real font size over SetWindowFontScale to avoid visual flicker.
+                        if (selectedFont != nullptr)
+                        {
+                            ImGui::PushFont(selectedFont);
+                        }
 
                         ImGui::PushStyleColor(ImGuiCol_Text, ArgbToImVec4(b.fgArgb));
                         if (b.wrap != 0)
@@ -783,6 +897,10 @@ namespace ht::hook::dx11
                             ImGui::PopTextWrapPos();
                         }
                         ImGui::PopStyleColor();
+                        if (selectedFont != nullptr)
+                        {
+                            ImGui::PopFont();
+                        }
                     }
                     ImGui::End();
                 }
@@ -834,6 +952,11 @@ namespace ht::hook::dx11
                         "text_path: drawlist=%s ignore_font_px=%s",
                         drawTextViaDrawList ? "on" : "off",
                         ignoreFontPx ? "on" : "off");
+                    ImGui::Text(
+                        "block0 font: desired=%.1f selected=%.1f steps=%u",
+                        rt.lastBlock0DesiredFontPx,
+                        rt.lastBlock0SelectedFontPx,
+                        rt.overlayFonts.count);
 
                     // Present/swapchain diagnostics: detect alternating swapchains or unexpected swap effects.
                     ImGui::Separator();
