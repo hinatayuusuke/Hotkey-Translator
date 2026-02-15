@@ -11092,3 +11092,26 @@ ull logger が固定されていた。
 ### Tests / Verification
 - cmake --build Native/build --config Release: 成功。
 - dotnet build -p:UseAppHost=false: 成功（実行中は dll copy の warning が出ることがある）。
+**2026-02-15 20:29 (Asia/Taipei) — GraphicsHook bounds をクライアント領域基準に変更（座標整合）**
+
+### Summary
+- GraphicsHook の capture bounds を ExtendedFrameBounds ではなくクライアント領域（ClientToScreen）基準にし、ROI/枠表示の座標ズレを減らした。
+
+### Context / Goal
+- Hooked backbuffer のピクセル領域は通常ウィンドウのクライアント領域に対応するため、ExtendedFrameBounds（外枠含む）を bounds として使うと overlayUpdate の座標変換がズレやすい。
+
+### Changes
+- GraphicsHookCaptureProvider の bounds 解決で GetClientRect + ClientToScreen を優先し、取得できない場合のみ従来の ExtendedFrameBounds/WindowRect にフォールバック。
+
+### Files Touched
+- Services/GraphicsHookCaptureProvider.cs — クライアント領域スクリーンRect取得を追加し、bounds の優先順を変更。
+
+### Behavioral Impact
+- GraphicsHook capture 時の rame.Bounds がクライアント領域基準になり、ROI/OverlayRect の画面位置が一致しやすくなる。
+
+### Risk & Mitigation
+- Risk: 一部タイトル/レンダラで backbuffer とクライアント領域が一致しない場合がある。
+- Mitigation: 取得失敗時は従来の bounds へフォールバックし、挙動が極端に悪化しないようにする。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false: 成功。

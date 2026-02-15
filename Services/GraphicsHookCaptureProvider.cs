@@ -397,6 +397,13 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             return null;
         }
 
+        // WHY: Hooked backbuffer dimensions typically correspond to the client area, not the extended frame bounds.
+        // Use the client rect for consistent screen<->hook pixel mapping (overlay/ROI alignment).
+        if (TryGetClientScreenRect(hwnd, out var clientRect))
+        {
+            return clientRect;
+        }
+
         if (TryGetExtendedFrameBounds(hwnd, out var rect))
         {
             return rect;
@@ -408,6 +415,44 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
 
         return null;
+    }
+
+    private static bool TryGetClientScreenRect(IntPtr hwnd, out Rect rect)
+    {
+        rect = default;
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (!GetClientRect(hwnd, out var client))
+        {
+            return false;
+        }
+
+        var w = client.Right - client.Left;
+        var h = client.Bottom - client.Top;
+        if (w <= 0 || h <= 0)
+        {
+            return false;
+        }
+
+        var tl = new NativePoint(0, 0);
+        var br = new NativePoint(w, h);
+        if (!ClientToScreen(hwnd, ref tl) || !ClientToScreen(hwnd, ref br))
+        {
+            return false;
+        }
+
+        var outW = br.X - tl.X;
+        var outH = br.Y - tl.Y;
+        if (outW <= 0 || outH <= 0)
+        {
+            return false;
+        }
+
+        rect = new Rect(tl.X, tl.Y, outW, outH);
+        return true;
     }
 
     private static bool TryGetExtendedFrameBounds(IntPtr hwnd, out Rect rect)
@@ -428,6 +473,12 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetClientRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref NativePoint lpPoint);
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr hwnd, DwmWindowAttribute dwAttribute, out NativeRect pvAttribute, int cbAttribute);
@@ -451,6 +502,19 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         public Rect ToRect()
         {
             return new Rect(Left, Top, Right - Left, Bottom - Top);
+        }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+
+        public NativePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
         }
     }
 }
