@@ -10753,3 +10753,42 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行: 成功（0 warnings / 0 errors）。
 - Native は骨組み追加のみで、アプリ本体ビルドへの回帰がないことを確認。
+**2026-02-15 14:12 (Asia/Taipei) — DX11 Presentフック + 共有メモリフレーム出力（Step2）**
+
+### Summary
+- HookAgentDx11 に実 Present/ResizeBuffers フックと BGRA8 readback を追加し、共有メモリへ最新フレームを書き出す経路を実装した。
+
+### Context / Goal
+- WPF Topmost 競合回避のため、ゲームの Present 経路でフレーム取得できる PoC が必要だった。
+- 将来 DX12/OpenGL/Vulkan を追加できるよう、API非依存の共有フレーム契約を先に固定したい。
+
+### Changes
+- HookCommon に `GraphicsApi`/共有メモリ命名規約と、共有フレーム writer（header+payload 書き込み）を追加。
+- HookAgentDx11 に vtable 差し替え方式の Present/ResizeBuffers フックを実装し、staging readback で BGRA8 フレームを共有メモリへ出力。
+- HookHost に Attach/Detach の実装を追加し、対象 PID へ HookAgentDx11.dll を注入して Install を呼ぶ（v1: DLL 常駐、detach は無効化のみ）。
+- Native の出力先を `Native/HookHost/bin` に揃え、WPF 側の既定パス `Native\\HookHost\\bin\\HookHost.exe` と整合させた。
+
+### Files Touched
+- `Native/HookCommon/HookIpcProtocol.h` — 共有フレームヘッダ拡張（pixelFormat/api/pid）と mapping 名生成を追加。
+- `Native/HookCommon/SharedFrameWriter.h` — 共有メモリ writer を新規追加。
+- `Native/HookCommon/SharedFrameWriter.cpp` — 共有メモリ writer 実装を新規追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Present/ResizeBuffers フック、staging readback、共有メモリ書き込み、15fps デフォルト間引きを実装。
+- `Native/HookAgentDx11/dllmain.cpp` — CreateRemoteThread 互換の thread-proc 形式エクスポートを追加。
+- `Native/HookAgentDx11/CMakeLists.txt` — HookCommon 実装をリンクし、出力先を `Native/HookHost/bin` に統一。
+- `Native/HookHost/main.cpp` — Attach/Detach で注入と Install/Uninstall 呼び出しを実装（v1: DLL unload しない）。
+- `Native/HookHost/CMakeLists.txt` — HookCommon include と出力先を `Native/HookHost/bin` に統一。
+
+### Behavioral Impact
+- DX11 対象プロセスに HookAgentDx11 を注入できた場合、Present 経路でフレームが `Local\\HT_HOOK_FRAME_<api>_<pid>` へ BGRA8 で書き出される。
+- Detach は v1 では DLL を unload せず capture を無効化する（vtable フック方式の dangling ポインタ回避）。
+
+### Risk & Mitigation
+- Risk: vtable 差し替え方式はタイトル/ドライバ差異で失敗し得る。
+- Mitigation: Hook 側は失敗時に何もしない設計にし、上位（WPF）で既存キャプチャへフォールバック可能な前提を維持。
+
+- Risk: detach で DLL を unload するとクラッシュする可能性（vtable が DLL 内関数を指すため）。
+- Mitigation: v1 では DLL 常駐とし、detach は無効化のみ。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行: 成功（0 warnings / 0 errors）。
+- Native ビルド: 未実施（この環境で `cmake` が未導入のため）。

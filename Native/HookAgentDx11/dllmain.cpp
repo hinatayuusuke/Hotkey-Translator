@@ -12,6 +12,17 @@ extern "C" __declspec(dllexport) void __stdcall UninstallDx11Hook()
     ht::hook::dx11::UninstallPresentHook();
 }
 
+extern "C" __declspec(dllexport) DWORD __stdcall InstallDx11HookThread(void* /*unused*/)
+{
+    return InstallDx11Hook() ? 1u : 0u;
+}
+
+extern "C" __declspec(dllexport) DWORD __stdcall UninstallDx11HookThread(void* /*unused*/)
+{
+    UninstallDx11Hook();
+    return 1u;
+}
+
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved)
 {
     switch (reason)

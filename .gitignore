@@ -3,6 +3,42 @@
 ##
 ## Get latest from `dotnet new gitignore`
 
+# --- CMakeのビルド生成物 ---
+build/
+bin/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+install_manifest.txt
+*.cmake
+
+# --- コンパイル済みバイナリ・ライブラリ ---
+*.exe
+*.out
+*.app
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.pdb
+
+# --- VS Codeの設定 (共有しない場合) ---
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# --- OS・エディタの一時ファイル ---
+.DS_Store
+Thumbs.db
+.cache/
+
+
+
 # doc
 #doc/
 .doc/
