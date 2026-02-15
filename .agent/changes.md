@@ -11013,3 +11013,56 @@ ull logger が固定されていた。
 ### Tests / Verification
 - cmake --build Native/build --config Release: 成功（※HookAgentDx11.dll をロードしているプロセスがあるとリンク失敗するため、対象ゲームを終了してからビルド）。
 - dotnet build -p:UseAppHost=false: 成功（Hotkey-Translator.exe 実行中は dll copy の warning が出るがビルド自体は成功）。
+**2026-02-15 19:54 (Asia/Taipei) — GraphicsHook frame共有のRGBA8対応 + overlayUpdate送信条件緩和**
+
+### Summary
+- DX11 swapchain が R8G8B8A8 の場合でもフレーム共有を生成できるようにし、WGCフォールバック中でも overlayUpdate を送って描画経路の切り分けができるようにした。
+
+### Context / Goal
+- ログ上 Hook shared frame mapping not found が継続しており、Present は呼ばれていても swapchain format 非対応で WriteFrame まで到達していない可能性がある。
+- GraphicsHook が失敗して WGC へフォールバックしている間も、HookAgent の描画経路（矩形合成）が生きているかを切り分けたい。
+
+### Changes
+- HookAgentDx11: DXGI_FORMAT_R8G8B8A8(_SRGB) を許容し、readback 後に CPU で RGBA→BGRA スワップして共有フレームへ出力。
+- PipelineOrchestrator: overlayUpdate を CaptureProviderKind.GraphicsHook 限定にせず送信（WGC 等でも frame bounds/bitmap を基準に座標変換）。
+
+### Files Touched
+- Native/HookAgentDx11/Dx11PresentHook.cpp — RGBA8 対応（swizzle）を追加。
+- Services/PipelineOrchestrator.cs — overlayUpdate の送信条件を緩和。
+
+### Behavioral Impact
+- DX11タイトルで RGBA8 swapchain の場合でも Local\\HT_HOOK_FRAME_<api>_<pid> が生成されやすくなる。
+- GraphicsHook が落ちて WGC で OCR している間でも、HookAgent 側の矩形描画が成立していれば枠が見える可能性がある（座標ズレは起こり得る）。
+
+### Risk & Mitigation
+- Risk: RGBA→BGRA の CPU swizzle が高解像度でコストになる可能性。
+- Mitigation: v1 は fpsLimit で間引きが効く前提。必要なら将来 GPU 変換パスを検討。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false: 成功。
+- cmake --build Native/build --config Release: 成功（※HookAgentDx11.dll をロードしているプロセスがあるとリンク失敗するため、対象プロセス終了後にビルド）。
+**2026-02-15 20:05 (Asia/Taipei) — 固定ターゲットLock/Unlock時にDX11 Hook attach/detachを確実に実行**
+
+### Summary
+- Lock/Unlockホットキーで固定対象を変更してもHook attachが走らず HT_HOOK_FRAME が生成されない問題を修正した。
+
+### Context / Goal
+- ログに stage=dx11_hook event=attach_skip reason=fixed_window_not_bound が出た後、Lockしても ttach_requested が出ず、GraphicsHook は常に mapping not found になっていた。
+- 原因は、Lock/Unlockホットキーが settings を SettingsService.SaveAsync() で直接保存しており、UI保存経路（ApplyRuntimeStateAfterSave）で行っている Dx11HookClientService.ApplySettingsAsync が呼ばれていないこと。
+
+### Changes
+- Lockホットキー処理後に Dx11HookClientService.ApplySettingsAsync を明示的に呼び、固定対象PIDに対して attach/inject を発火。
+- Unlockホットキー処理後に Dx11HookClientService.StopAsync を呼び、固定対象解除時は確実に detach する。
+
+### Files Touched
+- MainWindow.xaml.cs — OnLockCaptureWindowHotkeyPressed / OnUnlockCaptureWindowHotkeyPressed に hook apply/stop を追加。
+
+### Behavioral Impact
+- Lock直後にHookHostへ attach が送られ、HookAgent が動作していれば Local\\HT_HOOK_FRAME_1_<pid> が生成されやすくなる（GraphicsHook capture が成立しやすい）。
+
+### Risk & Mitigation
+- Risk: Lock/Unlock時に pipe接続や注入が行われるため、一時的に処理が重くなる可能性。
+- Mitigation: 既存の attach は短い connect timeout を持ち、失敗時はフォールバック経路（WGC等）を維持。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false: 成功。

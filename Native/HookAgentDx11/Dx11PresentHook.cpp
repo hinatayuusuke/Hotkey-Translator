@@ -454,9 +454,11 @@ namespace ht::hook::dx11
                 return false;
             }
 
-            // NOTE: We standardize on BGRA8 in v1. Many swapchains are already this format.
-            // If the title uses a different format, this capture path may be invalid; we fail fast and rely on fallback.
-            if (rt.stagingFormat != DXGI_FORMAT_B8G8R8A8_UNORM && rt.stagingFormat != DXGI_FORMAT_B8G8R8A8_UNORM_SRGB)
+            // NOTE: We standardize on BGRA8 in v1 (Windows bitmap compatibility).
+            // Some titles use RGBA8; in that case we swizzle to BGRA on CPU after readback.
+            const bool isBgra8 = (rt.stagingFormat == DXGI_FORMAT_B8G8R8A8_UNORM || rt.stagingFormat == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+            const bool isRgba8 = (rt.stagingFormat == DXGI_FORMAT_R8G8B8A8_UNORM || rt.stagingFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+            if (!isBgra8 && !isRgba8)
             {
                 rt.context->Unmap(rt.staging, 0);
                 return false;
@@ -470,6 +472,19 @@ namespace ht::hook::dx11
             rt.scratch.resize(payloadBytes);
             std::memcpy(rt.scratch.data(), mapped.pData, payloadBytes);
             rt.context->Unmap(rt.staging, 0);
+
+            if (isRgba8)
+            {
+                const std::uint32_t rowBytes = width * 4;
+                for (std::uint32_t y = 0; y < height; y++)
+                {
+                    auto* row = rt.scratch.data() + (static_cast<std::size_t>(y) * stride);
+                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                    {
+                        std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
+                    }
+                }
+            }
 
             const DWORD pid = GetCurrentProcessId();
             const auto frameId = ++rt.frameId;

@@ -334,12 +334,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         var spec = await _hotkeyCommandController.HandleLockCaptureWindowHotkeyAsync().ConfigureAwait(true);
         UpdatePinnedThumbnailFromLockResult(spec);
+        // WHY: Lock/unlock hotkeys persist settings without going through the UI save path,
+        // so we must explicitly apply hook settings here to ensure injection/attach happens.
+        await _dx11HookClientService.ApplySettingsAsync(_settingsService.Settings).ConfigureAwait(true);
     }
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleUnlockCaptureWindowHotkeyAsync().ConfigureAwait(true);
         ClearPinnedCaptureThumbnail("No fixed target");
+        // WHY: Explicitly stop (detach) the hook when the fixed target is cleared, regardless of fallback settings.
+        await _dx11HookClientService.StopAsync().ConfigureAwait(true);
     }
 
     private async void OnSelectRoiHotkeyPressed(object? sender, EventArgs e)

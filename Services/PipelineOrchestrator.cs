@@ -621,11 +621,6 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        if (frame.ProviderKind != CaptureProviderKind.GraphicsHook)
-        {
-            return;
-        }
-
         var pid = settings.FixedCaptureWindowProcessId;
         if (pid <= 0)
         {
