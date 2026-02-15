@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <iterator>
@@ -379,6 +380,45 @@ namespace ht::hook::dx11
             ImGuiIO& io = ImGui::GetIO();
             io.IniFilename = nullptr;
             io.LogFilename = nullptr;
+
+            // WHY: The default ImGui font only covers basic Latin. OCR/translation output often includes CJK and
+            // other scripts, which would render as '?' without a font that includes those glyphs.
+            // We prefer system fonts (stable path, no extra packaging) and fall back to the default font.
+            const char* fontCandidates[] = {
+                "C:\\Windows\\Fonts\\meiryo.ttc",
+                "C:\\Windows\\Fonts\\msgothic.ttc",
+                "C:\\Windows\\Fonts\\YuGothR.ttc",
+                "C:\\Windows\\Fonts\\msyh.ttc",
+                "C:\\Windows\\Fonts\\malgun.ttf",
+                "C:\\Windows\\Fonts\\segoeui.ttf",
+            };
+
+            ImFontConfig cfg{};
+            cfg.OversampleH = 2;
+            cfg.OversampleV = 2;
+            cfg.PixelSnapH = true;
+            cfg.FontNo = 0;
+
+            ImFont* font = nullptr;
+            for (const char* path : fontCandidates)
+            {
+                const DWORD attr = GetFileAttributesA(path);
+                if (attr == INVALID_FILE_ATTRIBUTES || (attr & FILE_ATTRIBUTE_DIRECTORY) != 0)
+                {
+                    continue;
+                }
+
+                // NOTE: Use Japanese ranges as a reasonable CJK superset for initial rollout.
+                font = io.Fonts->AddFontFromFileTTF(path, 22.0f, &cfg, io.Fonts->GetGlyphRangesJapanese());
+                if (font != nullptr)
+                {
+                    break;
+                }
+            }
+            if (font != nullptr)
+            {
+                io.FontDefault = font;
+            }
 
             ImGui_ImplDX11_Init(rt.device, rt.context);
             rt.imguiInitialized = true;

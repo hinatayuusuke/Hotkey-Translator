@@ -770,7 +770,7 @@ public sealed class PipelineOrchestrator
 
         var len = Math.Max(0, maxBytes);
         // WHY: Don't split a UTF-8 multi-byte sequence when truncating to mapping size.
-        while (len > 0 && (bytes[len] & 0b1100_0000) == 0b1000_0000)
+        while (len > 0 && (bytes[len - 1] & 0b1100_0000) == 0b1000_0000)
         {
             len--;
         }
