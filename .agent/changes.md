@@ -11473,3 +11473,140 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 01:30 (Asia/Taipei) — 調査用デバッグ強化: Present/swapchain情報のオンスクリーン表示**
+
+### Summary
+- IPC(v2)座標は安定している前提で、ズレ/二重表示の原因が「複数swapchainの交互Present」などにないかを確認するため、Presentごとのswapchain情報をオンスクリーン表示できるようにした。
+
+### Context / Goal
+- `HT_HOOK_OVL_DEBUG` の座標表示で x/y/w/h は安定している。
+- それでも二重に見える場合、swapchainが交互にPresentされて別のバックバッファへ描画している等の可能性を切り分けたい。
+
+### Changes
+- Present/Present1 のたびに (present kind, swapchainポインタ, swapchain descのBufferCount/SwapEffect/Flags, backbuffer WxH, overlay seq) をリングバッファへ記録。
+- `HT_HOOK_OVL_DEBUG=1` 時に、直近のpresentサンプルを画面左上へ表示。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Present/swapchainのデバッグサンプル記録と表示を追加。
+
+### Behavioral Impact
+- `HT_HOOK_OVL_DEBUG=1` のときのみデバッグ情報の表示が増える。
+
+### Risk & Mitigation
+- Risk: デバッグ表示が有効だとログ用の軽微な計算が増える。
+- Mitigation: 固定長バッファへの記録のみで、通常運用では環境変数を無効にする。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 01:41 (Asia/Taipei) — 調査デバッグ追加: Present時のバインドRTV/DSVとImGui描画先を表示**
+
+### Summary
+- swapchain/座標が安定しているのに二重/ちらつくケース向けに、Present時にバインドされているRTV/DSVと、ImGuiが実際に描画するRTVをオンスクリーン表示できるようにした。
+
+### Context / Goal
+- Present samples と v2座標が安定している。
+- それでもゴースト化する場合、flip model等で「このフレームのRTV」と「こちらが描画しているRTV」が一致していない可能性を切り分けたい。
+
+### Changes
+- `HT_HOOK_OVL_DEBUG=1` のデバッグ表示に以下を追加:
+  - `OMGetRenderTargets` で取得した oldRTV/oldDSV のポインタ値
+  - ImGuiが描画した targetRTV のポインタ値（oldRTVを使用したかどうか）
+- ImGui描画のターゲットRTVを、oldRTVが存在する場合は oldRTV 優先に変更。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — バインドRTV/DSVの表示とImGuiターゲット選択の改善。
+
+### Behavioral Impact
+- 通常は挙動変化は小さいが、flip model等で backbuffer が回転しているタイトルでは overlay の整合性が改善する可能性がある。
+
+### Risk & Mitigation
+- Risk: oldRTV を使うことで一部タイトルの想定と異なる深度/ステートになる可能性。
+- Mitigation: oldRTV/oldDSV を保存し、描画後に必ず復元する。問題が出るタイトルは env フラグで分岐可能。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 01:49 (Asia/Taipei) — 二重表示切り分け: 背景不透明化/テキスト無効化/強制ASCIIのデバッグフラグ追加**
+
+### Summary
+- 座標/Present/RTVが安定しているのに二重に見える原因が「元のゲーム字幕が透けて見えている」か「こちらが二重描画している」かを切り分けるため、Hook側にテスト用フラグを追加した。
+
+### Context / Goal
+- v2座標とswapchainが安定しており、ImGuiの描画先RTVもPresent時のRTVと一致している。
+- それでも二重/ちらつきが残る場合、背景越しに元字幕が見えている可能性を確認したい。
+
+### Changes
+- 環境変数（ターゲットプロセス側）で以下を制御可能にした:
+  - `HT_HOOK_OVL_FORCE_OPAQUE_BG=1` 背景ARGBのalphaを強制255にして下の字幕を隠せるか確認
+  - `HT_HOOK_OVL_SKIP_TEXT=1` v2テキスト描画だけを無効化（背景だけ出す）
+  - `HT_HOOK_OVL_FORCE_ASCII_TEXT=1` v2テキストを固定ASCII文字列へ置換（ゲーム字幕と見分ける）
+- `HT_HOOK_OVL_DEBUG=1` 表示に上記フラグ状態も表示。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — 切り分け用フラグとデバッグ表示を追加。
+
+### Behavioral Impact
+- 追加フラグは環境変数で明示的に有効化した場合のみ影響する。
+
+### Risk & Mitigation
+- Risk: フラグ有効のまま運用すると通常描画が変わる。
+- Mitigation: デフォルト無効。デバッグ目的のみで使用。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 02:00 (Asia/Taipei) — 二重/ちらつき調査強化: テキスト描画パス切替とTID表示**
+
+### Summary
+- IPC/RTV/座標が安定しているのにオーバーレイ字幕だけ二重/ちらつく件を切り分けるため、テキスト描画方式を切り替えられるフラグと、PresentサンプルにスレッドIDを追加した。
+
+### Context / Goal
+- `HT_HOOK_OVL_DEBUG` で座標やswapchain、RTVが安定していることが確認できた。
+- それでも翻訳テキストだけが二重に見える場合、ImGuiの「ウィンドウ内TextUnformatted + SetWindowFontScale + wrap」経路に原因がある可能性を確認したい。
+
+### Changes
+- 新しい環境変数（ターゲットプロセス側）:
+  - `HT_HOOK_OVL_TEXT_DRAWLIST=1`: per-window経路を使わず、`ImDrawList::AddText` で直接描画（wrapは幅指定）
+  - `HT_HOOK_OVL_IGNORE_FONT_PX=1`: `fontPx` を無視してフォントスケールを固定（スケール起因の見え方を切り分け）
+- Presentサンプル表示に `tid`（スレッドID）を追加し、複数スレッドでのPresent呼び出しがないか確認可能にした。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — テキスト描画パス切替フラグとPresentサンプルのTID追加。
+
+### Behavioral Impact
+- 新しいフラグを有効化した場合のみ、翻訳テキストの描画方法が変わる。
+
+### Risk & Mitigation
+- Risk: DrawList直描きはウィンドウ経路よりレイアウト機能が少なく、見た目が変わる。
+- Mitigation: 調査用フラグとして導入し、原因確定後に恒久対応（複数フォントサイズ/安定レイアウト）へ移行する。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 02:09 (Asia/Taipei) — 修正: v2テキスト描画をDrawList経路をデフォルトに変更（ちらつき/二重表示対策）**
+
+### Summary
+- `HT_HOOK_OVL_TEXT_DRAWLIST=1` で二重/ちらつきが解消することが確認できたため、v2テキスト描画のデフォルトを DrawList(AddText) 経路へ切り替えた。
+
+### Context / Goal
+- IPC座標/RTV/swapchainが安定しているにも関わらず、翻訳テキストだけが二重に見えてちらつく。
+- per-window + `SetWindowFontScale` + wrap + `TextUnformatted` 経路に起因する可能性が高く、DrawList直描きでは改善した。
+
+### Changes
+- `HT_HOOK_OVL_TEXT_DRAWLIST` のデフォルト値を `1`（有効）に変更。
+- DrawList経路の `AddText` に clip rect を渡し、ブロック内でのクリップを安定化。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — v2テキストのデフォルト描画経路をDrawListに変更。
+
+### Behavioral Impact
+- 環境変数未設定でも、v2テキストは DrawList 経路で描画される（従来の per-window 経路は `HT_HOOK_OVL_TEXT_DRAWLIST=0` で強制可能）。
+
+### Risk & Mitigation
+- Risk: per-window経路と比べてレイアウト挙動（折返し/クリップ）が微妙に変わる可能性。
+- Mitigation: クリップ矩形を明示し、問題があるタイトルは env で旧経路に戻せる。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。

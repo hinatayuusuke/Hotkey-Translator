@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstdio>
 #include <cstdint>
+#include <cinttypes>
 #include <cstring>
 #include <string>
 #include <iterator>
@@ -43,6 +44,7 @@ namespace ht::hook::dx11
         static thread_local int g_presentDepth = 0;
 
         constexpr int kOverlayV2DebugSamples = 8;
+        constexpr int kPresentDebugSamples = 16;
 
         struct OverlayV2DebugSample
         {
@@ -55,6 +57,20 @@ namespace ht::hook::dx11
             float y = 0.0f;
             float w = 0.0f;
             float h = 0.0f;
+        };
+
+        struct PresentDebugSample
+        {
+            std::uint64_t qpc = 0;
+            std::uint32_t kind = 0; // 1=Present, 2=Present1
+            std::uint32_t tid = 0;
+            std::uintptr_t swapPtr = 0;
+            std::uint32_t scBufferCount = 0;
+            std::uint32_t scSwapEffect = 0;
+            std::uint32_t scFlags = 0;
+            std::uint32_t bbW = 0;
+            std::uint32_t bbH = 0;
+            std::uint64_t ovlSeq = 0;
         };
 
         struct Dx11Runtime
@@ -114,6 +130,15 @@ namespace ht::hook::dx11
             OverlayV2DebugSample overlayV2Debug[kOverlayV2DebugSamples]{};
             std::uint32_t overlayV2DebugNext = 0;
             std::uint32_t overlayV2DebugCount = 0;
+
+            PresentDebugSample presentDebug[kPresentDebugSamples]{};
+            std::uint32_t presentDebugNext = 0;
+            std::uint32_t presentDebugCount = 0;
+
+            std::uintptr_t lastOmOldRtvPtr = 0;
+            std::uintptr_t lastOmOldDsvPtr = 0;
+            std::uintptr_t lastImGuiTargetRtvPtr = 0;
+            bool lastImGuiUsedOldRtv = false;
         };
 
         Dx11Runtime g_rt;
@@ -149,6 +174,42 @@ namespace ht::hook::dx11
             }
 
             return static_cast<std::uint32_t>(val);
+        }
+
+        std::uint32_t ForceAlpha(std::uint32_t argb, std::uint32_t a)
+        {
+            return (argb & 0x00FFFFFFu) | ((a & 0xFFu) << 24);
+        }
+
+        void RecordPresentDebugLocked(Dx11Runtime& rt, IDXGISwapChain* swap, std::uint32_t kind)
+        {
+            const std::uint32_t slot = rt.presentDebugNext % kPresentDebugSamples;
+            auto& s = rt.presentDebug[slot];
+            s.qpc = NowQpc();
+            s.kind = kind;
+            s.tid = GetCurrentThreadId();
+            s.swapPtr = reinterpret_cast<std::uintptr_t>(swap);
+
+            DXGI_SWAP_CHAIN_DESC desc{};
+            if (swap != nullptr && swap->GetDesc(&desc) == S_OK)
+            {
+                s.scBufferCount = desc.BufferCount;
+                s.scSwapEffect = static_cast<std::uint32_t>(desc.SwapEffect);
+                s.scFlags = desc.Flags;
+            }
+            else
+            {
+                s.scBufferCount = 0;
+                s.scSwapEffect = 0;
+                s.scFlags = 0;
+            }
+
+            s.bbW = rt.backBufferWidth;
+            s.bbH = rt.backBufferHeight;
+            s.ovlSeq = rt.lastOverlayV2Seq;
+
+            rt.presentDebugNext = slot + 1;
+            rt.presentDebugCount = std::min<std::uint32_t>(rt.presentDebugCount + 1, kPresentDebugSamples);
         }
 
         void SafeRelease(IUnknown*& ptr)
@@ -586,6 +647,13 @@ namespace ht::hook::dx11
 
             const bool testMode = ReadEnvU32(L"HT_HOOK_IMGUI_TEST", 0) != 0;
             const bool debugMode = ReadEnvU32(L"HT_HOOK_OVL_DEBUG", 0) != 0;
+            const bool forceOpaqueBg = ReadEnvU32(L"HT_HOOK_OVL_FORCE_OPAQUE_BG", 0) != 0;
+            const bool skipText = ReadEnvU32(L"HT_HOOK_OVL_SKIP_TEXT", 0) != 0;
+            const bool forceAsciiText = ReadEnvU32(L"HT_HOOK_OVL_FORCE_ASCII_TEXT", 0) != 0;
+            // WHY: Prefer DrawList text rendering by default; it avoids the per-window FontScale path that can
+            // produce visually duplicated/flickering text in some titles.
+            const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 1) != 0;
+            const bool ignoreFontPx = ReadEnvU32(L"HT_HOOK_OVL_IGNORE_FONT_PX", 0) != 0;
             if (testMode)
             {
                 // WHY: Native-only rendering test. This isolates the rendering path from IPC/coordinate conversion.
@@ -609,6 +677,7 @@ namespace ht::hook::dx11
             if (hasV2)
             {
                 ImDrawList* bg = ImGui::GetBackgroundDrawList();
+                ImDrawList* fg = ImGui::GetForegroundDrawList();
                 const auto blobBytes = rt.overlayV2TextBlob.size();
 
                 for (std::size_t i = 0; i < rt.overlayV2Blocks.size(); i++)
@@ -621,15 +690,21 @@ namespace ht::hook::dx11
 
                     const float pad = std::max(0.0f, b.paddingPx);
                     const float rounding = std::max(0.0f, b.roundingPx);
-                    const float fontPx = (b.fontPx > 0.0f) ? b.fontPx : ImGui::GetFontSize();
+                    const float baseFontPx = ImGui::GetFontSize();
+                    const float fontPx = (ignoreFontPx || b.fontPx <= 0.0f) ? baseFontPx : b.fontPx;
                     const float innerW = std::max(1.0f, b.w - (pad * 2.0f));
                     const float innerH = std::max(1.0f, b.h - (pad * 2.0f));
 
                     const ImVec2 p0(b.x, b.y);
                     const ImVec2 p1(b.x + b.w, b.y + b.h);
-                    bg->AddRectFilled(p0, p1, ArgbToImU32(b.bgArgb), rounding);
+                    const std::uint32_t bgArgb = forceOpaqueBg ? ForceAlpha(b.bgArgb, 0xFFu) : b.bgArgb;
+                    bg->AddRectFilled(p0, p1, ArgbToImU32(bgArgb), rounding);
 
                     if (b.textLen == 0)
+                    {
+                        continue;
+                    }
+                    if (skipText)
                     {
                         continue;
                     }
@@ -641,8 +716,37 @@ namespace ht::hook::dx11
                         continue;
                     }
 
-                    const char* textBegin = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + off);
-                    const char* textEnd = textBegin + len;
+                    const char* textBegin = nullptr;
+                    const char* textEnd = nullptr;
+                    const char* forced = "OVL ASCII TEST: overlay-only";
+                    if (forceAsciiText)
+                    {
+                        textBegin = forced;
+                        textEnd = forced + std::strlen(forced);
+                    }
+                    else
+                    {
+                        textBegin = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + off);
+                        textEnd = textBegin + len;
+                    }
+
+                    if (drawTextViaDrawList)
+                    {
+                        // WHY: Use DrawList directly to avoid per-window FontScale/layout edge cases.
+                        const ImVec2 pos(b.x + pad, b.y + pad);
+                        const float wrapW = (b.wrap != 0) ? innerW : 0.0f;
+                        const ImVec4 clip(pos.x, pos.y, pos.x + innerW, pos.y + innerH);
+                        fg->AddText(
+                            ImGui::GetFont(),
+                            fontPx,
+                            pos,
+                            ArgbToImU32(b.fgArgb),
+                            textBegin,
+                            textEnd,
+                            wrapW,
+                            &clip);
+                        continue;
+                    }
 
                     ImGui::SetNextWindowPos(ImVec2(b.x + pad, b.y + pad));
                     ImGui::SetNextWindowSize(ImVec2(innerW, innerH));
@@ -663,7 +767,7 @@ namespace ht::hook::dx11
                     if (ImGui::Begin(name, nullptr, flags))
                     {
                         // WHY: We don't have multi-size fonts yet; approximate using per-window font scaling.
-                        const float scale = fontPx / std::max(1.0f, ImGui::GetFontSize());
+                        const float scale = fontPx / std::max(1.0f, baseFontPx);
                         ImGui::SetWindowFontScale(std::max(0.5f, std::min(scale, 3.0f)));
 
                         ImGui::PushStyleColor(ImGuiCol_Text, ArgbToImVec4(b.fgArgb));
@@ -721,7 +825,39 @@ namespace ht::hook::dx11
                         static_cast<unsigned long long>(rt.lastOverlayV2Seq),
                         static_cast<unsigned int>(rt.overlayV2Blocks.size()),
                         static_cast<unsigned int>(rt.overlayV2TextBlob.size()));
+                    ImGui::Text(
+                        "flags: opaque_bg=%s skip_text=%s ascii_text=%s",
+                        forceOpaqueBg ? "on" : "off",
+                        skipText ? "on" : "off",
+                        forceAsciiText ? "on" : "off");
+                    ImGui::Text(
+                        "text_path: drawlist=%s ignore_font_px=%s",
+                        drawTextViaDrawList ? "on" : "off",
+                        ignoreFontPx ? "on" : "off");
 
+                    // Present/swapchain diagnostics: detect alternating swapchains or unexpected swap effects.
+                    ImGui::Separator();
+                    ImGui::Text("present samples (latest first):");
+                    const std::uint32_t pCount = rt.presentDebugCount;
+                    const std::uint32_t pLast = (rt.presentDebugNext == 0) ? 0 : (rt.presentDebugNext - 1);
+                    for (std::uint32_t i = 0; i < std::min<std::uint32_t>(pCount, 6u); i++)
+                    {
+                        const std::uint32_t idx = (pLast + kPresentDebugSamples - i) % kPresentDebugSamples;
+                        const auto& p = rt.presentDebug[idx];
+                        ImGui::Text(
+                            "k=%u tid=%u swap=0x%016" PRIXPTR " bc=%u eff=%u flg=0x%X bb=%ux%u ovl=%llu",
+                            p.kind,
+                            p.tid,
+                            p.swapPtr,
+                            p.scBufferCount,
+                            p.scSwapEffect,
+                            p.scFlags,
+                            p.bbW,
+                            p.bbH,
+                            static_cast<unsigned long long>(p.ovlSeq));
+                    }
+
+                    ImGui::Separator();
                     const std::uint32_t count = rt.overlayV2DebugCount;
                     const std::uint32_t last = (rt.overlayV2DebugNext == 0) ? 0 : (rt.overlayV2DebugNext - 1);
                     for (std::uint32_t i = 0; i < std::min<std::uint32_t>(count, 6u); i++)
@@ -732,6 +868,16 @@ namespace ht::hook::dx11
                             static_cast<unsigned long long>(s.seq),
                             s.x, s.y, s.w, s.h);
                     }
+
+                    ImGui::Separator();
+                    ImGui::Text(
+                        "OM oldRTV=0x%016" PRIXPTR " oldDSV=0x%016" PRIXPTR,
+                        rt.lastOmOldRtvPtr,
+                        rt.lastOmOldDsvPtr);
+                    ImGui::Text(
+                        "ImGui targetRTV=0x%016" PRIXPTR " (use_old=%s)",
+                        rt.lastImGuiTargetRtvPtr,
+                        rt.lastImGuiUsedOldRtv ? "yes" : "no");
                 }
                 ImGui::End();
             }
@@ -743,8 +889,19 @@ namespace ht::hook::dx11
             ID3D11DepthStencilView* oldDsv = nullptr;
             rt.context->OMGetRenderTargets(1, &oldRtv, &oldDsv);
 
-            ID3D11RenderTargetView* rtvs[1] = {rt.backBufferRtv};
-            rt.context->OMSetRenderTargets(1, rtvs, nullptr);
+            // WHY: In flip model swapchains, the game may rotate render targets. At Present time the RTV currently
+            // bound (oldRtv) is the most reliable "this frame's" backbuffer. Prefer it when available.
+            const bool haveOldRtv = (oldRtv != nullptr);
+            ID3D11RenderTargetView* targetRtv = haveOldRtv ? oldRtv : rt.backBufferRtv;
+            ID3D11DepthStencilView* targetDsv = haveOldRtv ? oldDsv : nullptr;
+
+            rt.lastOmOldRtvPtr = reinterpret_cast<std::uintptr_t>(oldRtv);
+            rt.lastOmOldDsvPtr = reinterpret_cast<std::uintptr_t>(oldDsv);
+            rt.lastImGuiTargetRtvPtr = reinterpret_cast<std::uintptr_t>(targetRtv);
+            rt.lastImGuiUsedOldRtv = haveOldRtv;
+
+            ID3D11RenderTargetView* rtvs[1] = {targetRtv};
+            rt.context->OMSetRenderTargets(1, rtvs, targetDsv);
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 
             rt.context->OMSetRenderTargets(1, &oldRtv, oldDsv);
@@ -1018,6 +1175,7 @@ namespace ht::hook::dx11
                     return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
                 }
 
+                RecordPresentDebugLocked(g_rt, swap, 1);
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 1;
@@ -1066,6 +1224,7 @@ namespace ht::hook::dx11
                     return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
                 }
 
+                RecordPresentDebugLocked(g_rt, swap, 2);
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 2;
