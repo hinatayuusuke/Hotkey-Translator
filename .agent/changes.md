@@ -11246,3 +11246,34 @@ ull logger が固定されていた。
 - `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
 - Native build: 未実施（この環境に CMake/Visual C++ toolchain が無いため）。
 
+**2026-02-15 23:00 (Asia/Taipei) — Step 2: DX11 HookAgentにDear ImGuiを統合し固定パネルを描画**
+
+### Summary
+- HookAgentDx11 の Present フック内で Dear ImGui(DX11 backend) を初期化し、半透明の固定パネルをゲーム内へ合成描画できるようにした（テキストは次ステップ）。
+
+### Context / Goal
+- v2 IPC（HT_HOOK_OVL）導入後、まずは ImGui の初期化と state 影響を最小化した描画経路を確立し、ゲーム内合成が安定することを確認したい。
+
+### Changes
+- Dear ImGui を `Native/ThirdParty/imgui/` に同梱（v1.92.5 の core + DX11 backend）。
+- HookAgentDx11:
+  - ImGui context + `imgui_impl_dx11` を Present 内で lazy init。
+  - 固定位置（画面下部中央）の半透明パネルを `GetBackgroundDrawList()->AddRectFilled` で描画。
+  - ResizeBuffers/Alt+Tab 等のリソース再初期化に備え、device/context を解放する前に ImGui を shutdown する。
+
+### Files Touched
+- `Native/ThirdParty/imgui/` — Dear ImGui v1.92.5（core + `backends/imgui_impl_dx11.*`）を同梱。
+- `Native/HookAgentDx11/CMakeLists.txt` — ImGui ソースを HookAgentDx11 のビルドに追加、include path を追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Present 内で ImGui を初期化し、半透明パネルのみ描画（Step 2）。
+
+### Behavioral Impact
+- `Dx11HookOverlayEnabled` が有効な場合、v1 の矩形枠描画に加えて半透明の固定パネルがゲーム内に表示される。
+
+### Risk & Mitigation
+- Risk: ImGui 描画が D3D11 state を汚し、タイトル側のレンダリングを壊す可能性。
+- Mitigation: DX11 backend の state 保存/復帰に依存しつつ、ResizeBuffers/Alt+Tab 時は ImGui を shutdown して次の Present で再初期化する。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功（HookAgentDx11/HookHost）。
+- `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
+

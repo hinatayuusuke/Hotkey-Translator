@@ -15,6 +15,9 @@
 
 #include <MinHook.h>
 
+#include <imgui.h>
+#include <imgui_impl_dx11.h>
+
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
 #include "../HookCommon/SharedOverlayCommands.h"
@@ -81,6 +84,10 @@ namespace ht::hook::dx11
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
             std::uint32_t lastPresentKind = 0; // 1=Present, 2=Present1
+
+            bool imguiInitialized = false;
+            ImGuiContext* imguiContext = nullptr;
+            std::uint64_t lastImGuiQpc = 0;
         };
 
         Dx11Runtime g_rt;
@@ -127,8 +134,28 @@ namespace ht::hook::dx11
             }
         }
 
+        void ResetImGuiLocked(Dx11Runtime& rt)
+        {
+            if (!rt.imguiInitialized && rt.imguiContext == nullptr)
+            {
+                return;
+            }
+
+            // WHY: When D3D resources are reset (ResizeBuffers/Alt+Tab), ImGui's DX11 backend must be shut down
+            // before we release the device/context. It's safer to re-init next Present than to risk stale pointers.
+            ImGui::SetCurrentContext(rt.imguiContext);
+            ImGui_ImplDX11_Shutdown();
+            ImGui::DestroyContext(rt.imguiContext);
+
+            rt.imguiInitialized = false;
+            rt.imguiContext = nullptr;
+            rt.lastImGuiQpc = 0;
+        }
+
         void ResetDeviceStateLocked(Dx11Runtime& rt)
         {
+            ResetImGuiLocked(rt);
+
             // WHY: ResizeBuffers/Alt+Tab can invalidate backbuffer resources; reset so next Present can re-init.
             IUnknown* staging = rt.staging;
             rt.staging = nullptr;
@@ -329,6 +356,104 @@ namespace ht::hook::dx11
             rt.lastOverlayV2Seq = header.updatedSeq;
             rt.overlayV2Header = header;
             return true;
+        }
+
+        bool EnsureImGuiLocked(Dx11Runtime& rt)
+        {
+            if (rt.imguiInitialized)
+            {
+                ImGui::SetCurrentContext(rt.imguiContext);
+                return true;
+            }
+
+            if (rt.device == nullptr || rt.context == nullptr)
+            {
+                return false;
+            }
+
+            IMGUI_CHECKVERSION();
+            rt.imguiContext = ImGui::CreateContext();
+            ImGui::SetCurrentContext(rt.imguiContext);
+
+            // WHY: Hook agent must not write config/log files into the target process working directory.
+            ImGuiIO& io = ImGui::GetIO();
+            io.IniFilename = nullptr;
+            io.LogFilename = nullptr;
+
+            ImGui_ImplDX11_Init(rt.device, rt.context);
+            rt.imguiInitialized = true;
+            rt.lastImGuiQpc = 0;
+            return true;
+        }
+
+        void DrawImGuiPanelLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
+        {
+            if (!rt.overlayEnabled)
+            {
+                return;
+            }
+
+            if (!EnsureDeviceLocked(rt, swap) || rt.device == nullptr || rt.context == nullptr)
+            {
+                return;
+            }
+
+            if (!EnsureBackBufferRtvLocked(rt, swap))
+            {
+                return;
+            }
+
+            if (rt.backBufferWidth == 0 || rt.backBufferHeight == 0)
+            {
+                return;
+            }
+
+            if (!EnsureImGuiLocked(rt))
+            {
+                return;
+            }
+
+            if (rt.qpcFreq == 0)
+            {
+                rt.qpcFreq = QpcFreq();
+            }
+
+            const auto now = NowQpc();
+            float dt = 1.0f / 60.0f;
+            if (rt.lastImGuiQpc != 0 && rt.qpcFreq != 0)
+            {
+                const auto diff = now - rt.lastImGuiQpc;
+                dt = static_cast<float>(static_cast<double>(diff) / static_cast<double>(rt.qpcFreq));
+                dt = std::max(1.0f / 240.0f, std::min(dt, 0.1f));
+            }
+            rt.lastImGuiQpc = now;
+
+            ImGuiIO& io = ImGui::GetIO();
+            io.DisplaySize = ImVec2(static_cast<float>(rt.backBufferWidth), static_cast<float>(rt.backBufferHeight));
+            io.DeltaTime = dt;
+
+            ImGui_ImplDX11_NewFrame();
+            ImGui::NewFrame();
+
+            // Step 2: Fixed position semi-transparent panel (no text yet).
+            const float w = io.DisplaySize.x;
+            const float h = io.DisplaySize.y;
+            const float margin = 40.0f;
+            const float panelW = std::max(320.0f, std::min(720.0f, w - (margin * 2.0f)));
+            const float panelH = std::max(120.0f, std::min(220.0f, h - (margin * 2.0f)));
+            const float x0 = (w - panelW) * 0.5f;
+            const float y0 = h - margin - panelH;
+
+            ImDrawList* bg = ImGui::GetBackgroundDrawList();
+            const ImU32 col = IM_COL32(10, 10, 10, 170);
+            bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
+
+            ImGui::Render();
+
+            // NOTE: ImGui DX11 backend renders to the currently bound render target.
+            ID3D11RenderTargetView* rtvs[1] = {rt.backBufferRtv};
+            rt.context->OMSetRenderTargets(1, rtvs, nullptr);
+            ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
         }
 
         D3D11_RECT ClampRect(int left, int top, int right, int bottom, int maxW, int maxH)
@@ -584,6 +709,7 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 1;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                DrawImGuiPanelLocked(g_rt, swap);
                 // Step 1: Read v2 overlay mapping for diagnostics only (rendering is introduced in later steps).
                 (void)RefreshOverlayV2Locked(g_rt);
                 PublishStatusLocked(g_rt);
@@ -615,6 +741,7 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 2;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                DrawImGuiPanelLocked(g_rt, swap);
                 (void)RefreshOverlayV2Locked(g_rt);
                 PublishStatusLocked(g_rt);
             }
