@@ -386,7 +386,25 @@ namespace ht::hook::dx11
             return true;
         }
 
-        void DrawImGuiPanelLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
+        ImU32 ArgbToImU32(std::uint32_t argb)
+        {
+            const std::uint32_t a = (argb >> 24) & 0xFF;
+            const std::uint32_t r = (argb >> 16) & 0xFF;
+            const std::uint32_t g = (argb >> 8) & 0xFF;
+            const std::uint32_t b = (argb >> 0) & 0xFF;
+            return IM_COL32(static_cast<int>(r), static_cast<int>(g), static_cast<int>(b), static_cast<int>(a));
+        }
+
+        ImVec4 ArgbToImVec4(std::uint32_t argb)
+        {
+            const float a = static_cast<float>((argb >> 24) & 0xFF) / 255.0f;
+            const float r = static_cast<float>((argb >> 16) & 0xFF) / 255.0f;
+            const float g = static_cast<float>((argb >> 8) & 0xFF) / 255.0f;
+            const float b = static_cast<float>((argb >> 0) & 0xFF) / 255.0f;
+            return ImVec4(r, g, b, a);
+        }
+
+        void DrawImGuiOverlayV2Locked(Dx11Runtime& rt, IDXGISwapChain* swap)
         {
             if (!rt.overlayEnabled)
             {
@@ -435,25 +453,120 @@ namespace ht::hook::dx11
             ImGui_ImplDX11_NewFrame();
             ImGui::NewFrame();
 
-            // Step 2: Fixed position semi-transparent panel (no text yet).
-            const float w = io.DisplaySize.x;
-            const float h = io.DisplaySize.y;
-            const float margin = 40.0f;
-            const float panelW = std::max(320.0f, std::min(720.0f, w - (margin * 2.0f)));
-            const float panelH = std::max(120.0f, std::min(220.0f, h - (margin * 2.0f)));
-            const float x0 = (w - panelW) * 0.5f;
-            const float y0 = h - margin - panelH;
+            const bool hasV2 = (rt.lastOverlayV2Seq != 0) && (!rt.overlayV2Blocks.empty()) && (!rt.overlayV2TextBlob.empty());
+            if (hasV2)
+            {
+                ImDrawList* bg = ImGui::GetBackgroundDrawList();
+                const auto blobBytes = rt.overlayV2TextBlob.size();
 
-            ImDrawList* bg = ImGui::GetBackgroundDrawList();
-            const ImU32 col = IM_COL32(10, 10, 10, 170);
-            bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
+                for (std::size_t i = 0; i < rt.overlayV2Blocks.size(); i++)
+                {
+                    const auto& b = rt.overlayV2Blocks[i];
+                    if (b.w <= 1.0f || b.h <= 1.0f)
+                    {
+                        continue;
+                    }
+
+                    const float pad = std::max(0.0f, b.paddingPx);
+                    const float rounding = std::max(0.0f, b.roundingPx);
+                    const float fontPx = (b.fontPx > 0.0f) ? b.fontPx : ImGui::GetFontSize();
+                    const float innerW = std::max(1.0f, b.w - (pad * 2.0f));
+                    const float innerH = std::max(1.0f, b.h - (pad * 2.0f));
+
+                    const ImVec2 p0(b.x, b.y);
+                    const ImVec2 p1(b.x + b.w, b.y + b.h);
+                    bg->AddRectFilled(p0, p1, ArgbToImU32(b.bgArgb), rounding);
+
+                    if (b.textLen == 0)
+                    {
+                        continue;
+                    }
+
+                    const std::size_t off = static_cast<std::size_t>(b.textOffset);
+                    const std::size_t len = static_cast<std::size_t>(b.textLen);
+                    if (off >= blobBytes || len > blobBytes || off + len > blobBytes)
+                    {
+                        continue;
+                    }
+
+                    const char* textBegin = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + off);
+                    const char* textEnd = textBegin + len;
+
+                    ImGui::SetNextWindowPos(ImVec2(b.x + pad, b.y + pad));
+                    ImGui::SetNextWindowSize(ImVec2(innerW, innerH));
+                    ImGui::SetNextWindowBgAlpha(0.0f);
+
+                    // WHY: Overlay is display-only. Disable inputs and avoid saving any ImGui ini state.
+                    const ImGuiWindowFlags flags =
+                        ImGuiWindowFlags_NoDecoration |
+                        ImGuiWindowFlags_NoSavedSettings |
+                        ImGuiWindowFlags_NoMove |
+                        ImGuiWindowFlags_NoResize |
+                        ImGuiWindowFlags_NoNav |
+                        ImGuiWindowFlags_NoInputs |
+                        ImGuiWindowFlags_NoBringToFrontOnFocus;
+
+                    char name[64]{};
+                    std::snprintf(name, sizeof(name), "##ht_ovl_v2_%zu", i);
+                    if (ImGui::Begin(name, nullptr, flags))
+                    {
+                        // WHY: We don't have multi-size fonts yet; approximate using per-window font scaling.
+                        const float scale = fontPx / std::max(1.0f, ImGui::GetFontSize());
+                        ImGui::SetWindowFontScale(std::max(0.5f, std::min(scale, 3.0f)));
+
+                        ImGui::PushStyleColor(ImGuiCol_Text, ArgbToImVec4(b.fgArgb));
+                        if (b.wrap != 0)
+                        {
+                            ImGui::PushTextWrapPos(0.0f);
+                        }
+
+                        ImGui::TextUnformatted(textBegin, textEnd);
+
+                        if (b.wrap != 0)
+                        {
+                            ImGui::PopTextWrapPos();
+                        }
+                        ImGui::PopStyleColor();
+                    }
+                    ImGui::End();
+                }
+            }
+            else
+            {
+                // Step 2 fallback: fixed position semi-transparent panel (no text yet).
+                const float w = io.DisplaySize.x;
+                const float h = io.DisplaySize.y;
+                const float margin = 40.0f;
+                const float panelW = std::max(320.0f, std::min(720.0f, w - (margin * 2.0f)));
+                const float panelH = std::max(120.0f, std::min(220.0f, h - (margin * 2.0f)));
+                const float x0 = (w - panelW) * 0.5f;
+                const float y0 = h - margin - panelH;
+
+                ImDrawList* bg = ImGui::GetBackgroundDrawList();
+                const ImU32 col = IM_COL32(10, 10, 10, 170);
+                bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
+            }
 
             ImGui::Render();
 
-            // NOTE: ImGui DX11 backend renders to the currently bound render target.
+            // NOTE: Some titles may not have the backbuffer bound at Present. Bind it temporarily and restore.
+            ID3D11RenderTargetView* oldRtv = nullptr;
+            ID3D11DepthStencilView* oldDsv = nullptr;
+            rt.context->OMGetRenderTargets(1, &oldRtv, &oldDsv);
+
             ID3D11RenderTargetView* rtvs[1] = {rt.backBufferRtv};
             rt.context->OMSetRenderTargets(1, rtvs, nullptr);
             ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
+
+            rt.context->OMSetRenderTargets(1, &oldRtv, oldDsv);
+            if (oldRtv != nullptr)
+            {
+                oldRtv->Release();
+            }
+            if (oldDsv != nullptr)
+            {
+                oldDsv->Release();
+            }
         }
 
         D3D11_RECT ClampRect(int left, int top, int right, int bottom, int maxW, int maxH)
@@ -709,9 +822,8 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 1;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
-                DrawImGuiPanelLocked(g_rt, swap);
-                // Step 1: Read v2 overlay mapping for diagnostics only (rendering is introduced in later steps).
                 (void)RefreshOverlayV2Locked(g_rt);
+                DrawImGuiOverlayV2Locked(g_rt, swap);
                 PublishStatusLocked(g_rt);
             }
 
@@ -741,8 +853,8 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 2;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
-                DrawImGuiPanelLocked(g_rt, swap);
                 (void)RefreshOverlayV2Locked(g_rt);
+                DrawImGuiOverlayV2Locked(g_rt, swap);
                 PublishStatusLocked(g_rt);
             }
 

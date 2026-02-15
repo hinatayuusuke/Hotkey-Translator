@@ -11277,3 +11277,35 @@ ull logger が固定されていた。
 - `cmake --build .\\Native\\build --config Release`: 成功（HookAgentDx11/HookHost）。
 - `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
 
+**2026-02-15 23:27 (Asia/Taipei) — Step 3: v2(TextBlock)を読み半透明パネル+テキストをImGuiで描画**
+
+### Summary
+- `HT_HOOK_OVL` v2 mapping の TextBlock(UTF-8) を HookAgentDx11 が読み、ImGui で半透明パネルと折り返しテキストを描画する経路を実装した。
+
+### Context / Goal
+- Step 2 で ImGui の初期化と固定パネル描画を確認できたので、次は v2 IPC からテキストを受け取り、OCR座標由来の領域に翻訳文を描画できるようにする。
+
+### Changes
+- HookAgentDx11:
+  - v2 mapping の TextBlock + UTF-8 blob を用いて、背景矩形（角丸/alpha）とテキストを描画。
+  - wrap 指定時は ImGui window 内で `PushTextWrapPos(0)` + `TextUnformatted` を用いて折り返し表示。
+  - Present 時点で backbuffer が bind されていないタイトル向けに、RTV を一時的に差し替えて描画後に復帰。
+- C#:
+  - Pipeline の overlayItems から 1ブロックの v2 コマンドを構成し、`Dx11HookClientService.TryWriteOverlayV2` で `HT_HOOK_OVL` へ書き込む（まずは安定化のため 1ブロックのみ）。
+  - UTF-8 truncate 時にマルチバイト境界を割らないよう調整。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — v2 overlay を ImGui で描画（背景+テキスト、wrap対応、RTV一時復帰）。
+- `Services/PipelineOrchestrator.cs` — v2 overlay writer 呼び出しと ScreenRect→Canvas 変換、UTF-8 truncate を追加。
+
+### Behavioral Impact
+- `Dx11HookOverlayEnabled` が有効な場合、ゲーム内に「半透明パネル + 翻訳テキスト」が表示される（v2 mapping が空なら従来の固定パネルにフォールバック）。
+
+### Risk & Mitigation
+- Risk: タイトルによっては ImGui 描画が state を汚す/RTV復帰が不十分で破綻する可能性。
+- Mitigation: ImGui backend の state restore に加え、RenderTarget を明示的に保存/復帰する。問題が出る場合は v2 描画を feature flag で切れる（既存 v1 は維持）。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
+- `cmake --build .\\Native\\build --config Release`: 成功。
+

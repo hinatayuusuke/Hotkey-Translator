@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -315,6 +316,7 @@ public sealed class PipelineOrchestrator
                 var overlayStopwatch = perfProbe.BeginStep();
                 _overlayStage.Update(overlayItems, overlayClipScreen);
                 TryUpdateDx11HookOverlay(frame, roiScreen, overlayItems, settings);
+                TryUpdateDx11HookOverlayV2(frame, overlayItems, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
                 perfProbe.RecordOverlay(overlayStopwatch);
             }
@@ -665,6 +667,163 @@ public sealed class PipelineOrchestrator
         }
 
         _dx11HookClientService.TrySendOverlayUpdate(pid, rects);
+    }
+
+    private void TryUpdateDx11HookOverlayV2(
+        CaptureFrame frame,
+        IReadOnlyList<OverlayItem> overlayItems,
+        AppSettings settings)
+    {
+        if (_dx11HookClientService == null)
+        {
+            return;
+        }
+
+        var pid = settings.FixedCaptureWindowProcessId;
+        if (pid <= 0)
+        {
+            return;
+        }
+
+        var canvasW = (uint)frame.Bitmap.Width;
+        var canvasH = (uint)frame.Bitmap.Height;
+        if (canvasW == 0 || canvasH == 0)
+        {
+            return;
+        }
+
+        if (!settings.Dx11HookOverlayEnabled || overlayItems.Count == 0)
+        {
+            _dx11HookClientService.TryWriteOverlayV2(
+                pid,
+                canvasW,
+                canvasH,
+                ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+                Array.Empty<byte>(),
+                0);
+            return;
+        }
+
+        // Step 3 (v2): Render only one text block first for stability.
+        var item = overlayItems[0];
+        if (string.IsNullOrWhiteSpace(item.Text))
+        {
+            _dx11HookClientService.TryWriteOverlayV2(
+                pid,
+                canvasW,
+                canvasH,
+                ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+                Array.Empty<byte>(),
+                0);
+            return;
+        }
+
+        if (!TryBuildHookCanvasRect(item.Rect, frame.Bounds, (int)canvasW, (int)canvasH, out var x, out var y, out var w, out var h))
+        {
+            return;
+        }
+
+        // Keep this conservative until we introduce a settings surface (font/alpha/max bytes).
+        const uint fgArgb = 0xFFFFFFFF;
+        const uint bgArgb = 0xAA0A0A0A;
+        const float paddingPx = 14.0f;
+        const float roundingPx = 12.0f;
+        const float fontPx = 24.0f;
+
+        // PERF: Allocate once per update; v2 is "latest only" and typically runs at <= OCR/translation rate.
+        var utf8 = Encoding.UTF8.GetBytes(item.Text);
+        var maxBytes = Math.Min(utf8.Length, 64 * 1024);
+        var textLen = TrimUtf8Length(utf8, maxBytes);
+
+        var block = new Dx11HookOverlayV2CommandWriter.TextBlockV2
+        {
+            X = x,
+            Y = y,
+            W = w,
+            H = h,
+            PaddingPx = paddingPx,
+            RoundingPx = roundingPx,
+            FontPx = fontPx,
+            FgArgb = fgArgb,
+            BgArgb = bgArgb,
+            Wrap = 1,
+            TextOffset = 0,
+            TextLen = unchecked((uint)textLen),
+            ZOrder = 0
+        };
+
+        _dx11HookClientService.TryWriteOverlayV2(
+            pid,
+            canvasW,
+            canvasH,
+            new[] { block },
+            utf8,
+            textLen);
+    }
+
+    private static int TrimUtf8Length(byte[] bytes, int maxBytes)
+    {
+        if (bytes.Length <= maxBytes)
+        {
+            return bytes.Length;
+        }
+
+        var len = Math.Max(0, maxBytes);
+        // WHY: Don't split a UTF-8 multi-byte sequence when truncating to mapping size.
+        while (len > 0 && (bytes[len] & 0b1100_0000) == 0b1000_0000)
+        {
+            len--;
+        }
+
+        return len;
+    }
+
+    private static bool TryBuildHookCanvasRect(
+        Rect screenRect,
+        Rect frameBounds,
+        int pixelW,
+        int pixelH,
+        out float x,
+        out float y,
+        out float w,
+        out float h)
+    {
+        x = y = w = h = 0;
+        if (screenRect.IsEmpty || screenRect.Width <= 0 || screenRect.Height <= 0)
+        {
+            return false;
+        }
+
+        var scaleX = frameBounds.Width > 0 ? pixelW / frameBounds.Width : 1.0;
+        var scaleY = frameBounds.Height > 0 ? pixelH / frameBounds.Height : 1.0;
+        if (scaleX <= 0 || scaleY <= 0)
+        {
+            scaleX = 1.0;
+            scaleY = 1.0;
+        }
+
+        var left = (screenRect.X - frameBounds.X) * scaleX;
+        var top = (screenRect.Y - frameBounds.Y) * scaleY;
+        var right = (screenRect.X - frameBounds.X + screenRect.Width) * scaleX;
+        var bottom = (screenRect.Y - frameBounds.Y + screenRect.Height) * scaleY;
+
+        left = Math.Max(0, Math.Min(pixelW, left));
+        top = Math.Max(0, Math.Min(pixelH, top));
+        right = Math.Max(0, Math.Min(pixelW, right));
+        bottom = Math.Max(0, Math.Min(pixelH, bottom));
+
+        var outW = right - left;
+        var outH = bottom - top;
+        if (outW <= 1 || outH <= 1)
+        {
+            return false;
+        }
+
+        x = (float)left;
+        y = (float)top;
+        w = (float)outW;
+        h = (float)outH;
+        return true;
     }
 
     private static bool TryBuildHookRect(
