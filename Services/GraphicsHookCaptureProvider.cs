@@ -6,6 +6,7 @@ using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Windows;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.Hook;
 
 namespace Hotkey_Translator.Services;
 
@@ -81,7 +82,9 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             return false;
         }
 
-        var mappingName = BuildFrameMappingName(pid);
+        var mappingName = HookFrameMapRegistry.TryGet(pid, out var dynamicMap)
+            ? dynamicMap
+            : BuildFrameMappingName(pid);
         if (!TryReadLatestFrame(mappingName, out var header, out var payload, out var readError))
         {
             error = readError ?? "Hook shared frame read failed.";

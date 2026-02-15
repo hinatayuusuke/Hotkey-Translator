@@ -21,9 +21,12 @@ internal sealed class Dx11HookClientService : IDisposable
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private NamedPipeClientStream? _pipe;
+    private StreamReader? _reader;
     private StreamWriter? _writer;
     private Process? _hostProcess;
     private int _attachedPid;
+    private CancellationTokenSource? _receiveCts;
+    private Task? _receiveTask;
     private bool _disposed;
 
     public Dx11HookClientService(Func<AppLogger?> loggerAccessor)
@@ -79,6 +82,8 @@ internal sealed class Dx11HookClientService : IDisposable
 
                 return;
             }
+
+            EnsureReceiveLoop();
 
             var attachRequest = new Dx11HookAttachRequest(
                 settings.FixedCaptureWindowProcessId,
@@ -199,6 +204,7 @@ internal sealed class Dx11HookClientService : IDisposable
             timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(500));
             await _pipe.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
 
+            _reader = new StreamReader(_pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
             _writer = new StreamWriter(_pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
             _loggerAccessor()?.Info($"stage=dx11_hook event=pipe_connected name={settings.Dx11HookPipeName}.");
             return true;
@@ -208,6 +214,101 @@ internal sealed class Dx11HookClientService : IDisposable
             _loggerAccessor()?.Error(ex, $"Failed to connect DX11 hook pipe: {settings.Dx11HookPipeName}");
             DisposePipe();
             return false;
+        }
+    }
+
+    private void EnsureReceiveLoop()
+    {
+        if (_receiveTask != null || _reader == null)
+        {
+            return;
+        }
+
+        _receiveCts = new CancellationTokenSource();
+        _receiveTask = Task.Run(() => ReceiveLoopAsync(_receiveCts.Token));
+    }
+
+    private async Task ReceiveLoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                if (_reader == null)
+                {
+                    return;
+                }
+
+                var line = await _reader.ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                if (line == null)
+                {
+                    return;
+                }
+
+                HandleHostLine(line);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _loggerAccessor()?.Error(ex, "stage=dx11_hook event=receive_failed.");
+                return;
+            }
+        }
+    }
+
+    private void HandleHostLine(string line)
+    {
+        if (string.IsNullOrWhiteSpace(line))
+        {
+            return;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            if (!doc.RootElement.TryGetProperty("type", out var typeProp))
+            {
+                return;
+            }
+
+            var type = typeProp.GetString();
+            if (!string.Equals(type, "hookState", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!doc.RootElement.TryGetProperty("payload", out var payload))
+            {
+                return;
+            }
+
+            var state = payload.TryGetProperty("state", out var stateProp) ? stateProp.GetString() : null;
+            var reason = payload.TryGetProperty("reason", out var reasonProp) ? reasonProp.GetString() : null;
+            var frameMap = payload.TryGetProperty("frameMap", out var frameMapProp) ? frameMapProp.GetString() : null;
+
+            var pid = payload.TryGetProperty("pid", out var pidProp) && pidProp.TryGetInt32(out var parsedPid)
+                ? parsedPid
+                : _attachedPid;
+
+            _loggerAccessor()?.Info(
+                $"stage=dx11_hook event=hook_state pid={pid} state={state ?? "unknown"} reason={reason ?? "unknown"} frameMap=\"{frameMap ?? string.Empty}\".");
+
+            if (!string.IsNullOrWhiteSpace(frameMap) && pid > 0)
+            {
+                HookFrameMapRegistry.Set(pid, frameMap);
+            }
+
+            if (pid > 0 && string.Equals(state, "Detached", StringComparison.OrdinalIgnoreCase))
+            {
+                HookFrameMapRegistry.Clear(pid);
+            }
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, $"stage=dx11_hook event=host_json_parse_failed line=\"{line}\".");
         }
     }
 
@@ -240,6 +341,7 @@ internal sealed class Dx11HookClientService : IDisposable
             }
         }
 
+        HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
     }
 
@@ -270,7 +372,16 @@ internal sealed class Dx11HookClientService : IDisposable
     {
         try
         {
+            _receiveCts?.Cancel();
+        }
+        catch
+        {
+        }
+
+        try
+        {
             _writer?.Dispose();
+            _reader?.Dispose();
             _pipe?.Dispose();
         }
         catch
@@ -280,7 +391,11 @@ internal sealed class Dx11HookClientService : IDisposable
         finally
         {
             _writer = null;
+            _reader = null;
             _pipe = null;
+            _receiveCts?.Dispose();
+            _receiveCts = null;
+            _receiveTask = null;
         }
     }
 

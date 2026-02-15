@@ -69,8 +69,8 @@ namespace
             mapName.resize(static_cast<std::size_t>(bytes - 1));
             WideCharToMultiByte(CP_UTF8, 0, mapNameW.c_str(), -1, mapName.data(), bytes, nullptr, nullptr);
         }
-        return "{\"type\":\"hookState\",\"payload\":{\"state\":\"" + JsonEscape(state) + "\",\"reason\":\"" +
-               JsonEscape(reason) + "\",\"api\":\"DX11\",\"frameMap\":\"" + JsonEscape(mapName) + "\"}}\n";
+        return "{\"type\":\"hookState\",\"payload\":{\"pid\":" + std::to_string(pid) + ",\"state\":\"" + JsonEscape(state) +
+               "\",\"reason\":\"" + JsonEscape(reason) + "\",\"api\":\"DX11\",\"frameMap\":\"" + JsonEscape(mapName) + "\"}}\n";
     }
 
     std::wstring GetExeDir()

@@ -10825,3 +10825,35 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false`: 成功。
 - `cmake --build Native/build --config Release`: 成功（`Native/HookHost/bin/HookHost.exe` と `HookAgentDx11.dll` を生成）。
+**2026-02-15 14:45 (Asia/Taipei) — HookHost応答の受信とframeMap連携（Hook capture 安定化）**
+
+### Summary
+- HookHost の `hookState` 応答を C# 側で受信し、返却された `frameMap` を Hookキャプチャが利用するようにした。
+
+### Context / Goal
+- 共有メモリ名を C# 側でハードコードすると、将来 OpenGL/Vulkan を追加した際に破綻しやすい。
+- また attach 成否が見えないと「注入失敗」と「共有メモリ読取失敗」を切り分けづらい。
+
+### Changes
+- `Dx11HookClientService` に NamedPipe 受信ループを追加し、`hookState` をログ化。
+- `frameMap` を PID ごとに保存する軽量 registry を追加。
+- `GraphicsHookCaptureProvider` は registry があれば `frameMap` を優先使用し、無ければ従来命名へフォールバック。
+- HookHost の `hookState` payload に `pid` を追加し、複数対象でも解析しやすくした。
+
+### Files Touched
+- `Services/Hook/Dx11HookClientService.cs` — Pipe受信ループ追加、hookState解析、frameMap登録/解除。
+- `Services/Hook/HookFrameMapRegistry.cs` — PID->frameMap の一時 registry を新規追加。
+- `Services/GraphicsHookCaptureProvider.cs` — 動的 frameMap を使用するよう変更。
+- `Native/HookHost/main.cpp` — hookState payload に pid を追加。
+
+### Behavioral Impact
+- HookHost が返す `frameMap` を使って共有メモリを読むため、将来 API が増えても C# 側の命名固定に依存しにくくなった。
+- attach/detach の状態が `stage=dx11_hook event=hook_state ...` としてログに出る。
+
+### Risk & Mitigation
+- Risk: 受信ループが例外で停止すると frameMap が更新されない。
+- Mitigation: 受信例外はログ化し、capture 側は従来命名へフォールバックできるようにしている。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false`: 成功。
+- `cmake --build Native/build --config Release`: 成功。
