@@ -497,6 +497,28 @@
                                 <CheckBox x:Name="ShowAutoTranslateBadgeIconCheck" Content="Show auto-translate badge icon" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
                                           IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Separator Margin="0,8,0,6" />
+                                <TextBlock Text="DX11 Hook (Experimental)" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableDx11HookPipelineCheck"
+                                          Content="Enable DX11 hook pipeline"
+                                          Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableDx11HookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="Dx11HookOverlayEnabledCheck"
+                                          Content="Enable hook overlay rendering"
+                                          Margin="0,4,0,0"
+                                          IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                          IsChecked="{Binding Settings.Dx11HookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="Dx11HookFallbackOnErrorCheck"
+                                          Content="Fallback to legacy capture on hook error"
+                                          Margin="0,4,0,0"
+                                          IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                          IsChecked="{Binding Settings.Dx11HookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="Dx11HookCaptureFpsLimitBox" Width="80"
+                                             IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                             Text="{Binding Settings.Dx11HookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
                                 <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
                                 <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"

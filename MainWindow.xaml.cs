@@ -11,6 +11,7 @@ using System.Windows.Input;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
+using Hotkey_Translator.Services.Hook;
 using Hotkey_Translator.Services.Settings;
 using Hotkey_Translator.UI;
 using Hotkey_Translator.ViewModels;
@@ -42,6 +43,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly SettingsChangeScheduler _settingsChangeScheduler;
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
+    private readonly Dx11HookClientService _dx11HookClientService;
     private PhashService? _phashService;
     private CancellationTokenSource? _translationOverlayCts;
     private AppLogger? _logger;
@@ -106,6 +108,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ex => _logger?.Error(ex, "Failed to update OCR preprocess preview."));
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
+        _dx11HookClientService = new Dx11HookClientService(() => _logger);
         _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
         SceneChangeController? sceneChangeController = null;
@@ -233,6 +236,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
+        await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
         _drawerLayoutController.SyncForCurrentState();
     }
@@ -248,6 +252,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _settingsChangeScheduler.Dispose();
         _translationOverlayCts?.Cancel();
         _translationOverlayCts?.Dispose();
+        try
+        {
+            _dx11HookClientService.StopAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            // WHY: Shutdown path should continue even if hook host pipe is unavailable.
+            _logger?.Error(ex, "Failed to stop DX11 hook client.");
+        }
+        _dx11HookClientService.Dispose();
         _hotkeyController.Dispose();
         _uiLogController.Dispose();
         _sceneChangeController.Dispose();
@@ -717,6 +731,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateAutoTranslateBadgeVisibility(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
+        _ = _dx11HookClientService.ApplySettingsAsync(settings);
     }
 
     private void PopulateHotkeyKeyBoxes()

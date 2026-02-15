@@ -75,12 +75,16 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
+    [ObservableProperty] private bool _enableDx11HookPipeline;
+    [ObservableProperty] private bool _dx11HookOverlayEnabled;
+    [ObservableProperty] private bool _dx11HookFallbackOnError;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
     [ObservableProperty] private string _iouThresholdText = string.Empty;
     [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
     [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
+    [ObservableProperty] private string _dx11HookCaptureFpsLimitText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetUnclipRatioText = string.Empty;
@@ -188,12 +192,16 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
+            EnableDx11HookPipeline = settings.EnableDx11HookPipeline;
+            Dx11HookOverlayEnabled = settings.Dx11HookOverlayEnabled;
+            Dx11HookFallbackOnError = settings.Dx11HookFallbackOnError;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
             IouThresholdText = settings.OcrIouThreshold.ToString("0.00");
             OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
             SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
+            Dx11HookCaptureFpsLimitText = settings.Dx11HookCaptureFpsLimit.ToString();
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
             PaddleTextDetUnclipRatioText = settings.PaddleTextDetUnclipRatio.ToString("0.###");
@@ -291,6 +299,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
+        settings.EnableDx11HookPipeline = EnableDx11HookPipeline;
+        settings.Dx11HookOverlayEnabled = Dx11HookOverlayEnabled;
+        settings.Dx11HookFallbackOnError = Dx11HookFallbackOnError;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
         if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
@@ -300,6 +311,15 @@ internal sealed partial class SettingsViewModel : ObservableObject
         else if (int.TryParse(SceneChangeQuietWindowMsText.Trim(), out var quietWindowMs))
         {
             settings.SceneChangeQuietWindowMs = quietWindowMs;
+        }
+
+        if (string.IsNullOrWhiteSpace(Dx11HookCaptureFpsLimitText))
+        {
+            settings.Dx11HookCaptureFpsLimit = 15;
+        }
+        else if (int.TryParse(Dx11HookCaptureFpsLimitText.Trim(), out var hookCaptureFpsLimit))
+        {
+            settings.Dx11HookCaptureFpsLimit = hookCaptureFpsLimit;
         }
         if (int.TryParse(PhashThresholdText.Trim(), out var phashThreshold))
         {
@@ -563,6 +583,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableDx11HookPipelineChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnDx11HookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnDx11HookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnDx11HookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
     partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();

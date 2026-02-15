@@ -10652,3 +10652,104 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` を実行し、成功（0 warnings / 0 errors）。
+**2026-02-15 13:10 (Asia/Taipei) — Graphics Hook方式の実装案Docを新規作成**
+
+### Summary
+- DX/OpenGL/Vulkanフックでのキャプチャ＋オーバーレイ表示に関する段階導入計画を `Doc/` に追加した。
+
+### Context / Goal
+- ユーザー要望として、OBSに近いフック方式のアイデアを実装案として文書化したい。
+- 既存WPF経路を残しつつ、段階的に導入できる設計を整理したい。
+
+### Changes
+- 新規Docにゴール/非ゴール、API別バックエンド、IPC契約、実装ステップ、リスク対策を記載。
+- DX11 PoC開始→DX12/OpenGL/Vulkan拡張の順序とフォールバック戦略を明記。
+
+### Files Touched
+- `Doc/GraphicsHook_CaptureOverlay_DX_OpenGL_Vulkan_Plan.md` — Graphics Hook方式の実装案を新規作成。
+
+### Behavioral Impact
+- 実行挙動への影響なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: フック方式は実装難度と運用リスクが高く、計画が過大化しやすい。
+- Mitigation: 既定OFFの段階導入、DX11 PoC起点、失敗時フォールバック前提で計画化した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-15 13:25 (Asia/Taipei) — DX11フック詳細実装案Docを新規作成**
+
+### Summary
+- DX11に限定したGraphics Hook詳細実装案（C++/C#統合）を `Doc/` に追加した。
+
+### Context / Goal
+- ユーザー要望として、まずDX11の実装方針を具体化し、C++側実装の詳細まで明文化したい。
+- 既存の高レベル計画を実装着手可能な粒度へ落とし込みたい。
+
+### Changes
+- C++側（HookHost/HookAgent）の責務、主要クラス、Presentフック、IPC、描画・キャプチャ処理を詳細化。
+- C#側統合（provider切替、設定追加、フォールバック、ログ）を具体化。
+- ステップ分割、リスク、DoDをDX11専用で再整理。
+
+### Files Touched
+- `Doc/GraphicsHook_DX11_Detailed_Implementation_Plan.md` — DX11向け詳細実装案を新規作成。
+
+### Behavioral Impact
+- 実行挙動への影響なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 詳細案の前提（ライブラリ/注入方式）が実装時に変更される可能性。
+- Mitigation: 段階導入とフォールバック前提を明記し、差替可能な契約設計で記述した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-02-15 13:44 (Asia/Taipei) — DX11 Hook実装のStep1基盤を導入**
+
+### Summary
+- `Doc/GraphicsHook_DX11_Detailed_Implementation_Plan.md` に沿って、DX11 Hookの段階導入基盤（設定/UI/C#クライアント/C++骨組み）を実装した。
+
+### Context / Goal
+- DX11 Hook実装は高リスクのため、既存挙動を壊さずに段階導入できる土台を先に整える必要があった。
+- Feature Flag と IPC境界を先に作り、次段でPresentフック本体を安全に実装できる状態にしたい。
+
+### Changes
+- AppSettings/SettingsViewModel/MainWindow.xaml に DX11 Hook用設定を追加（既定OFF）。
+- Settings正規化ルール `Dx11HookSettingsRule` を追加し、FPS/pipe/host path の基本整合を実装。
+- C# 側に `Dx11HookClientService` と IPCメッセージ契約を追加し、attach/detach要求送信の土台を実装。
+- MainWindow の起動時/設定反映時/終了時に DX11 Hook クライアントを適用する経路を追加。
+- C++ 側に `Native/HookHost` と `Native/HookAgentDx11` の最小骨組み（pipe server + DLL entry + hook stub）を追加。
+
+### Files Touched
+- `Models/AppSettings.cs` — DX11 Hook設定項目を追加。
+- `ViewModels/SettingsViewModel.cs` — DX11 Hook設定のバインド/保存/自動保存トリガーを追加。
+- `MainWindow.xaml` — DX11 Hook（Experimental）設定UIを追加。
+- `MainWindow.xaml.cs` — DX11 Hookクライアントの起動時適用・設定反映・終了時停止を追加。
+- `Services/Settings/Rules/Dx11HookSettingsRule.cs` — DX11 Hook設定の正規化ルールを新規追加。
+- `Services/Settings/AppSettingsValidator.cs` — 新ルールを検証パイプラインへ登録。
+- `Services/Hook/Contracts/Dx11HookMessages.cs` — Hook IPCメッセージ契約を新規追加。
+- `Services/Hook/Dx11HookClientService.cs` — HookHost接続/attach/detachのクライアント基盤を新規追加。
+- `Native/CMakeLists.txt` — Native全体ビルド定義を新規追加。
+- `Native/HookCommon/HookIpcProtocol.h` — 共有ヘッダ（フレームヘッダ/コマンド種別）を新規追加。
+- `Native/HookHost/CMakeLists.txt` — HookHostビルド定義を新規追加。
+- `Native/HookHost/main.cpp` — NamedPipe制御サーバーの最小実装を新規追加。
+- `Native/HookAgentDx11/CMakeLists.txt` — HookAgentビルド定義を新規追加。
+- `Native/HookAgentDx11/Dx11PresentHook.h` — DX11 hook API 宣言を新規追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Present hookスタブ実装を新規追加。
+- `Native/HookAgentDx11/dllmain.cpp` — DLLエントリ/エクスポート関数を新規追加。
+- `Native/README.md` — Native骨組みのビルド/運用メモを新規追加。
+
+### Behavioral Impact
+- `EnableDx11HookPipeline=true` の場合、起動時・設定反映時に HookHost へ attach 要求を送る土台が動作する。
+- HookHost未配置/接続失敗時はログを出し、既存キャプチャ経路（WGC/DXGI/GDI）へ留まる。
+- 既定値は OFF のため、通常利用での既存挙動は維持される。
+
+### Risk & Mitigation
+- Risk: C++骨組みはまだPresentフック本実装前で、機能が限定的。
+- Mitigation: 既定OFF・フォールバック前提にし、次段で段階的に機能追加できる境界を先に固定した。
+
+- Risk: 設定変更時に HookHost 接続失敗ログが増える可能性。
+- Mitigation: 接続タイムアウトを短くし（500ms）、失敗時は即座に既存経路へ戻す設計にした。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行: 成功（0 warnings / 0 errors）。
+- Native は骨組み追加のみで、アプリ本体ビルドへの回帰がないことを確認。

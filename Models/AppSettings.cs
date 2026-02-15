@@ -78,6 +78,12 @@ public sealed class AppSettings
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeAutoTranslate { get; set; } = false;
     public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
+    public bool EnableDx11HookPipeline { get; set; } = false;
+    public int Dx11HookCaptureFpsLimit { get; set; } = 15;
+    public bool Dx11HookOverlayEnabled { get; set; } = true;
+    public bool Dx11HookFallbackOnError { get; set; } = true;
+    public string Dx11HookHostPath { get; set; } = "Native\\HookHost\\bin\\HookHost.exe";
+    public string Dx11HookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
     public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
