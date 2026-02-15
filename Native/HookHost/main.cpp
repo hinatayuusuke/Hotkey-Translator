@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "../HookCommon/HookIpcProtocol.h"
+#include "../HookCommon/SharedHookConfig.h"
 
 namespace
 {
@@ -29,6 +30,7 @@ namespace
         HMODULE remoteModule = nullptr;
         std::wstring dllPath;
         ht::hook::ipc::GraphicsApi api = ht::hook::ipc::GraphicsApi::Dx11;
+        ht::hook::ipc::SharedHookConfigWriter configWriter;
     };
 
     std::unordered_map<DWORD, ProcessHookState> g_states;
@@ -409,6 +411,7 @@ namespace
             const auto existing = g_states.find(req.pid);
             if (existing != g_states.end() && existing->second.remoteModule != nullptr)
             {
+                (void)existing->second.configWriter.Write(req.pid, existing->second.api, req.captureFpsLimit, req.enableOverlay);
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
                     PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -449,11 +452,10 @@ namespace
             st.remoteModule = remoteModule;
             st.dllPath = dllPath;
             st.api = ht::hook::ipc::GraphicsApi::Dx11;
-            g_states[req.pid] = st;
+            (void)st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay);
+            g_states[req.pid] = std::move(st);
 
-            // NOTE: captureFpsLimit/enableOverlay are not yet wired through to the agent.
-            // Future backends (OpenGL/Vulkan) should share a single config channel design.
-            WriteResponse(pipe, BuildState("Attached", "ok", st.api, req.pid));
+            WriteResponse(pipe, BuildState("Attached", "ok", ht::hook::ipc::GraphicsApi::Dx11, req.pid));
             return;
         }
 
@@ -478,6 +480,7 @@ namespace
 
             // WHY: With vtable patching, unloading the agent DLL would leave dangling function pointers in swapchain vtables.
             // We keep the module loaded for process lifetime in v1; detach only disables capture.
+            it->second.configWriter.Reset();
             WriteResponse(pipe, BuildState("Detached", "ok_disabled", ht::hook::ipc::GraphicsApi::Dx11, pid));
             return;
         }

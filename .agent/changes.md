@@ -10917,3 +10917,36 @@ ull logger が固定されていた。
 - `cmake -S Native -B Native/build -A x64`: 成功。
 - `cmake --build Native/build --config Release`: 成功。
 - `dotnet build -p:UseAppHost=false`: 成功。
+**2026-02-15 16:02 (Asia/Taipei) — Hook設定の共有メモリ伝搬（fps/overlay）**
+
+### Summary
+- HookHost→HookAgentDx11 へ `captureFpsLimit`/`overlayEnabled` を共有メモリで伝搬し、Agent 側の capture 間引きに反映できるようにした。
+
+### Context / Goal
+- これまで attach payload の fps/overlay が Agent に反映されず、UI変更が実動作へ効かない状態だった。
+- DX11/将来の OpenGL/Vulkan でも共通化できるよう、API/ PID ベースの config mapping を定義する。
+
+### Changes
+- `Local\\HT_HOOK_CFG_<api>_<pid>` の共有メモリ契約を追加（HookConfigHeader）。
+- HookHost は attach（再attach含む）時に config mapping を作成/更新し、detach で解放。
+- HookAgentDx11 は Present 内で config を読み取り、`captureIntervalQpc`（fpsLimit）を動的に更新（未生成時は env var にフォールバック）。
+
+### Files Touched
+- `Native/HookCommon/HookIpcProtocol.h` — config header と config mapping 名生成を追加。
+- `Native/HookCommon/SharedHookConfig.h` — config writer/reader を新規追加。
+- `Native/HookCommon/SharedHookConfig.cpp` — config writer/reader 実装を新規追加。
+- `Native/HookHost/main.cpp` — attach/detach で config mapping を作成/更新/解放。
+- `Native/HookHost/CMakeLists.txt` — SharedHookConfig をビルドへ追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — config reader を追加し Present 内で設定を反映。
+- `Native/HookAgentDx11/CMakeLists.txt` — SharedHookConfig をビルドへ追加。
+
+### Behavioral Impact
+- UI から送った fpsLimit が HookAgent 側の capture 間引きに反映される（従来の env var 固定から改善）。
+
+### Risk & Mitigation
+- Risk: HookHost が動作していない/設定 mapping が未生成の場合、設定が反映されない。
+- Mitigation: Agent 側は env var (`HT_HOOK_CAPTURE_FPS_LIMIT`) にフォールバックする。
+
+### Tests / Verification
+- `cmake --build Native/build --config Release`: 成功。
+- `dotnet build -p:UseAppHost=false`: 成功。

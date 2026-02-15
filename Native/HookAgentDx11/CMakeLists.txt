@@ -2,6 +2,7 @@ add_library(HookAgentDx11 SHARED
     dllmain.cpp
     Dx11PresentHook.cpp
     ../HookCommon/SharedFrameWriter.cpp
+    ../HookCommon/SharedHookConfig.cpp
 )
 
 target_include_directories(HookAgentDx11 PRIVATE

@@ -13,6 +13,7 @@
 #include <MinHook.h>
 
 #include "../HookCommon/SharedFrameWriter.h"
+#include "../HookCommon/SharedHookConfig.h"
 
 namespace ht::hook::dx11
 {
@@ -35,6 +36,7 @@ namespace ht::hook::dx11
             ResizeBuffersFn originalResizeBuffers = nullptr;
 
             ht::hook::ipc::SharedFrameWriter frameWriter;
+            ht::hook::ipc::SharedHookConfigReader configReader;
 
             ID3D11Device* device = nullptr;
             ID3D11DeviceContext* context = nullptr;
@@ -48,6 +50,9 @@ namespace ht::hook::dx11
             std::uint64_t lastCaptureQpc = 0;
             std::uint64_t captureIntervalQpc = 0;
             std::uint64_t qpcFreq = 0;
+            std::uint64_t lastConfigQpc = 0;
+            std::uint32_t configuredFpsLimit = 15;
+            bool overlayEnabled = true;
         };
 
         Dx11Runtime g_rt;
@@ -112,6 +117,45 @@ namespace ht::hook::dx11
             rt.stagingWidth = 0;
             rt.stagingHeight = 0;
             rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
+        }
+
+        void RefreshConfigLocked(Dx11Runtime& rt)
+        {
+            if (rt.qpcFreq == 0)
+            {
+                rt.qpcFreq = QpcFreq();
+            }
+
+            const DWORD pid = GetCurrentProcessId();
+            if (!rt.configReader.Ensure(pid, ht::hook::ipc::GraphicsApi::Dx11))
+            {
+                // NOTE: Fallback to env var if host didn't publish config mapping yet.
+                const std::uint32_t fps = ReadEnvU32(L"HT_HOOK_CAPTURE_FPS_LIMIT", rt.configuredFpsLimit);
+                rt.configuredFpsLimit = std::max(1u, fps);
+                rt.captureIntervalQpc = (rt.qpcFreq != 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
+                return;
+            }
+
+            ht::hook::ipc::HookConfigHeader cfg{};
+            if (!rt.configReader.TryRead(cfg))
+            {
+                return;
+            }
+
+            if (cfg.magic != ht::hook::ipc::kConfigHeaderMagic || cfg.version != ht::hook::ipc::kConfigHeaderVersion)
+            {
+                return;
+            }
+
+            if (cfg.updatedQpc == 0 || cfg.updatedQpc == rt.lastConfigQpc)
+            {
+                return;
+            }
+
+            rt.lastConfigQpc = cfg.updatedQpc;
+            rt.configuredFpsLimit = std::max(1u, cfg.captureFpsLimit);
+            rt.overlayEnabled = cfg.overlayEnabled != 0;
+            rt.captureIntervalQpc = (rt.qpcFreq != 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
         }
 
         bool EnsureStagingLocked(Dx11Runtime& rt, ID3D11Texture2D* backBuffer)
@@ -188,6 +232,8 @@ namespace ht::hook::dx11
 
         bool CaptureAndShareFrameLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
         {
+            RefreshConfigLocked(rt);
+
             const auto now = NowQpc();
             if (rt.captureIntervalQpc != 0 && rt.lastCaptureQpc != 0)
             {
@@ -434,11 +480,11 @@ namespace ht::hook::dx11
         }
 
         g_rt.qpcFreq = QpcFreq();
-        const std::uint32_t fpsLimit = ReadEnvU32(L"HT_HOOK_CAPTURE_FPS_LIMIT", 15);
-        if (fpsLimit > 0 && g_rt.qpcFreq != 0)
-        {
-            g_rt.captureIntervalQpc = g_rt.qpcFreq / fpsLimit;
-        }
+        // NOTE: Config mapping may not be available at install time; RefreshConfigLocked handles fallback.
+        g_rt.configuredFpsLimit = 15;
+        g_rt.captureIntervalQpc = (g_rt.qpcFreq != 0) ? (g_rt.qpcFreq / g_rt.configuredFpsLimit) : 0;
+        g_rt.lastConfigQpc = 0;
+        g_rt.overlayEnabled = true;
 
         void** vtable = nullptr;
         if (!CreateDummySwapChainAndGetVtable(&vtable) || vtable == nullptr)
@@ -511,11 +557,13 @@ namespace ht::hook::dx11
 
         ResetDeviceStateLocked(g_rt);
         g_rt.frameWriter.Reset();
+        g_rt.configReader.Reset();
         g_rt.scratch.clear();
 
         g_rt.presentTarget = nullptr;
         g_rt.resizeBuffersTarget = nullptr;
         g_rt.originalPresent = nullptr;
         g_rt.originalResizeBuffers = nullptr;
+        g_rt.lastConfigQpc = 0;
     }
 }

@@ -11,6 +11,9 @@ namespace ht::hook::ipc
     constexpr std::uint32_t kFrameHeaderVersion = 1;
     constexpr std::uint32_t kFramePixelFormatBgra8 = 1;
 
+    constexpr std::uint32_t kConfigHeaderMagic = 0x48435446; // "HCTF"
+    constexpr std::uint32_t kConfigHeaderVersion = 1;
+
     enum class GraphicsApi : std::uint32_t
     {
         Unknown = 0,
@@ -45,12 +48,34 @@ namespace ht::hook::ipc
         std::uint32_t reserved0;
         std::uint64_t timestampQpc;
     };
+
+    struct HookConfigHeader
+    {
+        std::uint32_t magic;
+        std::uint32_t version;
+        std::uint32_t api;
+        std::uint32_t targetPid;
+        std::uint32_t captureFpsLimit;
+        std::uint32_t overlayEnabled;
+        std::uint32_t reserved0;
+        std::uint32_t reserved1;
+        std::uint64_t updatedQpc;
+    };
 #pragma pack(pop)
 
     inline std::wstring BuildFrameMappingName(DWORD pid, GraphicsApi api)
     {
         // WHY: Backends use one naming convention so future OpenGL/Vulkan agents can reuse the same reader path.
         std::wstring name = L"Local\\HT_HOOK_FRAME_";
+        name += std::to_wstring(static_cast<std::uint32_t>(api));
+        name += L"_";
+        name += std::to_wstring(pid);
+        return name;
+    }
+
+    inline std::wstring BuildConfigMappingName(DWORD pid, GraphicsApi api)
+    {
+        std::wstring name = L"Local\\HT_HOOK_CFG_";
         name += std::to_wstring(static_cast<std::uint32_t>(api));
         name += L"_";
         name += std::to_wstring(pid);
