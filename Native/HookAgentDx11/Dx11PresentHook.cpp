@@ -18,6 +18,7 @@
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
 #include "../HookCommon/SharedOverlayCommands.h"
+#include "../HookCommon/SharedHookStatus.h"
 
 namespace ht::hook::dx11
 {
@@ -46,6 +47,7 @@ namespace ht::hook::dx11
             ht::hook::ipc::SharedFrameWriter frameWriter;
             ht::hook::ipc::SharedHookConfigReader configReader;
             ht::hook::ipc::SharedOverlayCommandsReader overlayReader;
+            ht::hook::ipc::SharedHookStatusWriter statusWriter;
 
             ID3D11Device* device = nullptr;
             ID3D11DeviceContext* context = nullptr;
@@ -68,6 +70,10 @@ namespace ht::hook::dx11
             bool overlayEnabled = true;
             std::uint64_t lastOverlayQpc = 0;
             std::vector<ht::hook::ipc::OverlayRectCommand> overlayCommands;
+
+            std::uint64_t presentCount = 0;
+            std::uint64_t lastPresentQpc = 0;
+            std::uint32_t lastPresentKind = 0; // 1=Present, 2=Present1
         };
 
         Dx11Runtime g_rt;
@@ -142,6 +148,33 @@ namespace ht::hook::dx11
             rt.stagingWidth = 0;
             rt.stagingHeight = 0;
             rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
+        }
+
+        void PublishStatusLocked(Dx11Runtime& rt)
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (!rt.statusWriter.Ensure(pid, ht::hook::ipc::GraphicsApi::Dx11))
+            {
+                return;
+            }
+
+            ht::hook::ipc::HookStatusHeader st{};
+            st.api = static_cast<std::uint32_t>(ht::hook::ipc::GraphicsApi::Dx11);
+            st.targetPid = pid;
+            st.presentCount = rt.presentCount;
+            st.lastPresentQpc = rt.lastPresentQpc;
+            st.lastPresentKind = rt.lastPresentKind;
+            st.backBufferWidth = rt.backBufferWidth;
+            st.backBufferHeight = rt.backBufferHeight;
+            // NOTE: We only have swapchain format when a capture path touches GetBuffer/EnsureStagingLocked.
+            // This is still useful for diagnosing "mapping exists but capture fails due to unexpected format".
+            st.backBufferDxgiFormat = static_cast<std::uint32_t>(rt.stagingFormat); // best-effort in v1
+            st.stagingDxgiFormat = static_cast<std::uint32_t>(rt.stagingFormat);
+            st.lastFrameIdWritten = rt.frameId;
+            st.lastFrameWriteQpc = rt.lastCaptureQpc;
+            st.lastCmdQpc = rt.lastOverlayQpc;
+            st.lastCmdCount = static_cast<std::uint32_t>(rt.overlayCommands.size());
+            (void)rt.statusWriter.Write(st);
         }
 
         void RefreshConfigLocked(Dx11Runtime& rt)
@@ -512,8 +545,12 @@ namespace ht::hook::dx11
             std::lock_guard<std::mutex> lock(g_rt.mutex);
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
+                g_rt.presentCount++;
+                g_rt.lastPresentQpc = NowQpc();
+                g_rt.lastPresentKind = 1;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                PublishStatusLocked(g_rt);
             }
 
             return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
@@ -537,8 +574,12 @@ namespace ht::hook::dx11
             std::lock_guard<std::mutex> lock(g_rt.mutex);
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
+                g_rt.presentCount++;
+                g_rt.lastPresentQpc = NowQpc();
+                g_rt.lastPresentKind = 2;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                PublishStatusLocked(g_rt);
             }
 
             return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
@@ -834,6 +875,7 @@ namespace ht::hook::dx11
         ResetDeviceStateLocked(g_rt);
         g_rt.frameWriter.Reset();
         g_rt.configReader.Reset();
+        g_rt.statusWriter.Reset();
         g_rt.scratch.clear();
 
         g_rt.presentTarget = nullptr;
@@ -843,5 +885,8 @@ namespace ht::hook::dx11
         g_rt.originalPresent1 = nullptr;
         g_rt.originalResizeBuffers = nullptr;
         g_rt.lastConfigQpc = 0;
+        g_rt.presentCount = 0;
+        g_rt.lastPresentQpc = 0;
+        g_rt.lastPresentKind = 0;
     }
 }

@@ -11171,3 +11171,38 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet clean → dotnet build -p:UseAppHost=false: 成功。
+**2026-02-15 21:14 (Asia/Taipei) — HookStatus共有メモリを追加（Present/cmd/formatの可観測性）**
+
+### Summary
+- HookAgent が Present 経路の状態を共有メモリへ公開し、C#側が mapping not found 等の原因を切り分けやすくした。
+
+### Context / Goal
+- HT_HOOK_FRAME が見つからない/更新されない場合に「注入失敗」「Present未呼び出し」「フォーマット非対応」「cmdが届いていない」などを即座に判断できる情報が不足していた。
+
+### Changes
+- Native:
+  - Local\\HT_HOOK_STAT_<api>_<pid> の共有メモリ契約（HookStatusHeader）を追加。
+  - HookAgentDx11 は Present/Present1 内で presentCount/lastPresentQpc/lastPresentKind、backbufferサイズ/format（best-effort）、最後に書いた frameId、overlay cmd の更新Qpc/件数を publish。
+- C#:
+  - Dx11HookStatusReader を追加。
+  - GraphicsHookCaptureProvider の mapping not found エラーに status 情報を添付（presentCount、format、cmdCount など）。
+
+### Files Touched
+- Native/HookCommon/HookIpcProtocol.h — status header と mapping 名生成を追加。
+- Native/HookCommon/SharedHookStatus.h — status writer/reader を追加。
+- Native/HookCommon/SharedHookStatus.cpp — status writer/reader 実装を追加。
+- Native/HookAgentDx11/CMakeLists.txt — SharedHookStatus.cpp をビルドへ追加。
+- Native/HookAgentDx11/Dx11PresentHook.cpp — Present/Present1 内で status を publish。
+- Services/Hook/Dx11HookStatusReader.cs — status mapping reader を追加。
+- Services/GraphicsHookCaptureProvider.cs — capture失敗時に status を付与。
+
+### Behavioral Impact
+- GraphicsHook が失敗した際、ログに presentCount や format などの診断情報が出るようになり、原因切り分けが速くなる。
+
+### Risk & Mitigation
+- Risk: Present毎に status 更新するため、わずかなオーバーヘッドが増える。
+- Mitigation: 4KB の単一 memcpy で、capture/ocr に比べれば十分小さい。必要なら将来間引き可能。
+
+### Tests / Verification
+- cmake --build Native/build --config Release: 成功。
+- dotnet build -p:UseAppHost=false: 成功。

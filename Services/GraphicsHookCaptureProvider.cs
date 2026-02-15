@@ -216,7 +216,18 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
         catch (FileNotFoundException)
         {
-            error = $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}.";
+            if (Dx11HookStatusReader.TryRead(pid, out var status))
+            {
+                error =
+                    $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}. " +
+                    $"status.presentCount={status.PresentCount} kind={status.LastPresentKind} " +
+                    $"bb={status.BackBufferWidth}x{status.BackBufferHeight} dxgi={status.BackBufferDxgiFormat} " +
+                    $"cmdCount={status.LastCmdCount}.";
+            }
+            else
+            {
+                error = $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}.";
+            }
             return false;
         }
         catch (Exception ex)
