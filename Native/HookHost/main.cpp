@@ -8,8 +8,11 @@
 #include <unordered_map>
 #include <vector>
 
+#include <wincrypt.h>
+
 #include "../HookCommon/HookIpcProtocol.h"
 #include "../HookCommon/SharedHookConfig.h"
+#include "../HookCommon/SharedOverlayCommands.h"
 
 namespace
 {
@@ -31,6 +34,7 @@ namespace
         std::wstring dllPath;
         ht::hook::ipc::GraphicsApi api = ht::hook::ipc::GraphicsApi::Dx11;
         ht::hook::ipc::SharedHookConfigWriter configWriter;
+        ht::hook::ipc::SharedOverlayCommandsWriter overlayWriter;
     };
 
     std::unordered_map<DWORD, ProcessHookState> g_states;
@@ -170,6 +174,71 @@ namespace
             return true;
         }
         return false;
+    }
+
+    bool ExtractString(const std::string& json, const char* key, std::string& out)
+    {
+        const std::string needle = std::string("\"") + key + "\"";
+        const auto kpos = json.find(needle);
+        if (kpos == std::string::npos)
+        {
+            return false;
+        }
+        const auto cpos = json.find(':', kpos + needle.size());
+        if (cpos == std::string::npos)
+        {
+            return false;
+        }
+
+        auto q1 = json.find('"', cpos + 1);
+        if (q1 == std::string::npos)
+        {
+            return false;
+        }
+        auto q2 = json.find('"', q1 + 1);
+        if (q2 == std::string::npos || q2 <= q1 + 1)
+        {
+            return false;
+        }
+
+        out = json.substr(q1 + 1, q2 - (q1 + 1));
+        return true;
+    }
+
+    bool Base64Decode(const std::string& b64, std::vector<std::uint8_t>& outBytes)
+    {
+        outBytes.clear();
+        if (b64.empty())
+        {
+            return true;
+        }
+
+        DWORD required = 0;
+        if (!CryptStringToBinaryA(b64.c_str(), static_cast<DWORD>(b64.size()), CRYPT_STRING_BASE64, nullptr, &required, nullptr, nullptr))
+        {
+            return false;
+        }
+
+        outBytes.resize(required);
+        if (!CryptStringToBinaryA(
+                b64.c_str(),
+                static_cast<DWORD>(b64.size()),
+                CRYPT_STRING_BASE64,
+                outBytes.data(),
+                &required,
+                nullptr,
+                nullptr))
+        {
+            outBytes.clear();
+            return false;
+        }
+
+        if (required != outBytes.size())
+        {
+            outBytes.resize(required);
+        }
+
+        return true;
     }
 
     bool ParseAttach(const std::string& json, AttachRequest& outReq)
@@ -412,6 +481,7 @@ namespace
             if (existing != g_states.end() && existing->second.remoteModule != nullptr)
             {
                 (void)existing->second.configWriter.Write(req.pid, existing->second.api, req.captureFpsLimit, req.enableOverlay);
+                (void)existing->second.overlayWriter.Write(req.pid, existing->second.api, nullptr, 0);
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
                     PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -453,6 +523,7 @@ namespace
             st.dllPath = dllPath;
             st.api = ht::hook::ipc::GraphicsApi::Dx11;
             (void)st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay);
+            (void)st.overlayWriter.Write(req.pid, st.api, nullptr, 0);
             g_states[req.pid] = std::move(st);
 
             WriteResponse(pipe, BuildState("Attached", "ok", ht::hook::ipc::GraphicsApi::Dx11, req.pid));
@@ -481,14 +552,56 @@ namespace
             // WHY: With vtable patching, unloading the agent DLL would leave dangling function pointers in swapchain vtables.
             // We keep the module loaded for process lifetime in v1; detach only disables capture.
             it->second.configWriter.Reset();
+            it->second.overlayWriter.Reset();
             WriteResponse(pipe, BuildState("Detached", "ok_disabled", ht::hook::ipc::GraphicsApi::Dx11, pid));
             return;
         }
 
         if (message.find("\"type\":\"overlayUpdate\"") != std::string::npos)
         {
-            // Step 3: Hook overlay commands flow (C# -> agent) will be implemented later.
-            WriteResponse(pipe, BuildState("Running", "overlay_stub", ht::hook::ipc::GraphicsApi::Dx11, 0));
+            DWORD pid = 0;
+            if (!ParseDetach(message, pid))
+            {
+                WriteResponse(pipe, BuildState("Failed", "overlay_parse_failed", ht::hook::ipc::GraphicsApi::Dx11, 0));
+                return;
+            }
+
+            std::uint32_t count = 0;
+            (void)ExtractU32(message, "count", count);
+            std::string rectsB64;
+            if (!ExtractString(message, "rectsB64", rectsB64))
+            {
+                rectsB64.clear();
+            }
+
+            const auto it = g_states.find(pid);
+            if (it == g_states.end())
+            {
+                WriteResponse(pipe, BuildState("Failed", "overlay_pid_not_attached", ht::hook::ipc::GraphicsApi::Dx11, pid));
+                return;
+            }
+
+            std::vector<std::uint8_t> decoded;
+            if (!Base64Decode(rectsB64, decoded))
+            {
+                WriteResponse(pipe, BuildState("Failed", "overlay_decode_failed", it->second.api, pid));
+                return;
+            }
+
+            const std::size_t cmdSize = sizeof(ht::hook::ipc::OverlayRectCommand);
+            const std::size_t expectedBytes = static_cast<std::size_t>(count) * cmdSize;
+            if (!decoded.empty() && decoded.size() < expectedBytes)
+            {
+                WriteResponse(pipe, BuildState("Failed", "overlay_payload_too_small", it->second.api, pid));
+                return;
+            }
+
+            const auto* cmds = decoded.empty()
+                ? nullptr
+                : reinterpret_cast<const ht::hook::ipc::OverlayRectCommand*>(decoded.data());
+
+            const bool ok = it->second.overlayWriter.Write(pid, it->second.api, cmds, static_cast<std::size_t>(count));
+            WriteResponse(pipe, BuildState("Running", ok ? "overlay_ok" : "overlay_write_failed", it->second.api, pid));
             return;
         }
 

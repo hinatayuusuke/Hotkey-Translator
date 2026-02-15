@@ -218,6 +218,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         _pipeline = new PipelineOrchestrator(
             _captureManager,
+            _dx11HookClientService,
             _ocrEngine,
             ocrDiff,
             _phashService,

@@ -9,6 +9,8 @@ using System.Windows;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Orchestration;
 using Hotkey_Translator.Services.Orchestration.Stages;
+using Hotkey_Translator.Services.Hook;
+using Hotkey_Translator.Services.Hook.Contracts;
 using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services;
@@ -36,6 +38,7 @@ public readonly record struct ForceRunOptions(
 public sealed class PipelineOrchestrator
 {
     private readonly CaptureManager _captureManager;
+    private readonly Dx11HookClientService? _dx11HookClientService;
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly OcrAndGroupStage _ocrAndGroupStage;
@@ -71,8 +74,9 @@ public sealed class PipelineOrchestrator
         return true;
     }
 
-    public PipelineOrchestrator(
+    internal PipelineOrchestrator(
         CaptureManager captureManager,
+        Dx11HookClientService? dx11HookClientService,
         OcrEngine ocrEngine,
         OcrDiffService ocrDiffService,
         PhashService phashService,
@@ -87,6 +91,7 @@ public sealed class PipelineOrchestrator
         AppLogger logger)
     {
         _captureManager = captureManager;
+        _dx11HookClientService = dx11HookClientService;
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _logger = logger;
@@ -309,6 +314,7 @@ public sealed class PipelineOrchestrator
                 CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
                 var overlayStopwatch = perfProbe.BeginStep();
                 _overlayStage.Update(overlayItems, overlayClipScreen);
+                TryUpdateDx11HookOverlay(frame, roiScreen, overlayItems, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
                 perfProbe.RecordOverlay(overlayStopwatch);
             }
@@ -602,5 +608,111 @@ public sealed class PipelineOrchestrator
     {
         _lastRoiSnapshot?.Dispose();
         _lastRoiSnapshot = snapshot;
+    }
+
+    private void TryUpdateDx11HookOverlay(
+        CaptureFrame frame,
+        Rect roiScreen,
+        IReadOnlyList<OverlayItem> overlayItems,
+        AppSettings settings)
+    {
+        if (_dx11HookClientService == null)
+        {
+            return;
+        }
+
+        if (frame.ProviderKind != CaptureProviderKind.GraphicsHook)
+        {
+            return;
+        }
+
+        var pid = settings.FixedCaptureWindowProcessId;
+        if (pid <= 0)
+        {
+            return;
+        }
+
+        if (!settings.Dx11HookOverlayEnabled)
+        {
+            _dx11HookClientService.TrySendOverlayUpdate(pid, Array.Empty<Dx11HookOverlayRect>());
+            return;
+        }
+
+        var pixelW = frame.Bitmap.Width;
+        var pixelH = frame.Bitmap.Height;
+        if (pixelW <= 0 || pixelH <= 0)
+        {
+            return;
+        }
+
+        // WHY: Keep v1 simple: draw ROI + each overlay item bounding box. This is primarily a visibility/debug tool.
+        const uint roiColor = 0xFF2C8CFF;
+        const uint itemColor = 0xFFFFC400;
+        const uint thickness = 3;
+
+        var rects = new List<Dx11HookOverlayRect>(Math.Min(overlayItems.Count + 1, 128));
+        if (TryBuildHookRect(roiScreen, frame.Bounds, pixelW, pixelH, roiColor, thickness, out var roiRect))
+        {
+            rects.Add(roiRect);
+        }
+
+        foreach (var item in overlayItems)
+        {
+            if (rects.Count >= 128)
+            {
+                break;
+            }
+
+            if (TryBuildHookRect(item.Rect, frame.Bounds, pixelW, pixelH, itemColor, thickness, out var itemRect))
+            {
+                rects.Add(itemRect);
+            }
+        }
+
+        _dx11HookClientService.TrySendOverlayUpdate(pid, rects);
+    }
+
+    private static bool TryBuildHookRect(
+        Rect screenRect,
+        Rect frameBounds,
+        int pixelW,
+        int pixelH,
+        uint argb,
+        uint thickness,
+        out Dx11HookOverlayRect rect)
+    {
+        rect = default;
+        if (screenRect.IsEmpty || screenRect.Width <= 0 || screenRect.Height <= 0)
+        {
+            return false;
+        }
+
+        var scaleX = frameBounds.Width > 0 ? pixelW / frameBounds.Width : 1.0;
+        var scaleY = frameBounds.Height > 0 ? pixelH / frameBounds.Height : 1.0;
+        if (scaleX <= 0 || scaleY <= 0)
+        {
+            scaleX = 1.0;
+            scaleY = 1.0;
+        }
+
+        var left = (screenRect.X - frameBounds.X) * scaleX;
+        var top = (screenRect.Y - frameBounds.Y) * scaleY;
+        var right = (screenRect.X - frameBounds.X + screenRect.Width) * scaleX;
+        var bottom = (screenRect.Y - frameBounds.Y + screenRect.Height) * scaleY;
+
+        left = Math.Max(0, Math.Min(pixelW, left));
+        top = Math.Max(0, Math.Min(pixelH, top));
+        right = Math.Max(0, Math.Min(pixelW, right));
+        bottom = Math.Max(0, Math.Min(pixelH, bottom));
+
+        var w = right - left;
+        var h = bottom - top;
+        if (w <= 1 || h <= 1)
+        {
+            return false;
+        }
+
+        rect = new Dx11HookOverlayRect((float)left, (float)top, (float)w, (float)h, argb, thickness);
+        return true;
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -116,6 +117,47 @@ internal sealed class Dx11HookClientService : IDisposable
         {
             await DetachInternalAsync("stop", cancellationToken).ConfigureAwait(false);
             DisposePipe();
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public void TrySendOverlayUpdate(int pid, IReadOnlyList<Dx11HookOverlayRect> rects)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (pid <= 0 || pid != _attachedPid)
+        {
+            return;
+        }
+
+        if (_pipe is not { IsConnected: true } || _writer == null)
+        {
+            return;
+        }
+
+        if (!_sync.Wait(0))
+        {
+            // WHY: Overlay updates are best-effort; drop when attach/detach/settings apply is running.
+            return;
+        }
+
+        try
+        {
+            const int maxRects = 512;
+            var count = Math.Min(rects.Count, maxRects);
+            var payload = PackOverlayRectCommands(rects, count);
+            var b64 = payload.Length == 0 ? string.Empty : Convert.ToBase64String(payload);
+            SendCommandSync(new Dx11HookCommandEnvelope("overlayUpdate", new Dx11HookOverlayUpdateRequest(pid, count, b64)));
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, "stage=dx11_hook event=overlay_update_failed.");
         }
         finally
         {
@@ -323,6 +365,17 @@ internal sealed class Dx11HookClientService : IDisposable
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
     }
 
+    private void SendCommandSync(Dx11HookCommandEnvelope command)
+    {
+        if (_writer == null)
+        {
+            return;
+        }
+
+        var json = JsonSerializer.Serialize(command, JsonOptions);
+        _writer.WriteLine(json);
+    }
+
     private async Task DetachInternalAsync(string reason, CancellationToken cancellationToken)
     {
         if (_attachedPid > 0)
@@ -343,6 +396,33 @@ internal sealed class Dx11HookClientService : IDisposable
 
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
+    }
+
+    private static byte[] PackOverlayRectCommands(IReadOnlyList<Dx11HookOverlayRect> rects, int count)
+    {
+        if (count <= 0)
+        {
+            return Array.Empty<byte>();
+        }
+
+        // NOTE: Must match Native/HookCommon/HookIpcProtocol.h OverlayRectCommand binary layout.
+        const int bytesPerRect = 24;
+        var bytes = new byte[count * bytesPerRect];
+        var span = bytes.AsSpan();
+        var offset = 0;
+        for (var i = 0; i < count; i++)
+        {
+            var r = rects[i];
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset, 4), BitConverter.SingleToInt32Bits(r.X));
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset + 4, 4), BitConverter.SingleToInt32Bits(r.Y));
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset + 8, 4), BitConverter.SingleToInt32Bits(r.W));
+            BinaryPrimitives.WriteInt32LittleEndian(span.Slice(offset + 12, 4), BitConverter.SingleToInt32Bits(r.H));
+            BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset + 16, 4), r.Argb);
+            BinaryPrimitives.WriteUInt32LittleEndian(span.Slice(offset + 20, 4), r.Thickness);
+            offset += bytesPerRect;
+        }
+
+        return bytes;
     }
 
     private static string ResolveHostPath(string configuredPath)

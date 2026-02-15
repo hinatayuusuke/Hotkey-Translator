@@ -1,5 +1,6 @@
 #include "Dx11PresentHook.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstring>
@@ -8,22 +9,27 @@
 #include <vector>
 
 #include <d3d11.h>
+#include <d3d11_1.h>
 #include <dxgi.h>
+#include <dxgi1_2.h>
 
 #include <MinHook.h>
 
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
+#include "../HookCommon/SharedOverlayCommands.h"
 
 namespace ht::hook::dx11
 {
     namespace
     {
         using PresentFn = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT);
+        using Present1Fn = HRESULT(__stdcall*)(IDXGISwapChain1*, UINT, UINT, const DXGI_PRESENT_PARAMETERS*);
         using ResizeBuffersFn = HRESULT(__stdcall*)(IDXGISwapChain*, UINT, UINT, UINT, DXGI_FORMAT, UINT);
 
         constexpr int kSwapChainPresentIndex = 8;
         constexpr int kSwapChainResizeBuffersIndex = 13;
+        constexpr int kSwapChain1Present1Index = 22;
 
         struct Dx11Runtime
         {
@@ -31,16 +37,23 @@ namespace ht::hook::dx11
             std::atomic_bool installed{false};
 
             void* presentTarget = nullptr;
+            void* present1Target = nullptr;
             void* resizeBuffersTarget = nullptr;
             PresentFn originalPresent = nullptr;
+            Present1Fn originalPresent1 = nullptr;
             ResizeBuffersFn originalResizeBuffers = nullptr;
 
             ht::hook::ipc::SharedFrameWriter frameWriter;
             ht::hook::ipc::SharedHookConfigReader configReader;
+            ht::hook::ipc::SharedOverlayCommandsReader overlayReader;
 
             ID3D11Device* device = nullptr;
             ID3D11DeviceContext* context = nullptr;
+            ID3D11DeviceContext1* context1 = nullptr;
             ID3D11Texture2D* staging = nullptr;
+            ID3D11RenderTargetView* backBufferRtv = nullptr;
+            UINT backBufferWidth = 0;
+            UINT backBufferHeight = 0;
             UINT stagingWidth = 0;
             UINT stagingHeight = 0;
             DXGI_FORMAT stagingFormat = DXGI_FORMAT_UNKNOWN;
@@ -53,6 +66,8 @@ namespace ht::hook::dx11
             std::uint64_t lastConfigQpc = 0;
             std::uint32_t configuredFpsLimit = 15;
             bool overlayEnabled = true;
+            std::uint64_t lastOverlayQpc = 0;
+            std::vector<ht::hook::ipc::OverlayRectCommand> overlayCommands;
         };
 
         Dx11Runtime g_rt;
@@ -106,6 +121,14 @@ namespace ht::hook::dx11
             rt.staging = nullptr;
             SafeRelease(staging);
 
+            IUnknown* rtv = rt.backBufferRtv;
+            rt.backBufferRtv = nullptr;
+            SafeRelease(rtv);
+
+            IUnknown* ctx1 = rt.context1;
+            rt.context1 = nullptr;
+            SafeRelease(ctx1);
+
             IUnknown* ctx = rt.context;
             rt.context = nullptr;
             SafeRelease(ctx);
@@ -114,6 +137,8 @@ namespace ht::hook::dx11
             rt.device = nullptr;
             SafeRelease(dev);
 
+            rt.backBufferWidth = 0;
+            rt.backBufferHeight = 0;
             rt.stagingWidth = 0;
             rt.stagingHeight = 0;
             rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
@@ -156,6 +181,167 @@ namespace ht::hook::dx11
             rt.configuredFpsLimit = std::max(1u, cfg.captureFpsLimit);
             rt.overlayEnabled = cfg.overlayEnabled != 0;
             rt.captureIntervalQpc = (rt.qpcFreq != 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
+        }
+
+        bool EnsureDeviceLocked(Dx11Runtime& rt, IDXGISwapChain* swap);
+
+        bool EnsureContext1Locked(Dx11Runtime& rt)
+        {
+            if (rt.context1 != nullptr)
+            {
+                return true;
+            }
+            if (rt.context == nullptr)
+            {
+                return false;
+            }
+
+            ID3D11DeviceContext1* ctx1 = nullptr;
+            if (rt.context->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&ctx1)) != S_OK || ctx1 == nullptr)
+            {
+                return false;
+            }
+
+            rt.context1 = ctx1;
+            return true;
+        }
+
+        bool EnsureBackBufferRtvLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
+        {
+            if (rt.backBufferRtv != nullptr)
+            {
+                return true;
+            }
+            if (rt.device == nullptr || swap == nullptr)
+            {
+                return false;
+            }
+
+            ID3D11Texture2D* backBuffer = nullptr;
+            const HRESULT hr = swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
+            if (hr != S_OK || backBuffer == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC bbDesc{};
+            backBuffer->GetDesc(&bbDesc);
+
+            ID3D11RenderTargetView* rtv = nullptr;
+            const HRESULT rtvHr = rt.device->CreateRenderTargetView(backBuffer, nullptr, &rtv);
+            backBuffer->Release();
+            if (rtvHr != S_OK || rtv == nullptr)
+            {
+                return false;
+            }
+
+            rt.backBufferRtv = rtv;
+            rt.backBufferWidth = bbDesc.Width;
+            rt.backBufferHeight = bbDesc.Height;
+            return true;
+        }
+
+        bool RefreshOverlayCommandsLocked(Dx11Runtime& rt)
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (!rt.overlayReader.Ensure(pid, ht::hook::ipc::GraphicsApi::Dx11))
+            {
+                return false;
+            }
+
+            ht::hook::ipc::OverlayCommandHeader header{};
+            if (!rt.overlayReader.TryRead(header, rt.overlayCommands))
+            {
+                return false;
+            }
+
+            if (header.updatedQpc == 0 || header.updatedQpc == rt.lastOverlayQpc)
+            {
+                return false;
+            }
+
+            rt.lastOverlayQpc = header.updatedQpc;
+            return true;
+        }
+
+        D3D11_RECT ClampRect(int left, int top, int right, int bottom, int maxW, int maxH)
+        {
+            D3D11_RECT r{};
+            r.left = std::max(0, std::min(left, maxW));
+            r.top = std::max(0, std::min(top, maxH));
+            r.right = std::max(0, std::min(right, maxW));
+            r.bottom = std::max(0, std::min(bottom, maxH));
+            return r;
+        }
+
+        void DrawOverlayLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
+        {
+            if (!rt.overlayEnabled)
+            {
+                return;
+            }
+
+            if (!EnsureDeviceLocked(rt, swap) || !EnsureContext1Locked(rt))
+            {
+                return;
+            }
+
+            // NOTE: Overlay commands are "latest only"; we cache by updatedQpc to avoid redundant memcpy.
+            (void)RefreshOverlayCommandsLocked(rt);
+            if (rt.overlayCommands.empty())
+            {
+                return;
+            }
+
+            if (!EnsureBackBufferRtvLocked(rt, swap))
+            {
+                return;
+            }
+
+            const int maxW = static_cast<int>(rt.backBufferWidth != 0 ? rt.backBufferWidth : rt.stagingWidth);
+            const int maxH = static_cast<int>(rt.backBufferHeight != 0 ? rt.backBufferHeight : rt.stagingHeight);
+            if (maxW <= 0 || maxH <= 0)
+            {
+                return;
+            }
+
+            for (const auto& cmd : rt.overlayCommands)
+            {
+                const int x = static_cast<int>(cmd.x);
+                const int y = static_cast<int>(cmd.y);
+                const int w = static_cast<int>(cmd.w);
+                const int h = static_cast<int>(cmd.h);
+                if (w <= 1 || h <= 1)
+                {
+                    continue;
+                }
+
+                const int t = std::max(1, std::min(static_cast<int>(cmd.thickness), 24));
+                const int left = x;
+                const int top = y;
+                const int right = x + w;
+                const int bottom = y + h;
+                if (right <= 0 || bottom <= 0 || left >= maxW || top >= maxH)
+                {
+                    continue;
+                }
+
+                const std::uint32_t argb = cmd.argb;
+                const float r = static_cast<float>((argb >> 16) & 0xFF) / 255.0f;
+                const float g = static_cast<float>((argb >> 8) & 0xFF) / 255.0f;
+                const float b = static_cast<float>((argb >> 0) & 0xFF) / 255.0f;
+                // NOTE: ClearView does not alpha-blend; treat as opaque debug overlay in v1.
+                const float color[4] = {r, g, b, 1.0f};
+
+                D3D11_RECT rects[4] = {
+                    ClampRect(left, top, right, top + t, maxW, maxH),
+                    ClampRect(left, bottom - t, right, bottom, maxW, maxH),
+                    ClampRect(left, top, left + t, bottom, maxW, maxH),
+                    ClampRect(right - t, top, right, bottom, maxW, maxH),
+                };
+
+                rt.context1->ClearView(rt.backBufferRtv, color, rects, static_cast<UINT>(std::size(rects)));
+            }
         }
 
         bool EnsureStagingLocked(Dx11Runtime& rt, ID3D11Texture2D* backBuffer)
@@ -312,6 +498,7 @@ namespace ht::hook::dx11
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
+                DrawOverlayLocked(g_rt, swap);
             }
 
             return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
@@ -327,6 +514,30 @@ namespace ht::hook::dx11
             __except (EXCEPTION_EXECUTE_HANDLER)
             {
                 return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            }
+        }
+
+        HRESULT HookedPresent1Impl(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
+        {
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
+            {
+                (void)CaptureAndShareFrameLocked(g_rt, swap);
+                DrawOverlayLocked(g_rt, swap);
+            }
+
+            return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+        }
+
+        HRESULT __stdcall HookedPresent1(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
+        {
+            __try
+            {
+                return HookedPresent1Impl(swap, syncInterval, flags, params);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
             }
         }
 
@@ -365,14 +576,15 @@ namespace ht::hook::dx11
             }
         }
 
-        bool CreateDummySwapChainAndGetVtable(void*** outVtable)
+        bool CreateDummySwapChainAndGetVtables(void*** outVtableSwapChain, void*** outVtableSwapChain1)
         {
-            if (outVtable == nullptr)
+            if (outVtableSwapChain == nullptr || outVtableSwapChain1 == nullptr)
             {
                 return false;
             }
 
-            *outVtable = nullptr;
+            *outVtableSwapChain = nullptr;
+            *outVtableSwapChain1 = nullptr;
 
             WNDCLASSW wc{};
             wc.lpfnWndProc = DefWindowProcW;
@@ -460,7 +672,15 @@ namespace ht::hook::dx11
             }
 
             void** vtable = *reinterpret_cast<void***>(sc);
-            *outVtable = vtable;
+            *outVtableSwapChain = vtable;
+
+            IDXGISwapChain1* sc1 = nullptr;
+            if (sc->QueryInterface(__uuidof(IDXGISwapChain1), reinterpret_cast<void**>(&sc1)) == S_OK && sc1 != nullptr)
+            {
+                void** vtable1 = *reinterpret_cast<void***>(sc1);
+                *outVtableSwapChain1 = vtable1;
+                sc1->Release();
+            }
 
             sc->Release();
             if (ctx) ctx->Release();
@@ -487,13 +707,15 @@ namespace ht::hook::dx11
         g_rt.overlayEnabled = true;
 
         void** vtable = nullptr;
-        if (!CreateDummySwapChainAndGetVtable(&vtable) || vtable == nullptr)
+        void** vtable1 = nullptr;
+        if (!CreateDummySwapChainAndGetVtables(&vtable, &vtable1) || vtable == nullptr)
         {
             return false;
         }
 
         g_rt.presentTarget = vtable[kSwapChainPresentIndex];
         g_rt.resizeBuffersTarget = vtable[kSwapChainResizeBuffersIndex];
+        g_rt.present1Target = (vtable1 != nullptr) ? vtable1[kSwapChain1Present1Index] : nullptr;
 
         const MH_STATUS init = MH_Initialize();
         if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
@@ -507,8 +729,21 @@ namespace ht::hook::dx11
             return false;
         }
 
+        if (g_rt.present1Target != nullptr)
+        {
+            if (MH_CreateHook(g_rt.present1Target, reinterpret_cast<LPVOID>(&HookedPresent1), reinterpret_cast<LPVOID*>(&g_rt.originalPresent1)) != MH_OK)
+            {
+                (void)MH_RemoveHook(g_rt.presentTarget);
+                return false;
+            }
+        }
+
         if (MH_CreateHook(g_rt.resizeBuffersTarget, reinterpret_cast<LPVOID>(&HookedResizeBuffers), reinterpret_cast<LPVOID*>(&g_rt.originalResizeBuffers)) != MH_OK)
         {
+            if (g_rt.present1Target != nullptr)
+            {
+                (void)MH_RemoveHook(g_rt.present1Target);
+            }
             (void)MH_RemoveHook(g_rt.presentTarget);
             return false;
         }
@@ -516,14 +751,34 @@ namespace ht::hook::dx11
         if (MH_EnableHook(g_rt.presentTarget) != MH_OK)
         {
             (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+            if (g_rt.present1Target != nullptr)
+            {
+                (void)MH_RemoveHook(g_rt.present1Target);
+            }
             (void)MH_RemoveHook(g_rt.presentTarget);
             return false;
+        }
+
+        if (g_rt.present1Target != nullptr)
+        {
+            if (MH_EnableHook(g_rt.present1Target) != MH_OK)
+            {
+                (void)MH_DisableHook(g_rt.presentTarget);
+                (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+                (void)MH_RemoveHook(g_rt.present1Target);
+                (void)MH_RemoveHook(g_rt.presentTarget);
+                return false;
+            }
         }
 
         if (MH_EnableHook(g_rt.resizeBuffersTarget) != MH_OK)
         {
             (void)MH_DisableHook(g_rt.presentTarget);
             (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+            if (g_rt.present1Target != nullptr)
+            {
+                (void)MH_RemoveHook(g_rt.present1Target);
+            }
             (void)MH_RemoveHook(g_rt.presentTarget);
             return false;
         }
@@ -549,6 +804,12 @@ namespace ht::hook::dx11
             (void)MH_RemoveHook(g_rt.presentTarget);
         }
 
+        if (g_rt.present1Target != nullptr)
+        {
+            (void)MH_DisableHook(g_rt.present1Target);
+            (void)MH_RemoveHook(g_rt.present1Target);
+        }
+
         if (g_rt.resizeBuffersTarget != nullptr)
         {
             (void)MH_DisableHook(g_rt.resizeBuffersTarget);
@@ -561,8 +822,10 @@ namespace ht::hook::dx11
         g_rt.scratch.clear();
 
         g_rt.presentTarget = nullptr;
+        g_rt.present1Target = nullptr;
         g_rt.resizeBuffersTarget = nullptr;
         g_rt.originalPresent = nullptr;
+        g_rt.originalPresent1 = nullptr;
         g_rt.originalResizeBuffers = nullptr;
         g_rt.lastConfigQpc = 0;
     }

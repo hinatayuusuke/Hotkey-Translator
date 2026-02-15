@@ -10950,3 +10950,66 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `cmake --build Native/build --config Release`: 成功。
 - `dotnet build -p:UseAppHost=false`: 成功。
+**2026-02-15 19:03 (Asia/Taipei) — DX11 Hook OverlayUpdate v1 (Rect-only) 実装**
+
+### Summary
+- C#→HookHost→共有メモリ→HookAgent(Present内) の経路で矩形オーバーレイをゲーム内合成表示できるようにした。
+
+### Context / Goal
+- WPF Topmost 競合（例: Magpie 等）を根本回避するため、DX11 Present フック側で ROI/テキスト枠などの矩形を直接描画したい。
+
+### Changes
+- Local\\HT_HOOK_CMD_<api>_<pid> の共有メモリ契約（header + rect command 配列）を追加。
+- HookHost は overlayUpdate を受け取り、rect commands を base64 デコードして共有メモリへ最新上書き。
+- HookAgentDx11 は Present 内で共有メモリを読み、ID3D11DeviceContext1::ClearView による枠描画（4辺の細長い矩形）を実装。
+- パイプライン完了時に ROI + OverlayItem の枠を HookHost に送信（Hook capture 利用時のみ）。
+
+### Files Touched
+- Native/HookCommon/HookIpcProtocol.h — overlay command header/rect command と mapping 名生成を追加。
+- Native/HookCommon/SharedOverlayCommands.h — overlay command 共有メモリ writer/reader を追加。
+- Native/HookCommon/SharedOverlayCommands.cpp — writer/reader 実装を追加。
+- Native/HookHost/main.cpp — overlayUpdate を実装（base64 decode→共有メモリへ書き込み）。detach 時に writer を解放。
+- Native/HookHost/CMakeLists.txt — crypt32 リンクと SharedOverlayCommands.cpp を追加。
+- Native/HookAgentDx11/Dx11PresentHook.cpp — Present 内の overlay command 読み取り + 枠描画を追加。
+- Native/HookAgentDx11/CMakeLists.txt — SharedOverlayCommands.cpp をビルドへ追加。
+- Services/Hook/Contracts/Dx11HookMessages.cs — overlayUpdate 用メッセージ/rect 定義を更新。
+- Services/Hook/Dx11HookClientService.cs — rect commands をバイナリパック→base64 送信する TrySendOverlayUpdate を追加。
+- Services/PipelineOrchestrator.cs — Hook capture 時に ROI + OverlayItem 枠を送信。
+- MainWindow.xaml.cs — PipelineOrchestrator に Dx11HookClientService を注入。
+
+### Behavioral Impact
+- Hook capture が有効なタイトルでは、WPF オーバーレイとは別にゲーム内へ矩形枠が直接描画される（Topmost 競合の影響を受けにくい）。
+
+### Risk & Mitigation
+- Risk: ClearView はアルファブレンドではなくピクセル上書きのため、枠が意図せず目立つ可能性。
+- Mitigation: v1 はデバッグ用途として枠のみ（細線）に限定し、必要なら色/太さ/描画方式の改善余地を残す。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false: 成功。
+- cmake --build Native/build --config Release: 成功。
+**2026-02-15 19:36 (Asia/Taipei) — DX11 Present1 フック対応（exclusive/flip 対策）**
+
+### Summary
+- DX11 swapchain が Present1 経由で描画されるケースでも hook capture / overlay が動くようにした。
+
+### Context / Goal
+- 独占フルスクリーンや flip model を使うタイトルでは IDXGISwapChain::Present ではなく IDXGISwapChain1::Present1 が呼ばれ、現状の HookAgentDx11 がフレーム共有を生成できない可能性がある。
+
+### Changes
+- IDXGISwapChain1::Present1 を追加フック（MinHook）し、Present と同様にフレーム共有と矩形描画を実行。
+- ダミー swapchain から swapchain1 vtable を取得し、Present1 の関数アドレスを解決。
+- detach 時に Present1 フックも確実に解除。
+
+### Files Touched
+- Native/HookAgentDx11/Dx11PresentHook.cpp — Present1 hook / vtable 解決 / uninstall を追加。
+
+### Behavioral Impact
+- Present1 を使う DX11 タイトルでも Local\\HT_HOOK_FRAME_<api>_<pid> が生成され、GraphicsHook capture とゲーム内矩形描画が成立しやすくなる。
+
+### Risk & Mitigation
+- Risk: タイトルにより Present/Present1 のどちらも使わない（DX12/Vulkan/OpenGL等）場合は効果がない。
+- Mitigation: 既存の WGC/GDI フォールバックは維持し、原因切り分けに役立つよう hook capture 側のログを継続使用する。
+
+### Tests / Verification
+- cmake --build Native/build --config Release: 成功（※HookAgentDx11.dll をロードしているプロセスがあるとリンク失敗するため、対象ゲームを終了してからビルド）。
+- dotnet build -p:UseAppHost=false: 成功（Hotkey-Translator.exe 実行中は dll copy の warning が出るがビルド自体は成功）。
