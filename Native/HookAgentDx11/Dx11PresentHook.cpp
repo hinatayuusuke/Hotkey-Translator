@@ -38,6 +38,10 @@ namespace ht::hook::dx11
         constexpr int kSwapChainResizeBuffersIndex = 13;
         constexpr int kSwapChain1Present1Index = 22;
 
+        // WHY: Some titles/runtime layers call Present from inside Present1 (or re-enter Present) on the same
+        // thread. If we hook both, we'd draw/capture twice and can produce visible flicker/ghosting.
+        static thread_local int g_presentDepth = 0;
+
         struct Dx11Runtime
         {
             std::mutex mutex;
@@ -534,6 +538,26 @@ namespace ht::hook::dx11
             ImGui_ImplDX11_NewFrame();
             ImGui::NewFrame();
 
+            const bool testMode = ReadEnvU32(L"HT_HOOK_IMGUI_TEST", 0) != 0;
+            if (testMode)
+            {
+                // WHY: Native-only rendering test. This isolates the rendering path from IPC/coordinate conversion.
+                // Text includes UTF-8 bytes for a few JP glyphs to validate non-Latin glyph coverage without relying
+                // on the source file encoding.
+                const char* text = "IMGUI TEST: \xE6\x97\xA5\xE6\x9C\xAC\xE8\xAA\x9E ABC 123";
+                const ImVec2 pos(40.0f, 40.0f);
+                const ImVec2 sz = ImGui::CalcTextSize(text);
+                const float pad = 10.0f;
+                ImDrawList* fg = ImGui::GetForegroundDrawList();
+                fg->AddRectFilled(
+                    ImVec2(pos.x - pad, pos.y - pad),
+                    ImVec2(pos.x + sz.x + pad, pos.y + sz.y + pad),
+                    IM_COL32(10, 10, 10, 180),
+                    8.0f);
+                fg->AddText(pos, IM_COL32(255, 255, 255, 255), text);
+            }
+            else
+            {
             const bool hasV2 = (rt.lastOverlayV2Seq != 0) && (!rt.overlayV2Blocks.empty()) && (!rt.overlayV2TextBlob.empty());
             if (hasV2)
             {
@@ -626,6 +650,7 @@ namespace ht::hook::dx11
                 ImDrawList* bg = ImGui::GetBackgroundDrawList();
                 const ImU32 col = IM_COL32(10, 10, 10, 170);
                 bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
+            }
             }
 
             ImGui::Render();
@@ -913,15 +938,23 @@ namespace ht::hook::dx11
 
         HRESULT __stdcall HookedPresent(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
         {
-            // WHY: Hook code must never crash the host process. SEH must live in a function without C++ unwinding.
-            __try
-            {
-                return HookedPresentImpl(swap, syncInterval, flags);
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER)
+            if (g_presentDepth > 0)
             {
                 return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
             }
+            g_presentDepth++;
+            HRESULT result = S_OK;
+            // WHY: Hook code must never crash the host process. SEH must live in a function without C++ unwinding.
+            __try
+            {
+                result = HookedPresentImpl(swap, syncInterval, flags);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                result = g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            }
+            g_presentDepth--;
+            return result;
         }
 
         HRESULT HookedPresent1Impl(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
@@ -944,14 +977,22 @@ namespace ht::hook::dx11
 
         HRESULT __stdcall HookedPresent1(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
         {
-            __try
-            {
-                return HookedPresent1Impl(swap, syncInterval, flags, params);
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER)
+            if (g_presentDepth > 0)
             {
                 return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
             }
+            g_presentDepth++;
+            HRESULT result = S_OK;
+            __try
+            {
+                result = HookedPresent1Impl(swap, syncInterval, flags, params);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                result = g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+            }
+            g_presentDepth--;
+            return result;
         }
 
         HRESULT HookedResizeBuffersImpl(

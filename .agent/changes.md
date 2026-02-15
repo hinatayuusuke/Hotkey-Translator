@@ -11337,3 +11337,28 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `cmake --build .\\Native\\build --config Release`: 成功（HookAgentDx11.dll / HookHost.exe）。
+
+**2026-02-16 00:07 (Asia/Taipei) — DX11 hook: ImGui固定テキスト描画テストモード追加**
+
+### Summary
+- DX11フック側だけで固定座標に固定テキストを描画するテストモードを追加し、IPC/座標変換とは独立にレンダリング経路を検証できるようにした。
+
+### Context / Goal
+- 翻訳テキストがズレて重なってちらつく現象があり、原因切り分けのためにまずネイティブ描画単体で安定性を検証したい。
+
+### Changes
+- 環境変数 `HT_HOOK_IMGUI_TEST=1` のとき、v2 mapping を使わずに固定テキストを (40,40) に描画する経路を追加。
+- Present/Present1 のネスト呼び出しで二重描画になり得るケースを thread-local 深さカウンタでガード。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — ImGuiテスト描画モードと Present 再入ガードを追加。
+
+### Behavioral Impact
+- `HT_HOOK_IMGUI_TEST=1` の場合、ゲーム内にテスト文字列が表示される（IPC由来の翻訳描画は抑制される）。
+
+### Risk & Mitigation
+- Risk: テストモード有効のまま運用すると実際の翻訳描画が出ない。
+- Mitigation: 環境変数でのみ有効化し、デフォルトは無効。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功。
