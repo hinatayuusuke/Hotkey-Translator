@@ -22,6 +22,7 @@ internal sealed class Dx11HookClientService : IDisposable
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dx11HookOverlayCommandWriter _overlayWriter = new();
+    private readonly Dx11HookConfigWriter _configWriter = new();
     private NamedPipeClientStream? _pipe;
     private StreamReader? _reader;
     private StreamWriter? _writer;
@@ -94,6 +95,8 @@ internal sealed class Dx11HookClientService : IDisposable
 
             await SendCommandAsync(new Dx11HookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
             _attachedPid = settings.FixedCaptureWindowProcessId;
+            // WHY: Publishing config via shared memory lets runtime/UI changes take effect even if the pipe is slow/unavailable.
+            _configWriter.TryWrite(_attachedPid, settings.Dx11HookCaptureFpsLimit, settings.Dx11HookOverlayEnabled);
             _loggerAccessor()?.Info(
                 $"stage=dx11_hook event=attach_requested pid={_attachedPid} fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={settings.Dx11HookOverlayEnabled}.");
         }
@@ -170,6 +173,21 @@ internal sealed class Dx11HookClientService : IDisposable
         {
             _sync.Release();
         }
+    }
+
+    public void TryPublishRuntimeConfig(int pid, int captureFpsLimit, bool overlayEnabled)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (pid <= 0 || pid != _attachedPid)
+        {
+            return;
+        }
+
+        _configWriter.TryWrite(pid, captureFpsLimit, overlayEnabled);
     }
 
     private bool CanAttach(AppSettings settings, out string reason)
@@ -404,6 +422,7 @@ internal sealed class Dx11HookClientService : IDisposable
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
         _overlayWriter.Reset();
+        _configWriter.Reset();
     }
 
     private static byte[] PackOverlayRectCommands(IReadOnlyList<Dx11HookOverlayRect> rects, int count)
@@ -498,6 +517,7 @@ internal sealed class Dx11HookClientService : IDisposable
         _attachedPid = 0;
         DisposePipe();
         _overlayWriter.Dispose();
+        _configWriter.Dispose();
         _sync.Dispose();
     }
 }

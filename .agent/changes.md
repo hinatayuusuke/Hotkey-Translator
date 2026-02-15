@@ -11142,3 +11142,32 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false: 成功。
+**2026-02-15 21:00 (Asia/Taipei) — C#からHook config共有メモリへ直接反映 + F9でhook overlay表示同期**
+
+### Summary
+- Hook設定（fps/overlayEnabled）も C# から HT_HOOK_CFG 共有メモリへ直接書き込みできるようにし、F9のオーバーレイ表示切替で hook側の描画も同期するようにした。
+
+### Context / Goal
+- HookHost経由のattach以外でも、実行中に overlayEnabled を即反映したい（WPF overlayを隠した時にゲーム内枠だけ残る等を避ける）。
+- 将来的に HookHost を attach/detach に限定し、設定/描画は共有メモリ中心に寄せたい。
+
+### Changes
+- Dx11HookConfigWriter を追加し、Local\\HT_HOOK_CFG_1_<pid> に config header を直接書き込み。
+- Dx11HookClientService.ApplySettingsAsync で attach 要求後に config を共有メモリへも publish。
+- Dx11HookClientService.TryPublishRuntimeConfig を追加（永続化なしのランタイム反映）。
+- F9（Overlay表示切替）時に settings.Dx11HookOverlayEnabled && _overlayEnabled を hook runtime config に反映し、WPF overlayとゲーム内枠を同期。
+
+### Files Touched
+- Services/Hook/Dx11HookConfigWriter.cs — HT_HOOK_CFG 共有メモリ writer を追加。
+- Services/Hook/Dx11HookClientService.cs — config publish と runtime反映APIを追加。
+- MainWindow.xaml.cs — F9切替時に hook overlayEnabled をランタイム反映。
+
+### Behavioral Impact
+- overlayEnabled の変更が pipe/再attach に依存しにくくなり、ゲーム内枠の表示/非表示が安定する。
+
+### Risk & Mitigation
+- Risk: HookHost と C# が同じ config mapping を更新する競合。
+- Mitigation: C#側は最新値上書きのみで、HookAgent側は updatedQpc を見て追従するため致命的になりにくい（必要なら将来 HookHost を attach専用に整理）。
+
+### Tests / Verification
+- dotnet clean → dotnet build -p:UseAppHost=false: 成功。

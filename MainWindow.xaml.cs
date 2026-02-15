@@ -355,6 +355,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
     {
         _hotkeyCommandController.HandleToggleOverlayHotkey();
+        // WHY: WPF overlay and hook overlay should stay in sync by default to reduce confusion.
+        // This does not persist settings; it only updates the hook runtime config mapping.
+        var settings = _settingsService.Settings;
+        if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        {
+            var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
+            _dx11HookClientService.TryPublishRuntimeConfig(settings.FixedCaptureWindowProcessId, settings.Dx11HookCaptureFpsLimit, effectiveHookOverlayEnabled);
+        }
     }
 
     private void EnableOverlay()
