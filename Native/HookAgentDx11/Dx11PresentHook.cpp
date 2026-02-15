@@ -18,6 +18,7 @@
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
 #include "../HookCommon/SharedOverlayCommands.h"
+#include "../HookCommon/SharedOverlayV2.h"
 #include "../HookCommon/SharedHookStatus.h"
 
 namespace ht::hook::dx11
@@ -47,6 +48,7 @@ namespace ht::hook::dx11
             ht::hook::ipc::SharedFrameWriter frameWriter;
             ht::hook::ipc::SharedHookConfigReader configReader;
             ht::hook::ipc::SharedOverlayCommandsReader overlayReader;
+            ht::hook::ipc::SharedOverlayV2Reader overlayV2Reader;
             ht::hook::ipc::SharedHookStatusWriter statusWriter;
 
             ID3D11Device* device = nullptr;
@@ -70,6 +72,11 @@ namespace ht::hook::dx11
             bool overlayEnabled = true;
             std::uint64_t lastOverlayQpc = 0;
             std::vector<ht::hook::ipc::OverlayRectCommand> overlayCommands;
+
+            std::uint64_t lastOverlayV2Seq = 0;
+            ht::hook::ipc::OverlayV2Header overlayV2Header{};
+            std::vector<ht::hook::ipc::OverlayTextBlockV2> overlayV2Blocks;
+            std::vector<std::uint8_t> overlayV2TextBlob;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -174,6 +181,9 @@ namespace ht::hook::dx11
             st.lastFrameWriteQpc = rt.lastCaptureQpc;
             st.lastCmdQpc = rt.lastOverlayQpc;
             st.lastCmdCount = static_cast<std::uint32_t>(rt.overlayCommands.size());
+            // NOTE: Reuse reserved fields to expose v2 overlay diagnostics without changing the status struct size.
+            st.reserved0 = static_cast<std::uint32_t>(rt.overlayV2TextBlob.size());
+            st.reserved1 = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
             (void)rt.statusWriter.Write(st);
         }
 
@@ -294,6 +304,30 @@ namespace ht::hook::dx11
             }
 
             rt.lastOverlayQpc = header.updatedQpc;
+            return true;
+        }
+
+        bool RefreshOverlayV2Locked(Dx11Runtime& rt)
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (!rt.overlayV2Reader.Ensure(pid, ht::hook::ipc::GraphicsApi::Dx11))
+            {
+                return false;
+            }
+
+            ht::hook::ipc::OverlayV2Header header{};
+            if (!rt.overlayV2Reader.TryRead(header, rt.overlayV2Blocks, rt.overlayV2TextBlob))
+            {
+                return false;
+            }
+
+            if (header.updatedSeq == 0 || header.updatedSeq == rt.lastOverlayV2Seq)
+            {
+                return false;
+            }
+
+            rt.lastOverlayV2Seq = header.updatedSeq;
+            rt.overlayV2Header = header;
             return true;
         }
 
@@ -550,6 +584,8 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 1;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                // Step 1: Read v2 overlay mapping for diagnostics only (rendering is introduced in later steps).
+                (void)RefreshOverlayV2Locked(g_rt);
                 PublishStatusLocked(g_rt);
             }
 
@@ -579,6 +615,7 @@ namespace ht::hook::dx11
                 g_rt.lastPresentKind = 2;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
                 DrawOverlayLocked(g_rt, swap);
+                (void)RefreshOverlayV2Locked(g_rt);
                 PublishStatusLocked(g_rt);
             }
 

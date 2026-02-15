@@ -4,6 +4,7 @@ add_library(HookAgentDx11 SHARED
     ../HookCommon/SharedFrameWriter.cpp
     ../HookCommon/SharedHookConfig.cpp
     ../HookCommon/SharedOverlayCommands.cpp
+    ../HookCommon/SharedOverlayV2.cpp
     ../HookCommon/SharedHookStatus.cpp
 )
 

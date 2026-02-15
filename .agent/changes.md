@@ -11206,3 +11206,43 @@ ull logger が固定されていた。
 ### Tests / Verification
 - cmake --build Native/build --config Release: 成功。
 - dotnet build -p:UseAppHost=false: 成功。
+**2026-02-15 22:45 (Asia/Taipei) — Overlay v2 IPC基盤（HT_HOOK_OVL）を追加**
+
+### Summary
+- 翻訳テキスト描画向けの v2 オーバーレイ共有メモリ（TextBlock + UTF-8 blob）契約と reader/writer を追加した。
+
+### Context / Goal
+- DX11 Present フック内で Dear ImGui により「半透明パネル + 翻訳テキスト」を描画する前提で、v1（Rect-only）を壊さず段階導入できる v2 IPC を先に固めたい。
+
+### Changes
+- Native:
+  - v2 struct 定義（header + text block）と `Local\\HT_HOOK_OVL_<api>_<pid>` naming を追加。
+  - v2 mapping の shared memory reader/writer（256KB固定、updatedSeq）を追加。
+  - HookAgentDx11 は Present 内で v2 mapping を読み取り（Step 1: 診断用途のみ、描画はまだ）、status の reserved フィールドへ v2 payload のサイズ情報を載せる。
+- C#:
+  - v2 mapping writer を追加。
+  - Dx11HookClientService に v2 writer のライフサイクルと best-effort 書き込み API を追加。
+
+### Files Touched
+- `Native/HookCommon/HookIpcProtocol.h` — v2 overlay structs/constants と `HT_HOOK_OVL` mapping 命名関数を追加。
+- `Native/HookCommon/SharedOverlayV2.h` — v2 shared memory writer/reader を追加。
+- `Native/HookCommon/SharedOverlayV2.cpp` — v2 shared memory writer/reader 実装を追加。
+- `Native/HookAgentDx11/CMakeLists.txt` — `SharedOverlayV2.cpp` をビルドへ追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Present 内で v2 mapping を読み取り（診断のみ）+ status reserved へ v2 サイズを格納。
+- `Services/Hook/Dx11HookOverlayV2CommandWriter.cs` — `HT_HOOK_OVL` v2 writer を追加。
+- `Services/Hook/Dx11HookClientService.cs` — v2 writer の Reset/Dispose と `TryWriteOverlayV2` を追加。
+- `Doc/GraphicsHook_ImGui_TranslationOverlay_Spec.md` — v2 IPC/座標契約/実装ドラフトを追加。
+- `Doc/GraphicsHook_ImGui_TranslationOverlay_Plan.md` — Spec 参照追加 + Header例の文字化け修正。
+
+### Behavioral Impact
+- 既存の v1 Rect overlay / hook capture の挙動は変更しない（v2 は読み取りのみで描画しない）。
+- HookStatus の reserved フィールドに v2 のブロック数/テキストバイト数が入る（診断用途）。
+
+### Risk & Mitigation
+- Risk: Native 側はこの環境で C++ ビルド検証ができていないため、ビルド環境差でコンパイルエラーが残る可能性。
+- Mitigation: 変更は HookCommon の追加と HookAgent の単純な reader 呼び出しに限定し、既存コードパスの破壊を避けた。次ステップ開始前に Native のビルド環境で確認する。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
+- Native build: 未実施（この環境に CMake/Visual C++ toolchain が無いため）。
+

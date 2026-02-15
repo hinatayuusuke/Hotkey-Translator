@@ -17,6 +17,10 @@ namespace ht::hook::ipc
     constexpr std::uint32_t kOverlayCmdMagic = 0x48434D44; // "HCMD"
     constexpr std::uint32_t kOverlayCmdVersion = 1;
 
+    // Overlay v2 (ImGui translation overlay): text blocks + UTF-8 blob.
+    constexpr std::uint32_t kOverlayV2Magic = 0x32564F48; // "HOV2"
+    constexpr std::uint32_t kOverlayV2Version = 2;
+
     constexpr std::uint32_t kStatusMagic = 0x48535453; // "HSTS"
     constexpr std::uint32_t kStatusVersion = 1;
 
@@ -91,6 +95,40 @@ namespace ht::hook::ipc
         std::uint32_t thickness;
     };
 
+    struct OverlayV2Header
+    {
+        std::uint32_t magic;
+        std::uint32_t version;
+        std::uint32_t api;
+        std::uint32_t targetPid;
+        // WHY: Prefer a monotonic sequence number over cross-process QPC comparisons.
+        // Writer updates payload first, then updates this field last to publish the new frame.
+        std::uint64_t updatedSeq;
+        std::uint32_t canvasW;
+        std::uint32_t canvasH;
+        std::uint32_t textBlockCount;
+        std::uint32_t textBytes;
+        std::uint32_t flags;
+        std::uint32_t reserved0;
+    };
+
+    struct OverlayTextBlockV2
+    {
+        float x;
+        float y;
+        float w;
+        float h;
+        float paddingPx;
+        float roundingPx;
+        float fontPx;
+        std::uint32_t fgArgb;
+        std::uint32_t bgArgb;
+        std::uint32_t wrap;
+        std::uint32_t textOffset;
+        std::uint32_t textLen;
+        std::int32_t zOrder;
+    };
+
     struct HookStatusHeader
     {
         std::uint32_t magic;
@@ -136,6 +174,16 @@ namespace ht::hook::ipc
     inline std::wstring BuildOverlayCommandMappingName(DWORD pid, GraphicsApi api)
     {
         std::wstring name = L"Local\\HT_HOOK_CMD_";
+        name += std::to_wstring(static_cast<std::uint32_t>(api));
+        name += L"_";
+        name += std::to_wstring(pid);
+        return name;
+    }
+
+    inline std::wstring BuildOverlayV2MappingName(DWORD pid, GraphicsApi api)
+    {
+        // WHY: Keep naming consistent across graphics APIs so backends can share the same reader/writer logic.
+        std::wstring name = L"Local\\HT_HOOK_OVL_";
         name += std::to_wstring(static_cast<std::uint32_t>(api));
         name += L"_";
         name += std::to_wstring(pid);

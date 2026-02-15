@@ -22,6 +22,7 @@ internal sealed class Dx11HookClientService : IDisposable
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly Dx11HookOverlayCommandWriter _overlayWriter = new();
+    private readonly Dx11HookOverlayV2CommandWriter _overlayV2Writer = new();
     private readonly Dx11HookConfigWriter _configWriter = new();
     private NamedPipeClientStream? _pipe;
     private StreamReader? _reader;
@@ -168,6 +169,41 @@ internal sealed class Dx11HookClientService : IDisposable
         catch (Exception ex)
         {
             _loggerAccessor()?.Error(ex, "stage=dx11_hook event=overlay_update_failed.");
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    public bool TryWriteOverlayV2(
+        int pid,
+        uint canvasW,
+        uint canvasH,
+        ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2> blocks,
+        byte[] textBlob,
+        int textBytes,
+        uint flags = 0)
+    {
+        if (_disposed)
+        {
+            return false;
+        }
+
+        if (pid <= 0 || pid != _attachedPid)
+        {
+            return false;
+        }
+
+        // WHY: v2 overlay is best-effort; don't block attach/detach or settings apply.
+        if (!_sync.Wait(0))
+        {
+            return false;
+        }
+
+        try
+        {
+            return _overlayV2Writer.TryWrite(pid, canvasW, canvasH, blocks, textBlob, textBytes, flags);
         }
         finally
         {
@@ -422,6 +458,7 @@ internal sealed class Dx11HookClientService : IDisposable
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
         _overlayWriter.Reset();
+        _overlayV2Writer.Reset();
         _configWriter.Reset();
     }
 
@@ -517,6 +554,7 @@ internal sealed class Dx11HookClientService : IDisposable
         _attachedPid = 0;
         DisposePipe();
         _overlayWriter.Dispose();
+        _overlayV2Writer.Dispose();
         _configWriter.Dispose();
         _sync.Dispose();
     }
