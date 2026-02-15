@@ -11309,3 +11309,31 @@ ull logger が固定されていた。
 - `dotnet build .\\Hotkey-Translator.csproj -c Debug`: 成功。
 - `cmake --build .\\Native\\build --config Release`: 成功。
 
+
+**2026-02-15 23:46 (Asia/Taipei) — ImGuiフォント読み込み強化とデバッグログ追加（''?''対策）**
+
+### Summary
+- ImGuiのCJK/多言語テキストが''?''になる問題の切り分けと改善のため、フォント読み込みを強化し、ロード成否をOutputDebugStringで出力するようにした。
+
+### Context / Goal
+- ゲーム内オーバーレイの背景は描画できるが、翻訳テキストが全て''?''になる。
+- 原因候補（フォント未ロード/グリフ範囲不足/テキストUTF-8破損）を切り分けられるようにし、範囲不足も緩和したい。
+
+### Changes
+- ImGuiフォントのグリフ範囲を日本語だけでなく中国語(簡体共通)/韓国語/キリル/ベトナム語も含むユニオンに拡張。
+- TTC(フォントコレクション)の場合に複数faceを試すようにし、読み込み成功率を上げた。
+- フォント読み込み成功/失敗を `OutputDebugStringA` へ出力し、実行時に確認可能にした。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — ImGuiフォントのglyph ranges拡張、TTC face試行、デバッグログ追加。
+
+### Behavioral Impact
+- 対応グリフ範囲が広がり、環境依存で''?''になっていた文字が表示される可能性が上がる。
+- 実行時にデバッグ出力が追加される（動作影響は軽微）。
+
+### Risk & Mitigation
+- Risk: グリフ範囲拡大でフォントアトラスが大きくなり、初回生成が重くなる可能性。
+- Mitigation: 初期化時一度のみ構築。問題が出る場合は範囲の見直し、または使用文字から動的に範囲を生成する方針へ移行する。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Release`: 成功（HookAgentDx11.dll / HookHost.exe）。

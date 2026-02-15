@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
+#include <string>
 #include <iterator>
 #include <mutex>
 #include <vector>
@@ -384,6 +385,10 @@ namespace ht::hook::dx11
             // WHY: The default ImGui font only covers basic Latin. OCR/translation output often includes CJK and
             // other scripts, which would render as '?' without a font that includes those glyphs.
             // We prefer system fonts (stable path, no extra packaging) and fall back to the default font.
+            //
+            // NOTE: Glyph ranges affect which codepoints are baked into the atlas. Using only Japanese ranges is
+            // sufficient for many Japanese translations, but will still yield '?' for other scripts even if the
+            // font file contains those glyphs.
             const char* fontCandidates[] = {
                 "C:\\Windows\\Fonts\\meiryo.ttc",
                 "C:\\Windows\\Fonts\\msgothic.ttc",
@@ -399,7 +404,23 @@ namespace ht::hook::dx11
             cfg.PixelSnapH = true;
             cfg.FontNo = 0;
 
+            // WHY: Keep glyph ranges alive until the atlas is built. ImGui stores the pointer from ImFontConfig and
+            // uses it later during font atlas build.
+            static ImVector<ImWchar> s_glyphRanges;
+            if (s_glyphRanges.empty())
+            {
+                ImFontGlyphRangesBuilder builder;
+                builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+                builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
+                builder.AddRanges(io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+                builder.AddRanges(io.Fonts->GetGlyphRangesKorean());
+                builder.AddRanges(io.Fonts->GetGlyphRangesCyrillic());
+                builder.AddRanges(io.Fonts->GetGlyphRangesVietnamese());
+                builder.BuildRanges(&s_glyphRanges);
+            }
+
             ImFont* font = nullptr;
+            const char* loadedPath = nullptr;
             for (const char* path : fontCandidates)
             {
                 const DWORD attr = GetFileAttributesA(path);
@@ -408,8 +429,20 @@ namespace ht::hook::dx11
                     continue;
                 }
 
-                // NOTE: Use Japanese ranges as a reasonable CJK superset for initial rollout.
-                font = io.Fonts->AddFontFromFileTTF(path, 22.0f, &cfg, io.Fonts->GetGlyphRangesJapanese());
+                // NOTE: TTC collections may have multiple faces. Try a few indices to find a usable face.
+                const char* ext = std::strrchr(path, '.');
+                const bool isTtc = (ext != nullptr) && (_stricmp(ext, ".ttc") == 0);
+                const int faceMax = isTtc ? 4 : 1;
+                for (int face = 0; face < faceMax; face++)
+                {
+                    cfg.FontNo = face;
+                    font = io.Fonts->AddFontFromFileTTF(path, 22.0f, &cfg, s_glyphRanges.Data);
+                    if (font != nullptr)
+                    {
+                        loadedPath = path;
+                        break;
+                    }
+                }
                 if (font != nullptr)
                 {
                     break;
@@ -418,6 +451,14 @@ namespace ht::hook::dx11
             if (font != nullptr)
             {
                 io.FontDefault = font;
+                std::string msg = "HT HookAgentDx11: ImGui font loaded: ";
+                msg += (loadedPath != nullptr ? loadedPath : "(unknown)");
+                msg += "\n";
+                OutputDebugStringA(msg.c_str());
+            }
+            else
+            {
+                OutputDebugStringA("HT HookAgentDx11: ImGui font load failed; using default font (may render non-Latin as '?').\n");
             }
 
             ImGui_ImplDX11_Init(rt.device, rt.context);
