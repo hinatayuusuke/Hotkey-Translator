@@ -4,6 +4,7 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Hook;
@@ -82,10 +83,8 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             return false;
         }
 
-        var mappingName = HookFrameMapRegistry.TryGet(pid, out var dynamicMap)
-            ? dynamicMap
-            : BuildFrameMappingName(pid);
-        if (!TryReadLatestFrame(mappingName, out var header, out var payload, out var readError))
+        var mappingName = HookFrameMapRegistry.TryGet(pid, out var dynamicMap) ? dynamicMap : BuildFrameMappingName(pid);
+        if (!TryReadBitmap(pid, mappingName, out var header, out var bitmap, out var readError))
         {
             error = readError ?? "Hook shared frame read failed.";
             return false;
@@ -93,7 +92,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
 
         try
         {
-            var bitmap = CreateBitmapFromBgraPayload(header, payload);
+            UpdateCache(pid, mappingName, header.FrameId, bitmap);
             frame = new CaptureFrame(bitmap, bounds, Kind, DateTimeOffset.UtcNow);
             return true;
         }
@@ -106,6 +105,11 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     }
 
     private readonly AppLogger _logger;
+    private readonly object _cacheLock = new();
+    private int _cachedPid;
+    private string _cachedMapName = string.Empty;
+    private ulong _cachedFrameId;
+    private Bitmap? _cachedBitmap;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct SharedFrameHeader
@@ -130,15 +134,16 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         return $@"Local\HT_HOOK_FRAME_{GraphicsApiDx11}_{pid}";
     }
 
-    private static bool TryReadLatestFrame(
+    private bool TryReadBitmap(
+        int pid,
         string mappingName,
         out SharedFrameHeader header,
-        out byte[] payload,
+        out Bitmap bitmap,
         out string? error)
     {
         var headerBytes = Marshal.SizeOf<SharedFrameHeader>();
         header = default;
-        payload = Array.Empty<byte>();
+        bitmap = null!;
         error = null;
 
         try
@@ -151,8 +156,39 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
                 accessor.Read(0, out header);
                 if (!ValidateHeader(header, out var headerError))
                 {
-                    error = headerError;
-                    return false;
+                    // NOTE: Mapping exists but writer may not have produced a frame yet. Give it a short window.
+                    if (headerError == "Hook frame header not initialized." &&
+                        TryWaitForInitializedHeader(accessor, timeoutMs: 40, out header))
+                    {
+                        if (!ValidateHeader(header, out headerError))
+                        {
+                            error = headerError;
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        error = headerError;
+                        return false;
+                    }
+                }
+
+                // If the frame didn't change, return a cached bitmap (clone) instead of re-copying the same payload.
+                if (TryCloneCached(pid, mappingName, header.FrameId, out bitmap))
+                {
+                    return true;
+                }
+
+                // Give the writer a brief chance to advance (reduces fallback churn on watch-interval loops).
+                if (TryWaitForNewFrame(accessor, header.FrameId, timeoutMs: 25, out var advanced))
+                {
+                    header = advanced;
+                    // Re-validate the advanced header before reading payload.
+                    if (!ValidateHeader(header, out var advancedError))
+                    {
+                        error = advancedError;
+                        return false;
+                    }
                 }
 
                 var payloadBytes = checked((int)header.PayloadBytes);
@@ -162,7 +198,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
                     return false;
                 }
 
-                payload = new byte[payloadBytes];
+                var payload = new byte[payloadBytes];
                 accessor.ReadArray(headerBytes, payload, 0, payloadBytes);
 
                 // WHY: Writer stores payload first and header last. Re-read to detect races.
@@ -170,10 +206,9 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
                 accessor.Read(0, out confirm);
                 if (confirm.FrameId == header.FrameId && confirm.PayloadBytes == header.PayloadBytes)
                 {
+                    bitmap = CreateBitmapFromBgraPayload(header, payload);
                     return true;
                 }
-
-                payload = Array.Empty<byte>();
             }
 
             error = "Frame was unstable (writer race).";
@@ -181,7 +216,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
         catch (FileNotFoundException)
         {
-            error = "Hook shared frame mapping not found.";
+            error = $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}.";
             return false;
         }
         catch (Exception ex)
@@ -189,6 +224,42 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             error = ex.Message;
             return false;
         }
+    }
+
+    private static bool TryWaitForInitializedHeader(UnmanagedMemoryAccessor accessor, int timeoutMs, out SharedFrameHeader header)
+    {
+        header = default;
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            accessor.Read(0, out header);
+            if (header.Magic == FrameHeaderMagic && header.Version == FrameHeaderVersion)
+            {
+                return true;
+            }
+
+            Thread.Sleep(5);
+        }
+
+        return false;
+    }
+
+    private static bool TryWaitForNewFrame(UnmanagedMemoryAccessor accessor, ulong baselineFrameId, int timeoutMs, out SharedFrameHeader advanced)
+    {
+        advanced = default;
+        var deadline = Environment.TickCount64 + timeoutMs;
+        while (Environment.TickCount64 < deadline)
+        {
+            accessor.Read(0, out advanced);
+            if (advanced.FrameId != baselineFrameId)
+            {
+                return true;
+            }
+
+            Thread.Sleep(5);
+        }
+
+        return false;
     }
 
     private static bool ValidateHeader(SharedFrameHeader header, out string? error)
@@ -220,6 +291,39 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
 
         return true;
+    }
+
+    private bool TryCloneCached(int pid, string mapName, ulong frameId, out Bitmap bitmap)
+    {
+        bitmap = null!;
+        lock (_cacheLock)
+        {
+            if (_cachedBitmap == null)
+            {
+                return false;
+            }
+
+            if (_cachedPid != pid || !string.Equals(_cachedMapName, mapName, StringComparison.Ordinal) || _cachedFrameId != frameId)
+            {
+                return false;
+            }
+
+            // WHY: Caller owns disposal of the returned bitmap, so provide a deep copy.
+            bitmap = (Bitmap)_cachedBitmap.Clone();
+            return true;
+        }
+    }
+
+    private void UpdateCache(int pid, string mapName, ulong frameId, Bitmap bitmap)
+    {
+        lock (_cacheLock)
+        {
+            _cachedPid = pid;
+            _cachedMapName = mapName;
+            _cachedFrameId = frameId;
+            _cachedBitmap?.Dispose();
+            _cachedBitmap = (Bitmap)bitmap.Clone();
+        }
     }
 
     private static Bitmap CreateBitmapFromBgraPayload(SharedFrameHeader header, byte[] payload)

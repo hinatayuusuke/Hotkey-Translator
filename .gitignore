@@ -537,3 +537,7 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Native third-party download artifacts (generated during initial import).
+Native/ThirdParty/minhook.zip
+Native/ThirdParty/minhook_src_*/

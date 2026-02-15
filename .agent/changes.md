@@ -10857,3 +10857,63 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false`: 成功。
 - `cmake --build Native/build --config Release`: 成功。
+**2026-02-15 15:03 (Asia/Taipei) — Hookキャプチャのフレーム更新待ちとキャッシュ返却**
+
+### Summary
+- Hook共有メモリが未更新でもフォールバック連発しないよう、短時間の更新待ちと前回フレームのキャッシュ返却を追加した。
+
+### Context / Goal
+- Watch Interval でキャプチャを回すと、Hook側の更新タイミング次第で「同一フレームの再コピー」や「mapping/header未初期化による失敗→フォールバック」が増えやすい。
+- DLL常駐方針のまま、Hook capture を安定させたい。
+
+### Changes
+- 共有メモリの header が未初期化の場合、短時間だけ初期化を待つ（最大40ms）。
+- frameId が変わらない場合、短時間だけ新フレームを待つ（最大25ms）。
+- それでも変わらない場合は、前回成功フレームの Bitmap を clone して返す（同一フレーム再コピー回避）。
+
+### Files Touched
+- `Services/GraphicsHookCaptureProvider.cs` — header初期化待ち/新フレーム待ち/Bitmapキャッシュを実装。
+
+### Behavioral Impact
+- Hook capture が「mapping未生成」以外の一時状態で失敗しにくくなり、既存 provider へのフォールバック頻度が下がる。
+
+### Risk & Mitigation
+- Risk: キャッシュ返却により同一フレームが連続で供給される。
+- Mitigation: scene change/pHash/OCR diff の既存抑制ロジックがある前提で、不要なフォールバックより優先。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false`: 成功。
+- `cmake --build Native/build --config Release`: 成功。
+**2026-02-15 15:31 (Asia/Taipei) — DX11 HookをMinHook方式へ移行（常駐前提）**
+
+### Summary
+- HookAgentDx11 の Present/ResizeBuffers フックを vtable 差し替えから MinHook ベースに切り替えた。
+
+### Context / Goal
+- 将来 OpenGL/Vulkan もフック方式で追加するため、DX11 も関数フック基盤（MinHook）に寄せて統一したい。
+- DLL常駐方針は維持しつつ、detach 時にフック解除できる土台を固める。
+
+### Changes
+- MinHook v1.3.3 を `Native/ThirdParty/MinHook` に同梱し、CMake で static lib としてビルド。
+- HookAgentDx11 はダミースワップチェインから取得した `Present/ResizeBuffers` の関数ポインタに対して `MH_CreateHook` / `MH_EnableHook` を適用。
+- detach（Uninstall）時に `MH_DisableHook` / `MH_RemoveHook` を実行してフックを解除（DLLは常駐のまま）。
+
+### Files Touched
+- `Native/CMakeLists.txt` — ThirdParty MinHook をビルド対象に追加。
+- `Native/ThirdParty/MinHook/CMakeLists.txt` — MinHook static library を追加（この環境向けに C++ としてコンパイル）。
+- `Native/ThirdParty/MinHook/src/trampoline.c` — C++コンパイル互換のため `__movsb` の引数を明示キャスト。
+- `Native/HookAgentDx11/CMakeLists.txt` — `minhook` をリンクし、include path を追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — MinHook による hook install/uninstall に置換。
+- `.gitignore` — MinHook import 時の zip/展開元フォルダを ignore。
+
+### Behavioral Impact
+- HookAgentDx11 の detach で Present/ResizeBuffers のフックが解除される（常駐のまま動作を止められる）。
+
+### Risk & Mitigation
+- Risk: MinHook を C++ としてコンパイルしているため、将来のアップデート時に追加の互換パッチが必要になる可能性。
+- Mitigation: 変更は ThirdParty 側の最小 1 箇所に限定し、明示的に COMPAT コメントを残した。
+
+### Tests / Verification
+- `cmake -S Native -B Native/build -A x64`: 成功。
+- `cmake --build Native/build --config Release`: 成功。
+- `dotnet build -p:UseAppHost=false`: 成功。

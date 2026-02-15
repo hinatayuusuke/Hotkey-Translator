@@ -10,6 +10,8 @@
 #include <d3d11.h>
 #include <dxgi.h>
 
+#include <MinHook.h>
+
 #include "../HookCommon/SharedFrameWriter.h"
 
 namespace ht::hook::dx11
@@ -27,7 +29,8 @@ namespace ht::hook::dx11
             std::mutex mutex;
             std::atomic_bool installed{false};
 
-            void** swapChainVtable = nullptr;
+            void* presentTarget = nullptr;
+            void* resizeBuffersTarget = nullptr;
             PresentFn originalPresent = nullptr;
             ResizeBuffersFn originalResizeBuffers = nullptr;
 
@@ -420,27 +423,6 @@ namespace ht::hook::dx11
             return true;
         }
 
-        bool PatchVtable(void** vtable, int index, void* detour, void** outOriginal)
-        {
-            if (vtable == nullptr || detour == nullptr || outOriginal == nullptr)
-            {
-                return false;
-            }
-
-            DWORD oldProtect = 0;
-            if (!VirtualProtect(&vtable[index], sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect))
-            {
-                return false;
-            }
-
-            *outOriginal = vtable[index];
-            vtable[index] = detour;
-
-            DWORD ignored = 0;
-            VirtualProtect(&vtable[index], sizeof(void*), oldProtect, &ignored);
-            FlushInstructionCache(GetCurrentProcess(), &vtable[index], sizeof(void*));
-            return true;
-        }
     }
 
     bool InstallPresentHook()
@@ -464,21 +446,42 @@ namespace ht::hook::dx11
             return false;
         }
 
-        void* origPresent = nullptr;
-        void* origResize = nullptr;
-        if (!PatchVtable(vtable, kSwapChainPresentIndex, reinterpret_cast<void*>(&HookedPresent), &origPresent))
+        g_rt.presentTarget = vtable[kSwapChainPresentIndex];
+        g_rt.resizeBuffersTarget = vtable[kSwapChainResizeBuffersIndex];
+
+        const MH_STATUS init = MH_Initialize();
+        if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
         {
             return false;
         }
 
-        if (!PatchVtable(vtable, kSwapChainResizeBuffersIndex, reinterpret_cast<void*>(&HookedResizeBuffers), &origResize))
+        // WHY: Keep hooks explicitly paired with stored targets to support safe disable/remove at detach time.
+        if (MH_CreateHook(g_rt.presentTarget, reinterpret_cast<LPVOID>(&HookedPresent), reinterpret_cast<LPVOID*>(&g_rt.originalPresent)) != MH_OK)
         {
             return false;
         }
 
-        g_rt.swapChainVtable = vtable;
-        g_rt.originalPresent = reinterpret_cast<PresentFn>(origPresent);
-        g_rt.originalResizeBuffers = reinterpret_cast<ResizeBuffersFn>(origResize);
+        if (MH_CreateHook(g_rt.resizeBuffersTarget, reinterpret_cast<LPVOID>(&HookedResizeBuffers), reinterpret_cast<LPVOID*>(&g_rt.originalResizeBuffers)) != MH_OK)
+        {
+            (void)MH_RemoveHook(g_rt.presentTarget);
+            return false;
+        }
+
+        if (MH_EnableHook(g_rt.presentTarget) != MH_OK)
+        {
+            (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+            (void)MH_RemoveHook(g_rt.presentTarget);
+            return false;
+        }
+
+        if (MH_EnableHook(g_rt.resizeBuffersTarget) != MH_OK)
+        {
+            (void)MH_DisableHook(g_rt.presentTarget);
+            (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+            (void)MH_RemoveHook(g_rt.presentTarget);
+            return false;
+        }
+
         g_rt.installed.store(true, std::memory_order_release);
         return true;
     }
@@ -491,11 +494,28 @@ namespace ht::hook::dx11
             return;
         }
 
-        // NOTE: In v1 we do not attempt to restore the vtable entry, because we don't own all swapchains.
-        // We must keep original function pointers, because the patched vtable keeps calling HookedPresent/HookedResizeBuffers.
         g_rt.installed.store(false, std::memory_order_release);
+
+        // NOTE: We keep the DLL resident by policy, but detaching must disable hooks to avoid impacting the title.
+        if (g_rt.presentTarget != nullptr)
+        {
+            (void)MH_DisableHook(g_rt.presentTarget);
+            (void)MH_RemoveHook(g_rt.presentTarget);
+        }
+
+        if (g_rt.resizeBuffersTarget != nullptr)
+        {
+            (void)MH_DisableHook(g_rt.resizeBuffersTarget);
+            (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
+        }
+
         ResetDeviceStateLocked(g_rt);
         g_rt.frameWriter.Reset();
         g_rt.scratch.clear();
+
+        g_rt.presentTarget = nullptr;
+        g_rt.resizeBuffersTarget = nullptr;
+        g_rt.originalPresent = nullptr;
+        g_rt.originalResizeBuffers = nullptr;
     }
 }
