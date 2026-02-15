@@ -10792,3 +10792,36 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行: 成功（0 warnings / 0 errors）。
 - Native ビルド: 未実施（この環境で `cmake` が未導入のため）。
+**2026-02-15 14:28 (Asia/Taipei) — Hook共有メモリフレームをC#キャプチャ経路へ統合（Step3準備）**
+
+### Summary
+- DX11 Hook が出力する共有メモリフレームを読む `GraphicsHookCaptureProvider` を追加し、Hook有効時は最優先で試すようにした。
+
+### Context / Goal
+- Step2 で HookAgentDx11 が共有メモリへフレームを書き出せるようになったため、WPF 側がそのフレームを既存 OCR/翻訳パイプラインへ流せる入口が必要だった。
+- 将来 OpenGL/Vulkan を追加しても provider 差し替えで拡張できるよう、CaptureProviderKind と selector 境界を先に整えたい。
+
+### Changes
+- `CaptureProviderKind` に `GraphicsHook` を追加。
+- `CaptureProviderSelector` を拡張し、`EnableDx11HookPipeline=true` の場合は `GraphicsHook` を最優先にする。
+- 共有メモリ `Local\\HT_HOOK_FRAME_<api>_<pid>` を読み取り、BGRA8 -> Bitmap へ復元する `GraphicsHookCaptureProvider` を新規追加。
+- Hook capture 成功時に `PreferredCaptureProvider` を永続化しない（UI/保存設定を汚さない）。
+
+### Files Touched
+- `Models/CaptureProviderKind.cs` — `GraphicsHook` を追加。
+- `Services/Capture/CaptureProviderSelector.cs` — Hook有効時に Hook provider を最優先。
+- `Services/GraphicsHookCaptureProvider.cs` — 共有メモリフレーム読み取り provider を追加。
+- `Services/CaptureManager.cs` — provider 一覧に Hook provider を追加。
+- `Services/PipelineOrchestrator.cs` — Hook provider を Preferred として保存しない。
+- `ViewModels/SettingsViewModel.cs` — 互換性のため `GraphicsHook` タグを解釈可能にする。
+
+### Behavioral Impact
+- `EnableDx11HookPipeline=true` かつ固定対象ウィンドウが解決できた場合、キャプチャはまず Hook の共有フレームを使用する（失敗時は既存 WGC/DXGI/GDI にフォールバック）。
+
+### Risk & Mitigation
+- Risk: 共有メモリが未生成/不安定な場合、Hook provider が失敗してフォールバックが増える。
+- Mitigation: provider は "mapping not found" 等を失敗理由として返し、既存 provider へ即時フォールバックできる設計を維持。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false`: 成功。
+- `cmake --build Native/build --config Release`: 成功（`Native/HookHost/bin/HookHost.exe` と `HookAgentDx11.dll` を生成）。

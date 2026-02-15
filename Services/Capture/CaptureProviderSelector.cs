@@ -15,6 +15,18 @@ internal sealed class CaptureProviderSelector
 
     public IReadOnlyList<ICaptureProvider> BuildProviderOrder(AppSettings settings)
     {
+        if (settings.EnableDx11HookPipeline)
+        {
+            var hook = _providers.FirstOrDefault(provider => provider.Kind == CaptureProviderKind.GraphicsHook);
+            if (hook != null)
+            {
+                // WHY: When the hook pipeline is enabled, we always try it first and rely on existing fallback providers.
+                var orderedHookFirst = new List<ICaptureProvider> { hook };
+                orderedHookFirst.AddRange(_providers.Where(provider => provider.Kind != CaptureProviderKind.GraphicsHook));
+                return orderedHookFirst;
+            }
+        }
+
         var preferred = _providers.FirstOrDefault(provider => provider.Kind == settings.PreferredCaptureProvider);
         if (preferred is null)
         {

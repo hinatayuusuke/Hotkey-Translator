@@ -61,7 +61,14 @@ namespace
     std::string BuildState(const std::string& state, const std::string& reason, ht::hook::ipc::GraphicsApi api, DWORD pid)
     {
         const std::wstring mapNameW = ht::hook::ipc::BuildFrameMappingName(pid, api);
-        std::string mapName(mapNameW.begin(), mapNameW.end());
+        // WHY: Avoid lossy wchar->char conversion; JSON must be UTF-8.
+        int bytes = WideCharToMultiByte(CP_UTF8, 0, mapNameW.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string mapName;
+        if (bytes > 1)
+        {
+            mapName.resize(static_cast<std::size_t>(bytes - 1));
+            WideCharToMultiByte(CP_UTF8, 0, mapNameW.c_str(), -1, mapName.data(), bytes, nullptr, nullptr);
+        }
         return "{\"type\":\"hookState\",\"payload\":{\"state\":\"" + JsonEscape(state) + "\",\"reason\":\"" +
                JsonEscape(reason) + "\",\"api\":\"DX11\",\"frameMap\":\"" + JsonEscape(mapName) + "\"}}\n";
     }

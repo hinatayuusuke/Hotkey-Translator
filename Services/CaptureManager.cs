@@ -21,6 +21,7 @@ public sealed class CaptureManager
         _dxgiProvider = new DxgiDuplicationProvider(_logger);
         _providers = new ICaptureProvider[]
         {
+            new GraphicsHookCaptureProvider(_logger),
             new WgcCaptureProvider(_logger),
             _dxgiProvider,
             new GdiCaptureProvider()

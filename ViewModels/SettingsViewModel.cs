@@ -255,6 +255,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             : CaptureProviderMode.Auto;
         settings.PreferredCaptureProvider = CaptureProviderTag switch
         {
+            "Hook" => CaptureProviderKind.GraphicsHook,
+            "GraphicsHook" => CaptureProviderKind.GraphicsHook,
             "Dxgi" => CaptureProviderKind.Dxgi,
             "Gdi" => CaptureProviderKind.Gdi,
             _ => CaptureProviderKind.Wgc

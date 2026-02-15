@@ -569,6 +569,13 @@ public sealed class PipelineOrchestrator
 
     private void RememberPreferredProvider(AppSettings settings, CaptureProviderKind providerKind)
     {
+        if (providerKind == CaptureProviderKind.GraphicsHook)
+        {
+            // WHY: Hook capture is controlled by a dedicated feature flag and may be transient (fallback-heavy).
+            // Persisting it as "preferred" would confuse the legacy provider UI and saved defaults.
+            return;
+        }
+
         if (settings.PreferredCaptureProvider == providerKind)
         {
             return;

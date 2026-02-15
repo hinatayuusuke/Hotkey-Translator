@@ -257,22 +257,43 @@ namespace ht::hook::dx11
             return ok;
         }
 
-        HRESULT __stdcall HookedPresent(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+        HRESULT HookedPresentImpl(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
         {
-            // WHY: Hook code must never crash the host process. We isolate with SEH.
-            __try
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
-                std::lock_guard<std::mutex> lock(g_rt.mutex);
-                if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
-                {
-                    (void)CaptureAndShareFrameLocked(g_rt, swap);
-                }
-            }
-            __except (EXCEPTION_EXECUTE_HANDLER)
-            {
+                (void)CaptureAndShareFrameLocked(g_rt, swap);
             }
 
             return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+        }
+
+        HRESULT __stdcall HookedPresent(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+        {
+            // WHY: Hook code must never crash the host process. SEH must live in a function without C++ unwinding.
+            __try
+            {
+                return HookedPresentImpl(swap, syncInterval, flags);
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            }
+        }
+
+        HRESULT HookedResizeBuffersImpl(
+            IDXGISwapChain* swap,
+            UINT bufferCount,
+            UINT width,
+            UINT height,
+            DXGI_FORMAT newFormat,
+            UINT swapChainFlags)
+        {
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            ResetDeviceStateLocked(g_rt);
+            return g_rt.originalResizeBuffers
+                ? g_rt.originalResizeBuffers(swap, bufferCount, width, height, newFormat, swapChainFlags)
+                : S_OK;
         }
 
         HRESULT __stdcall HookedResizeBuffers(
@@ -285,16 +306,14 @@ namespace ht::hook::dx11
         {
             __try
             {
-                std::lock_guard<std::mutex> lock(g_rt.mutex);
-                ResetDeviceStateLocked(g_rt);
+                return HookedResizeBuffersImpl(swap, bufferCount, width, height, newFormat, swapChainFlags);
             }
             __except (EXCEPTION_EXECUTE_HANDLER)
             {
+                return g_rt.originalResizeBuffers
+                    ? g_rt.originalResizeBuffers(swap, bufferCount, width, height, newFormat, swapChainFlags)
+                    : S_OK;
             }
-
-            return g_rt.originalResizeBuffers
-                ? g_rt.originalResizeBuffers(swap, bufferCount, width, height, newFormat, swapChainFlags)
-                : S_OK;
         }
 
         bool CreateDummySwapChainAndGetVtable(void*** outVtable)
