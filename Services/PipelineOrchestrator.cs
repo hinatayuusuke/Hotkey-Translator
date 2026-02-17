@@ -728,7 +728,7 @@ public sealed class PipelineOrchestrator
         const uint bgArgb = 0xAA0A0A0A;
         const float paddingPx = 14.0f;
         const float roundingPx = 12.0f;
-        const float fontPx = 24.0f;
+        var fontPx = ResolveHookOverlayFontPx(item, frame.Bounds, canvasH);
 
         // PERF: Allocate once per update; v2 is "latest only" and typically runs at <= OCR/translation rate.
         var utf8 = Encoding.UTF8.GetBytes(item.Text);
@@ -759,6 +759,19 @@ public sealed class PipelineOrchestrator
             new[] { block },
             utf8,
             textLen);
+    }
+
+    private float ResolveHookOverlayFontPx(OverlayItem item, Rect frameBounds, uint canvasH)
+    {
+        const float fallbackFontPx = 24.0f;
+        if (_overlayPresenter.TryResolveHookFontPx(item, frameBounds, canvasH, out var fittedFontPx) &&
+            fittedFontPx > 0)
+        {
+            return fittedFontPx;
+        }
+
+        // WHY: Keep v2 readable even when UI thread metrics are temporarily unavailable.
+        return fallbackFontPx;
     }
 
     private static int TrimUtf8Length(byte[] bytes, int maxBytes)

@@ -29,6 +29,7 @@ public partial class OverlayWindow : Window
     private VerticalModeOverride _verticalModeOverride = VerticalModeOverride.Auto;
     private Rect? _smallBoxClipBoundsDip;
     private Dictionary<string, double> _fontSizeCache = new();
+    private readonly OverlayFontFitter _fontFitter = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
     private const double MaxFontSize = 72;
@@ -92,6 +93,7 @@ public partial class OverlayWindow : Window
     {
         OverlayCanvas.Children.Clear();
         var nextCache = new Dictionary<string, double>(items.Count);
+        var fontContext = BuildFontFitContext();
         foreach (var item in items)
         {
             var layout = ResolveOverlayItemLayout(item);
@@ -102,8 +104,23 @@ public partial class OverlayWindow : Window
             var availableHeight = rect.Height > 0
                 ? Math.Max(0, rect.Height - OverlayPadding.Top - OverlayPadding.Bottom)
                 : double.PositiveInfinity;
-            var cacheKey = BuildFontCacheKey(item, rect);
-            var fontSize = ResolveFontSize(item, availableWidth, availableHeight, cacheKey, layout.BaseFontSize);
+            var cacheKey = OverlayFontFitter.BuildCacheKey(item.Text, rect, _enableFontStabilization, FontQuantizeStepPx);
+            var fontSize = _fontFitter.ResolveFontSize(
+                new OverlayFontFitRequest(
+                    item.Text,
+                    availableWidth,
+                    availableHeight,
+                    cacheKey,
+                    layout.BaseFontSize,
+                    _enableFontStabilization,
+                    MinFontSize,
+                    MaxFontSize,
+                    MinFallbackFontSize,
+                    FitIterations,
+                    FontQuantizeStepPx,
+                    FontHysteresisThreshold),
+                fontContext,
+                _fontSizeCache);
             nextCache[cacheKey] = fontSize;
             var textBlock = new TextBlock
             {
@@ -141,6 +158,84 @@ public partial class OverlayWindow : Window
         }
 
         _fontSizeCache = nextCache;
+    }
+
+    public bool TryResolveHookFontPx(OverlayItem screenItem, Rect frameBoundsScreen, uint canvasH, out float fontPx)
+    {
+        fontPx = 0;
+        if (canvasH == 0 || frameBoundsScreen.Height <= 0)
+        {
+            return false;
+        }
+
+        if (string.IsNullOrWhiteSpace(screenItem.Text) ||
+            screenItem.Rect.IsEmpty ||
+            screenItem.Rect.Width <= 0 ||
+            screenItem.Rect.Height <= 0)
+        {
+            return false;
+        }
+
+        var rectDip = DpiHelper.ScreenRectToWindowDip(this, screenItem.Rect);
+        if (rectDip.IsEmpty || rectDip.Width <= 0 || rectDip.Height <= 0)
+        {
+            return false;
+        }
+
+        var lineHeightDip = screenItem.LineHeight;
+        if (lineHeightDip > 0 && screenItem.Rect.Height > 0 && rectDip.Height > 0)
+        {
+            lineHeightDip *= rectDip.Height / screenItem.Rect.Height;
+        }
+
+        var dipItem = new OverlayItem(screenItem.Text, rectDip, screenItem.LineCount, lineHeightDip);
+        var layout = ResolveOverlayItemLayout(dipItem);
+        var availableWidth = layout.Rect.Width > 0
+            ? Math.Max(0, layout.Rect.Width - OverlayPadding.Left - OverlayPadding.Right)
+            : double.PositiveInfinity;
+        var availableHeight = layout.Rect.Height > 0
+            ? Math.Max(0, layout.Rect.Height - OverlayPadding.Top - OverlayPadding.Bottom)
+            : double.PositiveInfinity;
+        if (availableWidth <= 0 || availableHeight <= 0)
+        {
+            return false;
+        }
+
+        var cacheKey = OverlayFontFitter.BuildCacheKey(dipItem.Text, layout.Rect, _enableFontStabilization, FontQuantizeStepPx);
+        var context = BuildFontFitContext();
+        var fontSizeDip = _fontFitter.ResolveFontSize(
+            new OverlayFontFitRequest(
+                dipItem.Text,
+                availableWidth,
+                availableHeight,
+                cacheKey,
+                layout.BaseFontSize,
+                _enableFontStabilization,
+                MinFontSize,
+                MaxFontSize,
+                MinFallbackFontSize,
+                FitIterations,
+                FontQuantizeStepPx,
+                FontHysteresisThreshold),
+            context,
+            _fontSizeCache);
+
+        var scaleY = canvasH / frameBoundsScreen.Height;
+        if (!double.IsFinite(scaleY) || scaleY <= 0)
+        {
+            scaleY = 1.0;
+        }
+
+        var canvasFontPx = fontSizeDip * context.PixelsPerDip * scaleY;
+        if (!double.IsFinite(canvasFontPx) || canvasFontPx <= 0)
+        {
+            return false;
+        }
+
+        // WHY: Keep hook font requests within the native atlas range to avoid excessive fallback mismatch.
+        canvasFontPx = Math.Clamp(canvasFontPx, 14.0, 72.0);
+        fontPx = (float)canvasFontPx;
+        return true;
     }
 
     public void SetOverlayVisibility(bool visible)
@@ -423,131 +518,14 @@ public partial class OverlayWindow : Window
         return new Rect(x, y, width, height);
     }
 
-    private double ResolveFontSize(OverlayItem item, double availableWidth, double availableHeight, string cacheKey, double baseFontSize)
+    private OverlayFontFitContext BuildFontFitContext()
     {
-        var baseSize = Math.Clamp(baseFontSize, MinFontSize, MaxFontSize);
-        if (string.IsNullOrWhiteSpace(item.Text))
-        {
-            return baseSize;
-        }
-
-        if (availableWidth <= 0 || availableHeight <= 0 || double.IsInfinity(availableWidth) || double.IsInfinity(availableHeight))
-        {
-            return baseSize;
-        }
-
-        var quantizedWidth = _enableFontStabilization ? QuantizeLength(availableWidth) : availableWidth;
-        var quantizedHeight = _enableFontStabilization ? QuantizeLength(availableHeight) : availableHeight;
-        var resolved = FitMaxFont(item.Text, MinFontSize, baseSize, quantizedWidth, quantizedHeight);
-        if (!Fits(item.Text, resolved, availableWidth, availableHeight))
-        {
-            resolved = FitMaxFont(item.Text, MinFontSize, baseSize, availableWidth, availableHeight);
-        }
-
-        if (!Fits(item.Text, MinFontSize, availableWidth, availableHeight))
-        {
-            var upper = Math.Min(MinFontSize, baseSize);
-            resolved = FitMaxFont(item.Text, MinFallbackFontSize, upper, availableWidth, availableHeight);
-        }
-
-        if (!_enableFontStabilization)
-        {
-            return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
-        }
-
-        if (_fontSizeCache.TryGetValue(cacheKey, out var last))
-        {
-            if (resolved < last)
-            {
-                return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
-            }
-
-            if (resolved - last < FontHysteresisThreshold)
-            {
-                return Math.Clamp(last, MinFallbackFontSize, MaxFontSize);
-            }
-        }
-
-        return Math.Clamp(resolved, MinFallbackFontSize, MaxFontSize);
-    }
-
-    private bool Fits(string text, double fontSize, double maxWidth, double maxHeight)
-    {
-        if (fontSize <= 0 || maxWidth <= 0 || maxHeight <= 0)
-        {
-            return false;
-        }
-
         var dpi = VisualTreeHelper.GetDpi(this);
-        var formatted = new FormattedText(
-            text,
-            CultureInfo.CurrentUICulture,
-            FlowDirection,
+        return new OverlayFontFitContext(
             new Typeface(FontFamily, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
-            fontSize,
-            _foreground,
-            dpi.PixelsPerDip)
-        {
-            MaxTextWidth = maxWidth,
-            // WHY: Keep MaxTextHeight unset so we can detect vertical overflow via measured Height.
-            TextAlignment = TextAlignment.Left
-        };
-
-        return formatted.Width <= maxWidth && formatted.Height <= maxHeight;
-    }
-
-    private double FitMaxFont(string text, double minFont, double maxFont, double maxWidth, double maxHeight)
-    {
-        var lower = Math.Clamp(minFont, MinFallbackFontSize, MaxFontSize);
-        var upper = Math.Clamp(maxFont, lower, MaxFontSize);
-        if (!Fits(text, lower, maxWidth, maxHeight))
-        {
-            return lower;
-        }
-
-        var best = lower;
-        for (var i = 0; i < FitIterations; i++)
-        {
-            var mid = (lower + upper) / 2.0;
-            if (Fits(text, mid, maxWidth, maxHeight))
-            {
-                best = mid;
-                lower = mid;
-            }
-            else
-            {
-                upper = mid;
-            }
-        }
-
-        return best;
-    }
-
-    private static double QuantizeLength(double value)
-    {
-        if (FontQuantizeStepPx <= 0 || value <= 0 || double.IsNaN(value) || double.IsInfinity(value))
-        {
-            return value;
-        }
-
-        return Math.Round(value / FontQuantizeStepPx, MidpointRounding.AwayFromZero) * FontQuantizeStepPx;
-    }
-
-    private string BuildFontCacheKey(OverlayItem item, Rect rect)
-    {
-        var x = _enableFontStabilization ? QuantizeLength(rect.X) : rect.X;
-        var y = _enableFontStabilization ? QuantizeLength(rect.Y) : rect.Y;
-        var width = _enableFontStabilization ? QuantizeLength(rect.Width) : rect.Width;
-        var height = _enableFontStabilization ? QuantizeLength(rect.Height) : rect.Height;
-        var text = item.Text ?? string.Empty;
-        return string.Format(
-            CultureInfo.InvariantCulture,
-            "{0:0.0}|{1:0.0}|{2:0.0}|{3:0.0}|{4}",
-            x,
-            y,
-            width,
-            height,
-            text);
+            FlowDirection,
+            CultureInfo.CurrentUICulture,
+            dpi.PixelsPerDip);
     }
 
     private static double ClampFinite(double value, double min, double max, double fallback)

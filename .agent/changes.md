@@ -11664,3 +11664,64 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `cmake --build .\\Native\\build --config Release`: 成功。
+
+**2026-02-16 03:03 (Asia/Taipei) — WPFフォントフィット流用(v2 fontPx)の実装案を詳細化**
+
+### Summary
+- WPF側のフォントフィット結果をHook v2の`fontPx`に反映するための実装案Docを、単位系/DPI/スレッド/実装手順まで具体化した。
+
+### Context / Goal
+- Hook(ImGui)側で枠に合わせてフォントサイズを拡大/縮小したい。
+- 既にWPF overlayが`FormattedText`で安定化込みのフィット算出を持っているため、それをv2 writerへ流用できる形に整理したい。
+
+### Changes
+- DIP/Screen px/Canvas pxの単位系整理と、screen px→DIP、DIP→canvas pxの変換式を追記。
+- DPI取得方法（WPF visual経由 / Win32 GetDpiForWindow経由）を明記。
+- UIスレッド依存を避けるための専用STAワーカー(`OverlayFontFitterWorker`)案を追加。
+- Hook native側のフォント段階（12段階・14..72）に合わせた検証観点を追記。
+
+### Files Touched
+- `Doc/GraphicsHook_ImGui_TranslationOverlay_FontSizing_FromWpf_Implementation.md` — 変換式、DPI取得、STAワーカー案、実装ステップ詳細を追記。
+
+### Behavioral Impact
+- ドキュメント更新のみ（実行時挙動の変更なし）。
+
+### Risk & Mitigation
+- Risk: Docと実装が乖離する。
+- Mitigation: 実装着手時に本DocのStep順で差分を逐次反映し、`HT_HOOK_OVL_DEBUG`で観測できる状態を維持する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-17 18:07 (Asia/Taipei) — FontSizing Step1-3実装（WPF共有フィット→Hook v2 fontPx）**
+
+### Summary
+- WPFのフォントフィットロジックを共通クラスへ切り出し、同じ算出結果をDX11 Hook v2の`fontPx`にも反映する経路を実装した。
+
+### Context / Goal
+- Hook v2の`fontPx`が固定値(24px)のため、枠サイズに対して文字サイズが追従しない状態だった。
+- `Doc/GraphicsHook_ImGui_TranslationOverlay_FontSizing_FromWpf_Implementation.md` の Step1-3 をコードへ反映し、WPF側とHook側のサイズ方針を揃えたい。
+
+### Changes
+- `OverlayFontFitter` を追加し、`FormattedText` ベースのフィット計算（量子化/ヒステリシス含む）を `OverlayWindow` から切り出した。
+- `OverlayWindow.UpdateItems` を `OverlayFontFitter` 利用に差し替え、既存の描画挙動を維持したまま共通化した。
+- `OverlayWindow.TryResolveHookFontPx` を追加し、screen rect から DIP で同じフィット計算を行い、`fontSizeDip -> canvas px` に変換して返す経路を追加した。
+- `OverlayPresenter.TryResolveHookFontPx` を追加し、UIスレッドで安全に算出値を取得できるようにした。
+- `PipelineOrchestrator.TryUpdateDx11HookOverlayV2` の固定 `fontPx=24` を廃止し、上記算出値を使用。失敗時のみ 24px フォールバックにした。
+
+### Files Touched
+- `Services/Overlay/OverlayFontFitter.cs` — フォントフィット共通ロジック（request/context/cache key 含む）を新規追加。
+- `UI/OverlayWindow.xaml.cs` — フィット処理を共通クラスへ置換、Hook用 `TryResolveHookFontPx` を追加。
+- `Services/OverlayPresenter.cs` — UIスレッド経由の Hook fontPx 算出APIを追加。
+- `Services/PipelineOrchestrator.cs` — Hook v2 `fontPx` を動的算出へ変更（フォールバック付き）。
+
+### Behavioral Impact
+- WPFオーバーレイとDX11 Hook v2で、同じフォントフィット方針に基づく文字サイズが使われる。
+- Hook側の `fontPx` は矩形・テキスト内容・DPI/Canvasスケールに応じて変動し、算出失敗時のみ従来の24pxで表示される。
+
+### Risk & Mitigation
+- Risk: UIスレッドがビジーなタイミングで Hook fontPx 算出が失敗/遅延する可能性。
+- Mitigation: `PipelineOrchestrator` 側で 24px フォールバックを保持し、表示不能を避ける。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` を実行し、成功（0 warnings / 0 errors）。

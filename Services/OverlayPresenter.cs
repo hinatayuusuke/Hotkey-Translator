@@ -174,6 +174,33 @@ public sealed class OverlayPresenter
         });
     }
 
+    public bool TryResolveHookFontPx(OverlayItem item, Rect frameBoundsScreen, uint canvasH, out float fontPx)
+    {
+        fontPx = 0;
+        if (_window.Dispatcher.HasShutdownStarted || _window.Dispatcher.HasShutdownFinished)
+        {
+            return false;
+        }
+
+        var resolved = false;
+        var resolvedFontPx = 0f;
+        void Resolve()
+        {
+            resolved = _window.TryResolveHookFontPx(item, frameBoundsScreen, canvasH, out resolvedFontPx);
+        }
+
+        if (_window.Dispatcher.CheckAccess())
+        {
+            Resolve();
+            fontPx = resolvedFontPx;
+            return resolved;
+        }
+
+        _window.Dispatcher.Invoke(Resolve);
+        fontPx = resolvedFontPx;
+        return resolved;
+    }
+
     private IReadOnlyList<OverlayItem> ConvertToDip(IReadOnlyList<OverlayItem> items)
     {
         var converted = new List<OverlayItem>(items.Count);
