@@ -11751,3 +11751,38 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-02-20 21:18 (Asia/Taipei) — Hookキャプチャ元A/B切替(OM RTV/GetBuffer)と診断表示を追加**
+
+### Summary
+- キャプチャ元を `GetBuffer(0)` と `OM RTV` で切替できるようにし、実際にどのテクスチャを読んだかを Debug UI で可視化した。
+
+### Context / Goal
+- Hook取得は正常ログでも、運用中にオーバーレイ混入が起きる事象がある。
+- `GetBuffer(0)` と描画時 `OM oldRTV` の不一致仮説をA/Bで検証したい。
+
+### Changes
+- `HT_HOOK_CAPTURE_FROM_OM_RTV` 環境変数を追加。
+  - `0`: 既存どおり `GetBuffer(0)` を使用
+  - `1`: `OM RTV` を優先し、無ければ `GetBuffer(0)` へフォールバック
+  - `2`: `OM RTV` 専用（無い場合は fail-fast）
+- `CaptureAndShareFrameLocked` に `OMGetRenderTargets -> RTV resource -> ID3D11Texture2D` 取得ルートを追加し、上記モードでキャプチャ元を選択。
+- Debug UI (`HT_HOOK_OVL_DEBUG=1`) にキャプチャ診断を追加:
+  - mode / used_om / om_eq_getbuf
+  - selected/getbuf/om_rtv/om_tex ポインタ
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — キャプチャ元切替ロジック、診断フィールド、Debug UI表示を追加。
+
+### Behavioral Impact
+- 既定動作（mode=0）は従来と同じ。
+- 環境変数でキャプチャ元を切替できるため、混入原因の切り分けが可能になった。
+
+### Risk & Mitigation
+- Risk: `OM RTV` 経路がタイトルによって無効で、mode=2 ではキャプチャ失敗が増える可能性。
+- Mitigation: mode=1 を推奨（優先 + フォールバック）。mode=2 は診断専用として扱う。
+
+### Tests / Verification
+- `cmake --build Native/build --config Release` 実行。
+- コンパイルは通過したが、リンク時に `HookAgentDx11.dll` ロックで失敗（`LNK1104`）。
+- `HookHost` 実行中の可能性があるため、停止後に再ビルドで確認が必要。

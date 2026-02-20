@@ -153,6 +153,13 @@ namespace ht::hook::dx11
             std::uintptr_t lastOmOldDsvPtr = 0;
             std::uintptr_t lastImGuiTargetRtvPtr = 0;
             bool lastImGuiUsedOldRtv = false;
+            std::uint32_t lastCaptureSourceMode = 0; // 0=GetBuffer, 1=prefer OM RTV, 2=OM RTV only
+            std::uintptr_t lastCaptureSelectedTexPtr = 0;
+            std::uintptr_t lastCaptureGetBufferTexPtr = 0;
+            std::uintptr_t lastCaptureOmRtvPtr = 0;
+            std::uintptr_t lastCaptureOmTexPtr = 0;
+            bool lastCaptureUsedOmRtv = false;
+            bool lastCaptureOmMatchesGetBuffer = false;
         };
 
         Dx11Runtime g_rt;
@@ -1001,6 +1008,19 @@ namespace ht::hook::dx11
                         "ImGui targetRTV=0x%016" PRIXPTR " (use_old=%s)",
                         rt.lastImGuiTargetRtvPtr,
                         rt.lastImGuiUsedOldRtv ? "yes" : "no");
+                    ImGui::Text(
+                        "capture src: mode=%u used_om=%s om_eq_getbuf=%s",
+                        rt.lastCaptureSourceMode,
+                        rt.lastCaptureUsedOmRtv ? "yes" : "no",
+                        rt.lastCaptureOmMatchesGetBuffer ? "yes" : "no");
+                    ImGui::Text(
+                        "capture tex: selected=0x%016" PRIXPTR " getbuf=0x%016" PRIXPTR,
+                        rt.lastCaptureSelectedTexPtr,
+                        rt.lastCaptureGetBufferTexPtr);
+                    ImGui::Text(
+                        "capture om: rtv=0x%016" PRIXPTR " tex=0x%016" PRIXPTR,
+                        rt.lastCaptureOmRtvPtr,
+                        rt.lastCaptureOmTexPtr);
                 }
                 ImGui::End();
             }
@@ -1203,23 +1223,100 @@ namespace ht::hook::dx11
                 }
             }
 
-            ID3D11Texture2D* backBuffer = nullptr;
-            const HRESULT hr = swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&backBuffer));
-            if (hr != S_OK || backBuffer == nullptr)
+            if (!EnsureDeviceLocked(rt, swap))
             {
                 return false;
             }
 
-            const bool okDevice = EnsureDeviceLocked(rt, swap);
-            const bool okStaging = okDevice && EnsureStagingLocked(rt, backBuffer);
+            const std::uint32_t captureSourceMode = ReadEnvU32(L"HT_HOOK_CAPTURE_FROM_OM_RTV", 0);
+
+            ID3D11Texture2D* getBufferTex = nullptr;
+            const HRESULT hr = swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&getBufferTex));
+            if (hr != S_OK || getBufferTex == nullptr)
+            {
+                return false;
+            }
+
+            ID3D11Texture2D* omTex = nullptr;
+            ID3D11RenderTargetView* omRtv = nullptr;
+            ID3D11DepthStencilView* omDsv = nullptr;
+            if (captureSourceMode != 0)
+            {
+                rt.context->OMGetRenderTargets(1, &omRtv, &omDsv);
+                if (omRtv != nullptr)
+                {
+                    ID3D11Resource* omRes = nullptr;
+                    omRtv->GetResource(&omRes);
+                    if (omRes != nullptr)
+                    {
+                        (void)omRes->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&omTex));
+                        omRes->Release();
+                    }
+                }
+            }
+
+            ID3D11Texture2D* captureTex = getBufferTex;
+            if (captureSourceMode == 1)
+            {
+                // WHY: In flip-model swapchains, OM-bound RTV is often closer to "current present target".
+                if (omTex != nullptr)
+                {
+                    captureTex = omTex;
+                }
+            }
+            else if (captureSourceMode >= 2)
+            {
+                // WHY: Strict mode for diagnosis. If OM RTV is unavailable, fail instead of silently falling back.
+                if (omTex == nullptr)
+                {
+                    if (omRtv != nullptr)
+                    {
+                        omRtv->Release();
+                    }
+                    if (omDsv != nullptr)
+                    {
+                        omDsv->Release();
+                    }
+                    getBufferTex->Release();
+                    return false;
+                }
+                captureTex = omTex;
+            }
+
+            rt.lastCaptureSourceMode = captureSourceMode;
+            rt.lastCaptureSelectedTexPtr = reinterpret_cast<std::uintptr_t>(captureTex);
+            rt.lastCaptureGetBufferTexPtr = reinterpret_cast<std::uintptr_t>(getBufferTex);
+            rt.lastCaptureOmRtvPtr = reinterpret_cast<std::uintptr_t>(omRtv);
+            rt.lastCaptureOmTexPtr = reinterpret_cast<std::uintptr_t>(omTex);
+            rt.lastCaptureUsedOmRtv = (captureTex == omTex && omTex != nullptr);
+            rt.lastCaptureOmMatchesGetBuffer = (omTex != nullptr && omTex == getBufferTex);
+
+            if (omRtv != nullptr)
+            {
+                omRtv->Release();
+            }
+            if (omDsv != nullptr)
+            {
+                omDsv->Release();
+            }
+
+            const bool okStaging = EnsureStagingLocked(rt, captureTex);
             if (!okStaging)
             {
-                backBuffer->Release();
+                if (omTex != nullptr && omTex != getBufferTex)
+                {
+                    omTex->Release();
+                }
+                getBufferTex->Release();
                 return false;
             }
 
-            rt.context->CopyResource(rt.staging, backBuffer);
-            backBuffer->Release();
+            rt.context->CopyResource(rt.staging, captureTex);
+            if (omTex != nullptr && omTex != getBufferTex)
+            {
+                omTex->Release();
+            }
+            getBufferTex->Release();
 
             D3D11_MAPPED_SUBRESOURCE mapped{};
             const HRESULT mapHr = rt.context->Map(rt.staging, 0, D3D11_MAP_READ, 0, &mapped);
