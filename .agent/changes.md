@@ -11725,3 +11725,29 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` を実行し、成功（0 warnings / 0 errors）。
+
+**2026-02-17 19:15 (Asia/Taipei) — RuntimeConfig publish-last(seq) 移行実装案Docを追加**
+
+### Summary
+- F9再表示不具合の止血策と、config共有メモリを publish-last(seq) へ段階移行する詳細実装案を Doc に追加した。
+
+### Context / Goal
+- F9でoverlayを再表示できないケースがあり、現行のruntime config反映経路の可観測性と回復性を強化したい。
+- 将来のOpenGL/Vulkan拡張を見据えて、設定IPCもv2 overlay同様のseq契約へ揃えたい。
+
+### Changes
+- F9不具合の短期対処（publish結果可視化/失敗時ApplySettings再同期）を先行する二段階方針を定義。
+- config header v2案、reader/writer判定ルール、publish-last手順、移行手順、DoDを具体化。
+
+### Files Touched
+- Doc/GraphicsHook_RuntimeConfig_PublishLastSeq_Plan.md — RuntimeConfigのpublish-last(seq)移行計画を新規追加。
+
+### Behavioral Impact
+- ドキュメント追加のみ（実行時挙動の変更なし）。
+
+### Risk & Mitigation
+- Risk: ドキュメントと実装順序が乖離する。
+- Mitigation: Step 1-2（止血）→ Step 3-6（seq化）の順で段階的に反映し、各段でログ検証を必須化する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
