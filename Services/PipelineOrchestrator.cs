@@ -587,6 +587,15 @@ public sealed class PipelineOrchestrator
             return;
         }
 
+        if (settings.EnableDx11HookPipeline &&
+            settings.CaptureMode == CaptureMode.ActiveWindow &&
+            settings.EnableFixedCaptureWindow)
+        {
+            // WHY: While hook pipeline is active, transient fallback captures (e.g. WGC during hook writer race)
+            // must not rewrite the preferred provider, or subsequent runs drift away from hook-first behavior.
+            return;
+        }
+
         if (settings.PreferredCaptureProvider == providerKind)
         {
             return;

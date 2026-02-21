@@ -17,6 +17,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private const uint FrameHeaderVersion = 1;
     private const uint PixelFormatBgra8 = 1;
     private const uint GraphicsApiDx11 = 1;
+    private const int MaxReadAttempts = 5;
 
     public GraphicsHookCaptureProvider(AppLogger logger)
     {
@@ -110,6 +111,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private string _cachedMapName = string.Empty;
     private ulong _cachedFrameId;
     private Bitmap? _cachedBitmap;
+    private DateTimeOffset _cachedBitmapUpdatedAtUtc;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private struct SharedFrameHeader
@@ -151,7 +153,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             using var mmf = MemoryMappedFile.OpenExisting(mappingName, MemoryMappedFileRights.Read);
             using var accessor = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
 
-            for (var attempt = 0; attempt < 3; attempt++)
+            for (var attempt = 0; attempt < MaxReadAttempts; attempt++)
             {
                 accessor.Read(0, out header);
                 if (!ValidateHeader(header, out var headerError))
@@ -204,11 +206,22 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
                 // WHY: Writer stores payload first and header last. Re-read to detect races.
                 SharedFrameHeader confirm = default;
                 accessor.Read(0, out confirm);
-                if (confirm.FrameId == header.FrameId && confirm.PayloadBytes == header.PayloadBytes)
+                if (confirm.FrameId == header.FrameId &&
+                    confirm.PayloadBytes == header.PayloadBytes &&
+                    confirm.Width == header.Width &&
+                    confirm.Height == header.Height &&
+                    confirm.Stride == header.Stride)
                 {
                     bitmap = CreateBitmapFromBgraPayload(header, payload);
                     return true;
                 }
+            }
+
+            if (TryCloneLatestCached(pid, mappingName, out bitmap, out var cacheAgeMs))
+            {
+                _logger.Info(
+                    $"stage=capture event=hook_cached_reuse reason=writer_race map=\"{mappingName}\" pid={pid} ageMs={cacheAgeMs:0}.");
+                return true;
             }
 
             error = "Frame was unstable (writer race).";
@@ -334,6 +347,29 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             _cachedFrameId = frameId;
             _cachedBitmap?.Dispose();
             _cachedBitmap = (Bitmap)bitmap.Clone();
+            _cachedBitmapUpdatedAtUtc = DateTimeOffset.UtcNow;
+        }
+    }
+
+    private bool TryCloneLatestCached(int pid, string mapName, out Bitmap bitmap, out double ageMs)
+    {
+        bitmap = null!;
+        ageMs = 0;
+        lock (_cacheLock)
+        {
+            if (_cachedBitmap == null)
+            {
+                return false;
+            }
+
+            if (_cachedPid != pid || !string.Equals(_cachedMapName, mapName, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            ageMs = (DateTimeOffset.UtcNow - _cachedBitmapUpdatedAtUtc).TotalMilliseconds;
+            bitmap = (Bitmap)_cachedBitmap.Clone();
+            return true;
         }
     }
 

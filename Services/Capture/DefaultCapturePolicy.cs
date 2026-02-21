@@ -22,7 +22,19 @@ internal sealed class DefaultCapturePolicy : ICapturePolicy
         }
 
         // WHY: DXGI wait timeout is often a transient "no new frame yet" state; cooldown here causes long blind spots.
-        return !(providerKind == CaptureProviderKind.Dxgi && IsDxgiWaitTimeout(error));
+        if (providerKind == CaptureProviderKind.Dxgi && IsDxgiWaitTimeout(error))
+        {
+            return false;
+        }
+
+        // WHY: GraphicsHook writer race is transient under heavy Present cadence. Cooldown would force WGC fallback
+        // for several seconds and increase overlay self-capture risk.
+        if (providerKind == CaptureProviderKind.GraphicsHook && IsGraphicsHookFrameUnstable(error))
+        {
+            return false;
+        }
+
+        return true;
     }
 
     public bool IsBlackThresholdExceeded(int blackCount, AppSettings settings)
@@ -38,5 +50,10 @@ internal sealed class DefaultCapturePolicy : ICapturePolicy
     private static bool IsDxgiWaitTimeout(string? error)
     {
         return string.Equals(error, "DXGI timed out waiting for a new frame.", StringComparison.Ordinal);
+    }
+
+    private static bool IsGraphicsHookFrameUnstable(string? error)
+    {
+        return string.Equals(error, "Frame was unstable (writer race).", StringComparison.Ordinal);
     }
 }

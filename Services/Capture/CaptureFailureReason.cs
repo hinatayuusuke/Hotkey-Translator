@@ -8,4 +8,5 @@ internal enum CaptureFailureReason
     CaptureError = 3,
     DxgiWaitTimeout = 4,
     BlackFrameThreshold = 5,
+    HookFrameUnstable = 6,
 }

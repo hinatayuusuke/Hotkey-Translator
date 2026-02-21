@@ -11819,3 +11819,40 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
 - `cmake --build Native/build --config Release` 成功。
+
+**2026-02-21 17:48 (Asia/Taipei) — GraphicsHook writer race時のWGCフォールバック抑制を実装**
+
+### Summary
+- GraphicsHook の `Frame was unstable (writer race)` を一時エラーとして扱い、クールダウン起因のWGCフォールバックと自己混入を減らす修正を入れた。
+
+### Context / Goal
+- ログ上、Hookキャプチャ失敗(`writer race`)の直後にWGCへフォールバックし、Hookオーバーレイ混入がOCR入力へ入っていた。
+- 目的は `writer race` を致命エラー扱いしないことと、Hook運用中にPreferred providerがWGCへドリフトしないこと。
+
+### Changes
+- `CaptureFailureReason` に `HookFrameUnstable` を追加し、`CaptureAttemptCoordinator` で `Frame was unstable (writer race).` を専用分類した。
+- `DefaultCapturePolicy` で `GraphicsHook + writer race` はクールダウン開始しないよう変更（DXGI wait-timeoutと同様の扱い）。
+- `GraphicsHookCaptureProvider` の読み取りレース時挙動を改善:
+  - 読み取り試行回数を 3 -> 5 に増加
+  - header再確認条件を `FrameId/PayloadBytes` に加え `Width/Height/Stride` まで一致確認
+  - 最終的に不安定でも、同一 pid/map の最新キャッシュがあれば再利用して成功として返す
+- `PipelineOrchestrator.RememberPreferredProvider` を更新し、DX11 Hook pipeline有効中はフォールバック成功で `PreferredCaptureProvider` を更新しないようにした。
+
+### Files Touched
+- `Services/Capture/CaptureFailureReason.cs` — `HookFrameUnstable` を追加。
+- `Services/Capture/CaptureAttemptCoordinator.cs` — writer race の失敗分類を追加。
+- `Services/Capture/DefaultCapturePolicy.cs` — writer race 非クールダウン化。
+- `Services/GraphicsHookCaptureProvider.cs` — レース耐性強化とキャッシュ再利用を追加。
+- `Services/PipelineOrchestrator.cs` — Hook運用中のPreferred provider更新抑止。
+
+### Behavioral Impact
+- `writer race` が発生しても、プロバイダのクールダウン入りによる長いWGCフォールバックが起きにくくなる。
+- Hookフレームが一時不安定でも、直近キャッシュで連続性を維持できるためOCR入力が安定しやすくなる。
+- Hook pipeline有効中は `PreferredCaptureProvider` がWGCへ書き換わらず、hook-first挙動が維持される。
+
+### Risk & Mitigation
+- Risk: キャッシュ再利用により、短時間だけ古いフレームでOCRが走る可能性。
+- Mitigation: 再利用は同一 pid/map に限定し、ログ(`hook_cached_reuse`)で観測可能にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。

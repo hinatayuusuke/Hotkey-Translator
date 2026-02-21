@@ -136,6 +136,12 @@ internal sealed class CaptureAttemptCoordinator
             return CaptureFailureReason.DxgiWaitTimeout;
         }
 
+        if (providerKind == CaptureProviderKind.GraphicsHook &&
+            string.Equals(error, "Frame was unstable (writer race).", StringComparison.Ordinal))
+        {
+            return CaptureFailureReason.HookFrameUnstable;
+        }
+
         return CaptureFailureReason.CaptureError;
     }
 }
