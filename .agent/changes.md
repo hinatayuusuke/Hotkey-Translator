@@ -11786,3 +11786,36 @@ ull logger が固定されていた。
 - `cmake --build Native/build --config Release` 実行。
 - コンパイルは通過したが、リンク時に `HookAgentDx11.dll` ロックで失敗（`LNK1104`）。
 - `HookHost` 実行中の可能性があるため、停止後に再ビルドで確認が必要。
+
+**2026-02-21 13:15 (Asia/Taipei) — 調査実装: v2書込失敗可視化と描画完全停止フラグ追加**
+
+### Summary
+- 調査専用として、Hook v2 書き込み失敗理由の可視化と、Hook描画を丸ごと停止して混入有無を切り分けるフラグを追加した。
+
+### Context / Goal
+- 「認識はされたのに描画がない」「オーバーレイ混入でOCRが乱れる」を切り分けるため、送信失敗と描画起因を独立に観測したい。
+- 既存挙動を壊さず、環境変数で診断を有効化できることを優先した。
+
+### Changes
+- `Dx11HookClientService.TryWriteOverlayV2` に `out failureReason` を追加し、`disposed / pid_mismatch / sync_busy / writer_failed` を返すようにした。
+- `PipelineOrchestrator` に v2 書込ログを追加（`stage=hook_v2_write`）。
+  - 失敗時は常時ログ
+  - 成功時は `HT_HOOK_OVL_WRITE_DEBUG=1` のときのみログ
+- Native Hook に `HT_HOOK_OVL_DISABLE_ALL_DRAW=1` を追加し、v1/v2描画を完全停止（キャプチャと共有フレーム更新は継続）。
+
+### Files Touched
+- `Services/Hook/Dx11HookClientService.cs` — v2書込失敗理由を返すAPIへ拡張。
+- `Services/PipelineOrchestrator.cs` — v2書込結果ログ（attempt seq, phase, reason）を追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — 描画完全停止フラグ（診断用）を追加。
+
+### Behavioral Impact
+- 通常時（環境変数未設定）では機能はほぼ従来どおり。
+- `HT_HOOK_OVL_DISABLE_ALL_DRAW=1` 時のみ Hook overlay 描画を止め、自己混入有無の切り分けが可能になる。
+
+### Risk & Mitigation
+- Risk: v2書込ログが多くなる可能性。
+- Mitigation: 成功ログは `HT_HOOK_OVL_WRITE_DEBUG=1` 時のみ出力し、常時は失敗ログに限定。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+- `cmake --build Native/build --config Release` 成功。

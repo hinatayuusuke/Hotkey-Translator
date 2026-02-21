@@ -1399,10 +1399,14 @@ namespace ht::hook::dx11
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 1;
+                const bool disableAllDraw = ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
-                DrawOverlayLocked(g_rt, swap);
                 (void)RefreshOverlayV2Locked(g_rt);
-                DrawImGuiOverlayV2Locked(g_rt, swap);
+                if (!disableAllDraw)
+                {
+                    DrawOverlayLocked(g_rt, swap);
+                    DrawImGuiOverlayV2Locked(g_rt, swap);
+                }
                 PublishStatusLocked(g_rt);
             }
 
@@ -1448,10 +1452,14 @@ namespace ht::hook::dx11
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 2;
+                const bool disableAllDraw = ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
                 (void)CaptureAndShareFrameLocked(g_rt, swap);
-                DrawOverlayLocked(g_rt, swap);
                 (void)RefreshOverlayV2Locked(g_rt);
-                DrawImGuiOverlayV2Locked(g_rt, swap);
+                if (!disableAllDraw)
+                {
+                    DrawOverlayLocked(g_rt, swap);
+                    DrawImGuiOverlayV2Locked(g_rt, swap);
+                }
                 PublishStatusLocked(g_rt);
             }
 

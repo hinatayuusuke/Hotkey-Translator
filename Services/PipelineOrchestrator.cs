@@ -50,6 +50,8 @@ public sealed class PipelineOrchestrator
     private readonly SettingsService _settingsService;
     private readonly FeatureSettingsProvider _featureSettingsProvider = new();
     private readonly AppLogger _logger;
+    private readonly bool _overlayV2WriteDebugEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_WRITE_DEBUG"), "1", StringComparison.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
@@ -58,6 +60,7 @@ public sealed class PipelineOrchestrator
     private Rect? _lastOverlayClipScreen;
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
+    private ulong _overlayV2WriteAttemptSeq;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action? TranslationStarted;
@@ -694,13 +697,25 @@ public sealed class PipelineOrchestrator
 
         if (!settings.Dx11HookOverlayEnabled || overlayItems.Count == 0)
         {
-            _dx11HookClientService.TryWriteOverlayV2(
+            var attemptSeq = NextOverlayV2WriteAttempt();
+            var wrote = _dx11HookClientService.TryWriteOverlayV2(
                 pid,
                 canvasW,
                 canvasH,
                 ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
                 Array.Empty<byte>(),
-                0);
+                0,
+                out var failureReason);
+            LogOverlayV2WriteResult(
+                wrote,
+                attemptSeq,
+                "clear_disabled_or_empty",
+                pid,
+                canvasW,
+                canvasH,
+                blockCount: 0,
+                textBytes: 0,
+                failureReason);
             return;
         }
 
@@ -708,13 +723,25 @@ public sealed class PipelineOrchestrator
         var item = overlayItems[0];
         if (string.IsNullOrWhiteSpace(item.Text))
         {
-            _dx11HookClientService.TryWriteOverlayV2(
+            var attemptSeq = NextOverlayV2WriteAttempt();
+            var wrote = _dx11HookClientService.TryWriteOverlayV2(
                 pid,
                 canvasW,
                 canvasH,
                 ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
                 Array.Empty<byte>(),
-                0);
+                0,
+                out var failureReason);
+            LogOverlayV2WriteResult(
+                wrote,
+                attemptSeq,
+                "clear_blank_text",
+                pid,
+                canvasW,
+                canvasH,
+                blockCount: 0,
+                textBytes: 0,
+                failureReason);
             return;
         }
 
@@ -752,13 +779,26 @@ public sealed class PipelineOrchestrator
             ZOrder = 0
         };
 
-        _dx11HookClientService.TryWriteOverlayV2(
+        var publishAttempt = NextOverlayV2WriteAttempt();
+        var publishOk = _dx11HookClientService.TryWriteOverlayV2(
             pid,
             canvasW,
             canvasH,
             new[] { block },
             utf8,
-            textLen);
+            textLen,
+            out var publishFailure);
+        LogOverlayV2WriteResult(
+            publishOk,
+            publishAttempt,
+            "publish_text_block",
+            pid,
+            canvasW,
+            canvasH,
+            blockCount: 1,
+            textBytes: textLen,
+            publishFailure,
+            extra: $"fontPx={fontPx:0.0}");
     }
 
     private float ResolveHookOverlayFontPx(OverlayItem item, Rect frameBounds, uint canvasH)
@@ -772,6 +812,37 @@ public sealed class PipelineOrchestrator
 
         // WHY: Keep v2 readable even when UI thread metrics are temporarily unavailable.
         return fallbackFontPx;
+    }
+
+    private ulong NextOverlayV2WriteAttempt()
+    {
+        _overlayV2WriteAttemptSeq++;
+        return _overlayV2WriteAttemptSeq;
+    }
+
+    private void LogOverlayV2WriteResult(
+        bool success,
+        ulong attemptSeq,
+        string phase,
+        int pid,
+        uint canvasW,
+        uint canvasH,
+        int blockCount,
+        int textBytes,
+        string? failureReason,
+        string? extra = null)
+    {
+        if (success && !_overlayV2WriteDebugEnabled)
+        {
+            return;
+        }
+
+        var result = success ? "ok" : "failed";
+        var reason = success ? "none" : (failureReason ?? "unknown");
+        var suffix = string.IsNullOrWhiteSpace(extra) ? string.Empty : $" {extra}";
+        _logger.Info(
+            $"stage=hook_v2_write event={result} seq={attemptSeq} phase={phase} pid={pid} canvas={canvasW}x{canvasH} " +
+            $"blocks={blockCount} textBytes={textBytes} reason={reason}.{suffix}");
     }
 
     private static int TrimUtf8Length(byte[] bytes, int maxBytes)

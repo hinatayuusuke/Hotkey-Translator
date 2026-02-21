@@ -183,27 +183,38 @@ internal sealed class Dx11HookClientService : IDisposable
         ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2> blocks,
         byte[] textBlob,
         int textBytes,
+        out string? failureReason,
         uint flags = 0)
     {
+        failureReason = null;
         if (_disposed)
         {
+            failureReason = "disposed";
             return false;
         }
 
         if (pid <= 0 || pid != _attachedPid)
         {
+            failureReason = $"pid_mismatch(attached={_attachedPid}, requested={pid})";
             return false;
         }
 
         // WHY: v2 overlay is best-effort; don't block attach/detach or settings apply.
         if (!_sync.Wait(0))
         {
+            failureReason = "sync_busy";
             return false;
         }
 
         try
         {
-            return _overlayV2Writer.TryWrite(pid, canvasW, canvasH, blocks, textBlob, textBytes, flags);
+            var wrote = _overlayV2Writer.TryWrite(pid, canvasW, canvasH, blocks, textBlob, textBytes, flags);
+            if (!wrote)
+            {
+                failureReason = "writer_failed";
+            }
+
+            return wrote;
         }
         finally
         {
