@@ -83,6 +83,10 @@ class PaddleOcrVlEngine:
         pipeline_version: str = "v1.5",
         max_pixels: int | None = None,
         layout_threshold: float | None = None,
+        layout_nms: bool | None = None,
+        layout_unclip_ratio: float | None = None,
+        layout_merge_bboxes_mode: str | None = None,
+        layout_merge_bboxes_iou_threshold: float | None = None,
         max_new_tokens: int | None = None,
         merge_layout_blocks: bool | None = None,
         use_ocr_for_image_block: bool | None = None,
@@ -115,6 +119,10 @@ class PaddleOcrVlEngine:
             "max_new_tokens": max_new_tokens,
             "max_pixels": max_pixels,
             "layout_threshold": layout_threshold,
+            "layout_nms": _to_optional_bool(layout_nms),
+            "layout_unclip_ratio": layout_unclip_ratio,
+            "layout_merge_bboxes_mode": layout_merge_bboxes_mode,
+            "layout_merge_bboxes_iou_threshold": layout_merge_bboxes_iou_threshold,
         }
         self._predict_kwargs = {k: v for k, v in self._predict_kwargs.items() if v is not None}
         self._lock = Lock()

@@ -56,6 +56,10 @@ class EnginePool:
         pipeline_version: str,
         max_pixels: int | None,
         layout_threshold: float | None,
+        layout_nms: bool | None,
+        layout_unclip_ratio: float | None,
+        layout_merge_bboxes_mode: str | None,
+        layout_merge_bboxes_iou_threshold: float | None,
         max_new_tokens: int | None,
         merge_layout_blocks: bool | None,
         use_ocr_for_image_block: bool | None,
@@ -70,6 +74,10 @@ class EnginePool:
         self._pipeline_version = pipeline_version
         self._max_pixels = max_pixels
         self._layout_threshold = layout_threshold
+        self._layout_nms = layout_nms
+        self._layout_unclip_ratio = layout_unclip_ratio
+        self._layout_merge_bboxes_mode = layout_merge_bboxes_mode
+        self._layout_merge_bboxes_iou_threshold = layout_merge_bboxes_iou_threshold
         self._max_new_tokens = max_new_tokens
         self._merge_layout_blocks = merge_layout_blocks
         self._use_ocr_for_image_block = use_ocr_for_image_block
@@ -118,6 +126,10 @@ class EnginePool:
                 pipeline_version=self._pipeline_version,
                 max_pixels=self._max_pixels,
                 layout_threshold=self._layout_threshold,
+                layout_nms=self._layout_nms,
+                layout_unclip_ratio=self._layout_unclip_ratio,
+                layout_merge_bboxes_mode=self._layout_merge_bboxes_mode,
+                layout_merge_bboxes_iou_threshold=self._layout_merge_bboxes_iou_threshold,
                 max_new_tokens=self._max_new_tokens,
                 merge_layout_blocks=self._merge_layout_blocks,
                 use_ocr_for_image_block=self._use_ocr_for_image_block,
@@ -170,6 +182,10 @@ def main() -> int:
     )
     parser.add_argument("--max-pixels", type=int, default=None)
     parser.add_argument("--layout-threshold", type=float, default=None)
+    parser.add_argument("--layout-nms", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--layout-unclip-ratio", type=float, default=None)
+    parser.add_argument("--layout-merge-bboxes-mode", type=str, default=None)
+    parser.add_argument("--layout-merge-bboxes-iou-threshold", type=float, default=None)
     parser.add_argument("--max-new-tokens", type=int, default=None)
     parser.add_argument("--merge-layout-blocks", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--use-ocr-for-image-block", action=argparse.BooleanOptionalAction, default=None)
@@ -191,6 +207,10 @@ def main() -> int:
         pipeline_version=args.pipeline_version,
         max_pixels=args.max_pixels,
         layout_threshold=args.layout_threshold,
+        layout_nms=args.layout_nms,
+        layout_unclip_ratio=args.layout_unclip_ratio,
+        layout_merge_bboxes_mode=args.layout_merge_bboxes_mode,
+        layout_merge_bboxes_iou_threshold=args.layout_merge_bboxes_iou_threshold,
         max_new_tokens=args.max_new_tokens,
         merge_layout_blocks=args.merge_layout_blocks,
         use_ocr_for_image_block=args.use_ocr_for_image_block,

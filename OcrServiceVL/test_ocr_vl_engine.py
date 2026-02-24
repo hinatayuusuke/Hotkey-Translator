@@ -44,6 +44,30 @@ def parse_args() -> argparse.Namespace:
         help="Score threshold for layout detection.",
     )
     parser.add_argument(
+        "--layout-nms",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable or disable NMS in layout detection.",
+    )
+    parser.add_argument(
+        "--layout-unclip-ratio",
+        type=float,
+        default=None,
+        help="Unclip ratio used by layout detection boxes.",
+    )
+    parser.add_argument(
+        "--layout-merge-bboxes-mode",
+        type=str,
+        default=None,
+        help="Layout bbox merge mode (e.g. large, small, union).",
+    )
+    parser.add_argument(
+        "--layout-merge-bboxes-iou-threshold",
+        type=float,
+        default=None,
+        help="IoU threshold used when merging layout bboxes.",
+    )
+    parser.add_argument(
         "--max-new-tokens",
         type=int,
         default=None,
@@ -173,6 +197,10 @@ def main() -> int:
             pipeline_version=args.pipeline_version,
             max_pixels=args.max_pixels,
             layout_threshold=args.layout_threshold,
+            layout_nms=args.layout_nms,
+            layout_unclip_ratio=args.layout_unclip_ratio,
+            layout_merge_bboxes_mode=args.layout_merge_bboxes_mode,
+            layout_merge_bboxes_iou_threshold=args.layout_merge_bboxes_iou_threshold,
             max_new_tokens=args.max_new_tokens,
             merge_layout_blocks=args.merge_layout_blocks,
             use_ocr_for_image_block=args.use_ocr_for_image_block,

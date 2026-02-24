@@ -12035,3 +12035,36 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
+
+**2026-02-24 18:29 (Asia/Taipei) — PaddleOCR-VL レイアウト結合パラメーターをPython経路へ追加**
+
+### Summary
+- PaddleOCR-VL のレイアウト結合関連ネイティブパラメーターを、Python CLI/gRPC/Engine の全経路で受け渡し可能にした。
+
+### Context / Goal
+- `merge_layout_blocks` 以外にも、レイアウト結合挙動を調整するネイティブパラメーターを実運用で試せる状態にしたかった。
+- アプリ側ロジックではなく PaddleOCR-VL の `predict` パラメーターとして指定できるようにすることが目的。
+
+### Changes
+- `PaddleOcrVlEngine` の初期化引数と `predict_iter` 向け kwargs に以下を追加。
+- `layout_nms` / `layout_unclip_ratio` / `layout_merge_bboxes_mode` / `layout_merge_bboxes_iou_threshold`
+- `server.py` の EnginePool と CLI 引数へ同パラメーターを追加し、gRPCサーバー経由でも pass-through 可能化。
+- `main.py` と `test_ocr_vl_engine.py` の CLI に同パラメーターを追加。
+
+### Files Touched
+- `OcrServiceVL/ocr_vl_engine.py` — Engine引数と `predict_kwargs` にレイアウト結合関連パラメーターを追加。
+- `OcrServiceVL/server.py` — EnginePool保持項目、Engine生成時引数、CLI引数を追加。
+- `OcrServiceVL/main.py` — 単体実行CLIの引数と `predict_kwargs` へ追加。
+- `OcrServiceVL/test_ocr_vl_engine.py` — テストランナーCLIと Engine 生成引数へ追加。
+
+### Behavioral Impact
+- Python実行経路（単体CLI/テストCLI/gRPCサーバー）から、PaddleOCR-VL のブロック結合挙動をネイティブパラメーターで調整可能になった。
+- 既存指定がない場合は `None` 除外のままなので、従来どおり PaddleOCR-VL の内部デフォルトが使われる。
+
+### Risk & Mitigation
+- Risk: 無効値を渡した場合に PaddleOCR-VL 側で実行時エラーになる可能性。
+- Mitigation: 既定は未指定（`None`）のまま維持し、必要時のみ明示指定する運用を前提とした。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVL/ocr_vl_engine.py OcrServiceVL/server.py OcrServiceVL/main.py OcrServiceVL/test_ocr_vl_engine.py` 成功。
+- `python -m compileall OcrServiceVL` は `.venv` 配下の大量コンパイルでタイムアウト/環境依存警告が発生したため、対象ファイル限定で構文検証を実施。
