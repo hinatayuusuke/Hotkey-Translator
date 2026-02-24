@@ -818,9 +818,72 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        // Step 3 (v2): Render only one text block first for stability.
-        var item = overlayItems[0];
-        if (string.IsNullOrWhiteSpace(item.Text))
+        // Keep this conservative until we introduce a settings surface (font/alpha/max bytes).
+        const uint fgArgb = 0xFFFFFFFF;
+        const uint bgArgb = 0xAA0A0A0A;
+        const float paddingPx = 6.0f;
+        const float roundingPx = 6.0f;
+        const int maxBlocks = 64;
+        const int maxTextBytes = 64 * 1024;
+
+        var blocks = new List<Dx11HookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count, maxBlocks));
+        var textBlob = new List<byte>(Math.Min(maxTextBytes, 4096));
+        foreach (var item in overlayItems)
+        {
+            if (blocks.Count >= maxBlocks)
+            {
+                break;
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Text))
+            {
+                continue;
+            }
+
+            if (!TryBuildHookCanvasRect(item.Rect, frame.Bounds, (int)canvasW, (int)canvasH, out var x, out var y, out var w, out var h))
+            {
+                continue;
+            }
+
+            var remaining = maxTextBytes - textBlob.Count;
+            if (remaining <= 0)
+            {
+                break;
+            }
+
+            var utf8 = Encoding.UTF8.GetBytes(item.Text);
+            var textLen = TrimUtf8Length(utf8, Math.Min(utf8.Length, remaining));
+            if (textLen <= 0)
+            {
+                continue;
+            }
+
+            var textOffset = textBlob.Count;
+            for (var i = 0; i < textLen; i++)
+            {
+                textBlob.Add(utf8[i]);
+            }
+
+            var fontPx = ResolveHookOverlayFontPx(item, frame.Bounds, canvasH);
+            blocks.Add(new Dx11HookOverlayV2CommandWriter.TextBlockV2
+            {
+                X = x,
+                Y = y,
+                W = w,
+                H = h,
+                PaddingPx = paddingPx,
+                RoundingPx = roundingPx,
+                FontPx = fontPx,
+                FgArgb = fgArgb,
+                BgArgb = bgArgb,
+                Wrap = 1,
+                TextOffset = unchecked((uint)textOffset),
+                TextLen = unchecked((uint)textLen),
+                ZOrder = blocks.Count
+            });
+        }
+
+        if (blocks.Count == 0)
         {
             var attemptSeq = NextOverlayV2WriteAttempt();
             var wrote = _dx11HookClientService.TryWriteOverlayV2(
@@ -834,7 +897,7 @@ public sealed class PipelineOrchestrator
             LogOverlayV2WriteResult(
                 wrote,
                 attemptSeq,
-                "clear_blank_text",
+                "clear_no_valid_blocks",
                 pid,
                 canvasW,
                 canvasH,
@@ -844,60 +907,26 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        if (!TryBuildHookCanvasRect(item.Rect, frame.Bounds, (int)canvasW, (int)canvasH, out var x, out var y, out var w, out var h))
-        {
-            return;
-        }
-
-        // Keep this conservative until we introduce a settings surface (font/alpha/max bytes).
-        const uint fgArgb = 0xFFFFFFFF;
-        const uint bgArgb = 0xAA0A0A0A;
-        const float paddingPx = 6.0f;
-        const float roundingPx = 6.0f;
-        var fontPx = ResolveHookOverlayFontPx(item, frame.Bounds, canvasH);
-
-        // PERF: Allocate once per update; v2 is "latest only" and typically runs at <= OCR/translation rate.
-        var utf8 = Encoding.UTF8.GetBytes(item.Text);
-        var maxBytes = Math.Min(utf8.Length, 64 * 1024);
-        var textLen = TrimUtf8Length(utf8, maxBytes);
-
-        var block = new Dx11HookOverlayV2CommandWriter.TextBlockV2
-        {
-            X = x,
-            Y = y,
-            W = w,
-            H = h,
-            PaddingPx = paddingPx,
-            RoundingPx = roundingPx,
-            FontPx = fontPx,
-            FgArgb = fgArgb,
-            BgArgb = bgArgb,
-            Wrap = 1,
-            TextOffset = 0,
-            TextLen = unchecked((uint)textLen),
-            ZOrder = 0
-        };
-
         var publishAttempt = NextOverlayV2WriteAttempt();
+        var blobArray = textBlob.ToArray();
         var publishOk = _dx11HookClientService.TryWriteOverlayV2(
             pid,
             canvasW,
             canvasH,
-            new[] { block },
-            utf8,
-            textLen,
+            blocks.ToArray(),
+            blobArray,
+            blobArray.Length,
             out var publishFailure);
         LogOverlayV2WriteResult(
             publishOk,
             publishAttempt,
-            "publish_text_block",
+            "publish_text_blocks",
             pid,
             canvasW,
             canvasH,
-            blockCount: 1,
-            textBytes: textLen,
-            publishFailure,
-            extra: $"fontPx={fontPx:0.0}");
+            blockCount: blocks.Count,
+            textBytes: blobArray.Length,
+            publishFailure);
     }
 
     private float ResolveHookOverlayFontPx(OverlayItem item, Rect frameBounds, uint canvasH)

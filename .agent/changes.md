@@ -12005,3 +12005,33 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
+
+**2026-02-24 18:15 (Asia/Taipei) — Hook V2 複数テキストブロック送信の最小実装**
+
+### Summary
+- Hook V2 の送信を単一ブロック固定から複数ブロック送信へ変更し、複数枠描画を有効化した。
+
+### Context / Goal
+- これまで Hook V2 は overlayItems[0] のみ送信しており、複数 OCR ユニットがあっても 1 枠しか表示されなかった。
+- 最小変更で複数枠を描画できる状態にすることが目的。
+
+### Changes
+- TryUpdateDx11HookOverlayV2 を更新し、overlayItems を走査して複数 TextBlockV2 を構築するよう変更。
+- TextOffset / TextLen を使って 1 つの 	extBlob に連結し、複数ブロックを一括 publish。
+- 最小ガードとして maxBlocks=64 と maxTextBytes=64KB を設定し、上限到達時は残りを切り捨て。
+- 有効ブロックが 0 件のときは clear 経路へ送るよう変更（clear_no_valid_blocks）。
+- publish ログ phase を publish_text_blocks に変更し、実ブロック数と text bytes を記録。
+
+### Files Touched
+- Services/PipelineOrchestrator.cs — Hook V2 送信ロジックを単一ブロックから複数ブロックへ変更。
+
+### Behavioral Impact
+- Hook V2 で複数オーバーレイ枠・複数テキストを描画できるようになる。
+- 送信上限を超える場合は上限内のみ描画される。
+
+### Risk & Mitigation
+- Risk: ブロック数増加により表示重なりや可読性低下が起きる可能性。
+- Mitigation: 今回は最小実装に留め、上限ガードを入れて異常肥大を防止。必要なら次段で重なり回避を追加する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
