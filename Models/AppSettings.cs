@@ -136,7 +136,7 @@ public sealed class AppSettings
     public bool? PaddleVlMergeLayoutBlocks { get; set; }
     public bool? PaddleVlUseOcrForImageBlock { get; set; }
     public bool? PaddleVlUseLayoutDetection { get; set; }
-    public bool PaddleVlEnableHpi { get; set; } = true;
+    public bool PaddleVlEnableHpi { get; set; } = false;
     public bool? PaddleVlUseTensorrt { get; set; }
     public string? PaddleVlPrecision { get; set; } = "fp16";
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
