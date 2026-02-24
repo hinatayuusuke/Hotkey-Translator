@@ -11886,3 +11886,66 @@ ull logger が固定されていた。
 ### Tests / Verification
 - cmake --build Native/build --config Release 成功。
 - dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
+
+**2026-02-24 13:53 (Asia/Taipei) — Hook時WPF Overlay自動抑止の実装案をDocへ追加**
+
+### Summary
+- Hook稼働時に通常WPFオーバーレイを自動抑止する実装案を Doc 配下へ新規作成した。
+
+### Context / Goal
+- Hook V2 と WPF の二重描画を避けるため、Hook実行状態に応じた表示ルーティング案が必要だった。
+- 実装前に、ゴール/非ゴール/手順/リスクを明文化して合意しやすくする。
+
+### Changes
+- Hook稼働時のみWPF描画を抑止し、フォールバック時に復帰する方針の実装案を作成。
+- 判定条件、影響範囲、段階実装ステップ、DoD を含む計画書を追加。
+
+### Files Touched
+- Doc/GraphicsHook_WpfOverlay_AutoSwitch_Plan.md — 実装案ドキュメントを新規追加。
+
+### Behavioral Impact
+- コード変更は未実施。挙動変更はなし。
+
+### Risk & Mitigation
+- Risk: 実装時に抑止条件が広すぎると表示消失が発生しうる。
+- Mitigation: 計画書で provider=GraphicsHook 限定と失敗時WPF許可フォールバックを明記。
+
+### Tests / Verification
+- 未実施（今回はドキュメント追加のみ）。
+
+**2026-02-24 15:55 (Asia/Taipei) — RuntimeConfig止血 + Hook時WPF Overlay自動抑止を実装**
+
+### Summary
+- 指定順序どおり、RuntimeConfig publish の止血（成否可視化・F9失敗時再同期）を先行し、その後 Hook 稼働時の WPF overlay 自動抑止を実装した。
+
+### Context / Goal
+- F9 で Hook 側 runtime config 反映に失敗すると、overlay 表示状態が不整合になる課題があった。
+- Hook V2 稼働時の二重描画（WPF + Hook）を減らし、表示経路を Hook 優先へ寄せたかった。
+
+### Changes
+- TryPublishRuntimeConfig を ool 戻り値 + 失敗理由返却に変更し、disposed / invalid_pid / pid_mismatch / sync_busy / writer_failed を判別可能にした。
+- F9 トグル時に runtime config publish の成否を INFO ログへ出力し、失敗時は ApplySettingsAsync で再同期する自己回復経路を追加した。
+- HookAgent の RefreshConfigLocked に HT_HOOK_CFG_DEBUG=1 時のみ出る設定受理ログ（qpc/fps/overlay/pid）を追加した。
+- PipelineOrchestrator で GraphicsHook provider かつ Hook overlay 有効時に WPF overlay 更新を抑止し、stop/cancel/error 時も WPF 側を再表示せず clear 維持する経路を追加した。
+- F11 テキストモード切替時も直近 provider が Hook 優先条件なら WPF 再描画を抑止するようにした。
+
+### Files Touched
+- Services/Hook/Dx11HookClientService.cs — runtime config publish を結果付きAPIへ変更。
+- MainWindow.xaml.cs — F9 publish 成否ログと失敗時 ApplySettingsAsync フォールバックを追加。
+- Native/HookAgentDx11/Dx11PresentHook.cpp — config 更新受理デバッグログ（環境変数制御）を追加。
+- Services/PipelineOrchestrator.cs — Hook優先時の WPF overlay 自動抑止と stop/cancel/error 連動処理を追加。
+
+### Behavioral Impact
+- F9 実行時に Hook runtime config 反映の成功/失敗がログで確認できる。
+- publish 失敗時は自動再同期が走るため、overlay 状態不整合の自己回復が期待できる。
+- GraphicsHook 実行フレームでは WPF overlay がクリアされ、Hook overlay を優先表示する。
+
+### Risk & Mitigation
+- Risk: F9 連打時に publish 失敗が続くと ApplySettingsAsync の再実行が増える。
+- Mitigation: publish 成功時は再同期を実行せず、失敗時のみフォールバックする。
+- Risk: Hook優先ルート時に WPF toast/showLast が出ず、デバッグ時の見え方が変わる。
+- Mitigation: stage=overlay_route ログと stage=dx11_hook event=runtime_config_publish ログで経路と成否を観測可能にした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
+- cmake --build Native/build --config Release 成功。

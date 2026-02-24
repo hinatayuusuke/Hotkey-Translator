@@ -197,6 +197,25 @@ namespace ht::hook::dx11
             return static_cast<std::uint32_t>(val);
         }
 
+        void DebugLogConfigApplied(const ht::hook::ipc::HookConfigHeader& cfg)
+        {
+            if (ReadEnvU32(L"HT_HOOK_CFG_DEBUG", 0) == 0)
+            {
+                return;
+            }
+
+            char msg[256]{};
+            std::snprintf(
+                msg,
+                sizeof(msg),
+                "HT HookAgentDx11: config applied qpc=%llu fps=%u overlay=%u pid=%u\n",
+                static_cast<unsigned long long>(cfg.updatedQpc),
+                static_cast<unsigned int>(cfg.captureFpsLimit),
+                static_cast<unsigned int>(cfg.overlayEnabled),
+                static_cast<unsigned int>(cfg.targetPid));
+            OutputDebugStringA(msg);
+        }
+
         std::uint32_t ForceAlpha(std::uint32_t argb, std::uint32_t a)
         {
             return (argb & 0x00FFFFFFu) | ((a & 0xFFu) << 24);
@@ -392,6 +411,7 @@ namespace ht::hook::dx11
             rt.configuredFpsLimit = std::max(1u, cfg.captureFpsLimit);
             rt.overlayEnabled = cfg.overlayEnabled != 0;
             rt.captureIntervalQpc = (rt.qpcFreq != 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
+            DebugLogConfigApplied(cfg);
         }
 
         bool EnsureDeviceLocked(Dx11Runtime& rt, IDXGISwapChain* swap);

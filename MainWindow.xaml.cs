@@ -352,7 +352,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
     }
 
-    private void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
+    private async void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
     {
         _hotkeyCommandController.HandleToggleOverlayHotkey();
         // WHY: WPF overlay and hook overlay should stay in sync by default to reduce confusion.
@@ -361,7 +361,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
             var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
-            _dx11HookClientService.TryPublishRuntimeConfig(settings.FixedCaptureWindowProcessId, settings.Dx11HookCaptureFpsLimit, effectiveHookOverlayEnabled);
+            var published = _dx11HookClientService.TryPublishRuntimeConfig(
+                settings.FixedCaptureWindowProcessId,
+                settings.Dx11HookCaptureFpsLimit,
+                effectiveHookOverlayEnabled,
+                out var failureReason);
+            _logger?.Info(
+                $"stage=dx11_hook event=runtime_config_publish pid={settings.FixedCaptureWindowProcessId} " +
+                $"fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
+                $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
+            if (!published)
+            {
+                // WHY: F9 toggle should self-heal even when runtime publish misses; re-apply reattaches and rewrites config.
+                await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+            }
         }
     }
 

@@ -222,19 +222,48 @@ internal sealed class Dx11HookClientService : IDisposable
         }
     }
 
-    public void TryPublishRuntimeConfig(int pid, int captureFpsLimit, bool overlayEnabled)
+    public bool TryPublishRuntimeConfig(int pid, int captureFpsLimit, bool overlayEnabled, out string? failureReason)
     {
+        failureReason = null;
         if (_disposed)
         {
-            return;
+            failureReason = "disposed";
+            return false;
         }
 
-        if (pid <= 0 || pid != _attachedPid)
+        if (pid <= 0)
         {
-            return;
+            failureReason = $"invalid_pid({pid})";
+            return false;
         }
 
-        _configWriter.TryWrite(pid, captureFpsLimit, overlayEnabled);
+        if (pid != _attachedPid)
+        {
+            failureReason = $"pid_mismatch(attached={_attachedPid}, requested={pid})";
+            return false;
+        }
+
+        // WHY: Runtime config publish is best-effort and should not contend with attach/detach/settings apply.
+        if (!_sync.Wait(0))
+        {
+            failureReason = "sync_busy";
+            return false;
+        }
+
+        try
+        {
+            var wrote = _configWriter.TryWrite(pid, captureFpsLimit, overlayEnabled);
+            if (!wrote)
+            {
+                failureReason = "writer_failed";
+            }
+
+            return wrote;
+        }
+        finally
+        {
+            _sync.Release();
+        }
     }
 
     private bool CanAttach(AppSettings settings, out string reason)

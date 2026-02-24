@@ -61,6 +61,8 @@ public sealed class PipelineOrchestrator
     private ulong? _lastHash;
     private Bitmap? _lastRoiSnapshot;
     private ulong _overlayV2WriteAttemptSeq;
+    private CaptureProviderKind? _lastCaptureProviderKind;
+    private bool? _lastWpfOverlaySuppressed;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action? TranslationStarted;
@@ -120,6 +122,7 @@ public sealed class PipelineOrchestrator
         waitStopwatch.Stop();
         Bitmap? roiSnapshot = null;
         PipelinePerfProbe? perfProbe = null;
+        var suppressWpfOverlay = false;
         try
         {
             var settings = _settingsService.Settings;
@@ -151,6 +154,9 @@ public sealed class PipelineOrchestrator
             using var frame = _captureManager.Capture(settings);
             context.Frame = frame;
             perfProbe.RecordCapture(captureStopwatch);
+            _lastCaptureProviderKind = frame.ProviderKind;
+            suppressWpfOverlay = ShouldSuppressWpfOverlay(settings, frame.ProviderKind);
+            LogOverlayRouteIfChanged(suppressWpfOverlay, frame.ProviderKind);
 
             if (frame.IsBlack)
             {
@@ -161,7 +167,8 @@ public sealed class PipelineOrchestrator
                             PipelineStopReason.BlackFrame,
                             PipelineOverlayAction.ShowLast,
                             "Black frame detected."),
-                        frame.Bounds))
+                        frame.Bounds,
+                        suppressWpfOverlay: suppressWpfOverlay))
                 {
                     return;
                 }
@@ -179,7 +186,8 @@ public sealed class PipelineOrchestrator
                             PipelineStopReason.RoiOutOfBounds,
                             PipelineOverlayAction.ShowLast,
                             "ROI is outside capture bounds."),
-                        frame.Bounds))
+                        frame.Bounds,
+                        suppressWpfOverlay: suppressWpfOverlay))
                 {
                     return;
                 }
@@ -209,10 +217,11 @@ public sealed class PipelineOrchestrator
                     if (ApplyStopResult(
                             context,
                             PipelineStageResult.Stop(
-                                PipelineStopReason.UnchangedHash,
-                                PipelineOverlayAction.ShowLast,
-                                "pHash unchanged."),
-                            frame.Bounds))
+                            PipelineStopReason.UnchangedHash,
+                            PipelineOverlayAction.ShowLast,
+                            "pHash unchanged."),
+                            frame.Bounds,
+                            suppressWpfOverlay: suppressWpfOverlay))
                     {
                         return;
                     }
@@ -259,11 +268,12 @@ public sealed class PipelineOrchestrator
                     if (ApplyStopResult(
                             context,
                             PipelineStageResult.Stop(
-                                PipelineStopReason.NoTextDetected,
-                                PipelineOverlayAction.Clear,
-                                "OCR returned no lines after confidence filtering."),
+                            PipelineStopReason.NoTextDetected,
+                            PipelineOverlayAction.Clear,
+                            "OCR returned no lines after confidence filtering."),
                             frame.Bounds,
-                            showNoTextToast: true))
+                            showNoTextToast: true,
+                            suppressWpfOverlay: suppressWpfOverlay))
                     {
                         return;
                     }
@@ -279,11 +289,12 @@ public sealed class PipelineOrchestrator
                     if (ApplyStopResult(
                             context,
                             PipelineStageResult.Stop(
-                                PipelineStopReason.NoTextDetected,
-                                PipelineOverlayAction.Clear,
-                                "OCR returned no reading units."),
+                            PipelineStopReason.NoTextDetected,
+                            PipelineOverlayAction.Clear,
+                            "OCR returned no reading units."),
                             frame.Bounds,
-                            showNoTextToast: true))
+                            showNoTextToast: true,
+                            suppressWpfOverlay: suppressWpfOverlay))
                     {
                         return;
                     }
@@ -317,7 +328,7 @@ public sealed class PipelineOrchestrator
                 context.OverlayItems = overlayItems;
                 CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
                 var overlayStopwatch = perfProbe.BeginStep();
-                _overlayStage.Update(overlayItems, overlayClipScreen);
+                UpdateWpfOverlayRouting(overlayItems, overlayClipScreen, suppressWpfOverlay);
                 TryUpdateDx11HookOverlay(frame, roiScreen, overlayItems, settings);
                 TryUpdateDx11HookOverlayV2(frame, overlayItems, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
@@ -334,12 +345,26 @@ public sealed class PipelineOrchestrator
         catch (OperationCanceledException)
         {
             _logger.Info("Pipeline canceled.");
-            _overlayPresenter.ShowLast();
+            if (suppressWpfOverlay)
+            {
+                _overlayPresenter.ClearOverlay();
+            }
+            else
+            {
+                _overlayPresenter.ShowLast();
+            }
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Pipeline failed.");
-            _overlayPresenter.ShowLast();
+            if (suppressWpfOverlay)
+            {
+                _overlayPresenter.ClearOverlay();
+            }
+            else
+            {
+                _overlayPresenter.ShowLast();
+            }
         }
         finally
         {
@@ -388,7 +413,8 @@ public sealed class PipelineOrchestrator
                 _lastOverlayRoiScreen,
                 _settingsService.Settings,
                 _overlayTextMode);
-            _overlayStage.Update(overlayItems, _lastOverlayClipScreen);
+            var suppressWpfOverlay = ShouldSuppressWpfOverlayForLastProvider(_settingsService.Settings);
+            UpdateWpfOverlayRouting(overlayItems, _lastOverlayClipScreen, suppressWpfOverlay);
             return true;
         }
         finally
@@ -483,7 +509,8 @@ public sealed class PipelineOrchestrator
         PipelineExecutionContext context,
         PipelineStageResult stageResult,
         Rect? frameBounds = null,
-        bool showNoTextToast = false)
+        bool showNoTextToast = false,
+        bool suppressWpfOverlay = false)
     {
         context.FinalStageResult = stageResult;
         if (stageResult.Continue)
@@ -493,23 +520,35 @@ public sealed class PipelineOrchestrator
 
         _logger.Info(
             $"Pipeline stop: reason={stageResult.StopReason}, overlayAction={stageResult.OverlayAction}, message={stageResult.Message ?? "-"}.");
-        switch (stageResult.OverlayAction)
+        if (suppressWpfOverlay)
         {
-            case PipelineOverlayAction.ShowLast:
-                _overlayPresenter.ShowLast();
-                break;
-            case PipelineOverlayAction.Clear:
-                _overlayPresenter.ClearOverlay();
-                break;
-            case PipelineOverlayAction.Update:
-            case PipelineOverlayAction.None:
-            default:
-                break;
+            // WHY: When hook overlay is authoritative, avoid reviving stale WPF text via ShowLast on stop paths.
+            _overlayPresenter.ClearOverlay();
+        }
+        else
+        {
+            switch (stageResult.OverlayAction)
+            {
+                case PipelineOverlayAction.ShowLast:
+                    _overlayPresenter.ShowLast();
+                    break;
+                case PipelineOverlayAction.Clear:
+                    _overlayPresenter.ClearOverlay();
+                    break;
+                case PipelineOverlayAction.Update:
+                case PipelineOverlayAction.None:
+                default:
+                    break;
+            }
         }
 
         if (showNoTextToast && stageResult.StopReason == PipelineStopReason.NoTextDetected && frameBounds.HasValue)
         {
-            if (!context.Options.SuppressTransientUiFeedback)
+            if (suppressWpfOverlay)
+            {
+                _logger.Info("No text detected (toast suppressed: hook-only overlay route).");
+            }
+            else if (!context.Options.SuppressTransientUiFeedback)
             {
                 _overlayPresenter.ShowToast("No text detected", frameBounds.Value);
             }
@@ -520,6 +559,57 @@ public sealed class PipelineOrchestrator
         }
 
         return true;
+    }
+
+    private bool ShouldSuppressWpfOverlay(AppSettings settings, CaptureProviderKind providerKind)
+    {
+        if (_dx11HookClientService == null)
+        {
+            return false;
+        }
+
+        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        {
+            return false;
+        }
+
+        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
+        {
+            return false;
+        }
+
+        return providerKind == CaptureProviderKind.GraphicsHook;
+    }
+
+    private bool ShouldSuppressWpfOverlayForLastProvider(AppSettings settings)
+    {
+        return _lastCaptureProviderKind is { } providerKind && ShouldSuppressWpfOverlay(settings, providerKind);
+    }
+
+    private void UpdateWpfOverlayRouting(
+        IReadOnlyList<OverlayItem> overlayItems,
+        Rect? overlayClipScreen,
+        bool suppressWpfOverlay)
+    {
+        if (suppressWpfOverlay)
+        {
+            _overlayPresenter.ClearOverlay();
+            return;
+        }
+
+        _overlayStage.Update(overlayItems, overlayClipScreen);
+    }
+
+    private void LogOverlayRouteIfChanged(bool suppressWpfOverlay, CaptureProviderKind providerKind)
+    {
+        if (_lastWpfOverlaySuppressed.HasValue && _lastWpfOverlaySuppressed.Value == suppressWpfOverlay)
+        {
+            return;
+        }
+
+        _lastWpfOverlaySuppressed = suppressWpfOverlay;
+        var mode = suppressWpfOverlay ? "hook_only" : "wpf_allowed";
+        _logger.Info($"stage=overlay_route event=mode_changed mode={mode} provider={providerKind}.");
     }
 
     private void CommitOverlayState(
