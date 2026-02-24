@@ -11977,3 +11977,31 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - cmake --build Native/build --config Release 成功。
+
+**2026-02-24 18:00 (Asia/Taipei) — Run Once(F8/F10)時にHook overlay表示を再同期**
+
+### Summary
+- F9でHook overlayを隠した後でも、F8/F10のRun Once開始時にHook runtime configを再publishして表示を復帰させるようにした。
+
+### Context / Goal
+- 通常オーバーレイはF9で一時非表示後、F8/F10実行で再表示される挙動だった。
+- Hookパイプラインでも同じ期待挙動にそろえる必要があった。
+
+### Changes
+- EnableOverlay() 内で _overlayEnabled=true 後、Hook有効時に TryPublishRuntimeConfig(...) を実行するよう追加。
+- publish結果を stage=dx11_hook event=runtime_config_publish source=enable_overlay ログで可視化。
+- publish失敗時は ApplySettingsAsync(settings) を fire-and-forget で実行し、再同期フォールバックを追加。
+
+### Files Touched
+- MainWindow.xaml.cs — EnableOverlay() に Hook runtime config 再publishと失敗時フォールバックを追加。
+
+### Behavioral Impact
+- F9で非表示にしたHook overlayは、次のF8/F10実行時に再表示される。
+- runtime config publishの成否がログで追跡できる。
+
+### Risk & Mitigation
+- Risk: Run開始時に publish失敗すると再同期処理が追加で走る。
+- Mitigation: publish成功時は追加処理を行わず、失敗時のみフォールバックする。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。

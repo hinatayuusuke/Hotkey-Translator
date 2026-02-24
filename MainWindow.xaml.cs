@@ -388,6 +388,26 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayEnabled = true;
         _overlayPresenter.SetEnabled(true, showLast: false);
         AppendLog("Overlay shown.");
+
+        var settings = _settingsService.Settings;
+        if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        {
+            var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
+            var published = _dx11HookClientService.TryPublishRuntimeConfig(
+                settings.FixedCaptureWindowProcessId,
+                settings.Dx11HookCaptureFpsLimit,
+                effectiveHookOverlayEnabled,
+                out var failureReason);
+            _logger?.Info(
+                $"stage=dx11_hook event=runtime_config_publish source=enable_overlay pid={settings.FixedCaptureWindowProcessId} " +
+                $"fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
+                $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
+            if (!published)
+            {
+                // WHY: F8/F10 run should restore hook overlay visibility after F9 hide, even when best-effort publish misses.
+                _ = _dx11HookClientService.ApplySettingsAsync(settings);
+            }
+        }
     }
 
     private async Task RunOnceAsync()
