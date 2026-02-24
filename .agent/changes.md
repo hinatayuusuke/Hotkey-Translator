@@ -11949,3 +11949,31 @@ ull logger が固定されていた。
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。
 - cmake --build Native/build --config Release 成功。
+
+**2026-02-24 17:36 (Asia/Taipei) — Hook V2テキスト描画の白枠低減（DrawList既定化）**
+
+### Summary
+- Hook V2 のテキスト描画で白枠アーティファクトが出にくいよう、DrawList 経路を既定化し、ウィンドウ経路にも border 無効化を追加した。
+
+### Context / Goal
+- 現状、半透明背景の上にテキスト描画した際に、タイトル依存で白い枠線が見えるケースがあった。
+- まずは小差分で白枠ノイズを減らし、必要時は環境変数で旧挙動へ戻せる状態を維持する。
+
+### Changes
+- HT_HOOK_OVL_TEXT_DRAWLIST の既定値を   から 1 に変更し、DrawList テキスト描画をデフォルト化。
+- 互換のため HT_HOOK_OVL_TEXT_DRAWLIST=0 で legacy のウィンドウ描画経路へ戻せるようにした。
+- legacy ウィンドウ経路に ImGuiWindowFlags_NoBackground を追加し、WindowBorderSize=0 + ImGuiCol_Border=transparent を適用して白枠が出にくいようにした。
+
+### Files Touched
+- Native/HookAgentDx11/Dx11PresentHook.cpp — DrawList既定化と legacy ウィンドウ経路の border/background 無効化を追加。
+
+### Behavioral Impact
+- デフォルトでは DrawList 経路が使われ、テキスト周囲の白枠アーティファクト発生率が低下する。
+- 環境変数 HT_HOOK_OVL_TEXT_DRAWLIST=0 を設定すると、従来経路の確認・切り戻しが可能。
+
+### Risk & Mitigation
+- Risk: タイトルによっては DrawList 経路で別の描画相性問題が出る可能性。
+- Mitigation: 環境変数で即時に legacy 経路へ戻せるようにし、フォールバックを保持した。
+
+### Tests / Verification
+- cmake --build Native/build --config Release 成功。

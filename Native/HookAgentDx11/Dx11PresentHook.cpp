@@ -782,9 +782,9 @@ namespace ht::hook::dx11
             const bool forceOpaqueBg = ReadEnvU32(L"HT_HOOK_OVL_FORCE_OPAQUE_BG", 0) != 0;
             const bool skipText = ReadEnvU32(L"HT_HOOK_OVL_SKIP_TEXT", 0) != 0;
             const bool forceAsciiText = ReadEnvU32(L"HT_HOOK_OVL_FORCE_ASCII_TEXT", 0) != 0;
-            // WHY: Per-window text makes wrap/clip/NoInputs straightforward. DrawList path is a compatibility
-            // fallback for titles where the window path misbehaves.
-            const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 0) != 0;
+            // WHY: Prefer DrawList by default to avoid per-window border artifacts observed in some titles.
+            // Set HT_HOOK_OVL_TEXT_DRAWLIST=0 to force the legacy window-text path for troubleshooting.
+            const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 1) != 0;
             const bool ignoreFontPx = ReadEnvU32(L"HT_HOOK_OVL_IGNORE_FONT_PX", 0) != 0;
             if (testMode)
             {
@@ -894,6 +894,7 @@ namespace ht::hook::dx11
                     // WHY: Overlay is display-only. Disable inputs and avoid saving any ImGui ini state.
                     const ImGuiWindowFlags flags =
                         ImGuiWindowFlags_NoDecoration |
+                        ImGuiWindowFlags_NoBackground |
                         ImGuiWindowFlags_NoSavedSettings |
                         ImGuiWindowFlags_NoMove |
                         ImGuiWindowFlags_NoResize |
@@ -903,6 +904,9 @@ namespace ht::hook::dx11
 
                     char name[64]{};
                     std::snprintf(name, sizeof(name), "##ht_ovl_v2_%zu", i);
+                    // WHY: Even in fallback path, force border off to avoid title-dependent white outlines.
+                    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+                    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(0.0f, 0.0f, 0.0f, 0.0f));
                     if (ImGui::Begin(name, nullptr, flags))
                     {
                         // WHY: Prefer selecting a real font size over SetWindowFontScale to avoid visual flicker.
@@ -930,6 +934,8 @@ namespace ht::hook::dx11
                         }
                     }
                     ImGui::End();
+                    ImGui::PopStyleColor();
+                    ImGui::PopStyleVar();
                 }
             }
             else

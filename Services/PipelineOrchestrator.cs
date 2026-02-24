@@ -852,8 +852,8 @@ public sealed class PipelineOrchestrator
         // Keep this conservative until we introduce a settings surface (font/alpha/max bytes).
         const uint fgArgb = 0xFFFFFFFF;
         const uint bgArgb = 0xAA0A0A0A;
-        const float paddingPx = 14.0f;
-        const float roundingPx = 12.0f;
+        const float paddingPx = 6.0f;
+        const float roundingPx = 6.0f;
         var fontPx = ResolveHookOverlayFontPx(item, frame.Bounds, canvasH);
 
         // PERF: Allocate once per update; v2 is "latest only" and typically runs at <= OCR/translation rate.
