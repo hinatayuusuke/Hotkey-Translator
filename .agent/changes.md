@@ -11856,3 +11856,33 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+
+**2026-02-24 13:41 (Asia/Taipei) — HOOK V1描画の無効化（互換受信は維持）**
+
+### Summary
+- HookAgent 側で V1 オーバーレイ描画を停止し、V2 描画のみ有効化した。
+
+### Context / Goal
+- V1 は枠描画のみで、実運用上必要な半透明オーバーレイとテキスト描画は V2 が担っている。
+- 段階的廃止の第一段として、互換性を保ちながら V1 の描画コストとノイズを削減する。
+
+### Changes
+- DrawOverlayLocked を no-op 化し、V1 コマンドの描画処理を削除。
+- V1 コマンド読み取り（RefreshOverlayCommandsLocked）は維持し、status/debug 用のコマンド数更新は継続。
+- 旧 V1 の矩形描画専用コード（ClampRect と ClearView 描画ループ）を削除。
+
+### Files Touched
+- Native/HookAgentDx11/Dx11PresentHook.cpp — V1 描画ロジックを停止し、V1 は互換受信のみ行うよう変更。
+
+### Behavioral Impact
+- Hook V1 の枠表示は出なくなる。
+- Hook V2 の半透明背景＋テキスト描画は従来どおり動作する。
+- V1 IPC 経路は維持されるため、旧送信が存在してもエラーにはならない。
+
+### Risk & Mitigation
+- Risk: V1 枠描画に依存したデバッグ手順が使えなくなる。
+- Mitigation: V1 コマンド受信自体は維持しているため、次段で必要なら送信側ログで残存利用を可視化できる。
+
+### Tests / Verification
+- cmake --build Native/build --config Release 成功。
+- dotnet build Hotkey-Translator.sln -c Release 成功（0 warning / 0 error）。

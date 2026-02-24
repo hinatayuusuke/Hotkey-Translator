@@ -1058,84 +1058,17 @@ namespace ht::hook::dx11
             }
         }
 
-        D3D11_RECT ClampRect(int left, int top, int right, int bottom, int maxW, int maxH)
-        {
-            D3D11_RECT r{};
-            r.left = std::max(0, std::min(left, maxW));
-            r.top = std::max(0, std::min(top, maxH));
-            r.right = std::max(0, std::min(right, maxW));
-            r.bottom = std::max(0, std::min(bottom, maxH));
-            return r;
-        }
-
         void DrawOverlayLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
         {
+            (void)swap;
             if (!rt.overlayEnabled)
             {
                 return;
             }
 
-            if (!EnsureDeviceLocked(rt, swap) || !EnsureContext1Locked(rt))
-            {
-                return;
-            }
-
-            // NOTE: Overlay commands are "latest only"; we cache by updatedQpc to avoid redundant memcpy.
+            // WHY: V1 rectangle drawing is deprecated. We still refresh shared commands to keep status/debug
+            // fields accurate while maintaining v1 IPC compatibility during the phased removal.
             (void)RefreshOverlayCommandsLocked(rt);
-            if (rt.overlayCommands.empty())
-            {
-                return;
-            }
-
-            if (!EnsureBackBufferRtvLocked(rt, swap))
-            {
-                return;
-            }
-
-            const int maxW = static_cast<int>(rt.backBufferWidth != 0 ? rt.backBufferWidth : rt.stagingWidth);
-            const int maxH = static_cast<int>(rt.backBufferHeight != 0 ? rt.backBufferHeight : rt.stagingHeight);
-            if (maxW <= 0 || maxH <= 0)
-            {
-                return;
-            }
-
-            for (const auto& cmd : rt.overlayCommands)
-            {
-                const int x = static_cast<int>(cmd.x);
-                const int y = static_cast<int>(cmd.y);
-                const int w = static_cast<int>(cmd.w);
-                const int h = static_cast<int>(cmd.h);
-                if (w <= 1 || h <= 1)
-                {
-                    continue;
-                }
-
-                const int t = std::max(1, std::min(static_cast<int>(cmd.thickness), 24));
-                const int left = x;
-                const int top = y;
-                const int right = x + w;
-                const int bottom = y + h;
-                if (right <= 0 || bottom <= 0 || left >= maxW || top >= maxH)
-                {
-                    continue;
-                }
-
-                const std::uint32_t argb = cmd.argb;
-                const float r = static_cast<float>((argb >> 16) & 0xFF) / 255.0f;
-                const float g = static_cast<float>((argb >> 8) & 0xFF) / 255.0f;
-                const float b = static_cast<float>((argb >> 0) & 0xFF) / 255.0f;
-                // NOTE: ClearView does not alpha-blend; treat as opaque debug overlay in v1.
-                const float color[4] = {r, g, b, 1.0f};
-
-                D3D11_RECT rects[4] = {
-                    ClampRect(left, top, right, top + t, maxW, maxH),
-                    ClampRect(left, bottom - t, right, bottom, maxW, maxH),
-                    ClampRect(left, top, left + t, bottom, maxW, maxH),
-                    ClampRect(right - t, top, right, bottom, maxW, maxH),
-                };
-
-                rt.context1->ClearView(rt.backBufferRtv, color, rects, static_cast<UINT>(std::size(rects)));
-            }
         }
 
         bool EnsureStagingLocked(Dx11Runtime& rt, ID3D11Texture2D* backBuffer)
