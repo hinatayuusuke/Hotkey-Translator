@@ -3,7 +3,6 @@ add_library(HookAgentDx11 SHARED
     Dx11PresentHook.cpp
     ../HookCommon/SharedFrameWriter.cpp
     ../HookCommon/SharedHookConfig.cpp
-    ../HookCommon/SharedOverlayCommands.cpp
     ../HookCommon/SharedOverlayV2.cpp
     ../HookCommon/SharedHookStatus.cpp
     ../ThirdParty/imgui/imgui.cpp

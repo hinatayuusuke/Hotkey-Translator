@@ -8,11 +8,8 @@
 #include <unordered_map>
 #include <vector>
 
-#include <wincrypt.h>
-
 #include "../HookCommon/HookIpcProtocol.h"
 #include "../HookCommon/SharedHookConfig.h"
-#include "../HookCommon/SharedOverlayCommands.h"
 
 namespace
 {
@@ -34,7 +31,6 @@ namespace
         std::wstring dllPath;
         ht::hook::ipc::GraphicsApi api = ht::hook::ipc::GraphicsApi::Dx11;
         ht::hook::ipc::SharedHookConfigWriter configWriter;
-        ht::hook::ipc::SharedOverlayCommandsWriter overlayWriter;
     };
 
     std::unordered_map<DWORD, ProcessHookState> g_states;
@@ -174,168 +170,6 @@ namespace
             return true;
         }
         return false;
-    }
-
-    bool ExtractString(const std::string& json, const char* key, std::string& out)
-    {
-        const std::string needle = std::string("\"") + key + "\"";
-        const auto kpos = json.find(needle);
-        if (kpos == std::string::npos)
-        {
-            return false;
-        }
-        const auto cpos = json.find(':', kpos + needle.size());
-        if (cpos == std::string::npos)
-        {
-            return false;
-        }
-
-        auto q1 = json.find('"', cpos + 1);
-        if (q1 == std::string::npos)
-        {
-            return false;
-        }
-        auto q2 = json.find('"', q1 + 1);
-        if (q2 == std::string::npos || q2 <= q1 + 1)
-        {
-            return false;
-        }
-
-        out = json.substr(q1 + 1, q2 - (q1 + 1));
-        return true;
-    }
-
-    bool Base64Decode(const std::string& b64, std::vector<std::uint8_t>& outBytes)
-    {
-        outBytes.clear();
-        if (b64.empty())
-        {
-            return true;
-        }
-
-        DWORD required = 0;
-        if (!CryptStringToBinaryA(b64.c_str(), static_cast<DWORD>(b64.size()), CRYPT_STRING_BASE64, nullptr, &required, nullptr, nullptr))
-        {
-            return false;
-        }
-
-        outBytes.resize(required);
-        if (!CryptStringToBinaryA(
-                b64.c_str(),
-                static_cast<DWORD>(b64.size()),
-                CRYPT_STRING_BASE64,
-                outBytes.data(),
-                &required,
-                nullptr,
-                nullptr))
-        {
-            outBytes.clear();
-            return false;
-        }
-
-        if (required != outBytes.size())
-        {
-            outBytes.resize(required);
-        }
-
-        return true;
-    }
-
-    bool JsonUnescapeString(const std::string& input, std::string& output)
-    {
-        output.clear();
-        output.reserve(input.size());
-
-        for (std::size_t i = 0; i < input.size(); i++)
-        {
-            const char ch = input[i];
-            if (ch != '\\')
-            {
-                output.push_back(ch);
-                continue;
-            }
-
-            if (i + 1 >= input.size())
-            {
-                return false;
-            }
-
-            const char esc = input[i + 1];
-            switch (esc)
-            {
-            case '"':
-                output.push_back('"');
-                i += 1;
-                break;
-            case '\\':
-                output.push_back('\\');
-                i += 1;
-                break;
-            case '/':
-                output.push_back('/');
-                i += 1;
-                break;
-            case 'b':
-                output.push_back('\b');
-                i += 1;
-                break;
-            case 'f':
-                output.push_back('\f');
-                i += 1;
-                break;
-            case 'n':
-                output.push_back('\n');
-                i += 1;
-                break;
-            case 'r':
-                output.push_back('\r');
-                i += 1;
-                break;
-            case 't':
-                output.push_back('\t');
-                i += 1;
-                break;
-            case 'u':
-            {
-                if (i + 5 >= input.size())
-                {
-                    return false;
-                }
-
-                auto hex = [](char c) -> int
-                {
-                    if (c >= '0' && c <= '9') return c - '0';
-                    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
-                    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
-                    return -1;
-                };
-
-                const int h0 = hex(input[i + 2]);
-                const int h1 = hex(input[i + 3]);
-                const int h2 = hex(input[i + 4]);
-                const int h3 = hex(input[i + 5]);
-                if (h0 < 0 || h1 < 0 || h2 < 0 || h3 < 0)
-                {
-                    return false;
-                }
-
-                const int code = (h0 << 12) | (h1 << 8) | (h2 << 4) | h3;
-                if (code < 0 || code > 0x7F)
-                {
-                    // NOTE: overlayUpdate v1 payload should be ASCII only (base64).
-                    return false;
-                }
-
-                output.push_back(static_cast<char>(code));
-                i += 5;
-                break;
-            }
-            default:
-                return false;
-            }
-        }
-
-        return true;
     }
 
     bool ParseAttach(const std::string& json, AttachRequest& outReq)
@@ -578,7 +412,6 @@ namespace
             if (existing != g_states.end() && existing->second.remoteModule != nullptr)
             {
                 (void)existing->second.configWriter.Write(req.pid, existing->second.api, req.captureFpsLimit, req.enableOverlay);
-                (void)existing->second.overlayWriter.Write(req.pid, existing->second.api, nullptr, 0);
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
                     PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -620,7 +453,6 @@ namespace
             st.dllPath = dllPath;
             st.api = ht::hook::ipc::GraphicsApi::Dx11;
             (void)st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay);
-            (void)st.overlayWriter.Write(req.pid, st.api, nullptr, 0);
             g_states[req.pid] = std::move(st);
 
             WriteResponse(pipe, BuildState("Attached", "ok", ht::hook::ipc::GraphicsApi::Dx11, req.pid));
@@ -649,66 +481,7 @@ namespace
             // WHY: With vtable patching, unloading the agent DLL would leave dangling function pointers in swapchain vtables.
             // We keep the module loaded for process lifetime in v1; detach only disables capture.
             it->second.configWriter.Reset();
-            it->second.overlayWriter.Reset();
             WriteResponse(pipe, BuildState("Detached", "ok_disabled", ht::hook::ipc::GraphicsApi::Dx11, pid));
-            return;
-        }
-
-        if (message.find("\"type\":\"overlayUpdate\"") != std::string::npos)
-        {
-            DWORD pid = 0;
-            if (!ParseDetach(message, pid))
-            {
-                WriteResponse(pipe, BuildState("Failed", "overlay_parse_failed", ht::hook::ipc::GraphicsApi::Dx11, 0));
-                return;
-            }
-
-            std::uint32_t count = 0;
-            (void)ExtractU32(message, "count", count);
-            std::string rectsB64;
-            if (!ExtractString(message, "rectsB64", rectsB64))
-            {
-                rectsB64.clear();
-            }
-
-            const auto it = g_states.find(pid);
-            if (it == g_states.end())
-            {
-                WriteResponse(pipe, BuildState("Failed", "overlay_pid_not_attached", ht::hook::ipc::GraphicsApi::Dx11, pid));
-                return;
-            }
-
-            std::string rectsB64Unescaped;
-            if (!rectsB64.empty())
-            {
-                if (!JsonUnescapeString(rectsB64, rectsB64Unescaped))
-                {
-                    WriteResponse(pipe, BuildState("Failed", "overlay_unescape_failed", it->second.api, pid));
-                    return;
-                }
-            }
-
-            std::vector<std::uint8_t> decoded;
-            if (!Base64Decode(rectsB64Unescaped.empty() ? rectsB64 : rectsB64Unescaped, decoded))
-            {
-                WriteResponse(pipe, BuildState("Failed", "overlay_decode_failed", it->second.api, pid));
-                return;
-            }
-
-            const std::size_t cmdSize = sizeof(ht::hook::ipc::OverlayRectCommand);
-            const std::size_t expectedBytes = static_cast<std::size_t>(count) * cmdSize;
-            if (!decoded.empty() && decoded.size() < expectedBytes)
-            {
-                WriteResponse(pipe, BuildState("Failed", "overlay_payload_too_small", it->second.api, pid));
-                return;
-            }
-
-            const auto* cmds = decoded.empty()
-                ? nullptr
-                : reinterpret_cast<const ht::hook::ipc::OverlayRectCommand*>(decoded.data());
-
-            const bool ok = it->second.overlayWriter.Write(pid, it->second.api, cmds, static_cast<std::size_t>(count));
-            WriteResponse(pipe, BuildState("Running", ok ? "overlay_ok" : "overlay_write_failed", it->second.api, pid));
             return;
         }
 

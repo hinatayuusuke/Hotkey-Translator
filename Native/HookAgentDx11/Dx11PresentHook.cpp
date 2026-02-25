@@ -24,7 +24,6 @@
 
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
-#include "../HookCommon/SharedOverlayCommands.h"
 #include "../HookCommon/SharedOverlayV2.h"
 #include "../HookCommon/SharedHookStatus.h"
 
@@ -98,7 +97,6 @@ namespace ht::hook::dx11
 
             ht::hook::ipc::SharedFrameWriter frameWriter;
             ht::hook::ipc::SharedHookConfigReader configReader;
-            ht::hook::ipc::SharedOverlayCommandsReader overlayReader;
             ht::hook::ipc::SharedOverlayV2Reader overlayV2Reader;
             ht::hook::ipc::SharedHookStatusWriter statusWriter;
 
@@ -121,10 +119,8 @@ namespace ht::hook::dx11
             std::uint64_t lastConfigQpc = 0;
             std::uint32_t configuredFpsLimit = 15;
             bool overlayEnabled = true;
-            std::uint64_t lastOverlayQpc = 0;
-            std::vector<ht::hook::ipc::OverlayRectCommand> overlayCommands;
-
             std::uint64_t lastOverlayV2Seq = 0;
+            std::uint64_t lastOverlayV2Qpc = 0;
             ht::hook::ipc::OverlayV2Header overlayV2Header{};
             std::vector<ht::hook::ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
@@ -366,8 +362,9 @@ namespace ht::hook::dx11
             st.stagingDxgiFormat = static_cast<std::uint32_t>(rt.stagingFormat);
             st.lastFrameIdWritten = rt.frameId;
             st.lastFrameWriteQpc = rt.lastCaptureQpc;
-            st.lastCmdQpc = rt.lastOverlayQpc;
-            st.lastCmdCount = static_cast<std::uint32_t>(rt.overlayCommands.size());
+            // COMPAT: Keep v1 status fields populated from v2 overlay updates until status schema migration.
+            st.lastCmdQpc = rt.lastOverlayV2Qpc;
+            st.lastCmdCount = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
             // NOTE: Reuse reserved fields to expose v2 overlay diagnostics without changing the status struct size.
             st.reserved0 = static_cast<std::uint32_t>(rt.overlayV2TextBlob.size());
             st.reserved1 = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
@@ -472,29 +469,6 @@ namespace ht::hook::dx11
             return true;
         }
 
-        bool RefreshOverlayCommandsLocked(Dx11Runtime& rt)
-        {
-            const DWORD pid = GetCurrentProcessId();
-            if (!rt.overlayReader.Ensure(pid, ht::hook::ipc::GraphicsApi::Dx11))
-            {
-                return false;
-            }
-
-            ht::hook::ipc::OverlayCommandHeader header{};
-            if (!rt.overlayReader.TryRead(header, rt.overlayCommands))
-            {
-                return false;
-            }
-
-            if (header.updatedQpc == 0 || header.updatedQpc == rt.lastOverlayQpc)
-            {
-                return false;
-            }
-
-            rt.lastOverlayQpc = header.updatedQpc;
-            return true;
-        }
-
         bool RefreshOverlayV2Locked(Dx11Runtime& rt)
         {
             const DWORD pid = GetCurrentProcessId();
@@ -515,6 +489,7 @@ namespace ht::hook::dx11
             }
 
             rt.lastOverlayV2Seq = header.updatedSeq;
+            rt.lastOverlayV2Qpc = NowQpc();
             rt.overlayV2Header = header;
 
             // NOTE: Track recent v2 coordinates to diagnose "alternating/jittering" IPC updates.
@@ -1084,19 +1059,6 @@ namespace ht::hook::dx11
             }
         }
 
-        void DrawOverlayLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
-        {
-            (void)swap;
-            if (!rt.overlayEnabled)
-            {
-                return;
-            }
-
-            // WHY: V1 rectangle drawing is deprecated. We still refresh shared commands to keep status/debug
-            // fields accurate while maintaining v1 IPC compatibility during the phased removal.
-            (void)RefreshOverlayCommandsLocked(rt);
-        }
-
         bool EnsureStagingLocked(Dx11Runtime& rt, ID3D11Texture2D* backBuffer)
         {
             if (backBuffer == nullptr)
@@ -1363,7 +1325,6 @@ namespace ht::hook::dx11
                 (void)RefreshOverlayV2Locked(g_rt);
                 if (!disableAllDraw)
                 {
-                    DrawOverlayLocked(g_rt, swap);
                     DrawImGuiOverlayV2Locked(g_rt, swap);
                 }
                 PublishStatusLocked(g_rt);
@@ -1416,7 +1377,6 @@ namespace ht::hook::dx11
                 (void)RefreshOverlayV2Locked(g_rt);
                 if (!disableAllDraw)
                 {
-                    DrawOverlayLocked(g_rt, swap);
                     DrawImGuiOverlayV2Locked(g_rt, swap);
                 }
                 PublishStatusLocked(g_rt);

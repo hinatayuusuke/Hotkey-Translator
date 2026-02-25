@@ -12159,3 +12159,53 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+
+**2026-02-25 12:07 (Asia/Taipei) — Hook V1描画系を削除し V2経路へ一本化**
+
+### Summary
+- V1描画系コードを削除し、HookオーバーレイをV2テキスト描画経路に一本化した。
+
+### Context / Goal
+- V1は既に本番描画経路として不要で、保守コストと混乱要因のみ残っていた。
+- 要求どおり、C#送信経路・HookHostの`overlayUpdate`処理・`SharedOverlayCommands`依存を段階削除した。
+
+### Changes
+- C# 側 V1送信経路を削除。
+- `Dx11HookClientService` から V1 writer / `TrySendOverlayUpdate` / `PackOverlayRectCommands` を削除。
+- `PipelineOrchestrator` から V1更新メソッド (`TryUpdateDx11HookOverlay`, `TryBuildHookRect`) を削除。
+- `Dx11HookMessages` から V1用 DTO (`Dx11HookOverlayUpdateRequest`, `Dx11HookOverlayRect`) を削除。
+- HookHost から `overlayUpdate` メッセージ処理（base64 decode/unescape含む）を削除。
+- HookHost の `SharedOverlayCommands` 依存と `crypt32` リンク依存を削除。
+- HookAgentDx11 から `SharedOverlayCommands` 依存と V1 reader/refresh 経路を削除。
+- Status互換として `lastCmdQpc/lastCmdCount` は V2更新情報（`lastOverlayV2Qpc`, block count）で埋めるよう変更。
+- HookCommon から V1 overlay command protocol 定義（`OverlayCommandHeader`, `OverlayRectCommand`, `BuildOverlayCommandMappingName` など）を削除。
+- 使われなくなった `Native/HookCommon/SharedOverlayCommands.{h,cpp}` と `Services/Hook/Dx11HookOverlayCommandWriter.cs` を削除。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — V1更新メソッド削除、V2経路のみ維持。
+- `Services/Hook/Dx11HookClientService.cs` — V1送信ロジック/参照を削除。
+- `Services/Hook/Contracts/Dx11HookMessages.cs` — V1 DTOを削除。
+- `Native/HookHost/main.cpp` — `overlayUpdate` ハンドリングと関連ユーティリティを削除。
+- `Native/HookHost/CMakeLists.txt` — `SharedOverlayCommands.cpp` と `crypt32` 依存を削除。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — V1 reader依存を削除し、status互換値をV2由来へ変更。
+- `Native/HookAgentDx11/CMakeLists.txt` — `SharedOverlayCommands.cpp` 依存を削除。
+- `Native/HookCommon/HookIpcProtocol.h` — V1 overlay command protocol定義を削除。
+- `Native/HookCommon/SharedOverlayCommands.h` — 削除。
+- `Native/HookCommon/SharedOverlayCommands.cpp` — 削除。
+- `Services/Hook/Dx11HookOverlayCommandWriter.cs` — 削除。
+
+### Behavioral Impact
+- アプリとHookHostから V1 `overlayUpdate` 経路が消え、Overlay描画更新は V2のみになる。
+- HookAgentのstatus互換項目（`lastCmdQpc/lastCmdCount`）はV2データを反映し続ける。
+
+### Risk & Mitigation
+- Risk: V1メッセージを送る旧クライアントが存在する場合、HookHostでは `unknown_message` 扱いになる。
+- Mitigation: 現行アプリ側も同時にV1送信コードを削除し、同一リポジトリ内で整合を取った。
+- Risk: Nativeバイナリ更新時に実行中ロックでリンク失敗する可能性。
+- Mitigation: HookHostプロセス停止後に再ビルドする運用とする。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+- `cmake --build Native/build --config Release` 実行。
+- `HookAgentDx11.dll` はビルド成功。
+- `HookHost.exe` は実行中ロックにより `LNK1104` でリンク失敗（ファイル解放後に再実行が必要）。
