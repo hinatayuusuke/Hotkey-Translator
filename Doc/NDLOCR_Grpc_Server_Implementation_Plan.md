@@ -22,7 +22,10 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
   - `OcrServiceVL/server.py`
 - 契約:
   - `OcrService/ocr.proto` の `OcrService` / `Health` / `Recognize` を利用する。
-- NDLOCR推論本体は `NDLOCR/ndl_ocr_engine.py` を利用可能。
+- proto運用:
+  - `OcrServiceNDL` 内で `ocr.proto` / `ocr_pb2.py` / `ocr_pb2_grpc.py` を生成・管理する。
+  - `OcrService/ocr.proto` 更新時は `OcrServiceNDL/ocr.proto` を同期する運用ルールを明記する。
+- NDLOCR推論本体は `OcrServiceNDL/ndl_ocr_engine.py` を利用可能。
 - 既存の呼び出し側は `OcrResponse.json`（`lines[]`）を受け取る前提で動作する。
 
 ## 4. 現状整理
@@ -46,7 +49,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
   - `main()`（argparse + gRPC server）
 - `OcrServiceNDL/ocr_ndl_engine.py`（新規）
   - `NdlOcrLiteEngine` をラップし、`recognize(image_bytes) -> json string` を提供。
-- `OcrServiceNDL/ocr.proto`（初期は既存 `OcrService/ocr.proto` と同一内容で運用）
+- `OcrServiceNDL/ocr.proto`（サービス内で保持・生成。契約変更時に `OcrService/ocr.proto` と同期）
 
 ### データフロー / シーケンス
 1. クライアントが `Recognize(OcrRequest)` で画像bytes送信。
@@ -64,21 +67,22 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 ## 6. インターフェース設計
 ### API / 関数
 - `Health(HealthRequest) -> HealthResponse`
-  - 常時 `ready=true` ではなく、初回エンジン生成失敗後は `ready=false` へ遷移可能にする案。
+  - `ready=true` は「この時点で `Recognize` 実行可能」を意味する。
+  - サーバ起動時にエンジンを初期化（eager init）し、失敗時は起動失敗として終了する。
 - `Recognize(OcrRequest) -> OcrResponse`
   - `OcrRequest.language` は NDLOCR では使用しない（常に無視）。
   - `text_detection_model_name` / `text_recognition_model_name` も当面未使用（互換維持のみ）。
 
 ### 起動引数（案）
-- `--host`（既定 `127.0.0.1`）
 - `--port`（既定 `50053`）
 - `--device`（`cpu|cuda`、既定 `cpu`）
-- `--model-dir`（既定 `../NDLOCR/model`）
-- `--config-dir`（既定 `../NDLOCR/config`）
-- `--det-conf-threshold` / `--det-iou-threshold`
+- `--model-dir`（既定 `../OcrServiceNDL/model`）
+- `--config-dir`（既定 `../OcrServiceNDL/config`）
+- `--det-score-threshold` / `--det-conf-threshold` / `--det-iou-threshold`
 - `--max-message-bytes`（既定 32MB）
 - `--pool-max-engines`（既定 1）
 - `--pool-ttl-seconds`（既定 1800）
+- NOTE: バインド先は `127.0.0.1` 固定（外部公開しない）。
 
 ### 入出力 / エラー / バリデーション
 - 入力: `request.image` 必須。
@@ -93,10 +97,11 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 ### Step 1: スケルトン作成
 - `OcrServiceNDL` ディレクトリを追加。
 - `ocr.proto` / `ensure_proto()` / `Health` / ダミー `Recognize` を実装。
-- gRPC起動確認（`Health` ready 応答）。
+- gRPC起動確認（`127.0.0.1` 固定バインド + `Health` ready 応答）。
 
 ### Step 2: エンジン接続
-- `ocr_ndl_engine.py` で `NDLOCR/ndl_ocr_engine.py` をラップ。
+- `ocr_ndl_engine.py` で `OcrServiceNDL/ndl_ocr_engine.py` をラップ。
+- `main()` で eager init（エンジン生成）を行い、成功時のみサーバ起動。
 - `Recognize` で実推論実行・JSON返却。
 - `EnginePool` にTTL/LRUを追加。
 
@@ -114,7 +119,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
   - 単一エンジン再利用を基本。
   - 起動時間と推論時間を分離ログ化。
 - セキュリティ:
-  - ローカルバインド（`127.0.0.1`）固定。
+  - ローカルバインド（`127.0.0.1`）固定。起動引数で変更不可。
   - 画像bytes以外の外部入力を扱わない。
 - 可観測性:
   - `stage=ocr_grpc host=ndl` 系ログで追跡可能。
@@ -124,8 +129,8 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
   - `max_message_bytes` と pool設定を引数で上書き可能。
 
 ## 9. リスクと緩和策
-- Risk: NDLOCR初回ロードが長く、Healthはreadyでも初回Recognizeが遅い。  
-  Mitigation: 起動時に軽いウォームアップを任意実行するフラグを用意。
+- Risk: NDLOCR初回ロードが長く、サーバ起動が遅延する。  
+  Mitigation: eager init方針で `Health` の意味を単純化し、必要なら起動時ウォームアップを任意フラグ化する。
 
 - Risk: CUDA指定でも実行環境が未整備で失敗。  
   Mitigation: サーバ側で `device=cuda` 失敗時の明示エラーを返し、呼び出し側でCPU再試行/フォールバック。
@@ -148,7 +153,9 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 
 ## 11. Definition of Done
 - [ ] `OcrServiceNDL/server.py` が `Health` / `Recognize` を提供し起動できる。
+- [ ] サーバは `127.0.0.1` 固定で待受し、外部IPにバインドしない。
 - [ ] `Recognize` が画像bytes入力でJSONを返す。
+- [ ] `--det-score-threshold` / `--det-conf-threshold` / `--det-iou-threshold` が起動引数として受理される。
 - [ ] レスポンスJSONに言語依存項目を含めない。
 - [ ] レスポンスJSONに `confidence` / `detection_confidence` / `recognition_confidence` を含める。
 - [ ] `confidence` 系は初期段階で表示・翻訳抑制の判定に使わない。
@@ -156,3 +163,4 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 - [ ] `stage=ocr_grpc host=ndl` の request/response ログが出る。
 - [ ] poolのTTL/LRUが機能し、長時間運用でエンジン数が上限を超えない。
 - [ ] 既存クライアントが proto 変更なしで呼び出せる。
+- [ ] `Health.ready=true` は「推論可能（eager init済み）」を意味する。

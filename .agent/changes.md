@@ -12744,3 +12744,217 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `python -m py_compile NDLOCR/ndl_ocr_engine.py NDLOCR/test_ndl_ocr_engine.py` succeeded.
 - `NDLOCR\.venv\Scripts\python.exe NDLOCR\test_ndl_ocr_engine.py --image NDLOCR\test.png --model-dir NDLOCR\model --config-dir NDLOCR\config --device cpu --print-limit 1` succeeded.
+
+**2026-02-25 22:06 (Asia/Taipei) — NDLOCR CUDA DLL探索のデバッグログを追加**
+
+### Summary
+- `ndl_ocr_engine.py` に、Windows CUDA DLL探索（`add_dll_directory`）のデバッグログを追加した。
+
+### Context / Goal
+- `--device cuda` 実行時に `cublasLt64_12.dll` 読み込み失敗が出るため、実行環境でDLL探索がどこまで進んでいるかを可視化したい。
+- 常時ログはノイズになるため、必要時のみ有効化できるようにしたい。
+
+### Changes
+- 環境変数 `HT_NDLOCR_CUDA_DEBUG=1` で有効化されるデバッグログ関数を追加。
+- `_bootstrap_windows_cuda_dll_dirs()` で以下をstderrへ出力:
+  - site-packages候補
+  - `add_dll_directory` 成功/失敗パス
+  - 追加サマリー（added/failed/handles）
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — CUDA DLL bootstrap の診断ログを追加。
+
+### Behavioral Impact
+- デフォルトでは挙動変更なし（ログ無効）。
+- `HT_NDLOCR_CUDA_DEBUG=1` のときのみ診断ログが出力される。
+
+### Risk & Mitigation
+- Risk: デバッグ有効時にログ量が増える。
+- Mitigation: 環境変数で明示有効時のみ出力し、通常運用では無効のままにした。
+
+### Tests / Verification
+- `HT_NDLOCR_CUDA_DEBUG=1; uv run python -c "import ndl_ocr_engine; print('import_ok')"` を実行。
+- 候補パス・追加成功ログ・summary が出力されることを確認。
+
+**2026-02-25 22:22 (Asia/Taipei) — NDLOCR CUDA DLL解決のPATHフォールバック追加**
+
+### Summary
+- dd_dll_directory だけではCUDA EP初期化に失敗するケース向けに、CUDA DLLディレクトリをプロセス PATH に前置する処理を追加。
+
+### Context / Goal
+- uv sync でCUDA関連wheelを入れても、onnxruntime_providers_cuda.dll が cublasLt64_12.dll missing で失敗し、CPUへフォールバックしていた。
+- 実行環境依存で ONNX Runtime 側のDLLローダーが dd_dll_directory を十分参照しないケースを吸収したい。
+
+### Changes
+- NDLOCR/ndl_ocr_engine.py に _prepend_windows_path_dirs() を追加。
+- CUDA bootstrap で dd_dll_directory 成功ディレクトリを PATH 先頭へ追加する処理を実装。
+- デバッグ時に PATH prepend added=<n> を出力するようにした。
+
+### Files Touched
+- NDLOCR/ndl_ocr_engine.py — Windows CUDA DLL bootstrap に PATH フォールバックを追加。
+
+### Behavioral Impact
+- device=cuda 起動時、CUDA DLL探索が安定し、CUDAExecutionProviderが有効になりやすくなる。
+- 既定動作でプロセス内 PATH が更新される（外部システム環境変数は変更しない）。
+
+### Risk & Mitigation
+- Risk: PATH順序変更により同名DLL解決順が変わる可能性。
+- Mitigation: 追加対象は site-packages/nvidia/*/bin のみに限定し、重複は除外。
+
+### Tests / Verification
+- HT_NDLOCR_CUDA_DEBUG=1; uv run python -c "from ndl_ocr_engine import NdlOcrLiteEngine as E; e=E(device='cuda'); print(e._detector.get_providers())"
+- 結果: ['CUDAExecutionProvider', 'CPUExecutionProvider'] を確認（以前の cublasLt64_12.dll missing エラーは再現せず）。
+
+**2026-02-25 22:43 (Asia/Taipei) — NDLOCR 認識段のCUDAバッチ実行フロー実装（固定batch自動フォールバック付き）**
+
+### Summary
+- CUDA時の認識段で、モデル別（rec30/rec50/rec100）にまとめて処理するバッチフローを実装し、固定batchモデルでは自動で逐次フォールバックするようにした。
+
+### Context / Goal
+- 目的は認識段の session.run 呼び出し回数を減らし、CUDA時の小粒度推論オーバーヘッドを下げること。
+- 既存モデルが固定 atch=1 の場合でもクラッシュせず動作を維持する必要がある。
+
+### Changes
+- ecognize() に CUDA専用の認識経路 _recognize_items_batched() を追加。
+- pred_char_count に基づき rec30/rec50/rec100 へ振り分け、既存カスケード閾値（25/45）を維持したまま段階実行。
+- _build_line_result() を追加し、単発経路とバッチ経路の出力整合を統一。
+- _parseq_read_batch_with_score() と _decode_parseq_logits_with_score() を追加。
+- parseq 入力shapeから input_batch_size を保持し、atch=1 固定モデルでは逐次フォールバック（クラッシュ防止）。
+- stage=ndl_ocr_timing event=recognize_batch ログを追加し、run回数/処理件数/エスカレーション件数を可視化。
+
+### Files Touched
+- NDLOCR/ndl_ocr_engine.py — CUDA認識バッチ経路、共通デコード、固定batchフォールバック、バッチ統計ログを追加。
+
+### Behavioral Impact
+- CUDA時の認識処理は単発ループからモデル別集約フローへ変更。
+- 既存PARSeq（固定batch=1）では安全に逐次実行へフォールバックするため、挙動互換を維持。
+- ログに ecognize_batch の1行が追加され、ボトルネック分析がしやすくなった。
+
+### Risk & Mitigation
+- Risk: モデル入力shapeの解釈誤りで不正なバッチ投入となる可能性。
+- Mitigation: input_batch_size==1 の場合は強制逐次実行し、INVALID_ARGUMENT を未然に回避。
+
+### Tests / Verification
+- uv run python -m py_compile ndl_ocr_engine.py test_ndl_ocr_engine.py 成功。
+- uv run python test_ndl_ocr_engine.py --image 'test.png' --device cpu --print-limit 1 成功。
+- uv run python test_ndl_ocr_engine.py --image 'test.png' --device cuda --print-limit 1 成功。
+- CUDA実行ログで stage=ndl_ocr_timing event=recognize_batch ... の出力を確認。
+
+**2026-02-25 23:03 (Asia/Taipei) — NDLOCR gRPC実装案ドキュメント更新（合意1〜4反映）**
+
+### Summary
+- `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` に、合意した4点（proto運用、引数追加、host固定、Health意味の明確化）を反映した。
+
+### Context / Goal
+- ロールバック後の方針に合わせ、実装前に仕様の揺れをなくす。
+- サーバ動作の契約（特に `Health.ready`）を曖昧にしない。
+
+### Changes
+- protoは `OcrServiceNDL` サービス内で生成・管理し、元 `OcrService/ocr.proto` 更新時に同期する運用を追記。
+- 起動引数に `--det-score-threshold` を追加。
+- `--host` を削除し、`127.0.0.1` 固定バインド方針を明記。
+- `Health.ready=true` を「推論可能（eager init済み）」に定義し、起動時初期化失敗は起動失敗として扱う仕様を追記。
+- DoDに上記仕様の確認項目を追加。
+
+### Files Touched
+- `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` — 合意1〜4に沿って仕様文言とDoDを更新。
+
+### Behavioral Impact
+- 実装時の判断余地が減り、`Health` の意味とサーバ公開範囲の解釈ブレを防げる。
+
+### Risk & Mitigation
+- Risk: サービス内 `ocr.proto` の同期漏れで契約ドリフトが起きる可能性。
+- Mitigation: ドキュメントに同期運用を明記し、DoD/レビューで確認する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+
+**2026-02-25 23:24 (Asia/Taipei) — NDLOCRフォルダ名をOcrServiceNDLへ変更**
+
+### Summary
+- NDLOCR ディレクトリを OcrServiceNDL へリネームし、リネーム専用コミットを作成した。
+
+### Context / Goal
+- NDLOCR関連資産をサービス名に合わせた構成へ統一する。
+- 変更追跡を容易にするため、リネームだけを単独コミットに分離する。
+
+### Changes
+- git mv NDLOCR OcrServiceNDL を実行。
+- リネーム差分のみを chore: rename NDLOCR directory to OcrServiceNDL としてコミット。
+
+### Files Touched
+- NDLOCR/* -> OcrServiceNDL/* — ディレクトリ配下をそのまま移動（内容変更なし）。
+
+### Behavioral Impact
+- フォルダパス参照が NDLOCR/... 前提の箇所は、今後 OcrServiceNDL/... への追従修正が必要。
+
+### Risk & Mitigation
+- Risk: 旧パス参照が残ると起動/実行時エラーになる可能性。
+- Mitigation: 次コミットで参照更新を行い、起動確認と最小動作確認を実施する。
+
+### Tests / Verification
+- git status --short でリネーム差分のみステージされていることを確認。
+- git commit -m "chore: rename NDLOCR directory to OcrServiceNDL" を実行し、13ファイルのrenameコミットを確認。
+
+**2026-02-25 23:29 (Asia/Taipei) — NDLOCR旧パス参照のOcrServiceNDL統一**
+
+### Summary
+- 旧 `NDLOCR` パス参照を `OcrServiceNDL` に統一し、ドキュメントとCLIヘルプの整合を取った。
+
+### Context / Goal
+- フォルダリネーム後に残った旧パス文字列を解消し、誤読・設定ミスを防ぐ。
+- `.gitignore` の不要エントリを整理する。
+
+### Changes
+- `.gitignore` から `NDLOCR/reference/` を削除（`OcrServiceNDL/reference/` に統一）。
+- `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` の推論参照パスと既定引数パスを `OcrServiceNDL` ベースに更新。
+- `Doc/NDLOCR_Lite_Integration_Plan.md` の旧 `NDLOCR\src` 記述を現構成に合わせて更新。
+- `OcrServiceNDL/ndl_ocr_engine.py` と `OcrServiceNDL/test_ndl_ocr_engine.py` の `--model-dir` / `--config-dir` ヘルプ既定値を更新。
+
+### Files Touched
+- `.gitignore` — 旧 `NDLOCR/reference/` エントリを削除。
+- `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` — `NDLOCR/...` 参照を `OcrServiceNDL/...` に更新。
+- `Doc/NDLOCR_Lite_Integration_Plan.md` — 旧パス前提の記述を現行構成へ更新。
+- `OcrServiceNDL/ndl_ocr_engine.py` — CLIヘルプのデフォルトパス文言を更新。
+- `OcrServiceNDL/test_ndl_ocr_engine.py` — テストCLIヘルプのデフォルトパス文言を更新。
+
+### Behavioral Impact
+- 実行ロジックの挙動変更はなし（文言・ドキュメント・ignore設定の整合のみ）。
+
+### Risk & Mitigation
+- Risk: ドキュメント更新漏れが残る可能性。
+- Mitigation: `rg "NDLOCR/|NDLOCR\\"` で旧パス参照ゼロを確認。
+
+### Tests / Verification
+- `rg -n --hidden --glob '!**/.venv/**' --glob '!**/bin/**' --glob '!**/obj/**' "NDLOCR/|NDLOCR\\"`
+- 結果: 旧パス参照ヒットなし（終了コード1）。
+
+**2026-02-25 23:35 (Asia/Taipei) — OcrServiceNDL をCPU専用依存へ統一**
+
+### Summary
+- `OcrServiceNDL` のPython依存をCPU専用に統一し、GPU依存をロックと環境から除去した。
+
+### Context / Goal
+- NDLOCR実行をCPU専用方針に固定する。
+- `pyproject.toml` と `uv.lock` と仮想環境の整合を取る。
+
+### Changes
+- `OcrServiceNDL/pyproject.toml` の依存を `onnxruntime>=1.24,<2`（CPU版）として整理。
+- `uv lock` でロック更新。
+- `uv sync` で環境反映し、`onnxruntime-gpu` と `nvidia-*` をアンインストール。
+
+### Files Touched
+- `OcrServiceNDL/pyproject.toml` — CPU向けONNX Runtime制約へ統一、不要空行を整理。
+- `OcrServiceNDL/uv.lock` — GPU依存エントリを除去したロックへ更新。
+
+### Behavioral Impact
+- `OcrServiceNDL` はCPU実行前提となり、CUDA依存DLL不足による起動失敗経路を回避できる。
+
+### Risk & Mitigation
+- Risk: 既存のCUDA前提テスト手順は失敗する。
+- Mitigation: `--device cpu` を標準手順に統一し、GPU手順は利用しない。
+
+### Tests / Verification
+- `uv lock` 実行成功。
+- `uv sync` 実行成功（`onnxruntime-gpu` と `nvidia-*` が削除され、`onnxruntime` が導入）。
+- `uv run python -c "import onnxruntime as ort; print(ort.get_available_providers())"` で `['AzureExecutionProvider', 'CPUExecutionProvider']` を確認。

@@ -59,7 +59,7 @@ outputs/
 ocr_pb2.py
 ocr_pb2_grpc.py
 .testpic
-NDLOCR/reference/
+OcrServiceNDL/reference/
 
 
 # User-specific files

@@ -13,12 +13,12 @@
 - 起動失敗・推論失敗時は既存同様に `WinRT` フォールバックを保証する。
 
 ### 非ゴール
-- NDLOCR本体（`NDLOCR\src`）の大規模改変。
+- NDLOCR本体（`OcrServiceNDL`）の大規模改変。
 - 既存の翻訳ロジック、Overlayレイアウトアルゴリズムの作り直し。
 - 初期段階でのNDLOCR独自読み順情報の全面採用（まずは既存 `OcrLineGrouper` 優先）。
 
 ## 3. 前提・仮定
-- `NDLOCR\src` には ONNX モデルと推論コード（`deim.py`, `parseq.py`, `ocr.py`）が揃っている。
+- `OcrServiceNDL` には ONNX モデルと推論コード（`ndl_ocr_engine.py`）が揃っている。
 - NDLOCR-Lite は CC BY 4.0。配布時にクレジット/ライセンス表記が必要。
 - 現行アプリは OCR結果を `OcrResultModel(lines, pixelWidth, pixelHeight)` で受け、以後の翻訳・オーバーレイはこの契約に依存している。
 - OCRホスト追加は既存パターン（`PaddleGrpcHost`, `PaddleVlGrpcHost`）を踏襲する。
@@ -38,7 +38,7 @@
   - `ResourceHostFacade`（更新）: `ndl_grpc` のロード/停止制御を追加。
 - Python:
   - `OcrServiceNDL/server.py`（新規）: 画像bytes受信、NDLOCR推論、JSON返却。
-  - `OcrServiceNDL/ocr_ndl_engine.py`（新規）: `NDLOCR\src` を呼ぶラッパー。
+  - `OcrServiceNDL/ocr_ndl_engine.py`（新規）: `OcrServiceNDL/ndl_ocr_engine.py` を呼ぶラッパー。
 
 ### データフロー / シーケンス
 1. `CaptureManager` がROI対象フレームを取得。  

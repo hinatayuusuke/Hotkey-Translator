@@ -29,8 +29,8 @@ def _validate_payload(payload: dict) -> None:
 def _main() -> int:
     parser = argparse.ArgumentParser(description="Single-image NDLOCR engine test.")
     parser.add_argument("--image", required=True, help="Input image path.")
-    parser.add_argument("--model-dir", default=None, help="Model directory (default: NDLOCR/model).")
-    parser.add_argument("--config-dir", default=None, help="Config directory (default: NDLOCR/config).")
+    parser.add_argument("--model-dir", default=None, help="Model directory (default: OcrServiceNDL/model).")
+    parser.add_argument("--config-dir", default=None, help="Config directory (default: OcrServiceNDL/config).")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--json-out", default=None, help="Optional output JSON file path.")
     parser.add_argument("--expect-min-lines", type=int, default=0, help="Fail if detected lines are below this value.")

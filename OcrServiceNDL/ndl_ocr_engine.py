@@ -552,8 +552,8 @@ class NdlOcrLiteEngine:
 def _main() -> int:
     parser = argparse.ArgumentParser(description="Minimal NDLOCR-Lite model runner (single image).")
     parser.add_argument("--image", required=True, help="Input image path.")
-    parser.add_argument("--model-dir", default=None, help="Model directory (default: NDLOCR/model).")
-    parser.add_argument("--config-dir", default=None, help="Config directory (default: NDLOCR/config).")
+    parser.add_argument("--model-dir", default=None, help="Model directory (default: OcrServiceNDL/model).")
+    parser.add_argument("--config-dir", default=None, help="Config directory (default: OcrServiceNDL/config).")
     parser.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
     parser.add_argument("--json-out", default=None, help="Optional output json path.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON.")
