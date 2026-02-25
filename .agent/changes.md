@@ -12068,3 +12068,67 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `python -m py_compile OcrServiceVL/ocr_vl_engine.py OcrServiceVL/server.py OcrServiceVL/main.py OcrServiceVL/test_ocr_vl_engine.py` 成功。
 - `python -m compileall OcrServiceVL` は `.venv` 配下の大量コンパイルでタイムアウト/環境依存警告が発生したため、対象ファイル限定で構文検証を実施。
+
+**2026-02-24 18:34 (Asia/Taipei) — PaddleOCR-VL 結合パラメーターをゲーム向けにハードコード**
+
+### Summary
+- PaddleOCR-VL のブロック結合挙動を、未指定時に寛容側へ倒すデフォルトを `ocr_vl_engine.py` にハードコードした。
+
+### Context / Goal
+- テスト時に毎回CLI指定せず、ゲーム向けの結合挙動を既定で有効化したい要望があった。
+- ただし将来の比較検証のため、明示指定した値は優先する構成を維持した。
+
+### Changes
+- `ocr_vl_engine.py` に `_GAME_LAYOUT_MERGE_DEFAULTS` を追加。
+- `merge_layout_blocks` / `use_layout_detection` / `layout_nms` / `layout_unclip_ratio` / `layout_merge_bboxes_mode` / `layout_merge_bboxes_iou_threshold` の6項目を、未指定(`None`)時のみハードコード値にフォールバックするよう変更。
+- 実際に適用された値を起動時ログで出す `_LOGGER.info(...)` を追加。
+
+### Files Touched
+- `OcrServiceVL/ocr_vl_engine.py` — 未指定時のゲーム向け結合デフォルトを追加し、predict kwargs の組み立てを更新。
+
+### Behavioral Impact
+- 明示指定がない通常起動時は、以下の寛容設定が既定で有効になる。
+- `merge_layout_blocks=True`, `use_layout_detection=True`, `layout_nms=False`, `layout_unclip_ratio=1.8`, `layout_merge_bboxes_mode=union`, `layout_merge_bboxes_iou_threshold=0.3`
+- CLI等で明示指定した場合はその指定が優先される。
+
+### Risk & Mitigation
+- Risk: 画面構成によっては意図しない広域結合が増える可能性。
+- Mitigation: 既存CLI引数で個別上書き可能な設計を維持し、ログで適用値を可視化した。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVL/ocr_vl_engine.py` 成功。
+
+**2026-02-25 10:00 (Asia/Taipei) — PaddleOCR-VL結合パラメーターをsettings.json管理へ移行**
+
+### Summary
+- `layout_nms` 系4項目のハードコードを廃止し、`settings.json` からの指定経路へ切り替えた。
+
+### Context / Goal
+- 固定値での強制適用をやめ、環境ごとに再現可能な設定管理へ戻したい要望があった。
+- 未指定時は安全に PaddleOCR-VL ネイティブ既定を使うことが目的。
+
+### Changes
+- `AppSettings` に以下4項目を追加（nullable）。
+- `PaddleVlLayoutNms` / `PaddleVlLayoutUnclipRatio` / `PaddleVlLayoutMergeBboxesMode` / `PaddleVlLayoutMergeBboxesIouThreshold`
+- `PaddleOcrSettingsRule` に4項目の入力正規化を追加。
+- `layout_unclip_ratio <= 0` は `null`、`layout_merge_bboxes_iou_threshold` が範囲外は `null`、`layout_merge_bboxes_mode` は `small|large|union` 以外を `null` に正規化。
+- `PaddleVlGrpcHost` で4項目を `server.py` 起動引数へ受け渡す処理を追加。
+- `OcrServiceVL/ocr_vl_engine.py` の `_GAME_LAYOUT_MERGE_DEFAULTS` と `effective_*` ハードコードフォールバックを削除。
+
+### Files Touched
+- `Models/AppSettings.cs` — PaddleOCR-VLレイアウト結合パラメーター4項目を追加。
+- `Services/Settings/Rules/PaddleOcrSettingsRule.cs` — 4項目のバリデーション/正規化を追加。
+- `Services/PaddleVlGrpcHost.cs` — gRPCホスト起動引数へ4項目の反映を追加。
+- `OcrServiceVL/ocr_vl_engine.py` — ハードコード既定を削除し、未指定時はネイティブ既定へ戻した。
+
+### Behavioral Impact
+- 4項目が `null` の場合は PaddleOCR-VL 側デフォルトが使われる。
+- `settings.json` で4項目を明示設定した場合のみ、対応 `--layout-*` 引数が Python サーバーへ渡される。
+
+### Risk & Mitigation
+- Risk: 既存のハードコード前提の挙動より結合結果が変わる可能性。
+- Mitigation: 設定項目を明示導入し、必要な場合だけ値を指定して同挙動を再現できるようにした。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVL/ocr_vl_engine.py OcrServiceVL/server.py OcrServiceVL/main.py OcrServiceVL/test_ocr_vl_engine.py` 成功。
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。

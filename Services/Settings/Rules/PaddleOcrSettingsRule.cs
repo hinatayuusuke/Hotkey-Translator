@@ -58,6 +58,52 @@ internal sealed class PaddleOcrSettingsRule : ISettingsRule
             }
         }
 
+        if (settings.PaddleVlLayoutUnclipRatio.HasValue)
+        {
+            var value = settings.PaddleVlLayoutUnclipRatio.Value;
+            if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+            {
+                // WHY: invalid unclip ratio can break detector post-processing; use native default via null.
+                settings.PaddleVlLayoutUnclipRatio = null;
+                changed = true;
+            }
+        }
+
+        if (settings.PaddleVlLayoutMergeBboxesIouThreshold.HasValue)
+        {
+            var value = settings.PaddleVlLayoutMergeBboxesIouThreshold.Value;
+            if (double.IsNaN(value) || double.IsInfinity(value) || value < 0.0 || value > 1.0)
+            {
+                // WHY: out-of-range IoU threshold has undefined behavior across releases; fallback to native default.
+                settings.PaddleVlLayoutMergeBboxesIouThreshold = null;
+                changed = true;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.PaddleVlLayoutMergeBboxesMode))
+        {
+            if (settings.PaddleVlLayoutMergeBboxesMode is not null)
+            {
+                settings.PaddleVlLayoutMergeBboxesMode = null;
+                changed = true;
+            }
+        }
+        else
+        {
+            var normalizedMode = settings.PaddleVlLayoutMergeBboxesMode.Trim().ToLowerInvariant();
+            if (normalizedMode is not ("small" or "large" or "union"))
+            {
+                // WHY: keep unsupported mode values from reaching PaddleOCR-VL runtime.
+                settings.PaddleVlLayoutMergeBboxesMode = null;
+                changed = true;
+            }
+            else if (!string.Equals(settings.PaddleVlLayoutMergeBboxesMode, normalizedMode, StringComparison.Ordinal))
+            {
+                settings.PaddleVlLayoutMergeBboxesMode = normalizedMode;
+                changed = true;
+            }
+        }
+
         if (settings.PaddleVlMaxNewTokens.HasValue)
         {
             var clamped = Math.Clamp(settings.PaddleVlMaxNewTokens.Value, 512, 4096);

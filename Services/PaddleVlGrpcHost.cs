@@ -79,6 +79,7 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
         AddBooleanOptionalArg(startInfo.ArgumentList, "--merge-layout-blocks", settings.PaddleVlMergeLayoutBlocks);
         AddBooleanOptionalArg(startInfo.ArgumentList, "--use-ocr-for-image-block", settings.PaddleVlUseOcrForImageBlock);
         AddBooleanOptionalArg(startInfo.ArgumentList, "--use-layout-detection", settings.PaddleVlUseLayoutDetection);
+        AddBooleanOptionalArg(startInfo.ArgumentList, "--layout-nms", settings.PaddleVlLayoutNms);
 
         if (settings.PaddleVlMaxPixels is > 0)
         {
@@ -90,6 +91,24 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
         {
             startInfo.ArgumentList.Add("--layout-threshold");
             startInfo.ArgumentList.Add(settings.PaddleVlLayoutThreshold.Value.ToString("0.###", CultureInfo.InvariantCulture));
+        }
+
+        if (settings.PaddleVlLayoutUnclipRatio.HasValue)
+        {
+            startInfo.ArgumentList.Add("--layout-unclip-ratio");
+            startInfo.ArgumentList.Add(settings.PaddleVlLayoutUnclipRatio.Value.ToString(CultureInfo.InvariantCulture));
+        }
+
+        if (!string.IsNullOrWhiteSpace(settings.PaddleVlLayoutMergeBboxesMode))
+        {
+            startInfo.ArgumentList.Add("--layout-merge-bboxes-mode");
+            startInfo.ArgumentList.Add(settings.PaddleVlLayoutMergeBboxesMode.Trim().ToLowerInvariant());
+        }
+
+        if (settings.PaddleVlLayoutMergeBboxesIouThreshold.HasValue)
+        {
+            startInfo.ArgumentList.Add("--layout-merge-bboxes-iou-threshold");
+            startInfo.ArgumentList.Add(settings.PaddleVlLayoutMergeBboxesIouThreshold.Value.ToString(CultureInfo.InvariantCulture));
         }
 
         if (maxNewTokens.HasValue)

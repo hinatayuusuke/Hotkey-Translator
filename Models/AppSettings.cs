@@ -132,6 +132,10 @@ public sealed class AppSettings
     public string PaddleVlPipelineVersion { get; set; } = "v1.5";
     public int? PaddleVlMaxPixels { get; set; }
     public double? PaddleVlLayoutThreshold { get; set; }
+    public bool? PaddleVlLayoutNms { get; set; }
+    public double? PaddleVlLayoutUnclipRatio { get; set; }
+    public string? PaddleVlLayoutMergeBboxesMode { get; set; }
+    public double? PaddleVlLayoutMergeBboxesIouThreshold { get; set; }
     public int? PaddleVlMaxNewTokens { get; set; }
     public bool? PaddleVlMergeLayoutBlocks { get; set; }
     public bool? PaddleVlUseOcrForImageBlock { get; set; }
