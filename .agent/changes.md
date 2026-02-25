@@ -12312,3 +12312,219 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
 - `cmake --build Native/build --config Release` 成功（`HookAgentDx11.dll` / `HookHost.exe` 生成）。
+**2026-02-25 16:14 (Asia/Taipei) — Draft NDLOCR-Lite integration plan for OCR/translation/overlay**
+
+### Summary
+- Added a concrete implementation plan to integrate NDLOCR-Lite with the current OCR -> translation -> same-position overlay pipeline.
+
+### Context / Goal
+- The app goal is real-time screen OCR, translation, and rendering translated text at the same coordinates.
+- Define a safe, incremental design for adding NDLOCR-Lite without breaking existing WinRT/Paddle flows.
+
+### Changes
+- Created a new plan document covering architecture, interfaces, rollout steps, risks, and DoD.
+- Aligned the plan with existing gRPC host/provider patterns and current overlay coordinate contract.
+
+### Files Touched
+- `Doc/NDLOCR_Lite_Integration_Plan.md` — added the full integration plan for NDLOCR-Lite.
+
+### Behavioral Impact
+- No runtime behavior change (documentation-only update).
+
+### Risk & Mitigation
+- Risk: Plan assumptions may differ from actual NDLOCR runtime behavior during implementation.
+- Mitigation: Execute in phased steps with health checks, fallback to WinRT, and coordinate validation logs.
+
+### Tests / Verification
+- 未実施（ドキュメント作成のみ）。
+**2026-02-25 16:42 (Asia/Taipei) — Add NDLOCR minimal model-only engine and single-image test**
+
+### Summary
+- Implemented a standalone NDLOCR model-only OCR module and a single-image test script that validates JSON output (text/box/score).
+
+### Context / Goal
+- Add a safe spike implementation to test NDLOCR models directly before integrating into the main app OCR pipeline.
+- Ensure one-image input can produce structured OCR output with text, coordinates, and confidence scores.
+
+### Changes
+- Added `NDLOCR/ocr_engine.py` with a minimal NDLOCR-Lite runtime:
+  - DEIM detection + PARSEQ recognition (30/50/100 cascade).
+  - Outputs JSON lines with `text`, `box[x,y,w,h]`, `confidence`, `detection_confidence`, `recognition_confidence`.
+  - Includes a CLI for one-image inference and optional JSON file output.
+- Added `NDLOCR/test_ocr_engine.py`:
+  - Runs one-image OCR using `NdlOcrLiteEngine`.
+  - Validates output schema and prints line-wise text/coordinates/scores.
+  - Writes JSON output file for inspection.
+- Updated test script import flow to lazy-load the OCR engine so `--help` works without OCR dependencies.
+
+### Files Touched
+- `NDLOCR/ocr_engine.py` — new minimal model-only OCR engine module using `NDLOCR/Model` + `NDLOCR/reference/config`.
+- `NDLOCR/test_ocr_engine.py` — new single-image test/validation runner for JSON output.
+
+### Behavioral Impact
+- No impact on existing application runtime path yet (NDLOCR code is isolated under `NDLOCR/`).
+- Enables local, direct model validation for OCR text/box/score output.
+
+### Risk & Mitigation
+- Risk: Runtime depends on Python packages (`numpy`, `onnxruntime`, `Pillow`, `PyYAML`) and may fail outside prepared env.
+- Mitigation: Scripts are standalone and can be executed in a dedicated env; test has explicit schema checks and clear failures.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR\\ocr_engine.py NDLOCR\\test_ocr_engine.py` succeeded.
+- `python NDLOCR\\test_ocr_engine.py --help` succeeded.
+- Full model inference was not executed in current shell due missing runtime deps in system Python (`numpy` not installed).
+**2026-02-25 16:48 (Asia/Taipei) — Add NDLOCR pyproject for uv-based environment setup**
+
+### Summary
+- Created `NDLOCR/pyproject.toml` for uv-managed local OCR test environment.
+
+### Context / Goal
+- User requested an actual `pyproject.toml` to manage NDLOCR test dependencies with uv.
+- Keep setup simple and aligned with the current minimal NDLOCR engine/test scripts.
+
+### Changes
+- Added a new project metadata file under `NDLOCR/`.
+- Declared core dependencies (`numpy`, `pillow`, `pyyaml`) and optional runtime extras:
+  - `cpu` -> `onnxruntime`
+  - `gpu` -> `onnxruntime-gpu`
+
+### Files Touched
+- `NDLOCR/pyproject.toml` — new uv-compatible project configuration for local NDLOCR tests.
+
+### Behavioral Impact
+- No runtime behavior changes in the main app.
+- Enables deterministic uv-based dependency install via `uv sync --extra cpu|gpu`.
+
+### Risk & Mitigation
+- Risk: Installing both `onnxruntime` and `onnxruntime-gpu` together can cause runtime conflicts.
+- Mitigation: Keep CPU/GPU split in extras and install one path at a time.
+
+### Tests / Verification
+- `NDLOCR/pyproject.toml` content verified by file read.
+- Environment sync/install not executed in this step.
+**2026-02-25 16:50 (Asia/Taipei) — Make uv sync default install CPU onnxruntime**
+
+### Summary
+- Updated NDLOCR pyproject so plain `uv sync` installs CPU runtime by default.
+
+### Context / Goal
+- User requested CPU dependency to be installed without specifying extras.
+- Keep GPU dependency opt-in via extra.
+
+### Changes
+- Moved `onnxruntime>=1.17` from optional `cpu` extra into `[project].dependencies`.
+- Removed `cpu` optional extra section.
+- Kept `gpu` extra with `onnxruntime-gpu>=1.17`.
+
+### Files Touched
+- `NDLOCR/pyproject.toml` — changed dependency layout so default sync installs CPU runtime.
+
+### Behavioral Impact
+- `uv sync` now installs CPU runtime (`onnxruntime`) by default.
+- `uv sync --extra gpu` requests GPU runtime addition on top.
+
+### Risk & Mitigation
+- Risk: Adding `--extra gpu` may attempt to co-install CPU and GPU runtime wheels.
+- Mitigation: For GPU-only runtime, remove CPU wheel before syncing GPU extra when needed.
+
+### Tests / Verification
+- Verified updated `NDLOCR/pyproject.toml` content by file read.
+**2026-02-25 16:52 (Asia/Taipei) — Rename NDLOCR Python files for clearer engine separation**
+
+### Summary
+- Renamed NDLOCR engine/test Python files to avoid naming overlap with existing OCR service modules.
+
+### Context / Goal
+- User requested clearer file naming to distinguish NDLOCR implementation from existing `OcrService/ocr_engine.py`.
+- Reduce confusion in imports/search/log discussions as multiple OCR engines coexist.
+
+### Changes
+- Renamed engine module:
+  - `NDLOCR/ocr_engine.py` -> `NDLOCR/ndl_ocr_engine.py`
+- Renamed test module:
+  - `NDLOCR/test_ocr_engine.py` -> `NDLOCR/test_ndl_ocr_engine.py`
+- Updated test import to new module name:
+  - `from ocr_engine import NdlOcrLiteEngine` -> `from ndl_ocr_engine import NdlOcrLiteEngine`
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — renamed from previous `ocr_engine.py`.
+- `NDLOCR/test_ndl_ocr_engine.py` — renamed and import updated.
+
+### Behavioral Impact
+- Script invocation names changed; functionality remains the same.
+- New test command path is `NDLOCR/test_ndl_ocr_engine.py`.
+
+### Risk & Mitigation
+- Risk: Old command names may be used accidentally.
+- Mitigation: Verified import/path consistency and removed old-name references from NDLOCR tree.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
+- `python NDLOCR\\test_ndl_ocr_engine.py --help` succeeded.
+- `rg` check in `NDLOCR` found no remaining old filename/import references.
+**2026-02-25 17:01 (Asia/Taipei) — Switch NDLOCR dictionary path to direct NDLOCR/config**
+
+### Summary
+- Updated NDLOCR engine/test scripts to use `NDLOCR/config` directly via `--config-dir`.
+
+### Context / Goal
+- User requested moving dictionary/config path handling from `reference/config` to direct `NDLOCR/config`.
+- Keep command usage explicit and aligned with the new directory layout.
+
+### Changes
+- Replaced `reference_dir` input with `config_dir` in `NdlOcrLiteEngine`.
+- Updated CLI arguments from `--reference-dir` to `--config-dir` in both engine and test scripts.
+- Updated default directory resolution:
+  - model: prefer `NDLOCR/model` (fallback `NDLOCR/Model` for compatibility)
+  - config: prefer `NDLOCR/config` (fallback `NDLOCR/reference/config` for transition compatibility)
+- Updated test script engine construction to pass `config_dir`.
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — switched config source to direct `config` directory and updated CLI.
+- `NDLOCR/test_ndl_ocr_engine.py` — switched CLI and constructor argument to `config_dir`.
+
+### Behavioral Impact
+- New standard usage is `--config-dir` with `NDLOCR/config` defaults.
+- Existing old-layout projects can still run due temporary fallback to `reference/config` when `config` is absent.
+
+### Risk & Mitigation
+- Risk: Existing commands using `--reference-dir` will break.
+- Mitigation: Documented/implemented new `--config-dir`; fallback path support reduces runtime breakage when defaults are used.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
+- `uv run --project NDLOCR python NDLOCR\\ndl_ocr_engine.py --help` succeeded.
+- `uv run --project NDLOCR python NDLOCR\\test_ndl_ocr_engine.py --help` succeeded.
+- Verified no `reference-dir` / `reference_dir` references remain in both scripts.
+**2026-02-25 17:03 (Asia/Taipei) — Remove NDLOCR default path fallback logic**
+
+### Summary
+- Removed compatibility fallback path resolution for NDLOCR model/config defaults.
+
+### Context / Goal
+- User requested deleting both fallback behaviors:
+  - `reference/config` fallback for config
+  - `Model` fallback for model directory
+- Keep runtime path resolution strict and explicit.
+
+### Changes
+- Updated `NdlOcrLiteEngine` default directories to fixed paths only:
+  - model default: `NDLOCR/model`
+  - config default: `NDLOCR/config`
+- Deleted helper methods that implemented fallback path probing.
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — removed `_resolve_default_model_dir` / `_resolve_default_config_dir` and switched constructor defaults to fixed paths.
+
+### Behavioral Impact
+- Engine no longer auto-falls back to legacy paths (`NDLOCR/Model`, `NDLOCR/reference/config`).
+- Missing fixed paths now fail fast with existing required-file checks.
+
+### Risk & Mitigation
+- Risk: Environments still using legacy directory names will fail at startup.
+- Mitigation: Use explicit CLI overrides (`--model-dir`, `--config-dir`) or align directories to `NDLOCR/model` and `NDLOCR/config`.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
+- `uv run --project NDLOCR python NDLOCR\\ndl_ocr_engine.py --help` succeeded.
+- Confirmed fallback helper symbols are removed via `rg` search.
