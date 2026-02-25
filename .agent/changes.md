@@ -12528,3 +12528,67 @@ ull logger が固定されていた。
 - `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
 - `uv run --project NDLOCR python NDLOCR\\ndl_ocr_engine.py --help` succeeded.
 - Confirmed fallback helper symbols are removed via `rg` search.
+**2026-02-25 17:30 (Asia/Taipei) — Make onnxruntime-gpu default dependency in NDLOCR pyproject**
+
+### Summary
+- Updated NDLOCR pyproject so plain `uv sync` installs `onnxruntime-gpu` by default.
+
+### Context / Goal
+- User requested switching the default runtime from optional GPU install to default GPU install.
+- Ensure NDLOCR test environment uses GPU-capable ONNX Runtime without `--extra gpu`.
+
+### Changes
+- Added `onnxruntime-gpu>=1.17` to `[project].dependencies`.
+- Removed the previous optional `gpu` extra section.
+
+### Files Touched
+- `NDLOCR/pyproject.toml` — changed dependency policy to GPU-default.
+
+### Behavioral Impact
+- `uv sync` now installs GPU ONNX Runtime by default.
+- Users no longer need `--extra gpu` for CUDA path setup.
+
+### Risk & Mitigation
+- Risk: Environments without CUDA/cuDNN may fail to initialize CUDA provider at runtime.
+- Mitigation: Keep runtime `--device cpu` option and explicit error logs for missing GPU dependencies.
+
+### Tests / Verification
+- Verified updated `NDLOCR/pyproject.toml` content by file read.
+**2026-02-25 17:35 (Asia/Taipei) — Add CUDA DLL directory bootstrap to NDLOCR Python engine**
+
+### Summary
+- Added Windows CUDA DLL path bootstrap logic to `NDLOCR/ndl_ocr_engine.py` before ONNX Runtime import.
+
+### Context / Goal
+- User requested updating NDLOCR Python code to add DLL path handling, similar to Paddle OCR implementation.
+- Reduce CUDA provider init failures caused by unresolved nvidia wheel DLL dependencies (e.g., cuDNN DLL lookup).
+
+### Changes
+- Added candidate site-packages probing for:
+  - active interpreter venv (`sys.prefix/Lib/site-packages`)
+  - local project venv (`NDLOCR/.venv/Lib/site-packages`)
+- Added `os.add_dll_directory` registration for common CUDA-related wheel bins:
+  - `nvidia/cuda_runtime/bin`
+  - `nvidia/cublas/bin`
+  - `nvidia/cudnn/bin`
+  - `nvidia/nvjitlink/bin`
+  - `nvidia/cufft/bin`
+  - `nvidia/curand/bin`
+  - `nvidia/cusolver/bin`
+  - `nvidia/cusparse/bin`
+- Executed bootstrap before importing `onnxruntime`.
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — added CUDA DLL bootstrap helpers and pre-import execution.
+
+### Behavioral Impact
+- On Windows, CUDA-dependent DLL resolution now prefers venv-local nvidia package binaries.
+- CPU path is unchanged.
+
+### Risk & Mitigation
+- Risk: If required CUDA/cuDNN wheel DLLs are truly absent, GPU init still fails.
+- Mitigation: Keep explicit error visibility and use `--device cpu` fallback when GPU runtime is not available.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
+- `uv run --project NDLOCR python NDLOCR\\ndl_ocr_engine.py --help` succeeded.

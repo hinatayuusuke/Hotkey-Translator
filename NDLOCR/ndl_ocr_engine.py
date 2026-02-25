@@ -1,11 +1,63 @@
 import argparse
 import io
 import json
+import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 import numpy as np
+
+
+_DLL_DIR_HANDLES: list[object] = []
+
+
+def _candidate_site_packages() -> list[Path]:
+    candidates: list[Path] = []
+    candidates.append(Path(sys.prefix) / "Lib" / "site-packages")
+    candidates.append(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages")
+
+    seen: set[str] = set()
+    unique: list[Path] = []
+    for path in candidates:
+        key = str(path.resolve(strict=False)).lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(path)
+    return unique
+
+
+def _bootstrap_windows_cuda_dll_dirs() -> None:
+    if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        return
+
+    subdirs = (
+        "nvidia/cuda_runtime/bin",
+        "nvidia/cublas/bin",
+        "nvidia/cudnn/bin",
+        "nvidia/nvjitlink/bin",
+        "nvidia/cufft/bin",
+        "nvidia/curand/bin",
+        "nvidia/cusolver/bin",
+        "nvidia/cusparse/bin",
+    )
+
+    # WHY: Resolve CUDA DLLs from venv-local nvidia wheels before Windows fallback PATH probing.
+    for site_packages in _candidate_site_packages():
+        for rel in subdirs:
+            dll_dir = site_packages / rel
+            if not dll_dir.is_dir():
+                continue
+            try:
+                _DLL_DIR_HANDLES.append(os.add_dll_directory(str(dll_dir)))
+            except OSError:
+                continue
+
+
+_bootstrap_windows_cuda_dll_dirs()
+
 import onnxruntime
 import yaml
 from PIL import Image
