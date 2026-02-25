@@ -329,7 +329,7 @@ public sealed class PipelineOrchestrator
                 CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
                 var overlayStopwatch = perfProbe.BeginStep();
                 UpdateWpfOverlayRouting(overlayItems, overlayClipScreen, suppressWpfOverlay);
-                TryUpdateDx11HookOverlay(frame, roiScreen, overlayItems, settings);
+                // WHY: V1 rectangle command publishing is paused during phased removal. Keep HookAgent reader for compatibility.
                 TryUpdateDx11HookOverlayV2(frame, overlayItems, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
                 perfProbe.RecordOverlay(overlayStopwatch);

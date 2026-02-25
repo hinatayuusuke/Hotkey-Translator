@@ -12132,3 +12132,30 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `python -m py_compile OcrServiceVL/ocr_vl_engine.py OcrServiceVL/server.py OcrServiceVL/main.py OcrServiceVL/test_ocr_vl_engine.py` 成功。
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+
+**2026-02-25 11:34 (Asia/Taipei) — Hook V1送信を停止（V2優先運用の先行切替）**
+
+### Summary
+- `PipelineOrchestrator` の V1 矩形コマンド送信を停止し、Hook V2送信のみを実行するようにした。
+
+### Context / Goal
+- 段階移行方針に従い、まずは送信側だけ V1 を止めて表示経路を V2 に寄せる必要があった。
+- 読み取り側互換（HookAgent の `RefreshOverlayCommandsLocked`）は維持し、移行リスクを最小化することが目的。
+
+### Changes
+- `RunOnceAsync` のオーバーレイ更新経路から `TryUpdateDx11HookOverlay(...)` 呼び出しを除外。
+- 併せて「V1送信を段階撤去中である」WHYコメントを追加。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — V1送信呼び出しを停止し、V2送信のみ実行するよう更新。
+
+### Behavioral Impact
+- Hookパイプライン実行時、C#側から V1 (`TrySendOverlayUpdate`) は送信されなくなる。
+- HookAgent 側の V1読み取り実装は未変更のため、互換性は維持される。
+
+### Risk & Mitigation
+- Risk: V1送信停止後に想定外の表示欠落が発生する可能性。
+- Mitigation: V2送信経路は維持し、まず1リリース分のログ監視で安定性を確認する運用とした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
