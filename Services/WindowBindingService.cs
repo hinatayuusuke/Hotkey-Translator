@@ -63,17 +63,43 @@ public sealed class WindowBindingService
             return false;
         }
 
+        var hasMetadata = settings.FixedCaptureWindowProcessId > 0 ||
+                          !string.IsNullOrWhiteSpace(settings.FixedCaptureWindowProcessName) ||
+                          !string.IsNullOrWhiteSpace(settings.FixedCaptureWindowClassName) ||
+                          !string.IsNullOrWhiteSpace(settings.FixedCaptureWindowTitle);
+
         var stored = new IntPtr(settings.FixedCaptureWindowHandle);
-        if (stored != IntPtr.Zero && IsWindow(stored) && MatchesStoredIdentity(stored, settings))
+        var storedUsable = stored != IntPtr.Zero &&
+                           IsWindow(stored) &&
+                           MatchesStoredIdentity(stored, settings) &&
+                           IsCaptureWindowViable(stored, out _);
+        if (storedUsable)
         {
+            // WHY: Some titles recreate HWND on fullscreen transitions while leaving stale windows alive.
+            // Prefer metadata re-resolution when a better top-level candidate exists.
+            if (hasMetadata &&
+                TryFindWindowByMetadata(settings, out var refreshed) &&
+                refreshed != IntPtr.Zero &&
+                refreshed != stored)
+            {
+                hwnd = refreshed;
+                if (TryBuildSpec(refreshed, out var refreshedSpec, out _))
+                {
+                    ApplySpec(settings, refreshedSpec);
+                }
+                else
+                {
+                    settings.FixedCaptureWindowHandle = refreshed.ToInt64();
+                }
+
+                return true;
+            }
+
             hwnd = stored;
             return true;
         }
 
-        if (settings.FixedCaptureWindowProcessId <= 0 &&
-            string.IsNullOrWhiteSpace(settings.FixedCaptureWindowProcessName) &&
-            string.IsNullOrWhiteSpace(settings.FixedCaptureWindowClassName) &&
-            string.IsNullOrWhiteSpace(settings.FixedCaptureWindowTitle))
+        if (!hasMetadata)
         {
             reason = "Fixed capture metadata is empty.";
             return false;
@@ -122,6 +148,8 @@ public sealed class WindowBindingService
     {
         hwnd = IntPtr.Zero;
         var bestScore = int.MinValue;
+        var bestTopLevel = false;
+        var bestClientArea = -1.0;
         var bestHandle = IntPtr.Zero;
 
         _ = EnumWindows((window, _) =>
@@ -132,6 +160,11 @@ public sealed class WindowBindingService
             }
 
             if (!TryGetProcessId(window, out var processId))
+            {
+                return true;
+            }
+
+            if (!IsCaptureWindowViable(window, out var clientRect))
             {
                 return true;
             }
@@ -180,9 +213,15 @@ public sealed class WindowBindingService
                 score += 1;
             }
 
-            if (score > bestScore)
+            var isTopLevel = IsTopLevelWindow(window);
+            var clientArea = clientRect.Width * clientRect.Height;
+            if (score > bestScore ||
+                (score == bestScore && isTopLevel && !bestTopLevel) ||
+                (score == bestScore && isTopLevel == bestTopLevel && clientArea > bestClientArea))
             {
                 bestScore = score;
+                bestTopLevel = isTopLevel;
+                bestClientArea = clientArea;
                 bestHandle = window;
             }
 
@@ -191,6 +230,71 @@ public sealed class WindowBindingService
 
         hwnd = bestHandle;
         return hwnd != IntPtr.Zero;
+    }
+
+    private static bool IsCaptureWindowViable(IntPtr hwnd, out System.Windows.Rect clientRect)
+    {
+        clientRect = default;
+        if (hwnd == IntPtr.Zero || !IsWindowVisible(hwnd) || IsIconic(hwnd))
+        {
+            return false;
+        }
+
+        if (!TryGetClientScreenRect(hwnd, out clientRect))
+        {
+            return false;
+        }
+
+        var virtualScreen = GetVirtualScreenRect();
+        return !System.Windows.Rect.Intersect(clientRect, virtualScreen).IsEmpty;
+    }
+
+    private static bool IsTopLevelWindow(IntPtr hwnd)
+    {
+        // WHY: Fullscreen transitions may leave stale helper/owned windows behind; prefer root top-level windows.
+        return GetAncestor(hwnd, GaRoot) == hwnd && GetWindow(hwnd, GwOwner) == IntPtr.Zero;
+    }
+
+    private static bool TryGetClientScreenRect(IntPtr hwnd, out System.Windows.Rect rect)
+    {
+        rect = default;
+        if (!GetClientRect(hwnd, out var client))
+        {
+            return false;
+        }
+
+        var w = client.Right - client.Left;
+        var h = client.Bottom - client.Top;
+        if (w <= 0 || h <= 0)
+        {
+            return false;
+        }
+
+        var tl = new NativePoint(0, 0);
+        var br = new NativePoint(w, h);
+        if (!ClientToScreen(hwnd, ref tl) || !ClientToScreen(hwnd, ref br))
+        {
+            return false;
+        }
+
+        var outW = br.X - tl.X;
+        var outH = br.Y - tl.Y;
+        if (outW <= 0 || outH <= 0)
+        {
+            return false;
+        }
+
+        rect = new System.Windows.Rect(tl.X, tl.Y, outW, outH);
+        return true;
+    }
+
+    private static System.Windows.Rect GetVirtualScreenRect()
+    {
+        var left = GetSystemMetrics(SystemMetric.XVirtualScreen);
+        var top = GetSystemMetrics(SystemMetric.YVirtualScreen);
+        var width = GetSystemMetrics(SystemMetric.CxVirtualScreen);
+        var height = GetSystemMetrics(SystemMetric.CyVirtualScreen);
+        return new System.Windows.Rect(left, top, Math.Max(0, width), Math.Max(0, height));
     }
 
     private static bool TryBuildSpec(IntPtr hwnd, out FixedCaptureWindowSpec spec, out string? reason)
@@ -292,6 +396,24 @@ public sealed class WindowBindingService
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetClientRect(IntPtr hWnd, out NativeRect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref NativePoint lpPoint);
+
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(SystemMetric smIndex);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
 
@@ -308,4 +430,37 @@ public sealed class WindowBindingService
 
     [DllImport("user32.dll")]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    private const uint GaRoot = 2;
+    private const uint GwOwner = 4;
+
+    private enum SystemMetric
+    {
+        XVirtualScreen = 76,
+        YVirtualScreen = 77,
+        CxVirtualScreen = 78,
+        CyVirtualScreen = 79
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint
+    {
+        public int X;
+        public int Y;
+
+        public NativePoint(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+    }
 }
