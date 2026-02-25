@@ -762,7 +762,7 @@ public sealed class PipelineOrchestrator
                 blockCount: 0,
                 textBytes: 0,
                 failureReason);
-            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_disabled_or_empty", traceEnabled);
+            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_disabled_or_empty", canvasW, canvasH);
             return;
         }
 
@@ -898,7 +898,7 @@ public sealed class PipelineOrchestrator
                 blockCount: 0,
                 textBytes: 0,
                 failureReason);
-            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_no_valid_blocks", traceEnabled);
+            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_no_valid_blocks", canvasW, canvasH);
             return;
         }
 
@@ -922,7 +922,7 @@ public sealed class PipelineOrchestrator
             blockCount: blocks.Count,
             textBytes: blobArray.Length,
             publishFailure);
-        LogHookV2StatusSnapshot(pid, publishAttempt, "publish_text_blocks", traceEnabled);
+        LogHookV2StatusSnapshot(pid, publishAttempt, "publish_text_blocks", canvasW, canvasH);
     }
 
     private float ResolveHookOverlayFontPx(OverlayItem item, Rect frameBounds, uint canvasH)
@@ -1044,18 +1044,24 @@ public sealed class PipelineOrchestrator
         return true;
     }
 
-    private void LogHookV2StatusSnapshot(int pid, ulong seq, string phase, bool traceEnabled)
+    private void LogHookV2StatusSnapshot(int pid, ulong seq, string phase, uint canvasW, uint canvasH)
     {
-        if (!traceEnabled || pid <= 0)
+        if (pid <= 0)
         {
             return;
         }
 
         if (Dx11HookStatusReader.TryRead(pid, out var status))
         {
+            var mismatch =
+                status.BackBufferWidth > 0 &&
+                status.BackBufferHeight > 0 &&
+                (Math.Abs((int)status.BackBufferWidth - (int)canvasW) > 2 ||
+                 Math.Abs((int)status.BackBufferHeight - (int)canvasH) > 2);
             _logger.Info(
                 $"stage=hook_v2_status event=read seq={seq} phase={phase} pid={pid} presentCount={status.PresentCount} " +
                 $"presentKind={status.LastPresentKind} bb={status.BackBufferWidth}x{status.BackBufferHeight} " +
+                $"canvas={canvasW}x{canvasH} mismatch={(mismatch ? "yes" : "no")} " +
                 $"cmdQpc={status.LastCmdQpc} cmdCount={status.LastCmdCount} r0={status.Reserved0} r1={status.Reserved1}.");
             return;
         }

@@ -107,6 +107,7 @@ namespace ht::hook::dx11
             ID3D11RenderTargetView* backBufferRtv = nullptr;
             UINT backBufferWidth = 0;
             UINT backBufferHeight = 0;
+            DXGI_FORMAT backBufferFormat = DXGI_FORMAT_UNKNOWN;
             UINT stagingWidth = 0;
             UINT stagingHeight = 0;
             DXGI_FORMAT stagingFormat = DXGI_FORMAT_UNKNOWN;
@@ -122,6 +123,7 @@ namespace ht::hook::dx11
             std::uint64_t lastOverlayV2Seq = 0;
             std::uint64_t lastOverlayV2Qpc = 0;
             std::uint64_t lastOverlayTraceDrawSeq = 0;
+            std::uint64_t lastOverlayCanvasMismatchSeq = 0;
             ht::hook::ipc::OverlayV2Header overlayV2Header{};
             std::vector<ht::hook::ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
@@ -336,6 +338,7 @@ namespace ht::hook::dx11
 
             rt.backBufferWidth = 0;
             rt.backBufferHeight = 0;
+            rt.backBufferFormat = DXGI_FORMAT_UNKNOWN;
             rt.stagingWidth = 0;
             rt.stagingHeight = 0;
             rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
@@ -437,10 +440,6 @@ namespace ht::hook::dx11
 
         bool EnsureBackBufferRtvLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
         {
-            if (rt.backBufferRtv != nullptr)
-            {
-                return true;
-            }
             if (rt.device == nullptr || swap == nullptr)
             {
                 return false;
@@ -456,6 +455,38 @@ namespace ht::hook::dx11
             D3D11_TEXTURE2D_DESC bbDesc{};
             backBuffer->GetDesc(&bbDesc);
 
+            const bool needsRefresh =
+                (rt.backBufferRtv == nullptr) ||
+                (rt.backBufferWidth != bbDesc.Width) ||
+                (rt.backBufferHeight != bbDesc.Height) ||
+                (rt.backBufferFormat != bbDesc.Format);
+            if (!needsRefresh)
+            {
+                backBuffer->Release();
+                return true;
+            }
+
+            const auto oldW = rt.backBufferWidth;
+            const auto oldH = rt.backBufferHeight;
+            const auto oldFmt = rt.backBufferFormat;
+            if (rt.backBufferRtv != nullptr)
+            {
+                IUnknown* oldRtv = rt.backBufferRtv;
+                rt.backBufferRtv = nullptr;
+                SafeRelease(oldRtv);
+            }
+
+            if (rt.staging != nullptr)
+            {
+                // WHY: Staging texture must match current backbuffer dimensions/format after fullscreen transitions.
+                IUnknown* oldStaging = rt.staging;
+                rt.staging = nullptr;
+                SafeRelease(oldStaging);
+                rt.stagingWidth = 0;
+                rt.stagingHeight = 0;
+                rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
+            }
+
             ID3D11RenderTargetView* rtv = nullptr;
             const HRESULT rtvHr = rt.device->CreateRenderTargetView(backBuffer, nullptr, &rtv);
             backBuffer->Release();
@@ -467,6 +498,19 @@ namespace ht::hook::dx11
             rt.backBufferRtv = rtv;
             rt.backBufferWidth = bbDesc.Width;
             rt.backBufferHeight = bbDesc.Height;
+            rt.backBufferFormat = bbDesc.Format;
+            char msg[320]{};
+            std::snprintf(
+                msg,
+                sizeof(msg),
+                "HT HookAgentDx11: backbuffer_refresh old=%ux%u fmt=%u new=%ux%u fmt=%u\n",
+                static_cast<unsigned int>(oldW),
+                static_cast<unsigned int>(oldH),
+                static_cast<unsigned int>(oldFmt),
+                static_cast<unsigned int>(rt.backBufferWidth),
+                static_cast<unsigned int>(rt.backBufferHeight),
+                static_cast<unsigned int>(rt.backBufferFormat));
+            OutputDebugStringA(msg);
             return true;
         }
 
@@ -819,6 +863,28 @@ namespace ht::hook::dx11
             else
             {
             const bool hasV2 = (rt.lastOverlayV2Seq != 0) && (!rt.overlayV2Blocks.empty()) && (!rt.overlayV2TextBlob.empty());
+            const bool hasCanvasSize = (rt.overlayV2Header.canvasW > 0) && (rt.overlayV2Header.canvasH > 0);
+            const bool canvasMismatch =
+                hasV2 &&
+                hasCanvasSize &&
+                (std::abs(static_cast<int>(rt.backBufferWidth) - static_cast<int>(rt.overlayV2Header.canvasW)) > 2 ||
+                 std::abs(static_cast<int>(rt.backBufferHeight) - static_cast<int>(rt.overlayV2Header.canvasH)) > 2);
+            if (canvasMismatch && rt.lastOverlayCanvasMismatchSeq != rt.lastOverlayV2Seq)
+            {
+                rt.lastOverlayCanvasMismatchSeq = rt.lastOverlayV2Seq;
+                char msg[320]{};
+                std::snprintf(
+                    msg,
+                    sizeof(msg),
+                    "HT HookAgentDx11: ovl_v2_mismatch seq=%llu bb=%ux%u canvas=%ux%u blocks=%zu\n",
+                    static_cast<unsigned long long>(rt.lastOverlayV2Seq),
+                    static_cast<unsigned int>(rt.backBufferWidth),
+                    static_cast<unsigned int>(rt.backBufferHeight),
+                    static_cast<unsigned int>(rt.overlayV2Header.canvasW),
+                    static_cast<unsigned int>(rt.overlayV2Header.canvasH),
+                    static_cast<std::size_t>(rt.overlayV2Blocks.size()));
+                OutputDebugStringA(msg);
+            }
             if (hasV2)
             {
                 ImDrawList* bg = ImGui::GetBackgroundDrawList();
@@ -1805,5 +1871,6 @@ namespace ht::hook::dx11
         g_rt.lastPresentQpc = 0;
         g_rt.lastPresentKind = 0;
         g_rt.lastOverlayTraceDrawSeq = 0;
+        g_rt.lastOverlayCanvasMismatchSeq = 0;
     }
 }

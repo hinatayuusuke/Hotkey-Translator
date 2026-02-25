@@ -12277,3 +12277,38 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
 - `cmake --build Native/build --config Release` 成功（`HookAgentDx11.dll` / `HookHost.exe` 生成）。
+
+**2026-02-25 15:45 (Asia/Taipei) — Present毎RTV再取得と常設診断ログの実装**
+
+### Summary
+- Hook fullscreen 切替不整合向けに、毎Presentのサイズ検知+RTV再作成と常設診断ログを実装した。
+
+### Context / Goal
+- fullscreen切替時に `bb` が旧サイズのまま残ることで、Hook overlay が部分描画になる事象を抑止したい。
+- 指示どおり、実装範囲は「1. Present毎サイズ検知+RTV再作成」「2. 診断ログ常設」に限定する。
+
+### Changes
+- `EnsureBackBufferRtvLocked` を変更し、RTV存在時でも毎Presentで backbuffer desc を確認するようにした。
+- backbuffer の `Width/Height/Format` 変化時に既存RTVを破棄し、最新 backbuffer から RTV を再作成するようにした。
+- サイズ変化時は staging を破棄して次回 capture で再作成するようにした（旧寸法の再利用防止）。
+- backbuffer 再取得時に `backbuffer_refresh old=... new=...` を `OutputDebugStringA` で常設出力するようにした。
+- `DrawImGuiOverlayV2Locked` に `bb` と `canvas` の不一致診断ログを常設追加（`ovl_v2_mismatch`、seq単位で重複抑制）。
+- アプリ側 `hook_v2_status` を常設出力に変更し、`canvas` と `bb` と `mismatch=yes/no` を常に記録するようにした。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — 毎Present差分検知、RTV/staging再作成、常設診断ログ（backbuffer_refresh / ovl_v2_mismatch）を追加。
+- `Services/PipelineOrchestrator.cs` — `hook_v2_status` を常設化し、`canvas` と `mismatch` をログに追加。
+
+### Behavioral Impact
+- fullscreen/window 切替時に swapchain backbuffer の変化へ追従し、RTV が旧サイズのまま残りにくくなる。
+- 調査時に環境変数へ依存せず、`bb` と `canvas` の不一致をアプリログ/Debug出力で追跡できる。
+
+### Risk & Mitigation
+- Risk: 毎Presentで `GetBuffer` + desc確認のコストが増える。
+- Mitigation: 再作成は差分検知時のみ実行し、通常フレームは既存RTVを維持する。
+- Risk: 診断ログが増える。
+- Mitigation: 常設ログはイベント駆動（サイズ変化時、seqごとの不一致時）とし、過剰連打を避ける。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+- `cmake --build Native/build --config Release` 成功（`HookAgentDx11.dll` / `HookHost.exe` 生成）。
