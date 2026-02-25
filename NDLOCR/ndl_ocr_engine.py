@@ -3,6 +3,8 @@ import io
 import json
 import os
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -88,6 +90,8 @@ class NdlOcrLiteEngine:
         det_conf_threshold: float = 0.25,
         det_iou_threshold: float = 0.2,
         text_class_name: str = "line_main",
+        max_workers: int = 2,
+        enable_timing_log: bool = True,
     ) -> None:
         root = Path(__file__).resolve().parent
         self._model_dir = Path(model_dir) if model_dir else root / "model"
@@ -95,6 +99,8 @@ class NdlOcrLiteEngine:
         self._text_class_name = text_class_name
         self._device = (device or "cpu").strip().lower()
         self._det_conf_threshold = float(det_conf_threshold)
+        self._enable_timing_log = bool(enable_timing_log)
+        self._max_workers = max(1, int(max_workers))
 
         det_path = self._model_dir / "deim-s-1024x1024.onnx"
         rec30_path = self._model_dir / "parseq-ndl-16x256-30-tiny-192epoch-tegaki3.onnx"
@@ -125,13 +131,22 @@ class NdlOcrLiteEngine:
         self._rec100 = self._create_parseq_session(rec100_path)
 
     def recognize(self, image_bytes: bytes) -> str:
+        t0 = time.perf_counter()
+
+        t_decode0 = time.perf_counter()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         image_np = np.array(image)
         img_h, img_w = image_np.shape[:2]
+        t_decode1 = time.perf_counter()
+
+        t_detect0 = time.perf_counter()
         detections = self._detect(image_np)
         line_detections = self._select_text_lines(detections)
+        t_detect1 = time.perf_counter()
 
+        t_rec0 = time.perf_counter()
         lines: list[dict[str, Any]] = []
+        valid_items: list[tuple[int, np.ndarray, dict[str, Any]]] = []
         for line_idx, det in enumerate(line_detections):
             left, top, width, height = self._to_ltrbwh_clamped(det["box"], img_w, img_h)
             if width <= 0 or height <= 0:
@@ -141,25 +156,115 @@ class NdlOcrLiteEngine:
             if crop.size == 0:
                 continue
 
-            pred_char_count = int(round(float(det.get("pred_char_count", 100.0))))
-            text, rec_score = self._recognize_with_cascade(crop, pred_char_count)
-            det_score = float(det.get("confidence", 0.0))
-            # WHY: Keep one ranking score for downstream filtering while preserving both component scores.
-            combined = float(max(0.0, min(1.0, det_score * rec_score)))
-
-            lines.append(
-                {
-                    "id": line_idx,
-                    "text": text,
-                    "box": [float(left), float(top), float(width), float(height)],
-                    "confidence": combined,
-                    "detection_confidence": det_score,
-                    "recognition_confidence": rec_score,
-                    "class_name": det.get("class_name", ""),
-                }
+            valid_items.append(
+                (
+                    line_idx,
+                    crop,
+                    {
+                        "left": left,
+                        "top": top,
+                        "width": width,
+                        "height": height,
+                        "det": det,
+                    },
+                )
             )
 
+        rec_results: list[tuple[int, dict[str, Any]]] = []
+        worker_count = 1
+        # WHY: Keep parallelism minimal and CPU-only; CUDA EP often performs better with serialized run().
+        if len(valid_items) > 1 and self._device == "cpu":
+            worker_count = min(self._max_workers, len(valid_items))
+            with ThreadPoolExecutor(max_workers=worker_count) as pool:
+                futures = [pool.submit(self._recognize_line, item) for item in valid_items]
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result is None:
+                        continue
+                    rec_results.append(result)
+        else:
+            for item in valid_items:
+                result = self._recognize_line(item)
+                if result is None:
+                    continue
+                rec_results.append(result)
+
+        for _, line in sorted(rec_results, key=lambda item: item[0]):
+            lines.append(line)
+
+        t_rec1 = time.perf_counter()
+        t_end = time.perf_counter()
+
+        self._log_timing_summary(
+            img_w=img_w,
+            img_h=img_h,
+            line_input_count=len(line_detections),
+            line_valid_count=len(valid_items),
+            line_output_count=len(lines),
+            workers=worker_count,
+            decode_ms=(t_decode1 - t_decode0) * 1000.0,
+            detect_and_select_ms=(t_detect1 - t_detect0) * 1000.0,
+            recognize_ms=(t_rec1 - t_rec0) * 1000.0,
+            total_ms=(t_end - t0) * 1000.0,
+        )
+
         return json.dumps({"lines": lines}, ensure_ascii=False)
+
+    def _recognize_line(
+        self,
+        item: tuple[int, np.ndarray, dict[str, Any]],
+    ) -> tuple[int, dict[str, Any]] | None:
+        line_idx, crop, context = item
+        left = int(context["left"])
+        top = int(context["top"])
+        width = int(context["width"])
+        height = int(context["height"])
+        det = context["det"]
+
+        pred_char_count = int(round(float(det.get("pred_char_count", 100.0))))
+        text, rec_score = self._recognize_with_cascade(crop, pred_char_count)
+        det_score = float(det.get("confidence", 0.0))
+        # WHY: Keep one ranking score for downstream filtering while preserving both component scores.
+        combined = float(max(0.0, min(1.0, det_score * rec_score)))
+
+        return (
+            line_idx,
+            {
+                "id": line_idx,
+                "text": text,
+                "box": [float(left), float(top), float(width), float(height)],
+                "confidence": combined,
+                "detection_confidence": det_score,
+                "recognition_confidence": rec_score,
+                "class_name": det.get("class_name", ""),
+            },
+        )
+
+    def _log_timing_summary(
+        self,
+        *,
+        img_w: int,
+        img_h: int,
+        line_input_count: int,
+        line_valid_count: int,
+        line_output_count: int,
+        workers: int,
+        decode_ms: float,
+        detect_and_select_ms: float,
+        recognize_ms: float,
+        total_ms: float,
+    ) -> None:
+        if not self._enable_timing_log:
+            return
+        print(
+            "stage=ndl_ocr_timing event=summary "
+            f"device={self._device} image={img_w}x{img_h} "
+            f"linesIn={line_input_count} linesValid={line_valid_count} linesOut={line_output_count} "
+            f"workers={workers} decodeMs={decode_ms:.2f} detectSelectMs={detect_and_select_ms:.2f} "
+            f"recognizeMs={recognize_ms:.2f} totalMs={total_ms:.2f}.",
+            file=sys.stderr,
+            flush=True,
+        )
 
     def _detect(self, image_np: np.ndarray) -> list[dict[str, Any]]:
         input_tensor, padded_w, padded_h = self._preprocess_detector(image_np)

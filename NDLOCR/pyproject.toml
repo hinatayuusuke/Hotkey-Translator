@@ -5,14 +5,7 @@ description = "Local NDLOCR model test runner"
 requires-python = ">=3.11,<3.13"
 dependencies = [
   "numpy>=1.26",
-  "onnxruntime-gpu>=1.17",
+  "onnxruntime>=1.24,<2",
   "pillow>=10.0",
   "pyyaml>=6.0",
-  
-  # GPU runtime (CUDA12 + cuDNN9)
-  "onnxruntime-gpu>=1.24,<2",
-  "nvidia-cuda-runtime-cu12>=12,<13",
-  "nvidia-cublas-cu12>=12,<13",
-  "nvidia-cudnn-cu12>=9,<10",
-  "nvidia-nvjitlink-cu12>=12,<13",
 ]

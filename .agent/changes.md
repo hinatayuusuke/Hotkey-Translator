@@ -12592,3 +12592,126 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `python -m py_compile NDLOCR\\ndl_ocr_engine.py NDLOCR\\test_ndl_ocr_engine.py` succeeded.
 - `uv run --project NDLOCR python NDLOCR\\ndl_ocr_engine.py --help` succeeded.
+**2026-02-25 17:55 (Asia/Taipei) — Update NDLOCR pyproject to legacy CUDA11 stack for GTX1080 compatibility**
+
+### Summary
+- Adjusted NDLOCR dependencies from CUDA12/cuDNN9 to a CUDA11.8-era stack to avoid current CUDA EP init failures on GTX1080.
+
+### Context / Goal
+- User requested fixing `pyproject.toml` after repeated GPU initialization failures.
+- Current stack (`onnxruntime-gpu 1.24.x` + cuDNN9/CUDA12) failed to load CUDA provider in this environment.
+
+### Changes
+- Replaced GPU runtime dependencies to a legacy-compatible set:
+  - `onnxruntime-gpu>=1.18,<1.19`
+  - `nvidia-cuda-runtime-cu11==11.8.89`
+  - `nvidia-cublas-cu11==11.11.3.6`
+  - `nvidia-cudnn-cu11==8.9.5.29`
+- Kept existing non-GPU deps unchanged.
+- Pinned exact cu11 package versions to avoid resolver selecting Linux-only wheels for Windows.
+
+### Files Touched
+- `NDLOCR/pyproject.toml` — switched dependency stack from CUDA12/cuDNN9 to pinned CUDA11.8/cuDNN8-compatible packages.
+
+### Behavioral Impact
+- `uv sync` now resolves to a legacy ORT GPU stack intended to be more compatible with GTX1080-class environments.
+- Lockfile will update on next sync.
+
+### Risk & Mitigation
+- Risk: Even with legacy stack, CUDA EP may still fail depending on driver/runtime specifics.
+- Mitigation: keep `--device cpu` fallback and verify provider activation after sync.
+
+### Tests / Verification
+- `uv sync --project NDLOCR --dry-run` succeeded with the updated dependency graph and no platform-wheel error.
+- Verified final `NDLOCR/pyproject.toml` contents by file read.
+**2026-02-25 18:13 (Asia/Taipei) — Add NDLOCR timing breakdown logging and minimal CPU parallelism**
+
+### Summary
+- Added stage-level timing logs and minimal line-level parallel OCR execution in 
+dl_ocr_engine.py.
+
+### Context / Goal
+- User requested only two changes: execution time breakdown logging and minimal parallelization.
+- Keep output compatibility (ecognize JSON schema) while improving observability and throughput.
+
+### Changes
+- Added timing measurement in ecognize() for decode, detect+select, recognize, and total elapsed time.
+- Added _log_timing_summary() to emit one structured summary log line to stderr per recognition call.
+- Added minimal parallelization for line recognition via ThreadPoolExecutor (CPU only, max workers capped).
+- Refactored per-line OCR path into _recognize_line() and preserved deterministic output ordering by line index.
+
+### Files Touched
+- NDLOCR/ndl_ocr_engine.py — added timing instrumentation, minimal CPU parallel line OCR, and structured timing summary logging.
+
+### Behavioral Impact
+- ecognize() now outputs timing summary logs to stderr by default.
+- CPU mode may process multiple detected lines concurrently (up to 2 workers by default).
+- JSON output format/content contract remains unchanged.
+
+### Risk & Mitigation
+- Risk: Parallel line OCR can change runtime characteristics or expose inference-session thread-safety issues in some environments.
+- Mitigation: Limited to CPU mode, small worker cap, and deterministic final ordering maintained.
+
+### Tests / Verification
+- python -m py_compile NDLOCR/ndl_ocr_engine.py NDLOCR/test_ndl_ocr_engine.py succeeded.
+- uv run --project NDLOCR python NDLOCR/ndl_ocr_engine.py --help succeeded.
+**2026-02-25 18:14 (Asia/Taipei) — Add NDLOCR timing breakdown logging and minimal CPU parallelism (format-fixed)**
+
+### Summary
+- Added stage-level timing logs and minimal line-level parallel OCR execution in `NDLOCR/ndl_ocr_engine.py`.
+
+### Context / Goal
+- User requested only two changes: execution time breakdown logging and minimal parallelization.
+- Keep output compatibility (`recognize` JSON schema) while improving observability and throughput.
+
+### Changes
+- Added timing measurement in `recognize()` for decode, detect+select, recognize, and total elapsed time.
+- Added `_log_timing_summary()` to emit one structured summary log line to stderr per recognition call.
+- Added minimal parallelization for line recognition via `ThreadPoolExecutor` (CPU only, max workers capped).
+- Refactored per-line OCR path into `_recognize_line()` and preserved deterministic output ordering by line index.
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — added timing instrumentation, minimal CPU parallel line OCR, and structured timing summary logging.
+
+### Behavioral Impact
+- `recognize()` now outputs timing summary logs to stderr by default.
+- CPU mode may process multiple detected lines concurrently (up to 2 workers by default).
+- JSON output format/content contract remains unchanged.
+
+### Risk & Mitigation
+- Risk: Parallel line OCR can change runtime characteristics or expose inference-session thread-safety issues in some environments.
+- Mitigation: Limited to CPU mode, small worker cap, and deterministic final ordering maintained.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR/ndl_ocr_engine.py NDLOCR/test_ndl_ocr_engine.py` succeeded.
+- `uv run --project NDLOCR python NDLOCR/ndl_ocr_engine.py --help` succeeded.
+**2026-02-25 18:29 (Asia/Taipei) — Switch NDLOCR dependencies to CPU-only ONNX Runtime**
+
+### Summary
+- Switched NDLOCR Python dependencies from GPU stack to CPU-only ONNX Runtime.
+
+### Context / Goal
+- User requested full CPU operation for NDLOCR.
+- Remove CUDA/cuDNN dependency requirements and make local runtime stable on non-CUDA environments.
+
+### Changes
+- Replaced `onnxruntime-gpu` with `onnxruntime` in `pyproject.toml`.
+- Removed CUDA-specific `nvidia-*` dependencies from `pyproject.toml`.
+- Regenerated lockfile so dependency graph contains CPU runtime only.
+
+### Files Touched
+- `NDLOCR/pyproject.toml` — removed GPU runtime dependencies and set CPU runtime dependency.
+- `NDLOCR/uv.lock` — updated lock entries to remove GPU packages and include `onnxruntime`.
+
+### Behavioral Impact
+- NDLOCR environment no longer requires CUDA/cuDNN libraries.
+- OCR execution path remains the same at code level, but runtime backend is CPU-only by dependency design.
+
+### Risk & Mitigation
+- Risk: Existing local venv can have stale package state after GPU->CPU switch.
+- Mitigation: run `uv sync` and, if needed, reinstall `onnxruntime` in `.venv` to restore module files.
+
+### Tests / Verification
+- `uv lock --project NDLOCR` succeeded.
+- `uv sync --project NDLOCR` succeeded and uninstalled GPU packages.
+- `.venv\Scripts\python.exe .\test_ndl_ocr_engine.py --image .\test.png --model-dir .\model --config-dir .\config --device cpu --print-limit 1` succeeded.
