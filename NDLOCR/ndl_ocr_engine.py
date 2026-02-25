@@ -206,6 +206,7 @@ class NdlOcrLiteEngine:
             detect_and_select_ms=(t_detect1 - t_detect0) * 1000.0,
             recognize_ms=(t_rec1 - t_rec0) * 1000.0,
             total_ms=(t_end - t0) * 1000.0,
+            lines=lines,
         )
 
         return json.dumps({"lines": lines}, ensure_ascii=False)
@@ -225,7 +226,7 @@ class NdlOcrLiteEngine:
         text, rec_score = self._recognize_with_cascade(crop, pred_char_count)
         det_score = float(det.get("confidence", 0.0))
         # WHY: Keep one ranking score for downstream filtering while preserving both component scores.
-        combined = float(max(0.0, min(1.0, det_score * rec_score)))
+        combined = self._normalize_score(det_score * rec_score)
 
         return (
             line_idx,
@@ -234,8 +235,8 @@ class NdlOcrLiteEngine:
                 "text": text,
                 "box": [float(left), float(top), float(width), float(height)],
                 "confidence": combined,
-                "detection_confidence": det_score,
-                "recognition_confidence": rec_score,
+                "detection_confidence": self._normalize_score(det_score),
+                "recognition_confidence": self._normalize_score(rec_score),
                 "class_name": det.get("class_name", ""),
             },
         )
@@ -253,18 +254,37 @@ class NdlOcrLiteEngine:
         detect_and_select_ms: float,
         recognize_ms: float,
         total_ms: float,
+        lines: list[dict[str, Any]],
     ) -> None:
         if not self._enable_timing_log:
             return
+        confidence_values = [self._normalize_score(line.get("confidence", 0.0)) for line in lines]
+        if confidence_values:
+            confidence_avg = float(sum(confidence_values) / len(confidence_values))
+            confidence_min = float(min(confidence_values))
+        else:
+            confidence_avg = 0.0
+            confidence_min = 0.0
         print(
             "stage=ndl_ocr_timing event=summary "
             f"device={self._device} image={img_w}x{img_h} "
             f"linesIn={line_input_count} linesValid={line_valid_count} linesOut={line_output_count} "
             f"workers={workers} decodeMs={decode_ms:.2f} detectSelectMs={detect_and_select_ms:.2f} "
-            f"recognizeMs={recognize_ms:.2f} totalMs={total_ms:.2f}.",
+            f"recognizeMs={recognize_ms:.2f} totalMs={total_ms:.2f} "
+            f"confidenceAvg={confidence_avg:.4f} confidenceMin={confidence_min:.4f}.",
             file=sys.stderr,
             flush=True,
         )
+
+    @staticmethod
+    def _normalize_score(value: Any) -> float:
+        try:
+            score = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        if not np.isfinite(score):
+            return 0.0
+        return float(max(0.0, min(1.0, score)))
 
     def _detect(self, image_np: np.ndarray) -> list[dict[str, Any]]:
         input_tensor, padded_w, padded_h = self._preprocess_detector(image_np)

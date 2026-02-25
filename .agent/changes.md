@@ -12715,3 +12715,32 @@ dl_ocr_engine.py.
 - `uv lock --project NDLOCR` succeeded.
 - `uv sync --project NDLOCR` succeeded and uninstalled GPU packages.
 - `.venv\Scripts\python.exe .\test_ndl_ocr_engine.py --image .\test.png --model-dir .\model --config-dir .\config --device cpu --print-limit 1` succeeded.
+**2026-02-25 18:51 (Asia/Taipei) — Harden NDLOCR confidence fields and add confidence summary log**
+
+### Summary
+- Updated `NDLOCR/ndl_ocr_engine.py` to make confidence outputs robust and emit confidence summary metrics in timing logs.
+
+### Context / Goal
+- User requested implementing NDLOCR-side changes first for score handling.
+- Goal was to keep confidence available for downstream observation without changing OCR behavior.
+
+### Changes
+- Added score normalization helper to clamp/clean confidence values to [0,1] and handle invalid values safely.
+- Applied normalization to `confidence`, `detection_confidence`, and `recognition_confidence` in per-line output.
+- Extended timing summary log with `confidenceAvg` and `confidenceMin` for quick quality observation.
+
+### Files Touched
+- `NDLOCR/ndl_ocr_engine.py` — normalized confidence generation and added confidence summary logging.
+
+### Behavioral Impact
+- NDLOCR line-level score fields are now resilient to NaN/inf/unexpected inputs.
+- Timing logs now include confidence aggregate metrics.
+- OCR text and box extraction flow is unchanged.
+
+### Risk & Mitigation
+- Risk: Minor numeric differences due to explicit clamping/normalization.
+- Mitigation: Normalization is conservative and only affects out-of-range/invalid values.
+
+### Tests / Verification
+- `python -m py_compile NDLOCR/ndl_ocr_engine.py NDLOCR/test_ndl_ocr_engine.py` succeeded.
+- `NDLOCR\.venv\Scripts\python.exe NDLOCR\test_ndl_ocr_engine.py --image NDLOCR\test.png --model-dir NDLOCR\model --config-dir NDLOCR\config --device cpu --print-limit 1` succeeded.
