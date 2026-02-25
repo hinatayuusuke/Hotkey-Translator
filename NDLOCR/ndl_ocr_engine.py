@@ -13,6 +13,13 @@ import numpy as np
 
 
 _DLL_DIR_HANDLES: list[object] = []
+_CUDA_BOOTSTRAP_DEBUG = os.environ.get("HT_NDLOCR_CUDA_DEBUG", "0") == "1"
+
+
+def _cuda_bootstrap_debug(message: str) -> None:
+    if not _CUDA_BOOTSTRAP_DEBUG:
+        return
+    print(f"[NDLOCR CUDA BOOTSTRAP] {message}", file=sys.stderr, flush=True)
 
 
 def _candidate_site_packages() -> list[Path]:
@@ -31,8 +38,33 @@ def _candidate_site_packages() -> list[Path]:
     return unique
 
 
+def _prepend_windows_path_dirs(paths: list[str]) -> int:
+    if os.name != "nt":
+        return 0
+
+    current = os.environ.get("PATH", "")
+    current_parts = [p for p in current.split(";") if p]
+    known = {os.path.normcase(os.path.normpath(p)) for p in current_parts}
+    prepend: list[str] = []
+
+    for path in paths:
+        norm = os.path.normcase(os.path.normpath(path))
+        if norm in known:
+            continue
+        prepend.append(path)
+        known.add(norm)
+
+    if not prepend:
+        return 0
+
+    # WHY: ONNX Runtime's provider DLL loader may not honor add_dll_directory; PATH keeps provider-side loads stable.
+    os.environ["PATH"] = ";".join(prepend + current_parts)
+    return len(prepend)
+
+
 def _bootstrap_windows_cuda_dll_dirs() -> None:
     if os.name != "nt" or not hasattr(os, "add_dll_directory"):
+        _cuda_bootstrap_debug("skip: non-windows or add_dll_directory unavailable")
         return
 
     subdirs = (
@@ -47,15 +79,30 @@ def _bootstrap_windows_cuda_dll_dirs() -> None:
     )
 
     # WHY: Resolve CUDA DLLs from venv-local nvidia wheels before Windows fallback PATH probing.
-    for site_packages in _candidate_site_packages():
+    site_packages_list = _candidate_site_packages()
+    _cuda_bootstrap_debug(f"site-packages candidates: {[str(p) for p in site_packages_list]}")
+    added_dirs: list[str] = []
+    failed_dirs: list[str] = []
+    for site_packages in site_packages_list:
         for rel in subdirs:
             dll_dir = site_packages / rel
             if not dll_dir.is_dir():
                 continue
             try:
                 _DLL_DIR_HANDLES.append(os.add_dll_directory(str(dll_dir)))
+                added_dirs.append(str(dll_dir))
+                _cuda_bootstrap_debug(f"add_dll_directory ok: {dll_dir}")
             except OSError:
+                failed_dirs.append(str(dll_dir))
+                _cuda_bootstrap_debug(f"add_dll_directory failed: {dll_dir}")
                 continue
+
+    path_added = _prepend_windows_path_dirs(added_dirs)
+    if path_added > 0:
+        _cuda_bootstrap_debug(f"PATH prepend added={path_added}")
+
+    _cuda_bootstrap_debug(
+        f"summary added={len(added_dirs)} failed={len(failed_dirs)} handles={len(_DLL_DIR_HANDLES)}")
 
 
 _bootstrap_windows_cuda_dll_dirs()
@@ -90,7 +137,7 @@ class NdlOcrLiteEngine:
         det_conf_threshold: float = 0.25,
         det_iou_threshold: float = 0.2,
         text_class_name: str = "line_main",
-        max_workers: int = 2,
+        max_workers: int = 4,
         enable_timing_log: bool = True,
     ) -> None:
         root = Path(__file__).resolve().parent
