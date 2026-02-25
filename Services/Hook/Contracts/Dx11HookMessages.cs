@@ -8,6 +8,8 @@ internal sealed record Dx11HookAttachRequest(
 internal sealed record Dx11HookDetachRequest(
     int Pid);
 
+internal sealed record Dx11HookShutdownRequest();
+
 internal sealed record Dx11HookCommandEnvelope(
     string Type,
     object Payload);

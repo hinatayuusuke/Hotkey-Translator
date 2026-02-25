@@ -26,6 +26,7 @@ internal sealed class Dx11HookClientService : IDisposable
     private StreamReader? _reader;
     private StreamWriter? _writer;
     private Process? _hostProcess;
+    private string _lastPipeName = "hotkey_translator_hook";
     private int _attachedPid;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
@@ -51,6 +52,8 @@ internal sealed class Dx11HookClientService : IDisposable
                 await DetachInternalAsync("disabled", cancellationToken).ConfigureAwait(false);
                 return;
             }
+
+            _lastPipeName = settings.Dx11HookPipeName;
 
             if (!CanAttach(settings, out var attachReason))
             {
@@ -119,6 +122,7 @@ internal sealed class Dx11HookClientService : IDisposable
         try
         {
             await DetachInternalAsync("stop", cancellationToken).ConfigureAwait(false);
+            await ShutdownHostProcessAsync().ConfigureAwait(false);
             DisposePipe();
         }
         finally
@@ -452,6 +456,145 @@ internal sealed class Dx11HookClientService : IDisposable
         _configWriter.Reset();
     }
 
+    private async Task ShutdownHostProcessAsync()
+    {
+        if (_hostProcess == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_hostProcess.HasExited)
+            {
+                _hostProcess.Dispose();
+                _hostProcess = null;
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        var sent = await TrySendShutdownCommandAsync().ConfigureAwait(false);
+        if (!sent)
+        {
+            _loggerAccessor()?.Info("stage=dx11_hook event=host_shutdown_send_skipped.");
+        }
+
+        await WaitOrKillHostProcessAsync().ConfigureAwait(false);
+    }
+
+    private async Task<bool> TrySendShutdownCommandAsync()
+    {
+        var command = new Dx11HookCommandEnvelope("shutdown", new Dx11HookShutdownRequest());
+        try
+        {
+            if (_writer != null)
+            {
+                await SendCommandAsync(command, CancellationToken.None).ConfigureAwait(false);
+                _loggerAccessor()?.Info("stage=dx11_hook event=host_shutdown_requested via=existing_pipe.");
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_shutdown_request_failed via=existing_pipe.");
+        }
+
+        if (string.IsNullOrWhiteSpace(_lastPipeName))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var pipe = new NamedPipeClientStream(".", _lastPipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(400));
+            await pipe.ConnectAsync(timeoutCts.Token).ConfigureAwait(false);
+            using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
+            var json = JsonSerializer.Serialize(command, JsonOptions);
+            await writer.WriteLineAsync(json).ConfigureAwait(false);
+            _loggerAccessor()?.Info($"stage=dx11_hook event=host_shutdown_requested via=probe_pipe name={_lastPipeName}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, $"stage=dx11_hook event=host_shutdown_request_failed via=probe_pipe name={_lastPipeName}.");
+            return false;
+        }
+    }
+
+    private async Task WaitOrKillHostProcessAsync()
+    {
+        if (_hostProcess == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_hostProcess.HasExited)
+            {
+                _hostProcess.Dispose();
+                _hostProcess = null;
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        var exited = false;
+        try
+        {
+            // WHY: Host shutdown is expected to complete quickly; bounded wait prevents UI shutdown hangs.
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(1500));
+            await _hostProcess.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+            exited = true;
+        }
+        catch (OperationCanceledException)
+        {
+            exited = false;
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_wait_exit_failed.");
+            exited = false;
+        }
+
+        if (!exited)
+        {
+            try
+            {
+                if (!_hostProcess.HasExited)
+                {
+                    _hostProcess.Kill(entireProcessTree: true);
+                    _hostProcess.WaitForExit(1000);
+                    _loggerAccessor()?.Info("stage=dx11_hook event=host_killed reason=shutdown_timeout.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_kill_failed.");
+            }
+        }
+
+        try
+        {
+            _hostProcess.Dispose();
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _hostProcess = null;
+        }
+    }
+
     private static string ResolveHostPath(string configuredPath)
     {
         if (Path.IsPathRooted(configuredPath))
@@ -515,9 +658,52 @@ internal sealed class Dx11HookClientService : IDisposable
 
         _disposed = true;
         _attachedPid = 0;
+        TryForceTerminateHostProcessOnDispose();
         DisposePipe();
         _overlayV2Writer.Dispose();
         _configWriter.Dispose();
         _sync.Dispose();
+    }
+
+    private void TryForceTerminateHostProcessOnDispose()
+    {
+        if (_hostProcess == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_hostProcess.HasExited)
+            {
+                return;
+            }
+        }
+        catch
+        {
+            return;
+        }
+
+        try
+        {
+            _hostProcess.Kill(entireProcessTree: true);
+            _hostProcess.WaitForExit(500);
+        }
+        catch
+        {
+            // NOTE: Dispose must stay best-effort.
+        }
+        finally
+        {
+            try
+            {
+                _hostProcess.Dispose();
+            }
+            catch
+            {
+            }
+
+            _hostProcess = null;
+        }
     }
 }

@@ -34,6 +34,7 @@ namespace
     };
 
     std::unordered_map<DWORD, ProcessHookState> g_states;
+    bool g_shutdownRequested = false;
 
     bool WriteResponse(HANDLE pipe, const std::string& response)
     {
@@ -397,6 +398,66 @@ namespace
         return true;
     }
 
+    void DisableAllHooksForShutdown()
+    {
+        for (auto& entry : g_states)
+        {
+            std::string reason;
+            (void)UninstallDx11Agent(entry.second, reason);
+            entry.second.configWriter.Reset();
+        }
+
+        g_states.clear();
+    }
+
+    DWORD GetParentProcessId(DWORD pid)
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap == INVALID_HANDLE_VALUE)
+        {
+            return 0;
+        }
+
+        PROCESSENTRY32W pe{};
+        pe.dwSize = sizeof(pe);
+        if (!Process32FirstW(snap, &pe))
+        {
+            CloseHandle(snap);
+            return 0;
+        }
+
+        do
+        {
+            if (pe.th32ProcessID == pid)
+            {
+                const DWORD parentPid = pe.th32ParentProcessID;
+                CloseHandle(snap);
+                return parentPid;
+            }
+        } while (Process32NextW(snap, &pe));
+
+        CloseHandle(snap);
+        return 0;
+    }
+
+    bool IsProcessAlive(DWORD pid)
+    {
+        if (pid == 0)
+        {
+            return false;
+        }
+
+        HANDLE process = OpenProcess(SYNCHRONIZE, FALSE, pid);
+        if (process == nullptr)
+        {
+            return false;
+        }
+
+        const DWORD wait = WaitForSingleObject(process, 0);
+        CloseHandle(process);
+        return wait == WAIT_TIMEOUT;
+    }
+
     void HandleMessage(HANDLE pipe, const std::string& message)
     {
         if (message.find("\"type\":\"attach\"") != std::string::npos)
@@ -485,6 +546,14 @@ namespace
             return;
         }
 
+        if (message.find("\"type\":\"shutdown\"") != std::string::npos)
+        {
+            DisableAllHooksForShutdown();
+            WriteResponse(pipe, BuildState("Stopped", "shutdown", ht::hook::ipc::GraphicsApi::Dx11, 0));
+            g_shutdownRequested = true;
+            return;
+        }
+
         WriteResponse(pipe, BuildState("Running", "unknown_message", ht::hook::ipc::GraphicsApi::Dx11, 0));
     }
 }
@@ -492,12 +561,20 @@ namespace
 int wmain()
 {
     std::wcout << L"[HookHost] starting pipe server: " << kPipeName << std::endl;
+    const DWORD parentPid = GetParentProcessId(GetCurrentProcessId());
 
     for (;;)
     {
+        if (parentPid != 0 && !IsProcessAlive(parentPid))
+        {
+            DisableAllHooksForShutdown();
+            std::wcout << L"[HookHost] parent process exited; shutting down." << std::endl;
+            return 0;
+        }
+
         HANDLE pipe = CreateNamedPipeW(
             kPipeName,
-            PIPE_ACCESS_DUPLEX,
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             1,
             kBufferBytes,
@@ -511,7 +588,63 @@ int wmain()
             return 1;
         }
 
-        const BOOL connected = ConnectNamedPipe(pipe, nullptr) ? TRUE : (GetLastError() == ERROR_PIPE_CONNECTED);
+        OVERLAPPED connectOv{};
+        connectOv.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        if (connectOv.hEvent == nullptr)
+        {
+            CloseHandle(pipe);
+            continue;
+        }
+
+        BOOL connected = ConnectNamedPipe(pipe, &connectOv);
+        if (!connected)
+        {
+            const DWORD err = GetLastError();
+            if (err == ERROR_PIPE_CONNECTED)
+            {
+                connected = TRUE;
+            }
+            else if (err == ERROR_IO_PENDING)
+            {
+                for (;;)
+                {
+                    const DWORD wait = WaitForSingleObject(connectOv.hEvent, 250);
+                    if (wait == WAIT_OBJECT_0)
+                    {
+                        DWORD transferred = 0;
+                        if (GetOverlappedResult(pipe, &connectOv, &transferred, FALSE) || GetLastError() == ERROR_PIPE_CONNECTED)
+                        {
+                            connected = TRUE;
+                        }
+                        else
+                        {
+                            connected = FALSE;
+                        }
+                        break;
+                    }
+
+                    if (wait == WAIT_TIMEOUT)
+                    {
+                        if (parentPid != 0 && !IsProcessAlive(parentPid))
+                        {
+                            DisableAllHooksForShutdown();
+                            (void)CancelIoEx(pipe, &connectOv);
+                            CloseHandle(connectOv.hEvent);
+                            CloseHandle(pipe);
+                            std::wcout << L"[HookHost] parent process exited; shutting down." << std::endl;
+                            return 0;
+                        }
+
+                        continue;
+                    }
+
+                    connected = FALSE;
+                    break;
+                }
+            }
+        }
+
+        CloseHandle(connectOv.hEvent);
         if (!connected)
         {
             CloseHandle(pipe);
@@ -540,12 +673,27 @@ int wmain()
                 if (!line.empty())
                 {
                     HandleMessage(pipe, line);
+                    if (g_shutdownRequested)
+                    {
+                        break;
+                    }
                 }
+            }
+
+            if (g_shutdownRequested)
+            {
+                break;
             }
         }
 
         FlushFileBuffers(pipe);
         DisconnectNamedPipe(pipe);
         CloseHandle(pipe);
+        if (g_shutdownRequested)
+        {
+            break;
+        }
     }
+
+    return 0;
 }

@@ -12209,3 +12209,38 @@ ull logger が固定されていた。
 - `cmake --build Native/build --config Release` 実行。
 - `HookAgentDx11.dll` はビルド成功。
 - `HookHost.exe` は実行中ロックにより `LNK1104` でリンク失敗（ファイル解放後に再実行が必要）。
+
+**2026-02-25 13:31 (Asia/Taipei) — HookHost終了制御の追加（shutdown + 親プロセス監視）**
+
+### Summary
+- アプリ終了時に `HookHost.exe` を確実に終了させるため、shutdown 制御とフォールバック kill を実装した。
+
+### Context / Goal
+- `HookHost.exe` がアプリ終了後に残留する事象が発生していた。
+- 要件として「アプリ終了で HookHost は終了、フック対象アプリ終了では HookHost は常駐」を満たす必要がある。
+
+### Changes
+- C# クライアントに `shutdown` 送信を追加し、終了待機後に kill フォールバックを実装。
+- Host 側に `shutdown` コマンド処理を追加し、受信時に全アタッチ対象を無効化してプロセス終了するよう変更。
+- Host 側に親プロセス監視を追加し、親（アプリ）終了時は自律終了するよう変更。
+- 名前付きパイプ接続待機をオーバーラップ化し、待機中も親プロセス生存確認できるよう変更。
+
+### Files Touched
+- `Services/Hook/Contracts/Dx11HookMessages.cs` — `Dx11HookShutdownRequest` を追加。
+- `Services/Hook/Dx11HookClientService.cs` — Stop時の shutdown 送信、待機、kill フォールバック、Dispose時の最終 terminate を追加。
+- `Native/HookHost/main.cpp` — `shutdown` メッセージ処理、全Hook無効化、親PID監視、overlapped `ConnectNamedPipe` を追加。
+
+### Behavioral Impact
+- 通常終了時、アプリは detach 後に Host へ `shutdown` を送信し、短時間で終了しない場合は kill する。
+- フック対象アプリのみ終了した場合は Host は常駐継続し、次回 attach に再利用される。
+- アプリが異常終了しても、Host は親プロセス監視により待機ループ中に自動終了できる。
+
+### Risk & Mitigation
+- Risk: shutdown 送信直後に pipe 状態が不安定だと送信失敗する可能性。
+- Mitigation: 既存pipe失敗時に probe pipe で再送し、さらに終了待機 timeout 後に kill フォールバックを入れた。
+- Risk: 親PID誤判定で Host が早期終了する可能性。
+- Mitigation: 親監視は「親PID取得成功時のみ」有効化し、未取得時は従来常駐挙動を維持。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+- `cmake --build Native/build --config Release` 成功（`HookHost.exe` / `HookAgentDx11.dll` 生成）。
