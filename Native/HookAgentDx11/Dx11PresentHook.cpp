@@ -121,6 +121,7 @@ namespace ht::hook::dx11
             bool overlayEnabled = true;
             std::uint64_t lastOverlayV2Seq = 0;
             std::uint64_t lastOverlayV2Qpc = 0;
+            std::uint64_t lastOverlayTraceDrawSeq = 0;
             ht::hook::ipc::OverlayV2Header overlayV2Header{};
             std::vector<ht::hook::ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
@@ -517,6 +518,42 @@ namespace ht::hook::dx11
                 rt.overlayV2DebugNext = slot + 1;
                 rt.overlayV2DebugCount = std::min<std::uint32_t>(rt.overlayV2DebugCount + 1, kOverlayV2DebugSamples);
             }
+
+            if (ReadEnvU32(L"HT_HOOK_OVL_TRACE", 0) != 0)
+            {
+                char msg[512]{};
+                if (!rt.overlayV2Blocks.empty())
+                {
+                    const auto& b0 = rt.overlayV2Blocks[0];
+                    std::snprintf(
+                        msg,
+                        sizeof(msg),
+                        "HT HookAgentDx11: ovl_v2_refresh seq=%llu canvas=%ux%u blocks=%u textBytes=%u b0=[%.1f,%.1f,%.1f,%.1f]\n",
+                        static_cast<unsigned long long>(header.updatedSeq),
+                        static_cast<unsigned int>(header.canvasW),
+                        static_cast<unsigned int>(header.canvasH),
+                        static_cast<unsigned int>(header.textBlockCount),
+                        static_cast<unsigned int>(header.textBytes),
+                        static_cast<double>(b0.x),
+                        static_cast<double>(b0.y),
+                        static_cast<double>(b0.w),
+                        static_cast<double>(b0.h));
+                }
+                else
+                {
+                    std::snprintf(
+                        msg,
+                        sizeof(msg),
+                        "HT HookAgentDx11: ovl_v2_refresh seq=%llu canvas=%ux%u blocks=%u textBytes=%u b0=none\n",
+                        static_cast<unsigned long long>(header.updatedSeq),
+                        static_cast<unsigned int>(header.canvasW),
+                        static_cast<unsigned int>(header.canvasH),
+                        static_cast<unsigned int>(header.textBlockCount),
+                        static_cast<unsigned int>(header.textBytes));
+                }
+
+                OutputDebugStringA(msg);
+            }
             return true;
         }
 
@@ -761,6 +798,7 @@ namespace ht::hook::dx11
             // Set HT_HOOK_OVL_TEXT_DRAWLIST=0 to force the legacy window-text path for troubleshooting.
             const bool drawTextViaDrawList = ReadEnvU32(L"HT_HOOK_OVL_TEXT_DRAWLIST", 1) != 0;
             const bool ignoreFontPx = ReadEnvU32(L"HT_HOOK_OVL_IGNORE_FONT_PX", 0) != 0;
+            const bool overlayTrace = ReadEnvU32(L"HT_HOOK_OVL_TRACE", 0) != 0;
             if (testMode)
             {
                 // WHY: Native-only rendering test. This isolates the rendering path from IPC/coordinate conversion.
@@ -786,13 +824,39 @@ namespace ht::hook::dx11
                 ImDrawList* bg = ImGui::GetBackgroundDrawList();
                 ImDrawList* fg = ImGui::GetForegroundDrawList();
                 const auto blobBytes = rt.overlayV2TextBlob.size();
+                std::size_t traceVisibleBlocks = 0;
+                std::size_t traceTextDrawBlocks = 0;
+                std::size_t traceSkipSize = 0;
+                std::size_t traceSkipBlob = 0;
+                std::size_t traceOffscreen = 0;
+                bool traceFirstRectSet = false;
+                float traceFirstX = 0.0f;
+                float traceFirstY = 0.0f;
+                float traceFirstW = 0.0f;
+                float traceFirstH = 0.0f;
 
                 for (std::size_t i = 0; i < rt.overlayV2Blocks.size(); i++)
                 {
                     const auto& b = rt.overlayV2Blocks[i];
                     if (b.w <= 1.0f || b.h <= 1.0f)
                     {
+                        traceSkipSize++;
                         continue;
+                    }
+
+                    traceVisibleBlocks++;
+                    if (!traceFirstRectSet)
+                    {
+                        traceFirstRectSet = true;
+                        traceFirstX = b.x;
+                        traceFirstY = b.y;
+                        traceFirstW = b.w;
+                        traceFirstH = b.h;
+                    }
+
+                    if ((b.x + b.w) <= 0.0f || (b.y + b.h) <= 0.0f || b.x >= io.DisplaySize.x || b.y >= io.DisplaySize.y)
+                    {
+                        traceOffscreen++;
                     }
 
                     const float pad = std::max(0.0f, b.paddingPx);
@@ -827,8 +891,11 @@ namespace ht::hook::dx11
                     const std::size_t len = static_cast<std::size_t>(b.textLen);
                     if (off >= blobBytes || len > blobBytes || off + len > blobBytes)
                     {
+                        traceSkipBlob++;
                         continue;
                     }
+
+                    traceTextDrawBlocks++;
 
                     const char* textBegin = nullptr;
                     const char* textEnd = nullptr;
@@ -911,6 +978,42 @@ namespace ht::hook::dx11
                     ImGui::End();
                     ImGui::PopStyleColor();
                     ImGui::PopStyleVar();
+                }
+
+                if (overlayTrace && rt.lastOverlayTraceDrawSeq != rt.lastOverlayV2Seq)
+                {
+                    const float scaleX = (rt.overlayV2Header.canvasW > 0)
+                        ? (static_cast<float>(rt.backBufferWidth) / static_cast<float>(rt.overlayV2Header.canvasW))
+                        : 0.0f;
+                    const float scaleY = (rt.overlayV2Header.canvasH > 0)
+                        ? (static_cast<float>(rt.backBufferHeight) / static_cast<float>(rt.overlayV2Header.canvasH))
+                        : 0.0f;
+
+                    char msg[640]{};
+                    std::snprintf(
+                        msg,
+                        sizeof(msg),
+                        "HT HookAgentDx11: ovl_v2_draw seq=%llu bb=%ux%u canvas=%ux%u scale=[%.3f,%.3f] blocks=%zu visible=%zu text=%zu skipSize=%zu skipBlob=%zu offscreen=%zu drawList=%u first=[%.1f,%.1f,%.1f,%.1f]\n",
+                        static_cast<unsigned long long>(rt.lastOverlayV2Seq),
+                        static_cast<unsigned int>(rt.backBufferWidth),
+                        static_cast<unsigned int>(rt.backBufferHeight),
+                        static_cast<unsigned int>(rt.overlayV2Header.canvasW),
+                        static_cast<unsigned int>(rt.overlayV2Header.canvasH),
+                        static_cast<double>(scaleX),
+                        static_cast<double>(scaleY),
+                        static_cast<std::size_t>(rt.overlayV2Blocks.size()),
+                        traceVisibleBlocks,
+                        traceTextDrawBlocks,
+                        traceSkipSize,
+                        traceSkipBlob,
+                        traceOffscreen,
+                        static_cast<unsigned int>(drawTextViaDrawList ? 1 : 0),
+                        static_cast<double>(traceFirstX),
+                        static_cast<double>(traceFirstY),
+                        static_cast<double>(traceFirstW),
+                        static_cast<double>(traceFirstH));
+                    OutputDebugStringA(msg);
+                    rt.lastOverlayTraceDrawSeq = rt.lastOverlayV2Seq;
                 }
             }
             else
@@ -1701,5 +1804,6 @@ namespace ht::hook::dx11
         g_rt.presentCount = 0;
         g_rt.lastPresentQpc = 0;
         g_rt.lastPresentKind = 0;
+        g_rt.lastOverlayTraceDrawSeq = 0;
     }
 }

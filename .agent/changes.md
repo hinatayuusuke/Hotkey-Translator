@@ -12244,3 +12244,36 @@ ull logger が固定されていた。
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
 - `cmake --build Native/build --config Release` 成功（`HookHost.exe` / `HookAgentDx11.dll` 生成）。
+
+**2026-02-25 15:04 (Asia/Taipei) — Hook座標不整合の切り分けログを追加**
+
+### Summary
+- Hookオーバーレイの「キャプチャ正常・描画一部のみ」事象を切り分けるため、アプリ側とHookAgent側に seq 相関ログを追加した。
+
+### Context / Goal
+- DuckStation で window固定後 fullscreen 切替時、OCR内容は正常だが Hook描画が一部領域に留まる症状が継続していた。
+- 目的は、送信側の座標変換・共有メモリ反映・描画側のキャンバス適用のどこで不整合が起きるかを特定すること。
+
+### Changes
+- `PipelineOrchestrator` に `HT_HOOK_OVL_TRACE=1` 用の調査ログを追加。
+- V2送信前後で `stage=hook_v2_map` の start/skip/ok/summary を出力し、矩形変換失敗理由を記録。
+- V2送信後に `Dx11HookStatusReader` を読み、`stage=hook_v2_status` として `presentCount/bb/cmdCount` を記録。
+- `TryBuildHookCanvasRect` に失敗理由 (`invalid_source_rect` など) の出力を追加。
+- HookAgent で `HT_HOOK_OVL_TRACE=1` 時に `ovl_v2_refresh`（読取時）と `ovl_v2_draw`（描画時）を `OutputDebugStringA` で出力。
+- `ovl_v2_draw` は seqごとに1回、`bb/canvas/scale/visible/skip/offscreen` と先頭ブロック矩形を出力。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — `hook_v2_map`/`hook_v2_status` 調査ログ、矩形変換失敗理由の追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — `HT_HOOK_OVL_TRACE` 時の `ovl_v2_refresh` / `ovl_v2_draw` トレースログ追加。
+
+### Behavioral Impact
+- 通常動作は維持しつつ、`HT_HOOK_OVL_TRACE=1`（または `HT_HOOK_OVL_WRITE_DEBUG=1`）でHook座標経路の詳細ログが得られる。
+- HookAgent側の調査ログは `OutputDebugStringA` のため、DbgView 等で収集する運用になる。
+
+### Risk & Mitigation
+- Risk: 調査モード有効時はログ量増加による性能影響。
+- Mitigation: 詳細ログは環境変数ゲートで無効化可能。HookAgent側の描画ログは seq 変化時のみ出力。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln -c Release` 成功（0 warning / 0 error）。
+- `cmake --build Native/build --config Release` 成功（`HookAgentDx11.dll` / `HookHost.exe` 生成）。

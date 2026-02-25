@@ -52,6 +52,8 @@ public sealed class PipelineOrchestrator
     private readonly AppLogger _logger;
     private readonly bool _overlayV2WriteDebugEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_WRITE_DEBUG"), "1", StringComparison.Ordinal);
+    private readonly bool _overlayV2TraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_TRACE"), "1", StringComparison.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
@@ -737,6 +739,8 @@ public sealed class PipelineOrchestrator
             return;
         }
 
+        var traceEnabled = _overlayV2TraceEnabled || _overlayV2WriteDebugEnabled;
+
         if (!settings.Dx11HookOverlayEnabled || overlayItems.Count == 0)
         {
             var attemptSeq = NextOverlayV2WriteAttempt();
@@ -758,6 +762,7 @@ public sealed class PipelineOrchestrator
                 blockCount: 0,
                 textBytes: 0,
                 failureReason);
+            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_disabled_or_empty", traceEnabled);
             return;
         }
 
@@ -768,9 +773,20 @@ public sealed class PipelineOrchestrator
         const float roundingPx = 6.0f;
         const int maxBlocks = 64;
         const int maxTextBytes = 64 * 1024;
+        const int traceSampleLimit = 4;
+        if (traceEnabled)
+        {
+            _logger.Info(
+                $"stage=hook_v2_map event=start pid={pid} canvas={canvasW}x{canvasH} frameBounds={FormatRect(frame.Bounds)} " +
+                $"items={overlayItems.Count}.");
+        }
 
         var blocks = new List<Dx11HookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count, maxBlocks));
         var textBlob = new List<byte>(Math.Min(maxTextBytes, 4096));
+        var skippedWhitespace = 0;
+        var skippedMap = 0;
+        var skippedUtf8 = 0;
+        var mapSampled = 0;
         foreach (var item in overlayItems)
         {
             if (blocks.Count >= maxBlocks)
@@ -780,11 +796,29 @@ public sealed class PipelineOrchestrator
 
             if (string.IsNullOrWhiteSpace(item.Text))
             {
+                skippedWhitespace++;
                 continue;
             }
 
-            if (!TryBuildHookCanvasRect(item.Rect, frame.Bounds, (int)canvasW, (int)canvasH, out var x, out var y, out var w, out var h))
+            if (!TryBuildHookCanvasRect(
+                    item.Rect,
+                    frame.Bounds,
+                    (int)canvasW,
+                    (int)canvasH,
+                    out var x,
+                    out var y,
+                    out var w,
+                    out var h,
+                    out var mapFailureReason))
             {
+                skippedMap++;
+                if (traceEnabled && mapSampled < traceSampleLimit)
+                {
+                    _logger.Info(
+                        $"stage=hook_v2_map event=skip seq={_overlayV2WriteAttemptSeq + 1} reason={mapFailureReason} " +
+                        $"src={FormatRect(item.Rect)} frameBounds={FormatRect(frame.Bounds)} canvas={canvasW}x{canvasH}.");
+                    mapSampled++;
+                }
                 continue;
             }
 
@@ -798,6 +832,7 @@ public sealed class PipelineOrchestrator
             var textLen = TrimUtf8Length(utf8, Math.Min(utf8.Length, remaining));
             if (textLen <= 0)
             {
+                skippedUtf8++;
                 continue;
             }
 
@@ -808,6 +843,14 @@ public sealed class PipelineOrchestrator
             }
 
             var fontPx = ResolveHookOverlayFontPx(item, frame.Bounds, canvasH);
+            if (traceEnabled && mapSampled < traceSampleLimit)
+            {
+                _logger.Info(
+                    $"stage=hook_v2_map event=ok seq={_overlayV2WriteAttemptSeq + 1} src={FormatRect(item.Rect)} " +
+                    $"dst=[{x:0.##},{y:0.##},{w:0.##},{h:0.##}] fontPx={fontPx:0.##} textLen={textLen}.");
+                mapSampled++;
+            }
+
             blocks.Add(new Dx11HookOverlayV2CommandWriter.TextBlockV2
             {
                 X = x,
@@ -824,6 +867,14 @@ public sealed class PipelineOrchestrator
                 TextLen = unchecked((uint)textLen),
                 ZOrder = blocks.Count
             });
+        }
+
+        if (traceEnabled)
+        {
+            _logger.Info(
+                $"stage=hook_v2_map event=summary seq={_overlayV2WriteAttemptSeq + 1} pid={pid} canvas={canvasW}x{canvasH} " +
+                $"inputItems={overlayItems.Count} validBlocks={blocks.Count} skipWhitespace={skippedWhitespace} " +
+                $"skipMap={skippedMap} skipUtf8={skippedUtf8} textBytes={textBlob.Count}.");
         }
 
         if (blocks.Count == 0)
@@ -847,6 +898,7 @@ public sealed class PipelineOrchestrator
                 blockCount: 0,
                 textBytes: 0,
                 failureReason);
+            LogHookV2StatusSnapshot(pid, attemptSeq, "clear_no_valid_blocks", traceEnabled);
             return;
         }
 
@@ -870,6 +922,7 @@ public sealed class PipelineOrchestrator
             blockCount: blocks.Count,
             textBytes: blobArray.Length,
             publishFailure);
+        LogHookV2StatusSnapshot(pid, publishAttempt, "publish_text_blocks", traceEnabled);
     }
 
     private float ResolveHookOverlayFontPx(OverlayItem item, Rect frameBounds, uint canvasH)
@@ -941,11 +994,20 @@ public sealed class PipelineOrchestrator
         out float x,
         out float y,
         out float w,
-        out float h)
+        out float h,
+        out string? failureReason)
     {
         x = y = w = h = 0;
+        failureReason = null;
         if (screenRect.IsEmpty || screenRect.Width <= 0 || screenRect.Height <= 0)
         {
+            failureReason = "invalid_source_rect";
+            return false;
+        }
+
+        if (frameBounds.IsEmpty || frameBounds.Width <= 0 || frameBounds.Height <= 0)
+        {
+            failureReason = "invalid_frame_bounds";
             return false;
         }
 
@@ -971,6 +1033,7 @@ public sealed class PipelineOrchestrator
         var outH = bottom - top;
         if (outW <= 1 || outH <= 1)
         {
+            failureReason = "collapsed_after_clamp";
             return false;
         }
 
@@ -979,6 +1042,30 @@ public sealed class PipelineOrchestrator
         w = (float)outW;
         h = (float)outH;
         return true;
+    }
+
+    private void LogHookV2StatusSnapshot(int pid, ulong seq, string phase, bool traceEnabled)
+    {
+        if (!traceEnabled || pid <= 0)
+        {
+            return;
+        }
+
+        if (Dx11HookStatusReader.TryRead(pid, out var status))
+        {
+            _logger.Info(
+                $"stage=hook_v2_status event=read seq={seq} phase={phase} pid={pid} presentCount={status.PresentCount} " +
+                $"presentKind={status.LastPresentKind} bb={status.BackBufferWidth}x{status.BackBufferHeight} " +
+                $"cmdQpc={status.LastCmdQpc} cmdCount={status.LastCmdCount} r0={status.Reserved0} r1={status.Reserved1}.");
+            return;
+        }
+
+        _logger.Info($"stage=hook_v2_status event=missing seq={seq} phase={phase} pid={pid}.");
+    }
+
+    private static string FormatRect(Rect rect)
+    {
+        return $"[{rect.X:0.##},{rect.Y:0.##},{rect.Width:0.##},{rect.Height:0.##}]";
     }
 
 }
