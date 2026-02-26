@@ -13375,3 +13375,123 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `uv run python -` で `resolve_language_label` の主要入力を確認。
 - 確認結果: `zh-Hans/zh-CN=>Simplified Chinese`, `zh-Hant/zh-TW/zh-HK=>Traditional Chinese`, `zh/zho=>Chinese`。
+
+**2026-02-27 01:25 (Asia/Taipei) — Add OpenCC-based Chinese script post-process plan for Llama output**
+
+### Summary
+- Llama中国語翻訳の簡体出力を繁体へ正規化する後処理実装案をDocに追加。
+
+### Context / Goal
+- 軽量モデルで繁体ターゲット指定時も簡体字が混在する課題に対応したい。
+- 既存翻訳経路を壊さず、翻訳後処理で最小導入する方針を整理する。
+
+### Changes
+- `Doc/Llama_ChineseScript_PostProcess_OpenCC_Plan.md` を新規作成。
+- OpenCCモード対応（s2t/s2twp/s2hk）、統合ポイント、実装手順、リスク緩和、DoDを記載。
+
+### Files Touched
+- `Doc/Llama_ChineseScript_PostProcess_OpenCC_Plan.md` — OpenCC後処理の実装計画を追加。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実API/ライブラリ選定により実装詳細が変わる可能性。
+- Mitigation: ドキュメント内で実装方式A/B（ライブラリ/CLI）を併記し、段階導入を明示。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-27 01:29 (Asia/Taipei) — Revise OpenCC postprocess plan to Llama-local scope**
+
+### Summary
+- OpenCC後処理計画を「C#共通ステージ」から「TranslationServiceLlama内完結」方針へ更新。
+
+### Context / Goal
+- ユーザー要望に合わせ、Llama固有課題をLlamaサービス内で閉じる構成に統一したい。
+- 他翻訳プロバイダへの副作用を避ける。
+
+### Changes
+- Doc/Llama_ChineseScript_PostProcess_OpenCC_Plan.md を全面更新。
+- コンポーネント構成、データフロー、実装手順、影響範囲を Llama ローカル実装前提に変更。
+- 旧方針（TranslateStage 共通後処理）の記述を削除。
+
+### Files Touched
+- Doc/Llama_ChineseScript_PostProcess_OpenCC_Plan.md — Llama内完結方針へ改訂。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント改訂のみ）。
+
+### Risk & Mitigation
+- Risk: OpenCC依存方式（ライブラリ/CLI）で実装詳細が変動。
+- Mitigation: ドキュメント内に方式A/Bと段階導入を明記。
+
+### Tests / Verification
+- ドキュメント全文確認実施。
+- キーワード検査で旧方針語（TranslateStage 等）が残っていないことを確認。
+
+**2026-02-27 01:33 (Asia/Taipei) — Fix OpenCC plan to Python-library-only implementation**
+
+### Summary
+- OpenCC後処理計画を「Pythonライブラリ固定（方式A）」に合わせて更新。
+
+### Context / Goal
+- ユーザー方針として方式A（インプロセス変換）採用が確定したため、文書内の選択余地をなくしたい。
+- 実装時の判断ブレを防止する。
+
+### Changes
+- 前提・仮定で OpenCC を `opencc-python-reimplemented` 採用に明記。
+- Step 2 に `pyproject.toml` 依存追加と `uv sync` 固定化を追記。
+- リスク緩和を CLIフォールバック前提から、importチェック+明示ログ前提へ変更。
+
+### Files Touched
+- `Doc/Llama_ChineseScript_PostProcess_OpenCC_Plan.md` — 方式A固定方針に調整。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント調整のみ）。
+
+### Risk & Mitigation
+- Risk: Python依存導入時に環境差でimport失敗する可能性。
+- Mitigation: 文書で起動時importチェックとログ明示を定義。
+
+### Tests / Verification
+- ドキュメント内キーワード検査を実施。
+- `CLI/代替` 記述が残っていないことを確認。
+
+**2026-02-27 01:38 (Asia/Taipei) — Implement OpenCC postprocess inside TranslationServiceLlama**
+
+### Summary
+- Llama翻訳結果に対する簡体→繁体後処理を TranslationServiceLlama 内へ実装した。
+
+### Context / Goal
+- 繁体ターゲット指定時に軽量モデルが簡体字を出力する課題を、Llama内完結で補正したい。
+- C# 側翻訳パイプラインへ影響を出さず、サービス単位で安全に導入する。
+
+### Changes
+- `TranslationServiceLlama/pyproject.toml` に `opencc-python-reimplemented` 依存を追加。
+- `TranslationServiceLlama/chinese_script_postprocess.py` を新規作成。
+  - `zh-Hant/zh-TW/zh-HK` のターゲット判定。
+  - OpenCCモード `s2t/s2twp/s2hk` 変換。
+  - 失敗時は原文維持（例外で翻訳を落とさない）。
+- `TranslationServiceLlama/llama_engine.py` に後処理を統合。
+  - `translate()` で出力配列に一括適用。
+  - `target/mode/applied/errors` の1行ログを追加。
+
+### Files Touched
+- `TranslationServiceLlama/pyproject.toml` — OpenCC依存追加。
+- `TranslationServiceLlama/chinese_script_postprocess.py` — 後処理モジュール新規追加。
+- `TranslationServiceLlama/llama_engine.py` — Llama出力後処理の統合とログ追加。
+
+### Behavioral Impact
+- `target_lang=zh-Hant/zh-TW/zh-HK` のLlama翻訳結果に繁体化後処理が適用される。
+- 中国語繁体ターゲット以外は挙動変更なし。
+- OpenCC未導入時は警告ログのみで原文訳を返す（フォールトトレラント）。
+
+### Risk & Mitigation
+- Risk: 固有名詞などで意図しない字形変換が起きる可能性。
+- Mitigation: 後処理はターゲット言語限定で適用し、失敗時は原文維持。必要なら後続で用語例外辞書を追加可能。
+
+### Tests / Verification
+- `uv sync`（`TranslationServiceLlama`）実行: 依存解決成功。
+- `uv run python -m py_compile .\\llama_engine.py .\\chinese_script_postprocess.py` 実行: 成功。
+- `uv run python -` で `zh-Hant/zh-TW/zh-HK` の variant 解決と postprocess 適用フラグ確認（`applied=True`）。

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Any, Iterable, List
 
 import httpx
+from chinese_script_postprocess import ChineseScriptPostProcessor
 
 
 class LlamaServerError(RuntimeError):
@@ -198,6 +199,7 @@ class LlamaTranslator:
         self._host = host
         self._request = request
         self._lock = threading.Lock()
+        self._chinese_script_post_processor = ChineseScriptPostProcessor()
         self._client = httpx.Client(
             base_url=host.base_url,
             timeout=request.http_timeout_seconds,
@@ -222,6 +224,18 @@ class LlamaTranslator:
 
             stats = {"http_calls": 0, "splits": 0}
             outputs = self._translate_with_adaptive_split(sentences, source_lang, target_lang, depth=0, stats=stats)
+            outputs, variant, applied_count, error_count = self._chinese_script_post_processor.postprocess_translations(
+                outputs,
+                target_lang,
+            )
+            if variant is not None:
+                logging.info(
+                    "Chinese script postprocess: target=%s mode=%s applied=%d errors=%d",
+                    target_lang,
+                    variant,
+                    applied_count,
+                    error_count,
+                )
             logging.info(
                 "Llama batch translation done: items=%d http_calls=%d splits=%d",
                 len(sentences),
