@@ -74,7 +74,7 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
         };
 
         var sourceLang = NormalizeLang(settings.SourceLanguage);
-        if (!string.IsNullOrWhiteSpace(sourceLang))
+        if (!string.IsNullOrWhiteSpace(sourceLang) && !ShouldOmitSourceLangForDeepL(settings.SourceLanguage))
         {
             parameters.Add(new KeyValuePair<string, string>("source_lang", sourceLang));
         }
@@ -130,6 +130,18 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
 
         var normalized = language.Trim().Replace('_', '-');
         return normalized.ToUpperInvariant();
+    }
+
+    private static bool ShouldOmitSourceLangForDeepL(string? sourceLanguage)
+    {
+        if (string.IsNullOrWhiteSpace(sourceLanguage))
+        {
+            return false;
+        }
+
+        var normalized = sourceLanguage.Trim().Replace('_', '-');
+        // WHY: DeepL rejects region/script variants such as zh-Hant for source_lang; rely on auto-detect for zh-*.
+        return normalized.StartsWith("zh-", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NormalizeLineEndingsForDeepL(string? text)

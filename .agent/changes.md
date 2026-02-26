@@ -13495,3 +13495,31 @@ dl_ocr_engine.py.
 - `uv sync`（`TranslationServiceLlama`）実行: 依存解決成功。
 - `uv run python -m py_compile .\\llama_engine.py .\\chinese_script_postprocess.py` 実行: 成功。
 - `uv run python -` で `zh-Hant/zh-TW/zh-HK` の variant 解決と postprocess 適用フラグ確認（`applied=True`）。
+
+**2026-02-27 02:57 (Asia/Taipei) — Omit DeepL source_lang for zh-* inputs**
+
+### Summary
+- DeepL送信時、`source_lang` が `zh-*` の場合はパラメータを送らないように修正。
+
+### Context / Goal
+- `source_lang=zh-Hant` 送信で DeepL が 400 (`Value for 'source_lang' not supported`) を返す問題を解消したい。
+- 中国語ソース時は DeepL の自動判定に委ねる。
+
+### Changes
+- `DeepLTranslationProvider.BuildRequestContent()` で `source_lang` 追加条件を変更。
+- `ShouldOmitSourceLangForDeepL()` を追加し、`zh-*` 判定時に `source_lang` を省略。
+- WHYコメントを追加（DeepL互換理由）。
+
+### Files Touched
+- `Services/DeepLTranslationProvider.cs` — `source_lang` の中国語バリアント送信を抑止。
+
+### Behavioral Impact
+- `SourceLanguage` が `zh-Hant/zh-TW/zh-HK/zh-CN` 等のとき、DeepLへ `source_lang` を送らない。
+- 他言語は従来どおり `source_lang` を送信。
+
+### Risk & Mitigation
+- Risk: 中国語ソースでDeepLの自動判定誤検出が起こる可能性。
+- Mitigation: 400エラー回避を優先し、必要なら後続で `zh` 正規化送信と比較できるよう拡張する。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
