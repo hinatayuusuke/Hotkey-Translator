@@ -151,6 +151,7 @@ class NdlOcrLiteEngine:
         self._max_workers = max(1, int(max_workers))
         # WHY: NDLOCR-Lite can emit near-duplicate short lines in a single frame; dedup before gRPC response.
         self._line_dedup_iou_threshold = 0.75
+        self._line_dedup_containment_threshold = 0.90
         self._line_dedup_text_similarity_threshold = 0.90
 
         det_path = self._model_dir / "deim-s-1024x1024.onnx"
@@ -364,6 +365,11 @@ class NdlOcrLiteEngine:
         return kept
 
     def _is_duplicate_line(self, a: dict[str, Any], b: dict[str, Any]) -> bool:
+        containment = self._box_containment_ratio(a.get("box"), b.get("box"))
+        if containment >= self._line_dedup_containment_threshold:
+            # WHY: Prefer containment dedup for "large parent box + small child box" cases where IoU can stay low.
+            return True
+
         iou = self._box_iou(a.get("box"), b.get("box"))
         if iou < self._line_dedup_iou_threshold:
             return False
@@ -423,6 +429,43 @@ class NdlOcrLiteEngine:
         if union_area <= 0.0:
             return 0.0
         return float(inter_area / union_area)
+
+    @staticmethod
+    def _box_containment_ratio(box_a: Any, box_b: Any) -> float:
+        if not isinstance(box_a, (list, tuple)) or not isinstance(box_b, (list, tuple)):
+            return 0.0
+        if len(box_a) < 4 or len(box_b) < 4:
+            return 0.0
+
+        ax = float(box_a[0])
+        ay = float(box_a[1])
+        aw = max(0.0, float(box_a[2]))
+        ah = max(0.0, float(box_a[3]))
+        bx = float(box_b[0])
+        by = float(box_b[1])
+        bw = max(0.0, float(box_b[2]))
+        bh = max(0.0, float(box_b[3]))
+        if aw <= 0.0 or ah <= 0.0 or bw <= 0.0 or bh <= 0.0:
+            return 0.0
+
+        a_right = ax + aw
+        a_bottom = ay + ah
+        b_right = bx + bw
+        b_bottom = by + bh
+        inter_left = max(ax, bx)
+        inter_top = max(ay, by)
+        inter_right = min(a_right, b_right)
+        inter_bottom = min(a_bottom, b_bottom)
+        inter_w = max(0.0, inter_right - inter_left)
+        inter_h = max(0.0, inter_bottom - inter_top)
+        inter_area = inter_w * inter_h
+        if inter_area <= 0.0:
+            return 0.0
+
+        small_area = min(aw * ah, bw * bh)
+        if small_area <= 0.0:
+            return 0.0
+        return float(inter_area / small_area)
 
     @staticmethod
     def _normalize_score(value: Any) -> float:

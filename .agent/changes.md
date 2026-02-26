@@ -13112,3 +13112,33 @@ dl_ocr_engine.py.
 - OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\ndl_core_engine.py succeeded.
 - OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\test_ndl_ocr_engine.py --image OcrServiceNDL\test.png --model-dir OcrServiceNDL\model --config-dir OcrServiceNDL\config --device cpu --print-limit 3 succeeded.
 - Timing log confirmed dedup metrics output (dedupIn/dedupOut/dedupDropped).
+**2026-02-26 14:55 (Asia/Taipei) — NDLOCR containment-priority dedup for parent/child boxes**
+
+### Summary
+- Added containment-priority duplicate detection so nested text boxes are deduplicated even when IoU is low.
+
+### Context / Goal
+- NDLOCR outputs included parent+child overlapping lines (same area family) that bypassed IoU-only dedup.
+- Goal was to prioritize containment to remove these loop-like duplicates.
+
+### Changes
+- Added self._line_dedup_containment_threshold = 0.90.
+- Updated _is_duplicate_line() to evaluate containment first and mark duplicates when intersection / min(areaA, areaB) >= threshold.
+- Added _box_containment_ratio() helper for robust containment computation.
+- Kept existing IoU + text-similarity path as fallback.
+
+### Files Touched
+- OcrServiceNDL/ndl_core_engine.py — containment-priority dedup rule and geometry helper added.
+
+### Behavioral Impact
+- Parent/child nested boxes are now removed as duplicates without requiring high IoU.
+- This reduces repeated short-line outputs that previously survived dedup.
+
+### Risk & Mitigation
+- Risk: Distinct nested annotations could be collapsed when one box is fully inside another.
+- Mitigation: Threshold is conservative (0.90) and fallback path remains unchanged for non-contained pairs.
+
+### Tests / Verification
+- OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\ndl_core_engine.py succeeded.
+- uv run --python .\.venv\Scripts\python.exe .\test_ndl_ocr_engine.py --image test4.png --model-dir .\model --device cpu --json-out .\out\result.json (workdir=OcrServiceNDL) succeeded.
+- Verified output changed from 3 lines to 2 lines and timing log reported dedupDropped=1.
