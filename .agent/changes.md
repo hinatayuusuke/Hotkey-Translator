@@ -13177,3 +13177,33 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).
+**2026-02-26 16:51 (Asia/Taipei) — Restrict block-scoped Stage A to auto-hide; keep auto-translate on legacy ROI criteria**
+
+### Summary
+- Updated scene-change watcher behavior so block-scoped Stage A is used only for auto-hide mode, while auto-translate remains on legacy ROI-based Stage A.
+
+### Context / Goal
+- User requested to avoid complexity for auto-translate and rely on user ROI tuning instead.
+- Goal was to preserve the new block-scoped improvement for auto-hide only.
+
+### Changes
+- Added mode gate in SceneChangeController:
+  - useBlockScopedStageA = EnableSceneChangeAutoHide && !EnableSceneChangeAutoTranslate.
+  - Block-scoped evaluation now runs only when this gate is true.
+  - Auto-translate path continues to require ROI baseline and uses legacy ROI pHash Stage A.
+- Added UI note under Scene Change Automation to clarify that auto-translate uses ROI-based watcher criteria.
+
+### Files Touched
+- Services/Application/SceneChangeController.cs — gated block-scoped Stage A to auto-hide only.
+- MainWindow.xaml — added user-facing NOTE for auto-translate ROI-based watcher behavior.
+
+### Behavioral Impact
+- Auto-hide: keeps text-block-scoped Stage A behavior.
+- Auto-translate: unchanged legacy ROI Stage A behavior (users tune via ROI).
+
+### Risk & Mitigation
+- Risk: Users may expect block-scoped behavior in auto-translate.
+- Mitigation: Added explicit UI note documenting current behavior.
+
+### Tests / Verification
+- dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).

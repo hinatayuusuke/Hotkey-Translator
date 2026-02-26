@@ -495,6 +495,10 @@
                                           IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="NOTE: auto-translate uses ROI-based watcher criteria. Configure ROI to target dialogue area."
+                                           Foreground="DimGray"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
                                 <CheckBox x:Name="ShowAutoTranslateBadgeIconCheck" Content="Show auto-translate badge icon" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
                                           IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

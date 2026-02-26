@@ -351,6 +351,7 @@ internal sealed class SceneChangeController : IDisposable
         {
             return;
         }
+        var useBlockScopedStageA = settings.EnableSceneChangeAutoHide && !scene.EnableSceneChangeAutoTranslate;
 
         if (scene.EnableSceneChangeAutoTranslate && TryDrainPendingAutoTranslate())
         {
@@ -360,15 +361,15 @@ internal sealed class SceneChangeController : IDisposable
 
         if (_autoHideBaselinePending || !_autoHideLastHash.HasValue)
         {
-            // WHY: Block-scoped Stage A can run without ROI baseline hash when semantic snapshot is available.
-            if (_autoHideBaselinePending || !HasUsableBlockScopedSnapshot(settings))
+            // WHY: Block-scoped Stage A is intentionally limited to auto-hide mode; auto-translate keeps legacy ROI-based Stage A.
+            if (!useBlockScopedStageA || _autoHideBaselinePending || !HasUsableBlockScopedSnapshot(settings))
             {
                 return;
             }
         }
 
         var baselineHash = _autoHideLastHash;
-        var blockScopedSnapshot = GetUsableBlockScopedSnapshot(settings);
+        var blockScopedSnapshot = useBlockScopedStageA ? GetUsableBlockScopedSnapshot(settings) : null;
         var baselineVersion = _autoHideBaselineVersion;
         var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
         var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
