@@ -13264,3 +13264,30 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 errors）。
 - 警告2件（`Hotkey-Translator.exe` が実行中でファイルロック）: `Hotkey-Translator (44096)`。
+
+**2026-02-26 23:28 (Asia/Taipei) — Set DeepL model_type to quality_optimized**
+
+### Summary
+- DeepL APIリクエストへ `model_type=quality_optimized` を追加し、品質優先モードを指定。
+
+### Context / Goal
+- Web版との訳質差を縮めるため、低遅延既定ではなく品質重視モデルを明示指定したい。
+- まず最小変更で効果検証できる状態を作る。
+
+### Changes
+- `DeepLTranslationProvider.BuildRequestContent()` のパラメータに `model_type=quality_optimized` を追加。
+- WHYコメントを追加し、品質優先指定の意図を明示。
+
+### Files Touched
+- `Services/DeepLTranslationProvider.cs` — DeepL送信パラメータへ `model_type` を追加。
+
+### Behavioral Impact
+- DeepL API呼び出しが品質重視モデルを優先する設定になる。
+- 既存の翻訳キー対応・キャッシュ・他プロバイダ処理には影響なし。
+
+### Risk & Mitigation
+- Risk: 契約プランやモデル提供状況によっては期待どおりのモデルが使われない可能性。
+- Mitigation: 次段でレスポンス `model_type_used` ログを追加して実使用モデルを確認する。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。

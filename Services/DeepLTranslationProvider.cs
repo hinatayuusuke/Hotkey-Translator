@@ -68,7 +68,9 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
     {
         var parameters = new List<KeyValuePair<string, string>>
         {
-            new("target_lang", NormalizeLang(settings.TargetLanguage))
+            new("target_lang", NormalizeLang(settings.TargetLanguage)),
+            // WHY: Prefer translation quality over latency to match web-style output as closely as possible.
+            new("model_type", "quality_optimized")
         };
 
         var sourceLang = NormalizeLang(settings.SourceLanguage);
