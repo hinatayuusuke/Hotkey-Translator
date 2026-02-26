@@ -13641,3 +13641,62 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、`0 error / 0 warning` を確認。
+**2026-02-27 06:09 (Asia/Taipei) — Add plan: Stage B lightweight + QuietWindow fresh OCR**
+
+### Summary
+- Quiet Window後は必ず新規OCRで翻訳する方針と、Stage B判定専用軽量化の実装案を新規作成した。
+
+### Context / Goal
+- 現状はStage B時点のpayload再利用で、Quiet Window前のOCR結果が翻訳に使われる可能性がある。
+- 目的は翻訳入力の鮮度担保と、Stage Bの責務分離（判定専用化）。
+
+### Changes
+- 新規ドキュメントを追加し、実装ステップ（Step 1-5）を定義。
+- RunCoordinator/SceneChangeController/SnapshotService の影響範囲とDoDを明記。
+- ログ観測項目（resh_ocr=true 等）とリスク緩和を整理。
+
+### Files Touched
+- Doc/SceneChange_QuietWindow_FreshOcr_Implementation_Plan.md — Quiet Window後Fresh OCRとStage B軽量化の実装案を追加。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 方針反映前は従来挙動（payload再利用）が継続。
+- Mitigation: 実装ステップを段階化し、ログで新旧挙動を識別可能にする。
+
+### Tests / Verification
+- ドキュメント内容をUTF-8で保存/再読込し、セクション整合を確認。
+**2026-02-27 06:18 (Asia/Taipei) — Implement fresh OCR after Quiet Window for scene auto-translate**
+
+### Summary
+- SceneChangeのauto-translate経路からsemantic payload再利用を除去し、Quiet Window後の翻訳を常に最新OCRで実行するように変更した。
+
+### Context / Goal
+- Quiet Window設定時に、Stage B時点の古いOCR結果が翻訳入力に再利用される問題があった。
+- Stage Bは判定専用に寄せ、翻訳直前に新規OCRを必ず実行するのが目的。
+
+### Changes
+- `SceneChangeController` のpending payload保持/受け渡しロジックを削除。
+- Quiet Window drained実行ログへ `fresh_ocr=true` を追加し、`_runOnceAsync` は常にpayloadなしで起動。
+- `QueueSceneChangeAutoTranslate` / pending管理から `semanticPayload` 引数を削除。
+- `MainWindowRunCoordinator` のpayload再利用経路（`RunWithReadingUnitsAsync`分岐）を削除し、`RunOnceAsync`固定化。
+- `SceneTextSnapshotService.CaptureSnapshotAsync` に `includeVisualBlocks` パラメータを追加し、Stage Bではvisual hash生成をスキップして軽量化。
+
+### Files Touched
+- `Services/Application/SceneChangeController.cs` — payload再利用除去、fresh OCR固定、Stage B判定専用化。
+- `Services/Application/MainWindowRunCoordinator.cs` — semantic payload再利用分岐を削除し通常OCR経路へ統一。
+- `MainWindow.xaml.cs` — RunCoordinator/SceneChangeControllerの新シグネチャに合わせて呼び出し更新。
+- `Services/SceneTextSnapshotService.cs` — Stage B軽量化のため visual block生成をオプション化。
+
+### Behavioral Impact
+- Quiet Window有効時は、経過後の翻訳が必ず最新フレームOCRに基づく。
+- AutoSceneChange実行ではStage Bのスナップショットを翻訳入力として再利用しない。
+- Stage B比較は維持しつつ、visual hash生成コストを削減。
+
+### Risk & Mitigation
+- Risk: payload再利用廃止でauto-scene翻訳開始がわずかに遅くなる可能性。
+- Mitigation: Stage Aで即時非表示を維持し、ログ（`fresh_ocr=true`）で実行経路を追跡可能にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` 実行: 0 warning / 0 error。

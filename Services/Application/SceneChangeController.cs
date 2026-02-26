@@ -42,7 +42,7 @@ internal sealed class SceneChangeController : IDisposable
     private readonly Func<SceneTextSnapshotService?> _snapshotServiceAccessor;
     private readonly Func<OverlayPresenter?> _overlayPresenterAccessor;
     private readonly Func<AppSettings, Rect, Rect> _resolveRoiBounds;
-    private readonly Func<ForceRunOptions, SceneTextSnapshot?, Task> _runOnceAsync;
+    private readonly Func<ForceRunOptions, Task> _runOnceAsync;
     private readonly Func<bool> _isRunInProgress;
     private readonly Action<string> _appendLog;
     private readonly Action<bool> _setOverlayEnabledState;
@@ -60,7 +60,6 @@ internal sealed class SceneChangeController : IDisposable
     private int _sceneChangeAutoTranslatePendingThreshold;
     private string? _sceneChangeAutoTranslatePendingReason;
     private DateTime _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
-    private SceneTextSnapshot? _sceneChangeAutoTranslatePendingPayload;
     private bool _quietWindowPending;
     private DateTime _quietWindowLastChangeUtc = DateTime.MinValue;
     private SceneTextSnapshot? _lastSceneTextSnapshot;
@@ -77,7 +76,7 @@ internal sealed class SceneChangeController : IDisposable
         Func<SceneTextSnapshotService?> snapshotServiceAccessor,
         Func<OverlayPresenter?> overlayPresenterAccessor,
         Func<AppSettings, Rect, Rect> resolveRoiBounds,
-        Func<ForceRunOptions, SceneTextSnapshot?, Task> runOnceAsync,
+        Func<ForceRunOptions, Task> runOnceAsync,
         Func<bool> isRunInProgress,
         Action<string> appendLog,
         Action<bool> setOverlayEnabledState)
@@ -150,13 +149,6 @@ internal sealed class SceneChangeController : IDisposable
         ScheduleBaselineReset();
     }
 
-    public SceneTextSnapshot? ConsumePendingAutoTranslatePayload()
-    {
-        var payload = _sceneChangeAutoTranslatePendingPayload;
-        _sceneChangeAutoTranslatePendingPayload = null;
-        return payload;
-    }
-
     public bool TryDrainPendingAutoTranslate()
     {
         var settings = _settingsService.Settings;
@@ -200,11 +192,11 @@ internal sealed class SceneChangeController : IDisposable
 
         var diff = _sceneChangeAutoTranslatePendingDiff;
         var threshold = _sceneChangeAutoTranslatePendingThreshold;
-        var payload = _sceneChangeAutoTranslatePendingPayload;
         ResetPendingAutoTranslate();
         _lastSceneChangeAutoTranslateRequestUtc = now;
-        _appendLog($"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}).");
-        _ = _runOnceAsync(AutoSceneChangeRunOptions, payload);
+        _appendLog(
+            $"Scene change auto-translate pending drained: triggered run (diff {diff}, threshold {threshold}, fresh_ocr=true).");
+        _ = _runOnceAsync(AutoSceneChangeRunOptions);
         return true;
     }
 
@@ -495,10 +487,6 @@ internal sealed class SceneChangeController : IDisposable
                 if (settings.EnableSceneChangeSemanticGate)
                 {
                     _semanticCandidateStreak = 0;
-                    if (!_sceneChangeAutoTranslatePending)
-                    {
-                        _sceneChangeAutoTranslatePendingPayload = null;
-                    }
                 }
 
                 return;
@@ -514,13 +502,12 @@ internal sealed class SceneChangeController : IDisposable
 
             if (!scene.EnableSceneChangeAutoTranslate)
             {
-                _sceneChangeAutoTranslatePendingPayload = null;
                 return;
             }
 
             if (!scene.EnableSceneChangeSemanticGate || _snapshotServiceAccessor() == null)
             {
-                QueueSceneChangeAutoTranslate(visualDiff, visualThreshold, semanticPayload: null);
+                QueueSceneChangeAutoTranslate(visualDiff, visualThreshold);
                 return;
             }
 
@@ -572,15 +559,12 @@ internal sealed class SceneChangeController : IDisposable
             return false;
         }
 
-        var snapshot = await snapshotService.CaptureSnapshotAsync(settings, CancellationToken.None).ConfigureAwait(true);
+        var snapshot = await snapshotService
+            .CaptureSnapshotAsync(settings, CancellationToken.None, includeVisualBlocks: false)
+            .ConfigureAwait(true);
         if (snapshot == null)
         {
             _semanticCandidateStreak = 0;
-            if (!_sceneChangeAutoTranslatePending)
-            {
-                _sceneChangeAutoTranslatePendingPayload = null;
-            }
-
             _loggerAccessor()?.Info("Scene change Stage B skipped (no OCR snapshot).");
             return false;
         }
@@ -590,11 +574,6 @@ internal sealed class SceneChangeController : IDisposable
             // WHY: Initialize semantic baseline first so watcher start does not trigger auto actions.
             _lastSceneTextSnapshot = snapshot;
             _semanticCandidateStreak = 0;
-            if (!_sceneChangeAutoTranslatePending)
-            {
-                _sceneChangeAutoTranslatePendingPayload = null;
-            }
-
             _loggerAccessor()?.Info("Scene change Stage B baseline initialized.");
             return false;
         }
@@ -603,11 +582,6 @@ internal sealed class SceneChangeController : IDisposable
         if (!comparison.SemanticChanged)
         {
             _semanticCandidateStreak = 0;
-            if (!_sceneChangeAutoTranslatePending)
-            {
-                _sceneChangeAutoTranslatePendingPayload = null;
-            }
-
             _lastSceneTextSnapshot = snapshot;
             _loggerAccessor()?.Info($"stage=scene_change event=stage_b_reject reason=\"{comparison.Reason}\".");
             return false;
@@ -615,7 +589,6 @@ internal sealed class SceneChangeController : IDisposable
 
         var requiredTicks = Math.Max(1, settings.SceneSemanticRequireConfirmTicks);
         _semanticCandidateStreak++;
-        _sceneChangeAutoTranslatePendingPayload = snapshot;
         _loggerAccessor()?.Info($"stage=scene_change event=stage_b_pass reason=\"{comparison.Reason}\" streak={_semanticCandidateStreak}/{requiredTicks}.");
         if (_semanticCandidateStreak < requiredTicks)
         {
@@ -624,7 +597,7 @@ internal sealed class SceneChangeController : IDisposable
 
         _semanticCandidateStreak = 0;
         _lastSceneTextSnapshot = snapshot;
-        QueueSceneChangeAutoTranslate(diff, threshold, semanticPayload: snapshot);
+        QueueSceneChangeAutoTranslate(diff, threshold);
         return true;
     }
 
@@ -665,7 +638,6 @@ internal sealed class SceneChangeController : IDisposable
     private void ResetSceneSemanticState()
     {
         _lastSceneTextSnapshot = null;
-        _sceneChangeAutoTranslatePendingPayload = null;
         _semanticCandidateStreak = 0;
     }
 
@@ -684,7 +656,7 @@ internal sealed class SceneChangeController : IDisposable
         return scene.EnableSceneChangeAutoHide && _overlayVisible;
     }
 
-    private void QueueSceneChangeAutoTranslate(int diff, int threshold, SceneTextSnapshot? semanticPayload)
+    private void QueueSceneChangeAutoTranslate(int diff, int threshold)
     {
         var settings = _settingsService.Settings;
         var scene = _featureSettingsProvider.GetScene(settings);
@@ -697,7 +669,7 @@ internal sealed class SceneChangeController : IDisposable
         var now = DateTime.UtcNow;
         if (scene.EnableSceneChangeQuietWindow)
         {
-            MarkQuietWindowPending(scene, diff, threshold, semanticPayload, now);
+            MarkQuietWindowPending(scene, diff, threshold, now);
             return;
         }
 
@@ -705,13 +677,13 @@ internal sealed class SceneChangeController : IDisposable
         if (_lastSceneChangeAutoTranslateRequestUtc != DateTime.MinValue &&
             (now - _lastSceneChangeAutoTranslateRequestUtc).TotalMilliseconds < cooldownMs)
         {
-            MarkPendingAutoTranslate(diff, threshold, $"cooldown ({cooldownMs} ms)", semanticPayload);
+            MarkPendingAutoTranslate(diff, threshold, $"cooldown ({cooldownMs} ms)");
             return;
         }
 
         if (_isRunInProgress())
         {
-            MarkPendingAutoTranslate(diff, threshold, "OCR already running", semanticPayload);
+            MarkPendingAutoTranslate(diff, threshold, "OCR already running");
             return;
         }
 
@@ -721,37 +693,33 @@ internal sealed class SceneChangeController : IDisposable
         }
 
         _lastSceneChangeAutoTranslateRequestUtc = now;
-        _loggerAccessor()?.Info("stage=scene_change event=translate_triggered reason=stage_b_pass_or_bypass.");
+        // WHY: Auto-scene translate should always use the latest frame OCR; Stage B snapshot is gate-only.
+        _loggerAccessor()?.Info("stage=scene_change event=translate_triggered reason=stage_b_pass_or_bypass fresh_ocr=true.");
         _appendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
-        _ = _runOnceAsync(AutoSceneChangeRunOptions, semanticPayload);
+        _ = _runOnceAsync(AutoSceneChangeRunOptions);
     }
 
     private void MarkQuietWindowPending(
         SceneFeatureSettings scene,
         int diff,
         int threshold,
-        SceneTextSnapshot? semanticPayload,
         DateTime now)
     {
         var wasPending = _quietWindowPending;
         _quietWindowPending = true;
         _quietWindowLastChangeUtc = now;
-        MarkPendingAutoTranslate(diff, threshold, "quiet window", semanticPayload);
+        MarkPendingAutoTranslate(diff, threshold, "quiet window");
         var quietWindowMs = ResolveQuietWindowMs(scene);
         var quietEvent = wasPending ? "quiet_extended" : "quiet_pending";
         _loggerAccessor()?.Info(
             $"stage=scene_change event={quietEvent} quiet_ms={quietWindowMs} diff={diff} threshold={threshold}.");
     }
 
-    private void MarkPendingAutoTranslate(int diff, int threshold, string reason, SceneTextSnapshot? semanticPayload)
+    private void MarkPendingAutoTranslate(int diff, int threshold, string reason)
     {
         _sceneChangeAutoTranslatePending = true;
         _sceneChangeAutoTranslatePendingDiff = Math.Max(_sceneChangeAutoTranslatePendingDiff, diff);
         _sceneChangeAutoTranslatePendingThreshold = Math.Max(0, threshold);
-        if (semanticPayload != null)
-        {
-            _sceneChangeAutoTranslatePendingPayload = semanticPayload;
-        }
 
         var now = DateTime.UtcNow;
         var shouldLog = !string.Equals(_sceneChangeAutoTranslatePendingReason, reason, StringComparison.Ordinal) ||
@@ -775,7 +743,6 @@ internal sealed class SceneChangeController : IDisposable
         _sceneChangeAutoTranslatePendingDiff = 0;
         _sceneChangeAutoTranslatePendingThreshold = 0;
         _sceneChangeAutoTranslatePendingReason = null;
-        _sceneChangeAutoTranslatePendingPayload = null;
         _lastSceneChangeAutoTranslatePendingLogUtc = DateTime.MinValue;
         _quietWindowPending = false;
         _quietWindowLastChangeUtc = DateTime.MinValue;

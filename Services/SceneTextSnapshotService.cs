@@ -50,7 +50,10 @@ public sealed class SceneTextSnapshotService
         _logger = logger;
     }
 
-    public async Task<SceneTextSnapshot?> CaptureSnapshotAsync(AppSettings settings, CancellationToken cancellationToken)
+    public async Task<SceneTextSnapshot?> CaptureSnapshotAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken,
+        bool includeVisualBlocks = true)
     {
         using var frame = _captureManager.Capture(settings);
         if (frame.IsBlack)
@@ -88,7 +91,10 @@ public sealed class SceneTextSnapshotService
         try
         {
             var blocks = BuildBlocks(stageOutput.ReadingUnits);
-            var visualBlocks = BuildVisualBlocks(roiBitmap, roiScreen, blocks);
+            // WHY: Stage B semantic gating can skip visual hashes and only keep text/layout comparison data.
+            var visualBlocks = includeVisualBlocks
+                ? BuildVisualBlocks(roiBitmap, roiScreen, blocks)
+                : new List<SceneVisualBlock>();
             return new SceneTextSnapshot(
                 blocks,
                 visualBlocks,

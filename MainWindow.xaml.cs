@@ -116,8 +116,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _settingsService,
             this,
             () => _pipeline,
-            () => _logger,
-            () => sceneChangeController?.ConsumePendingAutoTranslatePayload(),
             () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false);
         _sceneChangeController = new SceneChangeController(
             Dispatcher,
@@ -417,14 +415,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async Task RunOnceAsync(ForceRunOptions options)
     {
-        await RunOnceAsync(options, null).ConfigureAwait(true);
-    }
-
-    private async Task RunOnceAsync(ForceRunOptions options, SceneTextSnapshot? semanticPayload)
-    {
         // WHY: Explicit actions should observe the latest UI edits before pipeline execution.
         await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
-        await _runCoordinator.RunOnceAsync(options, semanticPayload).ConfigureAwait(true);
+        await _runCoordinator.RunOnceAsync(options).ConfigureAwait(true);
     }
 
     private void SetBusyOverlay(bool visible, string? message)
