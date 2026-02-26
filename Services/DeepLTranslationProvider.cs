@@ -139,16 +139,7 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
             return string.Empty;
         }
 
-        // WHY: Test DeepL behavior with single-line payloads by flattening OCR-introduced line breaks.
-        var flattened = text.Replace("\r\n", " ", StringComparison.Ordinal)
-            .Replace('\n', ' ')
-            .Replace('\r', ' ');
-
-        while (flattened.Contains("  ", StringComparison.Ordinal))
-        {
-            flattened = flattened.Replace("  ", " ", StringComparison.Ordinal);
-        }
-
-        return flattened.Trim();
+        // WHY: Temporary test mode. Disable line-break flattening and keep source text unchanged.
+        return text;
     }
 }

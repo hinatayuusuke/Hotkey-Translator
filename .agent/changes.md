@@ -13291,3 +13291,30 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
+
+**2026-02-26 23:46 (Asia/Taipei) — Temporarily disable DeepL newline-to-space flattening**
+
+### Summary
+- DeepL送信前の改行スペース化を一時的に無効化し、原文をそのまま送信する挙動へ戻した。
+
+### Context / Goal
+- ユーザーの比較テスト要件により、スペース化前後の品質差を切り分けたい。
+- 変更範囲を最小化し、他機能への影響を避ける。
+
+### Changes
+- `NormalizeLineEndingsForDeepL()` の処理を no-op 化（入力文字列をそのまま返す）。
+- WHYコメントをテスト目的の一時無効化に更新。
+
+### Files Touched
+- `Services/DeepLTranslationProvider.cs` — DeepL送信前の改行スペース化を無効化。
+
+### Behavioral Impact
+- DeepL APIへはOCRテキストの改行を含む原文がそのまま送信される。
+- 既存の `model_type=quality_optimized` 指定は維持。
+
+### Risk & Mitigation
+- Risk: 改行を含むため、翻訳結果が再び分割/反復傾向になる可能性。
+- Mitigation: 今回は比較テストのための一時変更で、結果に応じて再有効化可能。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
