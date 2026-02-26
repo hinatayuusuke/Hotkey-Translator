@@ -13207,3 +13207,60 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).
+
+**2026-02-26 23:11 (Asia/Taipei) — Normalize DeepL request line endings to LF**
+
+### Summary
+- DeepL送信時のテキスト改行を `CRLF/CR` から `LF` に統一する前処理を追加。
+
+### Context / Goal
+- Web版とAPI版の比較テストで、改行差分の影響を切り分けたい。
+- OCR本文は保持したまま、DeepL送信ペイロードだけを最小変更する。
+
+### Changes
+- `DeepLTranslationProvider` のリクエスト生成時に、各 `text` を `NormalizeLineEndingsForDeepL()` 経由で送信するよう変更。
+- `NormalizeLineEndingsForDeepL(string?)` を追加し、`\r\n -> \n`、`\r -> \n` を適用。
+- 変更理由を示す `WHY` コメントを追加。
+
+### Files Touched
+- `Services/DeepLTranslationProvider.cs` — DeepL送信直前の改行正規化処理を追加。
+
+### Behavioral Impact
+- DeepL APIへ送る文字列の改行が常に `\n` になる。
+- 翻訳結果の適用キーは既存どおり元テキストを使うため、マッピング契約は維持される。
+
+### Risk & Mitigation
+- Risk: 改行スタイル差に依存した既存結果との差分が発生する。
+- Mitigation: 変更範囲をDeepL送信前処理のみに限定し、他プロバイダやOCRテキスト生成には非干渉。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
+
+**2026-02-26 23:16 (Asia/Taipei) — Flatten DeepL line breaks to spaces for A/B test**
+
+### Summary
+- DeepL送信前の改行正規化を `LF` 統一から `半角スペース化` に変更。
+
+### Context / Goal
+- Web版との差分要因として改行の影響が残っていたため、1行化ペイロードで比較する。
+- OCR結果や他翻訳プロバイダへ影響を出さず、DeepL送信のみを対象にする。
+
+### Changes
+- `NormalizeLineEndingsForDeepL()` を更新し、`\r\n`/`\n`/`\r` を空白へ置換。
+- 連続空白を1つに圧縮し、前後空白を `Trim()`。
+- WHYコメントを更新（改行フラット化テスト目的を明示）。
+
+### Files Touched
+- `Services/DeepLTranslationProvider.cs` — DeepL送信テキストの改行処理をスペース化へ変更。
+
+### Behavioral Impact
+- DeepL APIへ送信される入力は1行化され、改行起因の分割解釈が減る。
+- 翻訳結果の対応付けキーは元テキストのままなので、既存マッピング契約は維持。
+
+### Risk & Mitigation
+- Risk: 改行を失うことで文の境界情報が減り、訳の自然さが変わる可能性。
+- Mitigation: 送信前処理のみに限定し、比較テスト後に方針を固定/ロールバック可能。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 errors）。
+- 警告2件（`Hotkey-Translator.exe` が実行中でファイルロック）: `Hotkey-Translator (44096)`。

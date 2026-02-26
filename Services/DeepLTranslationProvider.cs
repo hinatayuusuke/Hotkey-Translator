@@ -79,7 +79,7 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
 
         foreach (var text in texts)
         {
-            parameters.Add(new KeyValuePair<string, string>("text", text));
+            parameters.Add(new KeyValuePair<string, string>("text", NormalizeLineEndingsForDeepL(text)));
         }
 
         return new FormUrlEncodedContent(parameters);
@@ -128,5 +128,25 @@ public sealed class DeepLTranslationProvider : ITranslationProvider
 
         var normalized = language.Trim().Replace('_', '-');
         return normalized.ToUpperInvariant();
+    }
+
+    private static string NormalizeLineEndingsForDeepL(string? text)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return string.Empty;
+        }
+
+        // WHY: Test DeepL behavior with single-line payloads by flattening OCR-introduced line breaks.
+        var flattened = text.Replace("\r\n", " ", StringComparison.Ordinal)
+            .Replace('\n', ' ')
+            .Replace('\r', ' ');
+
+        while (flattened.Contains("  ", StringComparison.Ordinal))
+        {
+            flattened = flattened.Replace("  ", " ", StringComparison.Ordinal);
+        }
+
+        return flattened.Trim();
     }
 }
