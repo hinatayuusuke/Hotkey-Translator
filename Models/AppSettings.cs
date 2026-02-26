@@ -143,6 +143,22 @@ public sealed class AppSettings
     public bool PaddleVlEnableHpi { get; set; } = false;
     public bool? PaddleVlUseTensorrt { get; set; }
     public string? PaddleVlPrecision { get; set; } = "fp16";
+    public bool EnableNdlGrpcHost { get; set; } = true;
+    public string NdlGrpcProjectDir { get; set; } = "OcrServiceNDL";
+    public string NdlGrpcUvPath { get; set; } = "uv";
+    public string NdlGrpcServerScript { get; set; } = "server.py";
+    public string NdlGrpcEndpoint { get; set; } = "http://127.0.0.1:50053";
+    public string NdlGrpcHost { get; set; } = "127.0.0.1";
+    public int NdlGrpcPort { get; set; } = 50053;
+    public int NdlGrpcReadyTimeoutMs { get; set; } = 120000;
+    public int NdlGrpcRestartMax { get; set; } = 3;
+    public int NdlGrpcRestartWindowSeconds { get; set; } = 30;
+    public string NdlDevice { get; set; } = "cpu";
+    public string? NdlModelDir { get; set; }
+    public string? NdlConfigDir { get; set; }
+    public double NdlDetScoreThreshold { get; set; } = 0.2;
+    public double NdlDetConfThreshold { get; set; } = 0.25;
+    public double NdlDetIouThreshold { get; set; } = 0.2;
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
     public string FlorenceUvPath { get; set; } = "uv";
     public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";

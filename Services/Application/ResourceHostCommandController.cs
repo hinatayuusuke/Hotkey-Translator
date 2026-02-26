@@ -122,11 +122,19 @@ internal sealed class ResourceHostCommandController
             {
                 _resourceHostFacade.StopPaddle();
                 _resourceHostFacade.StopPaddleVl();
+                _resourceHostFacade.StopNdl();
             }
             else if (settings.OcrEngine == OcrEngineKind.PaddleVllm)
             {
                 _resourceHostFacade.StopPaddleVl();
                 _resourceHostFacade.StopPaddle();
+                _resourceHostFacade.StopNdl();
+            }
+            else if (settings.OcrEngine == OcrEngineKind.Ndl)
+            {
+                _resourceHostFacade.StopNdl();
+                _resourceHostFacade.StopPaddle();
+                _resourceHostFacade.StopPaddleVl();
             }
             else
             {

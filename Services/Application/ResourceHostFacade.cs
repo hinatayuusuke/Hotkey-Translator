@@ -14,6 +14,7 @@ internal sealed class ResourceHostFacade : IDisposable
 {
     private const string HostIdPaddle = "paddle_grpc";
     private const string HostIdPaddleVl = "paddle_vl_grpc";
+    private const string HostIdNdl = "ndl_grpc";
     private const string HostIdCt2 = "ct2_grpc";
     private const string HostIdLlama = "llama_grpc";
 
@@ -25,6 +26,7 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly GrpcHostOrchestrator _hostOrchestrator;
     private readonly PaddleGrpcHost _paddleGrpcHost;
     private readonly PaddleVlGrpcHost _paddleVlGrpcHost;
+    private readonly NdlGrpcHost _ndlGrpcHost;
     private readonly CTranslate2GrpcHost _ct2GrpcHost;
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
@@ -48,6 +50,7 @@ internal sealed class ResourceHostFacade : IDisposable
         // WHY: Host instances can be created before OnLoaded assigns AppLogger; use accessor to avoid capturing null.
         _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor);
         _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor);
+        _ndlGrpcHost = new NdlGrpcHost(_loggerAccessor);
         _ct2GrpcHost = new CTranslate2GrpcHost(_loggerAccessor);
         _llamaGrpcHost = new LlamaGrpcHost(_loggerAccessor);
         _hostRegistry = new GrpcHostRegistry(BuildHostDescriptors());
@@ -57,7 +60,7 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
-        if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) &&
+        if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
             !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
         {
             return false;
@@ -86,6 +89,11 @@ internal sealed class ResourceHostFacade : IDisposable
         _paddleVlGrpcHost.Stop();
     }
 
+    public void StopNdl()
+    {
+        _ndlGrpcHost.Stop();
+    }
+
     public void StopCTranslate2()
     {
         _ct2GrpcHost.Stop();
@@ -102,6 +110,7 @@ internal sealed class ResourceHostFacade : IDisposable
     {
         StopPaddle();
         StopPaddleVl();
+        StopNdl();
         StopCTranslate2();
         StopLlama();
     }
@@ -127,7 +136,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl, HostIdNdl }
             },
             new()
             {
@@ -140,7 +149,20 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleVlOcr,
                 FailureLogMessage = "PaddleOCR-VL gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddle }
+                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdNdl }
+            },
+            new()
+            {
+                HostId = HostIdNdl,
+                ShouldLoad = ShouldLoadNdl,
+                IsRunning = () => _ndlGrpcHost.IsRunning,
+                StartAsync = (settings, token) => _ndlGrpcHost.StartAsync(settings, token),
+                Stop = () => _ndlGrpcHost.Stop(),
+                BusyMessage = _ => "Loading NDLOCR-Lite...",
+                DisableOnFailure = DisableNdlOcr,
+                FailureLogMessage = "NDLOCR gRPC host failed to start.",
+                FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.",
+                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdPaddleVl }
             },
             new()
             {
@@ -194,6 +216,12 @@ internal sealed class ResourceHostFacade : IDisposable
         return host.OcrEngine == OcrEngineKind.PaddleVllm && host.EnablePaddleVlGrpcHost;
     }
 
+    private bool ShouldLoadNdl(AppSettings settings)
+    {
+        var host = _featureSettingsProvider.GetHost(settings);
+        return host.OcrEngine == OcrEngineKind.Ndl && host.EnableNdlGrpcHost;
+    }
+
     private bool ShouldLoadCTranslate2(AppSettings settings)
     {
         var host = _featureSettingsProvider.GetHost(settings);
@@ -219,6 +247,12 @@ internal sealed class ResourceHostFacade : IDisposable
     }
 
     private void DisablePaddleVlOcr(AppSettings settings)
+    {
+        settings.OcrEngine = OcrEngineKind.WinRt;
+        _syncSettingsToView(settings, false);
+    }
+
+    private void DisableNdlOcr(AppSettings settings)
     {
         settings.OcrEngine = OcrEngineKind.WinRt;
         _syncSettingsToView(settings, false);

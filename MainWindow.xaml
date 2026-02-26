@@ -121,9 +121,10 @@
                                 <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                                 <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
+                                <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
                             </ComboBox>
                         </Grid>
-                        <TextBlock Text="Use Settings &gt; PaddleOCR-VL runtime controls to apply changes and release OCR host resources."
+                        <TextBlock Text="Use Settings &gt; OCR runtime controls to apply changes and release OCR host resources."
                                    Foreground="DimGray"
                                    TextWrapping="Wrap"
                                    Margin="0,6,0,0" />

@@ -6,5 +6,6 @@ internal readonly record struct HostFeatureSettings(
     OcrEngineKind OcrEngine,
     bool EnablePaddleGrpcHost,
     bool EnablePaddleVlGrpcHost,
+    bool EnableNdlGrpcHost,
     bool EnableCTranslate2,
     bool EnableLlamaCppTranslation);

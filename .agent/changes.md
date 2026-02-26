@@ -13036,3 +13036,48 @@ dl_ocr_engine.py.
 - `OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\server.py OcrServiceNDL\ndl_grpc_adapter.py OcrServiceNDL\ndl_core_engine.py OcrServiceNDL\test_ndl_ocr_engine.py` succeeded.
 - `OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\server.py --help` succeeded.
 - `OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\test_ndl_ocr_engine.py --image OcrServiceNDL\test.png --model-dir OcrServiceNDL\model --config-dir OcrServiceNDL\config --device cpu --print-limit 1` succeeded.
+**2026-02-26 12:00 (Asia/Taipei) — NDLOCR-Lite engine integrated into app OCR pipeline**
+
+### Summary
+- Integrated NDLOCR-Lite as a selectable OCR engine with gRPC host orchestration, provider wiring, and WinRT fallback.
+
+### Context / Goal
+- Implement Doc/NDLOCR_Lite_Integration_Plan.md in the existing app architecture.
+- Keep existing OCR->translation->overlay flow intact while adding a new OCR backend.
+
+### Changes
+- Added OcrEngineKind.Ndl and UI binding for OCR engine selection.
+- Added NDLOCR runtime settings to AppSettings (host/process/device/threshold/options).
+- Implemented NdlGrpcHost for NDLOCR server lifecycle (start/health/restart policy).
+- Implemented NdlGrpcOcrProvider for NDLOCR gRPC recognition and JSON->OcrResultModel mapping.
+- Wired OcrEngine to execute NDLOCR branch with WinRT fallback on failure.
+- Extended resource host orchestration (ResourceHostFacade) to load/stop NDLOCR host and enforce OCR-host mutual exclusion.
+- Updated OCR host restart command flow to include NDLOCR.
+- Added NdlOcrSettingsRule and registered it in validator for safe defaults/clamps/normalization.
+
+### Files Touched
+- Models/OcrEngineKind.cs — added Ndl = 4 (compat-stable enum value extension).
+- Models/AppSettings.cs — added NDLOCR gRPC/device/threshold settings.
+- Services/OcrEngine.cs — added NDLOCR provider branch and disposal.
+- Services/NdlGrpcHost.cs — new NDLOCR gRPC host lifecycle implementation.
+- Services/NdlGrpcOcrProvider.cs — new NDLOCR gRPC OCR provider implementation.
+- Services/Application/ResourceHostFacade.cs — added NDLOCR host orchestration and failure handling.
+- Services/Application/ResourceHostCommandController.cs — added NDLOCR handling in OCR host restart flow.
+- Services/Settings/FeatureSettings/FeatureSettingsProvider.cs — surfaced EnableNdlGrpcHost in host feature snapshot.
+- Services/Settings/FeatureSettings/HostFeatureSettings.cs — added NDLOCR host enable flag.
+- Services/Settings/Rules/NdlOcrSettingsRule.cs — new NDLOCR settings normalization rule.
+- Services/Settings/AppSettingsValidator.cs — registered NDLOCR settings rule.
+- ViewModels/SettingsViewModel.cs — added NDL tag mapping in load/apply paths.
+- MainWindow.xaml — added NDLOCR-Lite (gRPC) option in OCR engine selector.
+
+### Behavioral Impact
+- Users can now select NDLOCR-Lite from the OCR engine selector.
+- When selected, app starts and uses OcrServiceNDL gRPC host; OCR failures still fall back to WinRT.
+- OCR host orchestration now treats Paddle/PaddleVL/NDL as mutually exclusive runtime hosts.
+
+### Risk & Mitigation
+- Risk: Misconfigured NDLOCR settings can prevent host startup.
+- Mitigation: Added normalization/clamping rule (NdlOcrSettingsRule) and existing host failure fallback to WinRt remains active.
+
+### Tests / Verification
+- dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).

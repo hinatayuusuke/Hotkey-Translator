@@ -6,5 +6,6 @@ public enum OcrEngineKind
     WinRt = 0,
     Paddle = 1,
     PaddleVllm = 2,
-    Florence2 = 3
+    Florence2 = 3,
+    Ndl = 4
 }

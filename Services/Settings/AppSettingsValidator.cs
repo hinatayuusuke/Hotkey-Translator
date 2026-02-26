@@ -17,6 +17,7 @@ internal sealed class AppSettingsValidator
             new WritingModeSettingsRule(),
             new SmallBoxReadabilitySettingsRule(),
             new PaddleOcrSettingsRule(),
+            new NdlOcrSettingsRule(),
             new CTranslate2HostSettingsRule(),
             new LlamaHostSettingsRule(),
             new Dx11HookSettingsRule()
