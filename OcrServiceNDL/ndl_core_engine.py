@@ -1,4 +1,5 @@
 import argparse
+import difflib
 import io
 import json
 import os
@@ -148,6 +149,9 @@ class NdlOcrLiteEngine:
         self._det_conf_threshold = float(det_conf_threshold)
         self._enable_timing_log = bool(enable_timing_log)
         self._max_workers = max(1, int(max_workers))
+        # WHY: NDLOCR-Lite can emit near-duplicate short lines in a single frame; dedup before gRPC response.
+        self._line_dedup_iou_threshold = 0.75
+        self._line_dedup_text_similarity_threshold = 0.90
 
         det_path = self._model_dir / "deim-s-1024x1024.onnx"
         rec30_path = self._model_dir / "parseq-ndl-16x256-30-tiny-192epoch-tegaki3.onnx"
@@ -238,6 +242,9 @@ class NdlOcrLiteEngine:
 
         for _, line in sorted(rec_results, key=lambda item: item[0]):
             lines.append(line)
+        line_count_before_dedup = len(lines)
+        lines = self._deduplicate_lines(lines)
+        line_count_after_dedup = len(lines)
 
         t_rec1 = time.perf_counter()
         t_end = time.perf_counter()
@@ -254,6 +261,8 @@ class NdlOcrLiteEngine:
             recognize_ms=(t_rec1 - t_rec0) * 1000.0,
             total_ms=(t_end - t0) * 1000.0,
             lines=lines,
+            dedup_before_count=line_count_before_dedup,
+            dedup_after_count=line_count_after_dedup,
         )
 
         return json.dumps({"lines": lines}, ensure_ascii=False)
@@ -302,9 +311,12 @@ class NdlOcrLiteEngine:
         recognize_ms: float,
         total_ms: float,
         lines: list[dict[str, Any]],
+        dedup_before_count: int,
+        dedup_after_count: int,
     ) -> None:
         if not self._enable_timing_log:
             return
+        dedup_dropped = max(0, dedup_before_count - dedup_after_count)
         confidence_values = [self._normalize_score(line.get("confidence", 0.0)) for line in lines]
         if confidence_values:
             confidence_avg = float(sum(confidence_values) / len(confidence_values))
@@ -316,12 +328,101 @@ class NdlOcrLiteEngine:
             "stage=ndl_ocr_timing event=summary "
             f"device={self._device} image={img_w}x{img_h} "
             f"linesIn={line_input_count} linesValid={line_valid_count} linesOut={line_output_count} "
+            f"dedupIn={dedup_before_count} dedupOut={dedup_after_count} dedupDropped={dedup_dropped} "
             f"workers={workers} decodeMs={decode_ms:.2f} detectSelectMs={detect_and_select_ms:.2f} "
             f"recognizeMs={recognize_ms:.2f} totalMs={total_ms:.2f} "
             f"confidenceAvg={confidence_avg:.4f} confidenceMin={confidence_min:.4f}.",
             file=sys.stderr,
             flush=True,
         )
+
+    def _deduplicate_lines(self, lines: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if len(lines) <= 1:
+            return lines
+
+        # WHY: Keep highest-confidence candidate for each near-identical (same area + same normalized text) cluster.
+        sorted_lines = sorted(lines, key=lambda line: self._normalize_score(line.get("confidence", 0.0)), reverse=True)
+        kept: list[dict[str, Any]] = []
+        for candidate in sorted_lines:
+            duplicate_found = False
+            for existing in kept:
+                if self._is_duplicate_line(candidate, existing):
+                    duplicate_found = True
+                    break
+            if not duplicate_found:
+                kept.append(candidate)
+
+        kept = sorted(
+            kept,
+            key=lambda line: (
+                float(line.get("box", [0.0, 0.0, 0.0, 0.0])[1]),
+                float(line.get("box", [0.0, 0.0, 0.0, 0.0])[0]),
+            ),
+        )
+        for line_id, line in enumerate(kept):
+            line["id"] = line_id
+        return kept
+
+    def _is_duplicate_line(self, a: dict[str, Any], b: dict[str, Any]) -> bool:
+        iou = self._box_iou(a.get("box"), b.get("box"))
+        if iou < self._line_dedup_iou_threshold:
+            return False
+
+        text_similarity = self._text_similarity(
+            self._normalize_compare_text(a.get("text", "")),
+            self._normalize_compare_text(b.get("text", "")),
+        )
+        return text_similarity >= self._line_dedup_text_similarity_threshold
+
+    @staticmethod
+    def _normalize_compare_text(text: str) -> str:
+        normalized = "".join(ch for ch in str(text) if not ch.isspace())
+        return normalized.lower()
+
+    @staticmethod
+    def _text_similarity(a: str, b: str) -> float:
+        if not a and not b:
+            return 1.0
+        if not a or not b:
+            return 0.0
+        return float(difflib.SequenceMatcher(a=a, b=b, autojunk=False).ratio())
+
+    @staticmethod
+    def _box_iou(box_a: Any, box_b: Any) -> float:
+        if not isinstance(box_a, (list, tuple)) or not isinstance(box_b, (list, tuple)):
+            return 0.0
+        if len(box_a) < 4 or len(box_b) < 4:
+            return 0.0
+
+        ax = float(box_a[0])
+        ay = float(box_a[1])
+        aw = max(0.0, float(box_a[2]))
+        ah = max(0.0, float(box_a[3]))
+        bx = float(box_b[0])
+        by = float(box_b[1])
+        bw = max(0.0, float(box_b[2]))
+        bh = max(0.0, float(box_b[3]))
+        if aw <= 0.0 or ah <= 0.0 or bw <= 0.0 or bh <= 0.0:
+            return 0.0
+
+        a_right = ax + aw
+        a_bottom = ay + ah
+        b_right = bx + bw
+        b_bottom = by + bh
+        inter_left = max(ax, bx)
+        inter_top = max(ay, by)
+        inter_right = min(a_right, b_right)
+        inter_bottom = min(a_bottom, b_bottom)
+        inter_w = max(0.0, inter_right - inter_left)
+        inter_h = max(0.0, inter_bottom - inter_top)
+        inter_area = inter_w * inter_h
+        if inter_area <= 0.0:
+            return 0.0
+
+        union_area = (aw * ah) + (bw * bh) - inter_area
+        if union_area <= 0.0:
+            return 0.0
+        return float(inter_area / union_area)
 
     @staticmethod
     def _normalize_score(value: Any) -> float:

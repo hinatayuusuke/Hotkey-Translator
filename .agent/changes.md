@@ -13081,3 +13081,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).
+**2026-02-26 14:35 (Asia/Taipei) — NDLOCR duplicate short-line suppression in Python engine**
+
+### Summary
+- Added same-frame line deduplication to NDLOCR-Lite using bbox IoU + normalized text similarity, keeping the highest-confidence line.
+
+### Context / Goal
+- NDLOCR-Lite tends to repeat short phrases in output lines.
+- Reduce loop-like duplicate lines before gRPC response to stabilize downstream diff/translation/overlay behavior.
+
+### Changes
+- Added line dedup stage in ecognize() after per-line recognition and before JSON serialization.
+- Implemented duplicate predicate with two gates: bbox IoU and normalized text similarity (SequenceMatcher).
+- Dedup keeps highest-confidence candidate by evaluating candidates in descending confidence order.
+- Re-assigned stable sequential id after dedup and restored deterministic output ordering by (y, x).
+- Extended timing log with dedup metrics: dedupIn, dedupOut, dedupDropped.
+
+### Files Touched
+- OcrServiceNDL/ndl_core_engine.py — added dedup functions (_deduplicate_lines, _is_duplicate_line, _box_iou, text normalization/similarity) and timing-log fields.
+
+### Behavioral Impact
+- Duplicate same-frame short lines with highly overlapping boxes and near-identical text are removed before returning OCR JSON.
+- Output should be less repetitive and reduce unnecessary downstream translation attempts.
+
+### Risk & Mitigation
+- Risk: Over-aggressive dedup may collapse distinct nearby lines with similar text.
+- Mitigation: Dual condition (IoU + text similarity) and conservative defaults (IoU=0.75, 	ext=0.90) to avoid broad merges.
+
+### Tests / Verification
+- OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\ndl_core_engine.py succeeded.
+- OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\test_ndl_ocr_engine.py --image OcrServiceNDL\test.png --model-dir OcrServiceNDL\model --config-dir OcrServiceNDL\config --device cpu --print-limit 3 succeeded.
+- Timing log confirmed dedup metrics output (dedupIn/dedupOut/dedupDropped).
