@@ -41,7 +41,7 @@ def _main() -> int:
     if not image_path.exists():
         raise FileNotFoundError(f"Image not found: {image_path}")
 
-    from ndl_ocr_engine import NdlOcrLiteEngine
+    from ndl_core_engine import NdlOcrLiteEngine
 
     engine = NdlOcrLiteEngine(
         model_dir=args.model_dir,

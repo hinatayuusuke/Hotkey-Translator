@@ -25,7 +25,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 - proto運用:
   - `OcrServiceNDL` 内で `ocr.proto` / `ocr_pb2.py` / `ocr_pb2_grpc.py` を生成・管理する。
   - `OcrService/ocr.proto` 更新時は `OcrServiceNDL/ocr.proto` を同期する運用ルールを明記する。
-- NDLOCR推論本体は `OcrServiceNDL/ndl_ocr_engine.py` を利用可能。
+- NDLOCR推論本体は `OcrServiceNDL/ndl_core_engine.py` を利用可能。
 - 既存の呼び出し側は `OcrResponse.json`（`lines[]`）を受け取る前提で動作する。
 
 ## 4. 現状整理
@@ -47,7 +47,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
   - `EnginePool`
   - `OcrService` 実装
   - `main()`（argparse + gRPC server）
-- `OcrServiceNDL/ocr_ndl_engine.py`（新規）
+- `OcrServiceNDL/ndl_grpc_adapter.py`（新規）
   - `NdlOcrLiteEngine` をラップし、`recognize(image_bytes) -> json string` を提供。
 - `OcrServiceNDL/ocr.proto`（サービス内で保持・生成。契約変更時に `OcrService/ocr.proto` と同期）
 
@@ -100,7 +100,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 - gRPC起動確認（`127.0.0.1` 固定バインド + `Health` ready 応答）。
 
 ### Step 2: エンジン接続
-- `ocr_ndl_engine.py` で `OcrServiceNDL/ndl_ocr_engine.py` をラップ。
+- `ndl_grpc_adapter.py` で `OcrServiceNDL/ndl_core_engine.py` をラップ。
 - `main()` で eager init（エンジン生成）を行い、成功時のみサーバ起動。
 - `Recognize` で実推論実行・JSON返却。
 - `EnginePool` にTTL/LRUを追加。
@@ -141,7 +141,7 @@ API契約は既存 `ocr.proto`（`Health` / `Recognize`）を維持し、C# 側�
 ## 10. 影響範囲（変更ファイル候補・移行・ドキュメント更新）
 - 新規（サーバ実装）
   - `OcrServiceNDL/server.py`
-  - `OcrServiceNDL/ocr_ndl_engine.py`
+  - `OcrServiceNDL/ndl_grpc_adapter.py`
   - `OcrServiceNDL/ocr.proto`
   - `OcrServiceNDL/pyproject.toml`（必要なら）
 - 既存（将来の接続側）

@@ -12958,3 +12958,81 @@ dl_ocr_engine.py.
 - `uv lock` 実行成功。
 - `uv sync` 実行成功（`onnxruntime-gpu` と `nvidia-*` が削除され、`onnxruntime` が導入）。
 - `uv run python -c "import onnxruntime as ort; print(ort.get_available_providers())"` で `['AzureExecutionProvider', 'CPUExecutionProvider']` を確認。
+**2026-02-26 11:38 (Asia/Taipei) — Implement NDLOCR gRPC server foundation (OcrServiceNDL)**
+
+### Summary
+- Implemented the `OcrServiceNDL` gRPC server stack (`server.py`, engine adapter, proto) following existing Paddle OCR service patterns.
+
+### Context / Goal
+- User requested implementing `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` first.
+- Goal was to provide a runnable NDLOCR gRPC host with Health/Recognize, eager init, bounded engine pool, and observability logs.
+
+### Changes
+- Added `OcrServiceNDL/ocr.proto` (same service contract as existing OCR services).
+- Added `OcrServiceNDL/ocr_ndl_engine.py` as a thin adapter around `NdlOcrLiteEngine`.
+- Added `OcrServiceNDL/server.py` with:
+  - `ensure_proto()` generation flow
+  - `EnginePool` with TTL/LRU eviction
+  - `Health` and `Recognize` RPC handlers
+  - request/response bytes logs and per-request timing logs
+  - eager engine initialization before server start
+  - fixed bind host to `127.0.0.1`
+- Updated `OcrServiceNDL/pyproject.toml` to include gRPC dependencies (`grpcio`, `grpcio-tools`).
+- Updated `OcrServiceNDL/uv.lock` via `uv lock/sync`.
+
+### Files Touched
+- `OcrServiceNDL/ocr.proto` — added gRPC service contract.
+- `OcrServiceNDL/ocr_ndl_engine.py` — added NDLOCR adapter used by gRPC service.
+- `OcrServiceNDL/server.py` — added gRPC server implementation with pool/logging/eager init.
+- `OcrServiceNDL/pyproject.toml` — added gRPC dependencies.
+- `OcrServiceNDL/uv.lock` — lockfile updated for new dependencies.
+
+### Behavioral Impact
+- NDLOCR can now run as a local gRPC OCR host with Health/Recognize endpoints.
+- Server startup now validates model readiness (eager init) before reporting healthy.
+- OCR requests now emit structured `stage=ocr_grpc host=ndl` logs.
+
+### Risk & Mitigation
+- Risk: Initial startup takes longer due to eager model initialization.
+- Mitigation: Keeps Health semantics strict (`ready=true` means inferable now), reducing runtime false-ready states.
+
+### Tests / Verification
+- `OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\server.py OcrServiceNDL\ocr_ndl_engine.py OcrServiceNDL\ndl_ocr_engine.py` succeeded.
+- `OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\server.py --help` succeeded.
+- End-to-end local smoke test (spawn server -> Health -> Recognize on `OcrServiceNDL/test.png`) succeeded (`health_ready=True`, `lines=3`).
+**2026-02-26 11:49 (Asia/Taipei) — Rename NDLOCR engine files to clear core/adapter roles**
+
+### Summary
+- Renamed NDLOCR Python modules to clearer names and updated all in-repo references.
+
+### Context / Goal
+- User requested applying recommended renames and updating references accordingly.
+- Goal was to reduce ambiguity between core OCR logic and gRPC adapter layer.
+
+### Changes
+- Renamed `OcrServiceNDL/ndl_ocr_engine.py` -> `OcrServiceNDL/ndl_core_engine.py`.
+- Renamed `OcrServiceNDL/ocr_ndl_engine.py` -> `OcrServiceNDL/ndl_grpc_adapter.py`.
+- Updated imports/usages in runtime and tests to new module names.
+- Renamed adapter class usage in server to `NdlGrpcAdapter` and kept `NdlGrpcOcrEngine` alias for temporary compatibility.
+- Updated implementation-plan documents to new file names.
+
+### Files Touched
+- `OcrServiceNDL/ndl_core_engine.py` — renamed from previous core engine file.
+- `OcrServiceNDL/ndl_grpc_adapter.py` — renamed from previous adapter file; updated import/class naming.
+- `OcrServiceNDL/server.py` — updated adapter import and type references.
+- `OcrServiceNDL/test_ndl_ocr_engine.py` — updated core engine import path.
+- `Doc/NDLOCR_Grpc_Server_Implementation_Plan.md` — updated module path references.
+- `Doc/NDLOCR_Lite_Integration_Plan.md` — updated module path references.
+
+### Behavioral Impact
+- No OCR behavior changes; only module/class naming and references were updated.
+- Existing in-progress callers can still import `NdlGrpcOcrEngine` via compatibility alias.
+
+### Risk & Mitigation
+- Risk: External/local scripts may still import old module names.
+- Mitigation: Verified all repository references are updated; compatibility alias retained for adapter class.
+
+### Tests / Verification
+- `OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\server.py OcrServiceNDL\ndl_grpc_adapter.py OcrServiceNDL\ndl_core_engine.py OcrServiceNDL\test_ndl_ocr_engine.py` succeeded.
+- `OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\server.py --help` succeeded.
+- `OcrServiceNDL\.venv\Scripts\python.exe OcrServiceNDL\test_ndl_ocr_engine.py --image OcrServiceNDL\test.png --model-dir OcrServiceNDL\model --config-dir OcrServiceNDL\config --device cpu --print-limit 1` succeeded.

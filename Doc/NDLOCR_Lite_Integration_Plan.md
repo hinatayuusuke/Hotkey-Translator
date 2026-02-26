@@ -18,7 +18,7 @@
 - 初期段階でのNDLOCR独自読み順情報の全面採用（まずは既存 `OcrLineGrouper` 優先）。
 
 ## 3. 前提・仮定
-- `OcrServiceNDL` には ONNX モデルと推論コード（`ndl_ocr_engine.py`）が揃っている。
+- `OcrServiceNDL` には ONNX モデルと推論コード（`ndl_core_engine.py`）が揃っている。
 - NDLOCR-Lite は CC BY 4.0。配布時にクレジット/ライセンス表記が必要。
 - 現行アプリは OCR結果を `OcrResultModel(lines, pixelWidth, pixelHeight)` で受け、以後の翻訳・オーバーレイはこの契約に依存している。
 - OCRホスト追加は既存パターン（`PaddleGrpcHost`, `PaddleVlGrpcHost`）を踏襲する。
@@ -38,7 +38,7 @@
   - `ResourceHostFacade`（更新）: `ndl_grpc` のロード/停止制御を追加。
 - Python:
   - `OcrServiceNDL/server.py`（新規）: 画像bytes受信、NDLOCR推論、JSON返却。
-  - `OcrServiceNDL/ocr_ndl_engine.py`（新規）: `OcrServiceNDL/ndl_ocr_engine.py` を呼ぶラッパー。
+  - `OcrServiceNDL/ndl_grpc_adapter.py`（新規）: `OcrServiceNDL/ndl_core_engine.py` を呼ぶラッパー。
 
 ### データフロー / シーケンス
 1. `CaptureManager` がROI対象フレームを取得。  
@@ -89,7 +89,7 @@
 - `NdlGrpcHost`/`NdlGrpcOcrProvider` を追加し、`OcrEngine` から呼べる状態にする。
 
 ### Step 2: NDLOCR推論接続
-- `ocr_ndl_engine.py` でNDLOCR推論を実装。
+- `ndl_grpc_adapter.py` でNDLOCR推論を実装。
 - まずは「1枚画像入力 -> line配列返却」に限定し、XML出力など不要処理は省く。
 - `stage=ocr_grpc host=ndl event=request_bytes/response_bytes` ログを追加。
 
@@ -137,7 +137,7 @@
 - `Services/NdlGrpcHost.cs`（新規）
 - `Services/NdlGrpcOcrProvider.cs`（新規）
 - `OcrServiceNDL/server.py`（新規）
-- `OcrServiceNDL/ocr_ndl_engine.py`（新規）
+- `OcrServiceNDL/ndl_grpc_adapter.py`（新規）
 - `Doc/NDLOCR_Lite_Integration_Plan.md`（本書）
 
 ## 11. Definition of Done
