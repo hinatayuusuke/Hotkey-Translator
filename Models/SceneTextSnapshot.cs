@@ -6,6 +6,7 @@ namespace Hotkey_Translator.Models;
 
 public sealed record SceneTextSnapshot(
     IReadOnlyList<SceneTextBlock> Blocks,
+    IReadOnlyList<SceneVisualBlock> VisualBlocks,
     IReadOnlyList<ReadingUnit> ReadingUnits,
     Rect RoiScreen,
     Rect? OverlayClipScreen,

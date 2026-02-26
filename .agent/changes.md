@@ -13142,3 +13142,38 @@ dl_ocr_engine.py.
 - OcrServiceNDL\.venv\Scripts\python.exe -m py_compile OcrServiceNDL\ndl_core_engine.py succeeded.
 - uv run --python .\.venv\Scripts\python.exe .\test_ndl_ocr_engine.py --image test4.png --model-dir .\model --device cpu --json-out .\out\result.json (workdir=OcrServiceNDL) succeeded.
 - Verified output changed from 3 lines to 2 lines and timing log reported dedupDropped=1.
+**2026-02-26 16:37 (Asia/Taipei) — Implement block-scoped Stage A scene-change detection with ROI fallback**
+
+### Summary
+- Implemented Doc/SceneChange_TextBlockScopedPhash_Implementation_Plan.md by adding text-block-scoped pHash comparison to scene-change Stage A, with automatic fallback to ROI-wide pHash.
+
+### Context / Goal
+- ROI-wide pHash was sensitive to non-text visual noise.
+- Goal was to evaluate scene changes primarily on OCR text block regions while keeping existing behavior safe via fallback.
+
+### Changes
+- Added SceneVisualBlock model and stored visual block hashes in SceneTextSnapshot.
+- Extended SceneTextSnapshotService to compute and persist per-block visual hashes from ROI image at snapshot capture time.
+- Updated SceneChangeController Stage A tick path to:
+  - Prefer block-scoped weighted pHash diff using SceneTextSnapshot.VisualBlocks.
+  - Fall back to legacy ROI-wide pHash when block-scoped evaluation is unavailable/invalid.
+- Added diagnostics for Stage A mode and fallback reasons (stage_a_blocks, stage_a_fallback).
+- Added guard checks for snapshot signature compatibility before using block-scoped references.
+
+### Files Touched
+- Models/SceneVisualBlock.cs — new visual block hash model.
+- Models/SceneTextSnapshot.cs — added VisualBlocks to snapshot payload.
+- Services/SceneTextSnapshotService.cs — computes visual block hashes during snapshot capture.
+- Services/Application/SceneChangeController.cs — Stage A now supports block-scoped diff + ROI fallback.
+- Doc/SceneChange_TextBlockScopedPhash_Implementation_Plan.md — implementation plan document added.
+
+### Behavioral Impact
+- Stage A now prioritizes text-region changes, reducing non-text noise sensitivity.
+- If text-block evaluation cannot run (no valid blocks, low covered area, incompatible snapshot), behavior safely falls back to existing ROI pHash path.
+
+### Risk & Mitigation
+- Risk: Block-scoped mode could skip evaluation when coverage is too low.
+- Mitigation: Explicit fallback to ROI mode and diagnostic logs for tuning (stage_a_fallback reason=...).
+
+### Tests / Verification
+- dotnet build ./Hotkey-Translator.sln succeeded (0 errors, 0 warnings).

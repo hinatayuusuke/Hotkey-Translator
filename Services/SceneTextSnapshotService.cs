@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -20,11 +21,16 @@ public readonly record struct SceneTextSnapshotComparison(
 
 public sealed class SceneTextSnapshotService
 {
+    private const int VisualBlockPaddingPx = 3;
+    private const int VisualBlockMaxCount = 24;
+    private const double VisualBlockMinSizePx = 8.0;
+
     private readonly CaptureManager _captureManager;
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly ReadingUnitBuilder _readingUnitBuilder = new();
     private readonly OcrAndGroupStage _ocrAndGroupStage;
+    private readonly PhashService _phashService = new();
     private readonly AppLogger? _logger;
 
     public SceneTextSnapshotService(
@@ -82,8 +88,10 @@ public sealed class SceneTextSnapshotService
         try
         {
             var blocks = BuildBlocks(stageOutput.ReadingUnits);
+            var visualBlocks = BuildVisualBlocks(roiBitmap, roiScreen, blocks);
             return new SceneTextSnapshot(
                 blocks,
+                visualBlocks,
                 stageOutput.ReadingUnits,
                 roiScreen,
                 overlayClipScreen,
@@ -169,6 +177,42 @@ public sealed class SceneTextSnapshotService
         }
 
         return blocks;
+    }
+
+    private List<SceneVisualBlock> BuildVisualBlocks(
+        Bitmap roiBitmap,
+        Rect roiScreen,
+        IReadOnlyList<SceneTextBlock> blocks)
+    {
+        if (blocks.Count == 0)
+        {
+            return new List<SceneVisualBlock>();
+        }
+
+        var roiLocal = new Rect(0, 0, roiBitmap.Width, roiBitmap.Height);
+        var visualBlocks = new List<SceneVisualBlock>(Math.Min(blocks.Count, VisualBlockMaxCount));
+        foreach (var block in blocks
+                     .OrderByDescending(item => item.Rect.Width * item.Rect.Height)
+                     .Take(VisualBlockMaxCount))
+        {
+            var local = new Rect(
+                block.Rect.X - roiScreen.X - VisualBlockPaddingPx,
+                block.Rect.Y - roiScreen.Y - VisualBlockPaddingPx,
+                block.Rect.Width + (VisualBlockPaddingPx * 2),
+                block.Rect.Height + (VisualBlockPaddingPx * 2));
+            var clipped = Rect.Intersect(local, roiLocal);
+            if (clipped.IsEmpty || clipped.Width < VisualBlockMinSizePx || clipped.Height < VisualBlockMinSizePx)
+            {
+                continue;
+            }
+
+            using var crop = BitmapHelper.Crop(roiBitmap, clipped);
+            var hash = _phashService.ComputeHash(crop);
+            var area = clipped.Width * clipped.Height;
+            visualBlocks.Add(new SceneVisualBlock(block.Rect, hash, area));
+        }
+
+        return visualBlocks;
     }
 
     private static string NormalizeForComparison(string? text)

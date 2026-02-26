@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Drawing;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -17,6 +19,10 @@ internal sealed class SceneChangeController : IDisposable
     private const int QuietWindowDefaultMs = 450;
     private const int QuietWindowMinMs = 100;
     private const int QuietWindowMaxMs = 3000;
+    private const int StageABlockPaddingPx = 3;
+    private const int StageABlockMaxCount = 24;
+    private const double StageABlockMinSizePx = 8.0;
+    private const double StageABlockMinCoveredAreaRatio = 0.02;
 
     // WHY: Keep watcher-triggered runs on the same option profile used before extraction for behavior compatibility.
     private static readonly ForceRunOptions AutoSceneChangeRunOptions = new(
@@ -354,10 +360,15 @@ internal sealed class SceneChangeController : IDisposable
 
         if (_autoHideBaselinePending || !_autoHideLastHash.HasValue)
         {
-            return;
+            // WHY: Block-scoped Stage A can run without ROI baseline hash when semantic snapshot is available.
+            if (_autoHideBaselinePending || !HasUsableBlockScopedSnapshot(settings))
+            {
+                return;
+            }
         }
 
-        var baselineHash = _autoHideLastHash.Value;
+        var baselineHash = _autoHideLastHash;
+        var blockScopedSnapshot = GetUsableBlockScopedSnapshot(settings);
         var baselineVersion = _autoHideBaselineVersion;
         var perfEnabled = settings.EnableOcrPerfLog && settings.EnableLogging;
         var perfThresholdMs = Math.Max(0, settings.OcrPerfLogThresholdMs);
@@ -392,21 +403,59 @@ internal sealed class SceneChangeController : IDisposable
                         roiScreen.Height);
 
                     using var roiBitmap = BitmapHelper.Crop(frame.Bitmap, roiInFrame);
+                    var usedBlockScoped = false;
+                    if (blockScopedSnapshot != null)
+                    {
+                        if (TryComputeBlockScopedVisualDiff(
+                                roiBitmap,
+                                roiScreen,
+                                blockScopedSnapshot,
+                                phashService,
+                                out var blockDiff,
+                                out var coveredAreaRatio,
+                                out var matchedBlocks,
+                                out var skipReason))
+                        {
+                            var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+                            visualDiff = blockDiff;
+                            visualThreshold = threshold;
+                            visualCandidateReady = true;
+                            usedBlockScoped = true;
+                            _loggerAccessor()?.Info(
+                                $"stage=scene_change event=stage_a_blocks blocks={matchedBlocks} coveredAreaRatio={coveredAreaRatio:0.###} diff={blockDiff} threshold={threshold}.");
+                        }
+                        else
+                        {
+                            _loggerAccessor()?.Info(
+                                $"stage=scene_change event=stage_a_fallback reason={skipReason ?? "unknown"} mode=roi.");
+                        }
+                    }
+
+                    if (usedBlockScoped)
+                    {
+                        return;
+                    }
+
+                    if (!baselineHash.HasValue)
+                    {
+                        return;
+                    }
+
                     var hash = phashService.ComputeHash(roiBitmap);
                     if (baselineVersion != _autoHideBaselineVersion)
                     {
                         return;
                     }
 
-                    var diff = phashService.HammingDistance(hash, baselineHash);
-                    var threshold = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
+                    var diff = phashService.HammingDistance(hash, baselineHash.Value);
+                    var thresholdRoi = Math.Clamp(settings.SceneChangeWatchPhashThreshold, 0, 64);
                     if (baselineVersion != _autoHideBaselineVersion)
                     {
                         return;
                     }
 
                     visualDiff = diff;
-                    visualThreshold = threshold;
+                    visualThreshold = thresholdRoi;
                     visualHash = hash;
                     visualCandidateReady = true;
                     if (baselineVersion == _autoHideBaselineVersion)
@@ -680,5 +729,102 @@ internal sealed class SceneChangeController : IDisposable
             ? QuietWindowDefaultMs
             : scene.SceneChangeQuietWindowMs;
         return Math.Clamp(quietWindowMs, QuietWindowMinMs, QuietWindowMaxMs);
+    }
+
+    private bool HasUsableBlockScopedSnapshot(AppSettings settings)
+    {
+        return GetUsableBlockScopedSnapshot(settings) != null;
+    }
+
+    private SceneTextSnapshot? GetUsableBlockScopedSnapshot(AppSettings settings)
+    {
+        var snapshot = _lastSceneTextSnapshot;
+        if (snapshot == null)
+        {
+            return null;
+        }
+
+        if (snapshot.VisualBlocks.Count == 0)
+        {
+            return null;
+        }
+
+        // WHY: Block coordinates depend on OCR/ROI settings; avoid mixing snapshots from incompatible config.
+        var signature = SceneTextSnapshotService.BuildSnapshotSignature(settings);
+        if (!string.Equals(snapshot.SnapshotSignature, signature, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return snapshot;
+    }
+
+    private static bool TryComputeBlockScopedVisualDiff(
+        Bitmap roiBitmap,
+        Rect roiScreen,
+        SceneTextSnapshot snapshot,
+        PhashService phashService,
+        out int diff,
+        out double coveredAreaRatio,
+        out int matchedBlocks,
+        out string? skipReason)
+    {
+        diff = 0;
+        coveredAreaRatio = 0.0;
+        matchedBlocks = 0;
+        skipReason = null;
+
+        if (snapshot.VisualBlocks.Count == 0)
+        {
+            skipReason = "no_visual_blocks";
+            return false;
+        }
+
+        var roiLocal = new Rect(0, 0, roiBitmap.Width, roiBitmap.Height);
+        var weightedDiffSum = 0.0;
+        var weightSum = 0.0;
+        var coveredArea = 0.0;
+
+        foreach (var block in snapshot.VisualBlocks
+                     .OrderByDescending(item => item.Area)
+                     .Take(StageABlockMaxCount))
+        {
+            var local = new Rect(
+                block.Rect.X - roiScreen.X - StageABlockPaddingPx,
+                block.Rect.Y - roiScreen.Y - StageABlockPaddingPx,
+                block.Rect.Width + (StageABlockPaddingPx * 2),
+                block.Rect.Height + (StageABlockPaddingPx * 2));
+            var clipped = Rect.Intersect(local, roiLocal);
+            if (clipped.IsEmpty || clipped.Width < StageABlockMinSizePx || clipped.Height < StageABlockMinSizePx)
+            {
+                continue;
+            }
+
+            using var crop = BitmapHelper.Crop(roiBitmap, clipped);
+            var currentHash = phashService.ComputeHash(crop);
+            var delta = phashService.HammingDistance(currentHash, block.Hash);
+            var area = clipped.Width * clipped.Height;
+            weightedDiffSum += delta * area;
+            weightSum += area;
+            coveredArea += area;
+            matchedBlocks++;
+        }
+
+        if (matchedBlocks == 0 || weightSum <= 0)
+        {
+            skipReason = "no_valid_block_intersections";
+            return false;
+        }
+
+        var roiArea = Math.Max(1.0, roiBitmap.Width * roiBitmap.Height);
+        coveredAreaRatio = coveredArea / roiArea;
+        if (coveredAreaRatio < StageABlockMinCoveredAreaRatio)
+        {
+            skipReason = $"low_covered_area_ratio({coveredAreaRatio:0.###})";
+            return false;
+        }
+
+        diff = (int)Math.Round(weightedDiffSum / weightSum);
+        return true;
     }
 }
