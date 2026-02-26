@@ -66,6 +66,7 @@ internal sealed class SceneChangeController : IDisposable
     private SceneTextSnapshot? _lastSceneTextSnapshot;
     private int _semanticCandidateStreak;
     private bool _overlayVisible;
+    private bool _stageAActive = true;
 
     public SceneChangeController(
         Dispatcher dispatcher,
@@ -133,6 +134,7 @@ internal sealed class SceneChangeController : IDisposable
     public void OnOverlayShown()
     {
         _overlayVisible = true;
+        ResumeStageA("overlay_shown", resetBaseline: false);
         UpdateWatcher(_settingsService.Settings);
         ScheduleBaselineReset();
     }
@@ -242,6 +244,7 @@ internal sealed class SceneChangeController : IDisposable
         _lastSceneChangeAutoTranslateRequestUtc = DateTime.MinValue;
         ClearPendingAutoTranslate("watcher stopped");
         ClearBaseline();
+        _stageAActive = true;
         ResetSceneSemanticState();
     }
 
@@ -356,6 +359,11 @@ internal sealed class SceneChangeController : IDisposable
         if (scene.EnableSceneChangeAutoTranslate && TryDrainPendingAutoTranslate())
         {
             // WHY: A drain already scheduled a run for this tick; skip duplicate scene-change processing.
+            return;
+        }
+
+        if (scene.EnableSceneChangeAutoTranslate && !_stageAActive)
+        {
             return;
         }
 
@@ -497,14 +505,45 @@ internal sealed class SceneChangeController : IDisposable
             }
 
             _loggerAccessor()?.Info($"Scene change Stage A passed (diff {visualDiff}, threshold {visualThreshold}).");
-
-            if (!scene.EnableSceneChangeSemanticGate || _snapshotServiceAccessor() == null)
+            var shouldHideOverlayOnStageAPass = settings.EnableSceneChangeAutoHide || scene.EnableSceneChangeAutoTranslate;
+            if (shouldHideOverlayOnStageAPass)
             {
-                TriggerSceneChangeAction(settings, visualDiff, visualThreshold, semanticPayload: null);
+                PauseStageA("stage_a_pass");
+                HideOverlayForSceneChange(visualDiff, visualThreshold);
+            }
+
+            if (!scene.EnableSceneChangeAutoTranslate)
+            {
+                _sceneChangeAutoTranslatePendingPayload = null;
                 return;
             }
 
-            await HandleSceneChangeWithSemanticGateAsync(settings, scene, visualDiff, visualThreshold).ConfigureAwait(true);
+            if (!scene.EnableSceneChangeSemanticGate || _snapshotServiceAccessor() == null)
+            {
+                QueueSceneChangeAutoTranslate(visualDiff, visualThreshold, semanticPayload: null);
+                return;
+            }
+
+            var stageBTriggeredTranslate = false;
+            try
+            {
+                _loggerAccessor()?.Info("stage=scene_change event=stage_b_start reason=stage_a_pass.");
+                stageBTriggeredTranslate = await HandleSceneChangeWithSemanticGateAsync(settings, scene, visualDiff, visualThreshold)
+                    .ConfigureAwait(true);
+            }
+            catch (OperationCanceledException)
+            {
+                _loggerAccessor()?.Info("stage=scene_change event=stage_b_canceled.");
+            }
+            catch (Exception ex)
+            {
+                _loggerAccessor()?.Error(ex, "Scene change Stage B failed.");
+            }
+
+            if (!stageBTriggeredTranslate)
+            {
+                ResumeStageA("stage_b_non_pass");
+            }
         }
         catch (Exception ex)
         {
@@ -516,7 +555,7 @@ internal sealed class SceneChangeController : IDisposable
         }
     }
 
-    private async Task HandleSceneChangeWithSemanticGateAsync(
+    private async Task<bool> HandleSceneChangeWithSemanticGateAsync(
         AppSettings settings,
         SceneFeatureSettings scene,
         int diff,
@@ -524,13 +563,13 @@ internal sealed class SceneChangeController : IDisposable
     {
         if (!scene.EnableSceneChangeSemanticGate)
         {
-            return;
+            return false;
         }
 
         var snapshotService = _snapshotServiceAccessor();
         if (snapshotService == null)
         {
-            return;
+            return false;
         }
 
         var snapshot = await snapshotService.CaptureSnapshotAsync(settings, CancellationToken.None).ConfigureAwait(true);
@@ -543,7 +582,7 @@ internal sealed class SceneChangeController : IDisposable
             }
 
             _loggerAccessor()?.Info("Scene change Stage B skipped (no OCR snapshot).");
-            return;
+            return false;
         }
 
         if (_lastSceneTextSnapshot == null)
@@ -557,7 +596,7 @@ internal sealed class SceneChangeController : IDisposable
             }
 
             _loggerAccessor()?.Info("Scene change Stage B baseline initialized.");
-            return;
+            return false;
         }
 
         var comparison = snapshotService.CompareSnapshots(_lastSceneTextSnapshot, snapshot, settings);
@@ -570,39 +609,56 @@ internal sealed class SceneChangeController : IDisposable
             }
 
             _lastSceneTextSnapshot = snapshot;
-            _loggerAccessor()?.Info($"Scene change Stage B blocked: {comparison.Reason}.");
-            return;
+            _loggerAccessor()?.Info($"stage=scene_change event=stage_b_reject reason=\"{comparison.Reason}\".");
+            return false;
         }
 
         var requiredTicks = Math.Max(1, settings.SceneSemanticRequireConfirmTicks);
         _semanticCandidateStreak++;
         _sceneChangeAutoTranslatePendingPayload = snapshot;
-        _loggerAccessor()?.Info(
-            $"Scene change Stage B passed: {comparison.Reason}, streak={_semanticCandidateStreak}/{requiredTicks}.");
+        _loggerAccessor()?.Info($"stage=scene_change event=stage_b_pass reason=\"{comparison.Reason}\" streak={_semanticCandidateStreak}/{requiredTicks}.");
         if (_semanticCandidateStreak < requiredTicks)
         {
-            return;
+            return false;
         }
 
         _semanticCandidateStreak = 0;
         _lastSceneTextSnapshot = snapshot;
-        TriggerSceneChangeAction(settings, diff, threshold, semanticPayload: snapshot);
+        QueueSceneChangeAutoTranslate(diff, threshold, semanticPayload: snapshot);
+        return true;
     }
 
-    private void TriggerSceneChangeAction(AppSettings settings, int diff, int threshold, SceneTextSnapshot? semanticPayload)
+    private void HideOverlayForSceneChange(int diff, int threshold)
     {
-        if (settings.EnableSceneChangeAutoHide)
+        // WHY: Stage A is a shared first gate for auto-hide and auto-translate; hide immediately for consistent UX.
+        _setOverlayEnabledState(false);
+        _overlayPresenterAccessor()?.SetEnabled(false);
+        _appendLog($"Overlay auto-hidden (watcher diff {diff}, threshold {threshold}).");
+    }
+
+    private void PauseStageA(string reason)
+    {
+        if (!_stageAActive)
         {
-            _setOverlayEnabledState(false);
-            _overlayPresenterAccessor()?.SetEnabled(false);
-            _appendLog($"Overlay auto-hidden (watcher diff {diff}).");
-            _sceneChangeAutoTranslatePendingPayload = null;
             return;
         }
 
-        if (settings.EnableSceneChangeAutoTranslate)
+        _stageAActive = false;
+        _loggerAccessor()?.Info($"stage=scene_change event=stage_a_pause reason={reason}.");
+    }
+
+    private void ResumeStageA(string reason, bool resetBaseline = true)
+    {
+        if (_stageAActive)
         {
-            QueueSceneChangeAutoTranslate(diff, threshold, semanticPayload);
+            return;
+        }
+
+        _stageAActive = true;
+        _loggerAccessor()?.Info($"stage=scene_change event=stage_a_resume reason={reason}.");
+        if (resetBaseline)
+        {
+            ScheduleBaselineReset();
         }
     }
 
@@ -665,6 +721,7 @@ internal sealed class SceneChangeController : IDisposable
         }
 
         _lastSceneChangeAutoTranslateRequestUtc = now;
+        _loggerAccessor()?.Info("stage=scene_change event=translate_triggered reason=stage_b_pass_or_bypass.");
         _appendLog($"Scene change detected: auto-translate triggered (diff {diff}, threshold {threshold}).");
         _ = _runOnceAsync(AutoSceneChangeRunOptions, semanticPayload);
     }

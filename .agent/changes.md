@@ -13523,3 +13523,121 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
+
+**2026-02-27 04:47 (Asia/Taipei) — Add SceneChange shared Stage A / Stage B auto-translate plan**
+
+### Summary
+- Stage A共通判定 + 自動翻訳はStage Aで即非表示後にStage B継続判定する実装案をDocへ追加。
+
+### Context / Goal
+- 自動非表示と自動翻訳の判定経路を整理し、UI即応性と誤翻訳抑制を両立したい。
+- 要件: 自動翻訳は Stage A 判定で非表示し、裏で Stage B を継続、Stage B 通過時のみ翻訳実行。
+
+### Changes
+- `Doc/SceneChange_AStageShared_BStageTranslate_Implementation_Plan.md` を新規作成。
+- ゴール/非ゴール、共通判定フロー、非同期継続判定、競合制御、ログ設計、DoDを記載。
+
+### Files Touched
+- `Doc/SceneChange_AStageShared_BStageTranslate_Implementation_Plan.md` — 実装案ドキュメント新規追加。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: Stage A過敏による非表示頻発/チラつき。
+- Mitigation: debounce・最小非表示時間・連続ヒット条件を提案に明記。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-27 04:58 (Asia/Taipei) — Align SceneChange plan with A-stop policy and existing restore triggers**
+
+### Summary
+- SceneChange実装案を、A判定停止方針・既存復帰条件維持・pHash感度調整のみ方針に合わせて更新。
+
+### Context / Goal
+- ユーザー確定方針: 非表示後はA判定停止、B判定継続、B reject時は自動再表示しない。
+- 復帰は既存3経路（手動表示/翻訳成功時/手動OCR実行時）を維持したい。
+
+### Changes
+- シーケンスに「非表示後はStage A停止」を追加。
+- B reject時の文言を「既存復帰条件維持」に更新。
+- 状態管理に `StageAActive` と `OverlayRestorePolicy` を追加。
+- リスク/緩和をチラつきガード導入案から `pHash感度調整` 方針へ変更。
+- DoDに「B reject時に自動再表示しない」を追加。
+- シーケンス番号重複（5）を修正して整合化。
+
+### Files Touched
+- `Doc/SceneChange_AStageShared_BStageTranslate_Implementation_Plan.md` — 方針反映と整合調整。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント修正のみ）。
+
+### Risk & Mitigation
+- Risk: B reject時に隠れっぱなしに見えるケース。
+- Mitigation: 既存復帰トリガを仕様として固定し、文書に明示。
+
+### Tests / Verification
+- ドキュメント全文確認を実施。
+- キーワード検査で旧方針（debounce/最小非表示時間/連続ヒット）依存が除去されていることを確認。
+
+**2026-02-27 05:14 (Asia/Taipei) — Update SceneChange plan: resume Stage A after Stage B non-pass endings**
+
+### Summary
+- SceneChange実装案に、`Stage B reject/timeout/error/cancel` 後の `Stage A` 再開条件を追加。
+
+### Context / Goal
+- 非表示後にA判定停止する設計のままだと、B非通過/異常終了時に自動翻訳監視が止まる懸念がある。
+- 要件として、自動再表示はしないまま `Stage A` 判定だけ再開したい。
+
+### Changes
+- シーケンスに `Stage B non-pass 終了後の Stage A 再開` を追加。
+- エラー/競合処理に `StageAActive=true` 復帰ルールを追加。
+- 実装手順 Step 4 に `Stage B 終了時の再開判定共通化` を追加。
+- リスク/緩和を `A停止のまま監視停止` 問題に更新。
+- DoDに `Stage B reject/timeout/error/cancel 後の Stage A 再開` を追加。
+- 併せてシーケンス番号と文面整合を調整。
+
+### Files Touched
+- `Doc/SceneChange_AStageShared_BStageTranslate_Implementation_Plan.md` — Stage A再開条件を反映。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント更新のみ）。
+
+### Risk & Mitigation
+- Risk: Stage B非通過時にA再開しないと監視停止が継続する。
+- Mitigation: Stage Bのnon-pass終端でA判定のみ再開する仕様を明記。
+
+### Tests / Verification
+- ドキュメント全文確認を実施。
+- キーワード検査で `reject/timeout/error/cancel` と `StageAActive` 再開条件の記載を確認。
+**2026-02-27 05:23 (Asia/Taipei) — Implement Stage A shared hide flow with Stage B-gated auto-translate**
+
+### Summary
+- `SceneChangeController` を実装案に合わせて更新し、`AutoTranslate` でも `Stage A` 通過時に即時非表示しつつ `Stage B` で翻訳実行可否を判定するようにした。
+
+### Context / Goal
+- 既存実装は `AutoHide` 優先分岐で、`AutoTranslate` 側の意図した `Stage A/B` フローを満たせないケースがあった。
+- 要件は「A通過で即時非表示」「B通過時のみ翻訳実行」「B非通過時は自動再表示せずA判定のみ再開」。
+
+### Changes
+- `Stage A` 有効状態フラグ（`_stageAActive`）を追加し、`AutoTranslate` 時にA判定の停止/再開を制御。
+- `Stage A` 通過後、`AutoHide`/`AutoTranslate` 共通で即時非表示（`HideOverlayForSceneChange`）する経路へ変更。
+- `AutoTranslate` 有効時のみ `Stage B` 判定を継続し、`Stage B` 通過時にのみ翻訳キュー（`QueueSceneChangeAutoTranslate`）を起動。
+- `Stage B` 非通過（skip/baseline/reject/confirm不足）や例外時に `ResumeStageA` でA判定を再開。
+- 可観測性のため、`stage_b_start/stage_b_pass/stage_b_reject/stage_a_pause/stage_a_resume/translate_triggered` のログを追加。
+
+### Files Touched
+- `Services/Application/SceneChangeController.cs` — Stage A/B フロー、即時非表示、A判定停止/再開、ログ出力を実装。
+
+### Behavioral Impact
+- `AutoTranslate` でも `Stage A` 通過時に即時でオーバーレイが非表示になる。
+- 翻訳は `Stage B` を通過した場合にのみ実行される。
+- `Stage B` 非通過・例外時は自動再表示せず、監視（Stage A）を再開する。
+
+### Risk & Mitigation
+- Risk: A判定再開時に古いベースラインを使うと再発火しやすい。
+- Mitigation: `ResumeStageA` 時に `ScheduleBaselineReset` を呼び、再開前にベースラインを再取得する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、`0 error / 0 warning` を確認。
