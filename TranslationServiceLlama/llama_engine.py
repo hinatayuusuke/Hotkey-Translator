@@ -663,21 +663,24 @@ def trim_trailing_extra_closing_braces(text: str) -> str:
 def resolve_language_label(language: str) -> str:
     if not language:
         return "English"
-    key = language.strip().lower()
+    key = language.strip().lower().replace("_", "-")
     if key.startswith("ja") or key.startswith("jpn"):
         return "Japanese"
     if key.startswith("en") or key.startswith("eng"):
         return "English"
-    if key.startswith("zh-Hans") or key.startswith("zho"):
-        return "Chinese"
-    if key.startswith("zh-Hant") or key.startswith("zho"):
+    # WHY: Normalize Chinese variants first; lower() was making old zh-Hans/zh-Hant checks unreachable.
+    if key.startswith("zh-hant") or key.startswith("zh-tw") or key.startswith("zh-hk"):
         return "Traditional Chinese"
+    if key.startswith("zh-hans") or key.startswith("zh-cn"):
+        return "Simplified Chinese"
+    if key.startswith("zh") or key.startswith("zho") or key.startswith("chi"):
+        return "Chinese"
     if key.startswith("ko") or key.startswith("kor"):
         return "Korean"
     if key.startswith("ru") or key.startswith("rus"):
         return "Russian"
-    if "_" in key:
-        return key.split("_")[0]
+    if "-" in key:
+        return key.split("-")[0]
     return language
 
 

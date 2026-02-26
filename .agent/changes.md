@@ -13318,3 +13318,60 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.sln -nologo` 実行: 成功（0 warnings / 0 errors）。
+
+**2026-02-27 00:00 (Asia/Taipei) — Add DeepLX implementation plan document (no API key)**
+
+### Summary
+- DeepLX をAPIキーなしで統合するための実装案ドキュメントを追加。
+
+### Context / Goal
+- ユーザー要件として、まずはAPIキー非対応の最小導入方針を定義したい。
+- 既存翻訳パイプラインへの低リスク統合手順を明確化する。
+
+### Changes
+- Doc/DeepLX_Translation_Implementation_Plan.md を新規作成。
+- ゴール/非ゴール、設定項目、段階的実装手順、リスク緩和策、DoDを記述。
+
+### Files Touched
+- Doc/DeepLX_Translation_Implementation_Plan.md — DeepLX統合実装案（APIキーなし）を追加。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: DeepLX実装差により実API互換が想定と異なる可能性。
+- Mitigation: 文書で互換吸収（複数レスポンスキー対応・1件送信開始）を明記。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-02-27 01:17 (Asia/Taipei) — Fix Chinese language label resolution in Llama translator**
+
+### Summary
+- `resolve_language_label()` の中国語判定を修正し、`zh-*` 指定時に正しい言語ラベルへ解決されるようにした。
+
+### Context / Goal
+- 中国語ターゲット指定で翻訳ではなく英語言い換えに寄る事象があり、言語解決ロジックの不整合を解消したい。
+- 小さなモデルでもプロンプト上のターゲット言語指定を正確に反映させる。
+
+### Changes
+- `language.strip().lower()` 後の比較文字列を lower-case 前提へ修正。
+- `zh-hant/zh-tw/zh-hk` を Traditional Chinese、`zh-hans/zh-cn` を Simplified Chinese に明示マップ。
+- `zh/zho/chi` の一般ケースを Chinese にフォールバック。
+- 言語コードの区切り処理を `_` 依存から `-` 対応へ更新（事前に `_` を `-` 正規化）。
+- WHYコメントを追加。
+
+### Files Touched
+- `TranslationServiceLlama/llama_engine.py` — 言語ラベル解決ロジックを修正。
+
+### Behavioral Impact
+- `target_lang=zh-Hans/zh-CN/zh-Hant/zh-TW/zh-HK` でプロンプトの言語ラベルが正しく設定される。
+- 中国語翻訳時の誤挙動（英語要約寄り）発生確率の低減が期待される。
+
+### Risk & Mitigation
+- Risk: 既存で `zh-*` を曖昧に `Chinese` 扱いしていた挙動との差分が出る。
+- Mitigation: 一般 `zh` は引き続き `Chinese` にフォールバックし、過度な破壊変更を避ける。
+
+### Tests / Verification
+- `uv run python -` で `resolve_language_label` の主要入力を確認。
+- 確認結果: `zh-Hans/zh-CN=>Simplified Chinese`, `zh-Hant/zh-TW/zh-HK=>Traditional Chinese`, `zh/zho=>Chinese`。
