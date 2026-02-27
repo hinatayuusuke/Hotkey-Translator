@@ -477,14 +477,9 @@ public sealed class PipelineOrchestrator
             }
             _lastHookRoiSkipReason = null;
 
-            var overlayItems = (_lastReadingUnits == null || _lastReadingUnits.Count == 0)
-                ? Array.Empty<OverlayItem>()
-                : _overlayStage.BuildItems(
-                    _lastReadingUnits,
-                    _lastOverlayTranslations,
-                    _lastOverlayRoiScreen,
-                    settings,
-                    _overlayTextMode);
+            // WHY: During ROI preview we must not republish cached OCR/translation blocks.
+            // Otherwise hidden overlay text is resurrected while dragging F6 ROI.
+            IReadOnlyList<OverlayItem> overlayItems = Array.Empty<OverlayItem>();
             if (_hookRoiTraceEnabled)
             {
                 _logger.Info(

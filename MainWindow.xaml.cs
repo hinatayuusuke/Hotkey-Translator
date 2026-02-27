@@ -508,11 +508,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
+        var settings = _settingsService.Settings;
+        TryClearHookOverlayForReshow(settings, "enable_overlay");
         _overlayEnabled = true;
         _overlayPresenter.SetEnabled(true, showLast: false);
         AppendLog("Overlay shown.");
 
-        var settings = _settingsService.Settings;
         if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
             var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
@@ -531,6 +532,42 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 _ = _dx11HookClientService.ApplySettingsAsync(settings);
             }
         }
+    }
+
+    private void TryClearHookOverlayForReshow(AppSettings settings, string source)
+    {
+        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        {
+            return;
+        }
+
+        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0 || _captureManager == null)
+        {
+            return;
+        }
+
+        var bounds = _captureManager.GetCaptureBounds(settings);
+        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            _logger?.Info(
+                $"stage=dx11_hook event=overlay_reshow_clear source={source} result=skip reason=invalid_bounds.");
+            return;
+        }
+
+        var canvasW = (uint)Math.Max(1, Math.Round(bounds.Width));
+        var canvasH = (uint)Math.Max(1, Math.Round(bounds.Height));
+        var cleared = _dx11HookClientService.TryWriteOverlayV2(
+            settings.FixedCaptureWindowProcessId,
+            canvasW,
+            canvasH,
+            ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+            Array.Empty<byte>(),
+            0,
+            out var failureReason);
+        _logger?.Info(
+            $"stage=dx11_hook event=overlay_reshow_clear source={source} pid={settings.FixedCaptureWindowProcessId} " +
+            $"canvas={canvasW}x{canvasH} result={(cleared ? "ok" : "failed")} " +
+            $"reason={(cleared ? "none" : failureReason ?? "unknown")}.");
     }
 
     private async Task RunOnceAsync()
@@ -661,6 +698,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             AppendLog("ROI selection already in progress.");
             return;
         }
+
+        // WHY: Keep ROI selection behavior consistent with F8/F10 in hook-only mode.
+        // If F9 hid overlay, ROI preview would otherwise stay invisible during selection.
+        EnableOverlay();
 
         if (_captureManager == null)
         {

@@ -14450,3 +14450,82 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 02:53 (Asia/Taipei) — F6開始時にOverlay再表示を統一**
+
+### Summary
+- F6 ROI選択開始時に `EnableOverlay()` を呼び、F9で非表示後でもROIプレビューが見えるようにした。
+
+### Context / Goal
+- Hook-onlyでF9によりoverlayを隠した状態だと、F6 ROIプレビューも見えず操作しづらかった。
+- F8/F10と同様に、F6開始時もoverlayを再表示して挙動を統一する必要があった。
+
+### Changes
+- `SelectRoiAsync()` 冒頭に `EnableOverlay()` を追加。
+- コメントで「F8/F10との挙動統一」「F9後のROI可視化」を明記。
+
+### Files Touched
+- `MainWindow.xaml.cs` — F6開始時のoverlay再表示処理を追加。
+
+### Behavioral Impact
+- F9で非表示にした後でも、F6を押すとoverlayが再表示されROIプレビューが見える。
+- F8/F10/F6の再表示トリガ挙動が揃う。
+
+### Risk & Mitigation
+- Risk: F6押下時に意図せずoverlayが再表示されると感じるユーザーがいる可能性。
+- Mitigation: 仕様整合（F8/F10と同様）を優先し、ROI操作の可視性を確保する方針とした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 03:01 (Asia/Taipei) — Hook-only再表示時にHook v2を先行クリア**
+
+### Summary
+- F9以外の再表示トリガ（F6/F8/F10等で `EnableOverlay()` が呼ばれる経路）で、Hook v2を先にclearしてから再表示するようにした。
+
+### Context / Goal
+- 非表示状態からの再表示時に、Hook側で古いオーバーレイ内容が一瞬見える可能性があった。
+- WPF仕様は変えず、Hook-only側だけで先行clearを入れる必要があった。
+
+### Changes
+- `EnableOverlay()` の先頭で `TryClearHookOverlayForReshow(settings, "enable_overlay")` を追加。
+- `TryClearHookOverlayForReshow` を新設し、Hook条件が揃う場合のみ `TryWriteOverlayV2(... empty ...)` でclear publish。
+- clear結果を `stage=dx11_hook event=overlay_reshow_clear` としてログ化（ok/failed/skip）。
+
+### Files Touched
+- `MainWindow.xaml.cs` — Hook-only再表示時の先行clear処理を追加。
+
+### Behavioral Impact
+- F6/F8/F10等でoverlay再表示する際、Hook v2 stale描画が出にくくなる。
+- WPF表示仕様は変更しない。
+
+### Risk & Mitigation
+- Risk: clear publishが失敗した場合、従来どおり stale が一瞬見える可能性。
+- Mitigation: 成否をログ出力し、失敗時でも既存再表示フローは継続して機能低下を避ける。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 03:08 (Asia/Taipei) — ROIプレビュー時の旧テキスト再配信を停止**
+
+### Summary
+- F6 ROIプレビュー更新時に、キャッシュ済み翻訳テキストをHookへ再配信しないよう修正した。
+
+### Context / Goal
+- F9で非表示後にF6 ROI描画を開始すると、前回のオーバーレイ文字が再表示される問題があった。
+- ROI枠だけ表示し、旧テキスト復活を防ぐ必要があった。
+
+### Changes
+- UpdateHookRoiPreview の oi_preview_update 経路で overlayItems を常に空配列に固定。
+- WHYコメントを追加し、ROIプレビュー時はテキスト再配信しない意図を明記。
+
+### Files Touched
+- Services/PipelineOrchestrator.cs — ROIプレビュー更新時のHook再配信内容を「ROI枠のみ」に変更。
+
+### Behavioral Impact
+- F9で非表示後にF6を開始しても、旧翻訳テキストは復活せず、ROI枠のみ表示される。
+- 通常の翻訳表示経路（OCR完了時の配信）は変更なし。
+
+### Risk & Mitigation
+- Risk: ROIプレビュー中にテキストを同時表示したい用途では表示されなくなる。
+- Mitigation: 変更は oi_preview_update のみで、通常配信経路は維持。必要なら将来フラグで切替可能。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、0 warnings / 0 errors を確認。
