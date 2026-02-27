@@ -46,6 +46,9 @@ namespace ht::hook::dx11
         constexpr int kOverlayV2DebugSamples = 8;
         constexpr int kPresentDebugSamples = 16;
         constexpr int kOverlayFontSteps = 12;
+        constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300;
 
         struct OverlayV2DebugSample
         {
@@ -127,6 +130,9 @@ namespace ht::hook::dx11
             ht::hook::ipc::OverlayV2Header overlayV2Header{};
             std::vector<ht::hook::ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
+            bool hookSuccessIndicatorArmed = false;
+            bool hookSuccessIndicatorDone = false;
+            std::uint64_t hookSuccessIndicatorStartQpc = 0;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -536,6 +542,10 @@ namespace ht::hook::dx11
             rt.lastOverlayV2Seq = header.updatedSeq;
             rt.lastOverlayV2Qpc = NowQpc();
             rt.overlayV2Header = header;
+            // WHY: Once v2 payload arrives, the attach-success indicator is no longer useful.
+            rt.hookSuccessIndicatorArmed = false;
+            rt.hookSuccessIndicatorDone = true;
+            rt.hookSuccessIndicatorStartQpc = 0;
 
             // NOTE: Track recent v2 coordinates to diagnose "alternating/jittering" IPC updates.
             {
@@ -1084,18 +1094,54 @@ namespace ht::hook::dx11
             }
             else
             {
-                // Step 2 fallback: fixed position semi-transparent panel (no text yet).
-                const float w = io.DisplaySize.x;
-                const float h = io.DisplaySize.y;
-                const float margin = 40.0f;
-                const float panelW = std::max(320.0f, std::min(720.0f, w - (margin * 2.0f)));
-                const float panelH = std::max(120.0f, std::min(220.0f, h - (margin * 2.0f)));
-                const float x0 = (w - panelW) * 0.5f;
-                const float y0 = h - margin - panelH;
+                // WHY: Replace persistent fallback panel with a short attach-success indicator to avoid obstructing
+                // gameplay when no overlay text is published yet.
+                if (!rt.hookSuccessIndicatorDone)
+                {
+                    if (rt.hookSuccessIndicatorArmed && rt.hookSuccessIndicatorStartQpc == 0)
+                    {
+                        rt.hookSuccessIndicatorStartQpc = now;
+                        rt.hookSuccessIndicatorArmed = false;
+                    }
 
-                ImDrawList* bg = ImGui::GetBackgroundDrawList();
-                const ImU32 col = IM_COL32(10, 10, 10, 170);
-                bg->AddRectFilled(ImVec2(x0, y0), ImVec2(x0 + panelW, y0 + panelH), col, 12.0f);
+                    if (rt.hookSuccessIndicatorStartQpc != 0 && rt.qpcFreq != 0)
+                    {
+                        const auto elapsedQpc = now - rt.hookSuccessIndicatorStartQpc;
+                        const auto elapsedMs = static_cast<std::uint64_t>(
+                            (elapsedQpc * 1000ull) / std::max<std::uint64_t>(1ull, rt.qpcFreq));
+                        if (elapsedMs >= kHookSuccessIndicatorDurationMs)
+                        {
+                            rt.hookSuccessIndicatorDone = true;
+                        }
+                        else
+                        {
+                            float alpha = 1.0f;
+                            if (elapsedMs < kHookSuccessIndicatorFadeInMs)
+                            {
+                                alpha = static_cast<float>(elapsedMs) /
+                                    static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeInMs));
+                            }
+                            else if (elapsedMs > (kHookSuccessIndicatorDurationMs - kHookSuccessIndicatorFadeOutMs))
+                            {
+                                const auto tailMs = kHookSuccessIndicatorDurationMs - elapsedMs;
+                                alpha = static_cast<float>(tailMs) /
+                                    static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeOutMs));
+                            }
+                            alpha = std::max(0.0f, std::min(alpha, 1.0f));
+
+                            const int plateA = static_cast<int>(std::lround(170.0f * alpha));
+                            const int ringA = static_cast<int>(std::lround(235.0f * alpha));
+                            const int tickA = static_cast<int>(std::lround(245.0f * alpha));
+
+                            const ImVec2 c(34.0f, 34.0f);
+                            ImDrawList* fg = ImGui::GetForegroundDrawList();
+                            fg->AddCircleFilled(c, 16.0f, IM_COL32(16, 16, 16, plateA), 24);
+                            fg->AddCircle(c, 15.0f, IM_COL32(83, 214, 108, ringA), 24, 2.0f);
+                            fg->AddLine(ImVec2(c.x - 6.0f, c.y + 0.5f), ImVec2(c.x - 1.5f, c.y + 5.5f), IM_COL32(255, 255, 255, tickA), 2.4f);
+                            fg->AddLine(ImVec2(c.x - 1.5f, c.y + 5.5f), ImVec2(c.x + 8.0f, c.y - 5.0f), IM_COL32(255, 255, 255, tickA), 2.4f);
+                        }
+                    }
+                }
             }
             }
 
@@ -1738,6 +1784,9 @@ namespace ht::hook::dx11
         g_rt.captureIntervalQpc = (g_rt.qpcFreq != 0) ? (g_rt.qpcFreq / g_rt.configuredFpsLimit) : 0;
         g_rt.lastConfigQpc = 0;
         g_rt.overlayEnabled = true;
+        g_rt.hookSuccessIndicatorArmed = true;
+        g_rt.hookSuccessIndicatorDone = false;
+        g_rt.hookSuccessIndicatorStartQpc = 0;
         g_rt.activePresentKind = ReadEnvU32(L"HT_HOOK_PRESENT_KIND", 0);
         if (g_rt.activePresentKind != 0 && g_rt.activePresentKind != 1 && g_rt.activePresentKind != 2)
         {
@@ -1872,5 +1921,8 @@ namespace ht::hook::dx11
         g_rt.lastPresentKind = 0;
         g_rt.lastOverlayTraceDrawSeq = 0;
         g_rt.lastOverlayCanvasMismatchSeq = 0;
+        g_rt.hookSuccessIndicatorArmed = false;
+        g_rt.hookSuccessIndicatorDone = false;
+        g_rt.hookSuccessIndicatorStartQpc = 0;
     }
 }

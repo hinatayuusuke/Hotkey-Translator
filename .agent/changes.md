@@ -14212,3 +14212,33 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 00:50 (Asia/Taipei) — HOOK成功時の固定パネルを成功アイコンへ置換**
+
+### Summary
+- DX11 Hook成功時の表示を「常時の半透明パネル」から「短時間の成功アイコン」に置き換えた。
+
+### Context / Goal
+- HOOK成功時はWPF側オーバーレイを抑止しているため、Native側の成功表示だけを短時間で分かる形にしたい。
+- 既存のStep2フォールバックは常時表示で、ゲーム画面の視認性を阻害していた。
+
+### Changes
+- `Dx11Runtime` に成功アイコンの状態（armed/done/startQpc）を追加。
+- `InstallPresentHook()` 時に成功アイコンを1回だけ表示するようにarm。
+- v2オーバーレイ受信時は成功アイコンを即終了する処理を追加。
+- `DrawImGuiOverlayV2Locked()` のStep2固定パネル描画を削除し、1.5秒のフェード付きチェックアイコン描画へ置換。
+- `UninstallPresentHook()` で成功アイコン状態をリセット。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — Step2フォールバック描画を成功アイコン描画へ変更し、状態管理を追加。
+
+### Behavioral Impact
+- HOOK成功直後のみ左上に成功アイコンが一時表示され、その後は自動で消える。
+- v2テキストが届いた時点で成功アイコンは表示されない。
+- 以前の固定半透明パネルは表示されなくなる。
+
+### Risk & Mitigation
+- Risk: 環境によっては短時間表示が見えにくい可能性。
+- Mitigation: 表示時間とフェード時間を定数化し、必要ならコード上で即調整できる構造にした。
+
+### Tests / Verification
+- `cmake --build build --config Release --target HookAgentDx11` を実行し、`HookAgentDx11.dll` のビルド成功を確認。
