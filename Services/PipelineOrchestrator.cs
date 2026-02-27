@@ -64,6 +64,9 @@ public sealed class PipelineOrchestrator
     private Bitmap? _lastRoiSnapshot;
     private ulong _overlayV2WriteAttemptSeq;
     private CaptureProviderKind? _lastCaptureProviderKind;
+    private Rect? _lastCaptureFrameBounds;
+    private uint _lastCaptureCanvasW;
+    private uint _lastCaptureCanvasH;
     private bool? _lastWpfOverlaySuppressed;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
@@ -157,6 +160,9 @@ public sealed class PipelineOrchestrator
             context.Frame = frame;
             perfProbe.RecordCapture(captureStopwatch);
             _lastCaptureProviderKind = frame.ProviderKind;
+            _lastCaptureFrameBounds = frame.Bounds;
+            _lastCaptureCanvasW = (uint)Math.Max(0, frame.Bitmap.Width);
+            _lastCaptureCanvasH = (uint)Math.Max(0, frame.Bitmap.Height);
             suppressWpfOverlay = ShouldSuppressWpfOverlay(settings, frame.ProviderKind);
             LogOverlayRouteIfChanged(suppressWpfOverlay, frame.ProviderKind);
 
@@ -408,21 +414,58 @@ public sealed class PipelineOrchestrator
                 return false;
             }
 
-            _overlayTextMode = mode;
             var overlayItems = _overlayStage.BuildItems(
                 _lastReadingUnits,
                 _lastOverlayTranslations,
                 _lastOverlayRoiScreen,
                 _settingsService.Settings,
-                _overlayTextMode);
+                mode);
             var suppressWpfOverlay = ShouldSuppressWpfOverlayForLastProvider(_settingsService.Settings);
             UpdateWpfOverlayRouting(overlayItems, _lastOverlayClipScreen, suppressWpfOverlay);
+            if (suppressWpfOverlay)
+            {
+                if (!TryRepublishDx11HookOverlayForTextToggle(overlayItems, _settingsService.Settings, out reason))
+                {
+                    return false;
+                }
+            }
+
+            _overlayTextMode = mode;
             return true;
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private bool TryRepublishDx11HookOverlayForTextToggle(
+        IReadOnlyList<OverlayItem> overlayItems,
+        AppSettings settings,
+        out string? reason)
+    {
+        reason = null;
+        if (_lastCaptureProviderKind != CaptureProviderKind.GraphicsHook ||
+            _lastCaptureFrameBounds is not { } frameBounds ||
+            _lastCaptureCanvasW == 0 ||
+            _lastCaptureCanvasH == 0)
+        {
+            reason = "F11: toggle ignored (hook frame cache missing).";
+            _logger.Info(
+                $"stage=hook_v2_write event=skip phase=f11_toggle reason=no_cached_hook_frame " +
+                $"provider={_lastCaptureProviderKind?.ToString() ?? "none"} canvas={_lastCaptureCanvasW}x{_lastCaptureCanvasH}.");
+            return false;
+        }
+
+        // WHY: Reuse the existing hook v2 mapping/write pipeline for F11 mode toggles without running OCR again.
+        // The bitmap content is not read in this path; only size and frame bounds are used for coordinate mapping.
+        using var dummyFrame = new CaptureFrame(
+            new Bitmap((int)_lastCaptureCanvasW, (int)_lastCaptureCanvasH),
+            frameBounds,
+            CaptureProviderKind.GraphicsHook,
+            DateTimeOffset.UtcNow);
+        TryUpdateDx11HookOverlayV2(dummyFrame, overlayItems, settings);
+        return true;
     }
 
     public async Task RunWithReadingUnitsAsync(

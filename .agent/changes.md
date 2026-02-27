@@ -14242,3 +14242,31 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build build --config Release --target HookAgentDx11` を実行し、`HookAgentDx11.dll` のビルド成功を確認。
+**2026-02-28 01:23 (Asia/Taipei) — F11のHook-onlyテキスト切替でHook v2を再publish**
+
+### Summary
+- Hook-onlyルートでF11を押した際、WPFだけでなくHook v2側の表示テキストも切り替わるようにした。
+
+### Context / Goal
+- 現状のF11はWPF更新のみで、Hook-only時は見た目が切り替わらなかった。
+- OCR再実行せず、既存の直近データを使ってHook v2を再publishする必要があった。
+
+### Changes
+- `PipelineOrchestrator` に直近キャプチャの frame bounds/canvas サイズキャッシュを追加。
+- `RunOnceAsync` でキャプチャ成功時に上記キャッシュを更新するようにした。
+- `TrySetOverlayTextMode` で hook-only 判定時に Hook v2 再publishを実行する分岐を追加。
+- F11専用の再publishヘルパーを追加し、キャッシュ不足時は `F11: toggle ignored (hook frame cache missing).` を返すようにした。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — F11時のHook-only再publishロジック、キャッシュ保持、失敗理由の返却を追加。
+
+### Behavioral Impact
+- GraphicsHook + hook-only表示中にF11で「訳文/原文」が即時切り替わる。
+- キャッシュがないケースでは誤動作せず、F11を明示的に無視して理由を返す。
+
+### Risk & Mitigation
+- Risk: F11時に再publish用ダミーフレーム生成が追加され、無駄なメモリアロケーションが発生する可能性。
+- Mitigation: F11操作時のみ実行される低頻度処理に限定し、既存のHook v2書き込み経路を再利用して差分を最小化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
