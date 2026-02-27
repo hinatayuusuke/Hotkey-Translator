@@ -872,7 +872,8 @@ namespace ht::hook::dx11
             }
             else
             {
-            const bool hasV2 = (rt.lastOverlayV2Seq != 0) && (!rt.overlayV2Blocks.empty()) && (!rt.overlayV2TextBlob.empty());
+            // NOTE: ROI preview blocks may not carry text (textBlob can be empty), so block existence is enough.
+            const bool hasV2 = (rt.lastOverlayV2Seq != 0) && (!rt.overlayV2Blocks.empty());
             const bool hasCanvasSize = (rt.overlayV2Header.canvasW > 0) && (rt.overlayV2Header.canvasH > 0);
             const bool canvasMismatch =
                 hasV2 &&
@@ -905,11 +906,13 @@ namespace ht::hook::dx11
                 std::size_t traceSkipSize = 0;
                 std::size_t traceSkipBlob = 0;
                 std::size_t traceOffscreen = 0;
+                std::size_t traceRoiPreviewBlocks = 0;
                 bool traceFirstRectSet = false;
                 float traceFirstX = 0.0f;
                 float traceFirstY = 0.0f;
                 float traceFirstW = 0.0f;
                 float traceFirstH = 0.0f;
+                std::vector<const ht::hook::ipc::OverlayTextBlockV2*> roiPreviewBlocks;
 
                 for (std::size_t i = 0; i < rt.overlayV2Blocks.size(); i++)
                 {
@@ -933,6 +936,15 @@ namespace ht::hook::dx11
                     if ((b.x + b.w) <= 0.0f || (b.y + b.h) <= 0.0f || b.x >= io.DisplaySize.x || b.y >= io.DisplaySize.y)
                     {
                         traceOffscreen++;
+                    }
+
+                    const bool isRoiPreview = (b.textLen == 0 && b.wrap == 2u);
+                    if (isRoiPreview)
+                    {
+                        // NOTE: Wrap=2 + empty text is reserved for ROI preview border blocks from WPF ROI selector.
+                        roiPreviewBlocks.push_back(&b);
+                        traceRoiPreviewBlocks++;
+                        continue;
                     }
 
                     const float pad = std::max(0.0f, b.paddingPx);
@@ -1056,6 +1068,22 @@ namespace ht::hook::dx11
                     ImGui::PopStyleVar();
                 }
 
+                // WHY: Draw ROI preview last so it stays on top of translation overlays.
+                for (const auto* rb : roiPreviewBlocks)
+                {
+                    if (rb == nullptr)
+                    {
+                        continue;
+                    }
+
+                    const float stroke = std::max(1.0f, rb->paddingPx);
+                    const float inset = stroke * 0.5f;
+                    const float rounding = std::max(0.0f, rb->roundingPx);
+                    const ImVec2 p0(rb->x + inset, rb->y + inset);
+                    const ImVec2 p1(rb->x + rb->w - inset, rb->y + rb->h - inset);
+                    fg->AddRect(p0, p1, ArgbToImU32(rb->fgArgb), rounding, 0, stroke);
+                }
+
                 if (overlayTrace && rt.lastOverlayTraceDrawSeq != rt.lastOverlayV2Seq)
                 {
                     const float scaleX = (rt.overlayV2Header.canvasW > 0)
@@ -1069,7 +1097,7 @@ namespace ht::hook::dx11
                     std::snprintf(
                         msg,
                         sizeof(msg),
-                        "HT HookAgentDx11: ovl_v2_draw seq=%llu bb=%ux%u canvas=%ux%u scale=[%.3f,%.3f] blocks=%zu visible=%zu text=%zu skipSize=%zu skipBlob=%zu offscreen=%zu drawList=%u first=[%.1f,%.1f,%.1f,%.1f]\n",
+                        "HT HookAgentDx11: ovl_v2_draw seq=%llu bb=%ux%u canvas=%ux%u scale=[%.3f,%.3f] blocks=%zu visible=%zu text=%zu roi=%zu skipSize=%zu skipBlob=%zu offscreen=%zu drawList=%u first=[%.1f,%.1f,%.1f,%.1f]\n",
                         static_cast<unsigned long long>(rt.lastOverlayV2Seq),
                         static_cast<unsigned int>(rt.backBufferWidth),
                         static_cast<unsigned int>(rt.backBufferHeight),
@@ -1080,6 +1108,7 @@ namespace ht::hook::dx11
                         static_cast<std::size_t>(rt.overlayV2Blocks.size()),
                         traceVisibleBlocks,
                         traceTextDrawBlocks,
+                        traceRoiPreviewBlocks,
                         traceSkipSize,
                         traceSkipBlob,
                         traceOffscreen,

@@ -22,6 +22,7 @@ public partial class RoiSelectorWindow : Window
 
     public Rect? SelectedRect { get; private set; }
     public NormalizedRect? SelectedNormalizedRect { get; private set; }
+    public event Action<Rect?>? PreviewRectChanged;
 
     private void OnLoaded(object? sender, RoutedEventArgs e)
     {
@@ -40,6 +41,7 @@ public partial class RoiSelectorWindow : Window
         _start = e.GetPosition(this);
         SelectionRect.Visibility = Visibility.Visible;
         UpdateSelection(_start.Value, _start.Value);
+        EmitPreviewRect(NormalizeRect(_start.Value, _start.Value));
         CaptureMouse();
     }
 
@@ -50,7 +52,10 @@ public partial class RoiSelectorWindow : Window
             return;
         }
 
-        UpdateSelection(_start.Value, e.GetPosition(this));
+        var end = e.GetPosition(this);
+        var rect = NormalizeRect(_start.Value, end);
+        UpdateSelection(_start.Value, end);
+        EmitPreviewRect(rect);
     }
 
     private void OnMouseUp(object sender, MouseButtonEventArgs e)
@@ -132,6 +137,23 @@ public partial class RoiSelectorWindow : Window
         SelectionRect.Visibility = Visibility.Collapsed;
         SelectedRect = null;
         SelectedNormalizedRect = null;
+        PreviewRectChanged?.Invoke(null);
         DialogResult = false;
+    }
+
+    private void EmitPreviewRect(Rect localRect)
+    {
+        if (localRect.Width <= 0 || localRect.Height <= 0)
+        {
+            PreviewRectChanged?.Invoke(null);
+            return;
+        }
+
+        // WHY: Hook ROI preview uses the same absolute device-space coordinates as persisted ROI.
+        var screenTopLeft = PointToScreen(new Point(localRect.X, localRect.Y));
+        var screenBottomRight = PointToScreen(new Point(localRect.Right, localRect.Bottom));
+        var screenRect = new Rect(screenTopLeft, screenBottomRight);
+        var deviceRect = DpiHelper.DipRectToDevice(this, screenRect);
+        PreviewRectChanged?.Invoke(deviceRect.Width > 0 && deviceRect.Height > 0 ? deviceRect : null);
     }
 }

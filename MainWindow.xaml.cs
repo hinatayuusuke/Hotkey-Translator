@@ -672,6 +672,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var roiEnabledAtStart = settings.EnableRoi;
             var bounds = _captureManager.GetCaptureBounds(settings);
             var selector = new RoiSelectorWindow(bounds);
+            // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
+            // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
+            selector.PreviewRectChanged += previewRect => _pipeline?.UpdateHookRoiPreview(previewRect);
+            _pipeline?.UpdateHookRoiPreview(null);
             var result = selector.ShowDialog();
             if (result == true && selector.SelectedRect is { } rect)
             {
@@ -732,6 +736,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
         finally
         {
+            _pipeline?.UpdateHookRoiPreview(null);
             _isSelectingRoi = false;
         }
     }

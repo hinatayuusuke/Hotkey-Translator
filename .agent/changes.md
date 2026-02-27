@@ -14270,3 +14270,39 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 01:45 (Asia/Taipei) — Hook-only ROI描画枠をHookオーバーレイでプレビュー表示**
+
+### Summary
+- F6 ROI選択中の枠表示をHookオーバーレイ側に流し、exclusive fullscreenでもROI枠が見えるようにした。
+
+### Context / Goal
+- 現状はWPF ROI selectorの枠がexclusive fullscreen上で見えず、ドラッグ中の視覚フィードバックが失われていた。
+- 入力系は既存WPFを維持し、表示枠だけHook描画へ移す最小構成が必要だった。
+
+### Changes
+- `RoiSelectorWindow` にドラッグ中矩形のプレビュー通知イベントを追加。
+- `MainWindow.SelectRoiAsync` でプレビューイベントを購読し、`PipelineOrchestrator.UpdateHookRoiPreview` へ逐次連携。
+- ROI選択の開始前/終了後にHook ROIプレビューを明示クリア。
+- `PipelineOrchestrator` にHook ROIプレビュー状態を追加し、既存Hook v2 publish経路へ合流。
+- Hook v2書き込みで `Wrap=2 && TextLen=0` を ROI preview border として送信するブロック追加。
+- Native `Dx11PresentHook` 側で `Wrap=2` ブロックを「枠線のみ」描画し、翻訳テキストの後段で描画して最前面化。
+- Native `hasV2` 判定を調整し、textBlobが空でもROI previewのみで描画できるように変更。
+
+### Files Touched
+- `UI/RoiSelectorWindow.xaml.cs` — ROIドラッグ中のプレビュー矩形通知イベントと変換処理を追加。
+- `MainWindow.xaml.cs` — ROI選択中のHook ROIプレビュー連携と開始/終了時クリアを追加。
+- `Services/PipelineOrchestrator.cs` — Hook ROIプレビュー状態管理、再publish、v2ブロック生成（Wrap=2）を追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — ROI previewブロック解釈、枠線描画、hasV2判定調整を追加。
+
+### Behavioral Impact
+- Hook-only + exclusive fullscreenでも、F6ドラッグ中にROI枠がゲーム上に表示される。
+- 確定/キャンセル/Esc後はROIプレビュー枠が消える。
+- 翻訳テキスト描画とは別レイヤ（後段）で描画されるため、ROI枠が見失いにくい。
+
+### Risk & Mitigation
+- Risk: ROIプレビュー更新タイミングがOCR実行中と競合し、一部更新が間引かれる可能性。
+- Mitigation: 状態は常に最新値へ更新し、次回publishで追従する設計にして一時的な取りこぼしを許容した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+- `cmake --build build --config Release --target HookAgentDx11` を実行し、`HookAgentDx11.dll` のビルド成功を確認。

@@ -55,6 +55,7 @@ public sealed class PipelineOrchestrator
     private readonly bool _overlayV2TraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_TRACE"), "1", StringComparison.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly object _hookRoiPreviewSync = new();
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private IReadOnlyList<ReadingUnit>? _lastReadingUnits;
     private Dictionary<int, string> _lastOverlayTranslations = new();
@@ -67,6 +68,7 @@ public sealed class PipelineOrchestrator
     private Rect? _lastCaptureFrameBounds;
     private uint _lastCaptureCanvasW;
     private uint _lastCaptureCanvasH;
+    private Rect? _hookRoiPreviewRectScreen;
     private bool? _lastWpfOverlaySuppressed;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
@@ -439,9 +441,54 @@ public sealed class PipelineOrchestrator
         }
     }
 
+    public void UpdateHookRoiPreview(Rect? roiRectScreen)
+    {
+        lock (_hookRoiPreviewSync)
+        {
+            _hookRoiPreviewRectScreen = roiRectScreen;
+        }
+
+        if (!_gate.Wait(0))
+        {
+            return;
+        }
+
+        try
+        {
+            var settings = _settingsService.Settings;
+            if (!ShouldSuppressWpfOverlayForLastProvider(settings))
+            {
+                return;
+            }
+
+            var overlayItems = (_lastReadingUnits == null || _lastReadingUnits.Count == 0)
+                ? Array.Empty<OverlayItem>()
+                : _overlayStage.BuildItems(
+                    _lastReadingUnits,
+                    _lastOverlayTranslations,
+                    _lastOverlayRoiScreen,
+                    settings,
+                    _overlayTextMode);
+            _ = TryRepublishDx11HookOverlayFromCachedFrame(overlayItems, settings, "roi_preview_update", out _);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private bool TryRepublishDx11HookOverlayForTextToggle(
         IReadOnlyList<OverlayItem> overlayItems,
         AppSettings settings,
+        out string? reason)
+    {
+        return TryRepublishDx11HookOverlayFromCachedFrame(overlayItems, settings, "f11_toggle", out reason);
+    }
+
+    private bool TryRepublishDx11HookOverlayFromCachedFrame(
+        IReadOnlyList<OverlayItem> overlayItems,
+        AppSettings settings,
+        string phase,
         out string? reason)
     {
         reason = null;
@@ -450,9 +497,11 @@ public sealed class PipelineOrchestrator
             _lastCaptureCanvasW == 0 ||
             _lastCaptureCanvasH == 0)
         {
-            reason = "F11: toggle ignored (hook frame cache missing).";
+            reason = phase == "f11_toggle"
+                ? "F11: toggle ignored (hook frame cache missing)."
+                : null;
             _logger.Info(
-                $"stage=hook_v2_write event=skip phase=f11_toggle reason=no_cached_hook_frame " +
+                $"stage=hook_v2_write event=skip phase={phase} reason=no_cached_hook_frame " +
                 $"provider={_lastCaptureProviderKind?.ToString() ?? "none"} canvas={_lastCaptureCanvasW}x{_lastCaptureCanvasH}.");
             return false;
         }
@@ -782,9 +831,16 @@ public sealed class PipelineOrchestrator
             return;
         }
 
+        Rect? roiPreviewScreen;
+        lock (_hookRoiPreviewSync)
+        {
+            roiPreviewScreen = _hookRoiPreviewRectScreen;
+        }
+        var hasRoiPreview = roiPreviewScreen is { } previewRect && !previewRect.IsEmpty;
+
         var traceEnabled = _overlayV2TraceEnabled || _overlayV2WriteDebugEnabled;
 
-        if (!settings.Dx11HookOverlayEnabled || overlayItems.Count == 0)
+        if (!settings.Dx11HookOverlayEnabled || (overlayItems.Count == 0 && !hasRoiPreview))
         {
             var attemptSeq = NextOverlayV2WriteAttempt();
             var wrote = _dx11HookClientService.TryWriteOverlayV2(
@@ -814,6 +870,9 @@ public sealed class PipelineOrchestrator
         const uint bgArgb = 0xAA0A0A0A;
         const float paddingPx = 6.0f;
         const float roundingPx = 6.0f;
+        const uint roiPreviewFgArgb = 0xFF3CF05A;
+        const float roiPreviewStrokePx = 2.0f;
+        const float roiPreviewRoundingPx = 0.0f;
         const int maxBlocks = 64;
         const int maxTextBytes = 64 * 1024;
         const int traceSampleLimit = 4;
@@ -824,15 +883,18 @@ public sealed class PipelineOrchestrator
                 $"items={overlayItems.Count}.");
         }
 
-        var blocks = new List<Dx11HookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count, maxBlocks));
+        var reserveRoiSlot = hasRoiPreview ? 1 : 0;
+        var maxTextBlocks = Math.Max(0, maxBlocks - reserveRoiSlot);
+        var blocks = new List<Dx11HookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count + reserveRoiSlot, maxBlocks));
         var textBlob = new List<byte>(Math.Min(maxTextBytes, 4096));
         var skippedWhitespace = 0;
         var skippedMap = 0;
         var skippedUtf8 = 0;
+        var skippedRoiPreview = 0;
         var mapSampled = 0;
         foreach (var item in overlayItems)
         {
-            if (blocks.Count >= maxBlocks)
+            if (blocks.Count >= maxTextBlocks)
             {
                 break;
             }
@@ -917,7 +979,44 @@ public sealed class PipelineOrchestrator
             _logger.Info(
                 $"stage=hook_v2_map event=summary seq={_overlayV2WriteAttemptSeq + 1} pid={pid} canvas={canvasW}x{canvasH} " +
                 $"inputItems={overlayItems.Count} validBlocks={blocks.Count} skipWhitespace={skippedWhitespace} " +
-                $"skipMap={skippedMap} skipUtf8={skippedUtf8} textBytes={textBlob.Count}.");
+                $"skipMap={skippedMap} skipUtf8={skippedUtf8} skipRoiPreview={skippedRoiPreview} textBytes={textBlob.Count}.");
+        }
+
+        if (hasRoiPreview && roiPreviewScreen is { } roiRect)
+        {
+            if (TryBuildHookCanvasRect(
+                    roiRect,
+                    frame.Bounds,
+                    (int)canvasW,
+                    (int)canvasH,
+                    out var x,
+                    out var y,
+                    out var w,
+                    out var h,
+                    out _))
+            {
+                blocks.Add(new Dx11HookOverlayV2CommandWriter.TextBlockV2
+                {
+                    X = x,
+                    Y = y,
+                    W = w,
+                    H = h,
+                    PaddingPx = roiPreviewStrokePx,
+                    RoundingPx = roiPreviewRoundingPx,
+                    FontPx = 0,
+                    FgArgb = roiPreviewFgArgb,
+                    BgArgb = 0,
+                    // NOTE: Wrap=2 is reserved for "ROI preview border" in HookAgentDx11.
+                    Wrap = 2,
+                    TextOffset = 0,
+                    TextLen = 0,
+                    ZOrder = int.MaxValue
+                });
+            }
+            else
+            {
+                skippedRoiPreview = 1;
+            }
         }
 
         if (blocks.Count == 0)
