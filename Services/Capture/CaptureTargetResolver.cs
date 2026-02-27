@@ -19,7 +19,22 @@ internal sealed class CaptureTargetResolver
     public CaptureRequest BuildCaptureRequest(AppSettings settings)
     {
         var request = new CaptureRequest(settings.CaptureMode, null);
-        if (settings.CaptureMode != CaptureMode.ActiveWindow || !settings.EnableFixedCaptureWindow)
+        if (settings.CaptureMode != CaptureMode.ActiveWindow)
+        {
+            TrackCaptureTargetResolution(null);
+            _lastResolvedTargetHwnd = IntPtr.Zero;
+            return request;
+        }
+
+        if (TryResolveMirrorScalingWindow(settings, out var mirrorHwnd))
+        {
+            TrackResolvedTargetSwitch(mirrorHwnd);
+            TrackCaptureTargetResolution(
+                $"stage=mirror_capture event=target_resolved hwnd=0x{mirrorHwnd.ToInt64():X} source=findwindow.");
+            return request with { TargetWindowHandle = mirrorHwnd };
+        }
+
+        if (!settings.EnableFixedCaptureWindow)
         {
             TrackCaptureTargetResolution(null);
             _lastResolvedTargetHwnd = IntPtr.Zero;
@@ -36,6 +51,29 @@ internal sealed class CaptureTargetResolver
         _lastResolvedTargetHwnd = IntPtr.Zero;
         TrackCaptureTargetResolution($"Fixed capture target invalid; fallback to active window. Reason: {reason ?? "unknown"}.");
         return request;
+    }
+
+    private static bool TryResolveMirrorScalingWindow(AppSettings settings, out IntPtr hwnd)
+    {
+        hwnd = IntPtr.Zero;
+        if (!settings.EnableMirrorFullscreenMode)
+        {
+            return false;
+        }
+
+        hwnd = FindWindow(ScalingWindowClassName, null);
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (!IsWindow(hwnd) || !IsWindowVisible(hwnd))
+        {
+            hwnd = IntPtr.Zero;
+            return false;
+        }
+
+        return true;
     }
 
     private void TrackCaptureTargetResolution(string? message)
@@ -109,7 +147,17 @@ internal sealed class CaptureTargetResolver
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
     private const int MonitorDefaultToNearest = 2;
+    private const string ScalingWindowClassName = "Window_Magpie_967EB565-6F73-4E94-AE53-00CC42592A22";
 
     [StructLayout(LayoutKind.Sequential)]
     private struct NativeRect

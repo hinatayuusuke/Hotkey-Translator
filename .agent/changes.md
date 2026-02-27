@@ -14001,3 +14001,64 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-27 23:32 (Asia/Taipei) — Mirror時の全provider座標統一 + ROI停止時リセット計画を作成**
+
+### Summary
+- ミラー中に WGC/Dxgi/GDI/ROI/Overlay の座標基準を Magpie 表示面へ統一し、停止時に ROI を無効化して全消去する実装計画を新規作成した。
+
+### Context / Goal
+- providerごとのキャプチャ空間差でオーバーレイ座標ズレが発生している。
+- Dxgi/GDI を維持しつつ、安全に座標整合を取る方針を文書化する必要があった。
+
+### Changes
+- 議論内容を反映し、ミラー有効時に capture target を Magpie scaling window に統一する案を定義。
+- ミラー停止時の ROI リセット仕様を `EnableRoi=false` + `Roi/NormalizedRoi=null` に明確化。
+- 実装ステップ、影響範囲、リスク、DoD を整理。
+
+### Files Touched
+- `Doc/MirrorFullscreen_MagpieFocus_AllProviders_RoiReset_Implementation_Plan.md` — 新規実装計画を作成。
+
+### Behavioral Impact
+- 実装前のためランタイム挙動への直接影響なし。
+- 以後の実装方針が「ミラー座標統一 + 停止時ROI全リセット」で固定される。
+
+### Risk & Mitigation
+- Risk: 計画段階のため、実機差（Magpieウィンドウ取得タイミング等）で追加調整が必要になる可能性。
+- Mitigation: フォールバック手順（message優先 + FindWindow）と診断ログ項目を計画内に先行定義。
+
+### Tests / Verification
+- `Get-Content -Encoding UTF8 Doc\MirrorFullscreen_MagpieFocus_AllProviders_RoiReset_Implementation_Plan.md` で出力内容を確認。
+**2026-02-27 23:41 (Asia/Taipei) — Mirror基準統一の初期実装（Magpieターゲット固定 + 停止時ROIリセット）**
+
+### Summary
+- ミラー有効時のキャプチャ対象を Magpie scaling window に優先固定し、ミラー停止時に ROI を無効化＋全消去する実装を追加した。
+
+### Context / Goal
+- WGC/Dxgi/GDI でキャプチャ座標空間が混在し、オーバーレイ座標ズレが発生していた。
+- 複雑な source->mirror 変換を避け、ミラー中は Magpie 表示面を単一基準にする必要があった。
+
+### Changes
+- `CaptureTargetResolver` で、`EnableMirrorFullscreenMode` 有効時は `Window_Magpie_...` を解決し、`CaptureRequest.TargetWindowHandle` に優先適用する分岐を追加。
+- ミラー時ターゲット解決ログを `stage=mirror_capture event=target_resolved ...` で出力。
+- `MainWindow.ApplyMirrorOverlayMapper()` を調整し、ミラー中の `source->mirror` 変換を無効化（identity）。
+- `MainWindow.OnMirrorSessionActiveStateChanged(false)` で ROI リセット処理を追加。
+  - `EnableRoi=false`
+  - `Roi=null`
+  - `NormalizedRoi=null`
+  - UI反映・ログ出力・settings保存
+- 終了処理中の不要リセットを避けるため `_isClosing` ガードを追加。
+
+### Files Touched
+- `Services/Capture/CaptureTargetResolver.cs` — ミラー有効時の Magpie scaling window 優先ターゲット解決を追加。
+- `MainWindow.xaml.cs` — ミラー中の overlay mapper 無効化、停止時 ROI リセット、終了中ガードを追加。
+
+### Behavioral Impact
+- ミラー有効時は provider 共通で Magpie scaling window をキャプチャターゲットにしやすくなり、座標空間の不一致が減る。
+- ミラー停止時に ROI は必ず無効化・未設定状態へ戻る。
+
+### Risk & Mitigation
+- Risk: Magpie scaling window が一時的に未生成/不可視のタイミングでは優先解決できず、既存経路へ戻る。
+- Mitigation: `IsWindow/IsWindowVisible` を確認し、解決できた時のみ強制適用。ログで解決状況を追跡可能にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

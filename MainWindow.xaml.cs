@@ -62,6 +62,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly DispatcherTimer _mirrorOverlayTopmostTimer;
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
+    private bool _isClosing;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
@@ -335,6 +336,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        _isClosing = true;
         EnsureMirrorOverlayTopmostTimerActive(false);
         _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
         if (_mainHwndSource != null)
@@ -1068,6 +1070,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             EnsureMirrorOverlayTopMost("mirror_state_changed");
         }
+        else
+        {
+            ResetRoiForMirrorStop();
+        }
     }
 
     private void ApplyMirrorOverlayMapper()
@@ -1077,10 +1083,44 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        _overlayPresenter.SetScreenRectMapper(
-            _magpieSessionController.IsActive
-                ? _magpieSessionController.MapScreenRect
-                : null);
+        // WHY: Mirror mode now captures from Magpie scaling window directly, so source->mirror mapping
+        // would become a double transform and shift overlay positions.
+        _overlayPresenter.SetScreenRectMapper(null);
+    }
+
+    private void ResetRoiForMirrorStop()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Settings;
+        var alreadyReset = !settings.EnableRoi && settings.Roi is null && settings.NormalizedRoi is null;
+        if (alreadyReset)
+        {
+            return;
+        }
+
+        settings.EnableRoi = false;
+        settings.Roi = null;
+        settings.NormalizedRoi = null;
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+        UpdateRoiStatus(settings);
+        AppendLog("Mirror stopped: ROI reset (disabled).");
+        _ = PersistMirrorRoiResetAsync();
+    }
+
+    private async Task PersistMirrorRoiResetAsync()
+    {
+        try
+        {
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to persist ROI reset after mirror stop.");
+        }
     }
 
     private void InitializeAutoHideWatcher(AppSettings settings) => _sceneChangeController.Initialize(settings);
