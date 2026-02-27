@@ -659,6 +659,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         var settings = _settingsService.Settings;
+        var roiEnabledAtStart = settings.EnableRoi;
         var bounds = _captureManager.GetCaptureBounds(settings);
         var selector = new RoiSelectorWindow(bounds);
         var result = selector.ShowDialog();
@@ -683,7 +684,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         var hasNormalized = settings.NormalizedRoi is { } normalized && !normalized.IsEmpty;
         var hasAbsolute = settings.Roi is { } absolute && !absolute.IsEmpty;
-        if (hasNormalized || hasAbsolute)
+        if (roiEnabledAtStart && (hasNormalized || hasAbsolute))
         {
             // WHY: Escape cancel should preserve the previous ROI selection if coordinates already exist.
             if (!settings.EnableRoi)
@@ -698,10 +699,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        var changed = settings.EnableRoi || settings.Roi is not null || settings.NormalizedRoi is not null;
+        // WHY: If ROI was disabled when selection started, cancel must return to disabled state.
+        var changed = settings.EnableRoi ||
+                      (!hasNormalized && settings.NormalizedRoi is not null) ||
+                      (!hasAbsolute && settings.Roi is not null);
         settings.EnableRoi = false;
-        settings.Roi = null;
-        settings.NormalizedRoi = null;
+        if (!hasNormalized && !hasAbsolute)
+        {
+            settings.Roi = null;
+            settings.NormalizedRoi = null;
+        }
         if (changed)
         {
             _mainWindowViewModel.Settings.LoadFrom(settings);
@@ -709,7 +716,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             await _settingsService.SaveAsync().ConfigureAwait(true);
         }
 
-        AppendLog("ROI selection canceled. ROI disabled (no previous ROI).");
+        AppendLog(hasNormalized || hasAbsolute
+            ? "ROI selection canceled. ROI kept but disabled."
+            : "ROI selection canceled. ROI disabled (no previous ROI).");
     }
 
     private void ApplySettingsToUi(AppSettings settings)

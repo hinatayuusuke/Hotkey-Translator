@@ -14157,3 +14157,31 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 00:17 (Asia/Taipei) — ROI無効開始時のF6キャンセルでEnableRoiを維持**
+
+### Summary
+- ROI無効状態からF6を開始してキャンセルした場合、`EnableRoi=false` を維持するようキャンセル分岐を修正した。
+
+### Context / Goal
+- 現状はキャンセル時に既存ROI座標があると `EnableRoi=true` に戻ってしまい、無効状態を維持できなかった。
+- 要件は「無効状態からのROI描画キャンセルは無効状態に戻す」。
+
+### Changes
+- `SelectRoiAsync` で F6開始時の `roiEnabledAtStart` を保持。
+- キャンセル時の「既存ROI継続」分岐を `roiEnabledAtStart == true` の場合に限定。
+- `roiEnabledAtStart == false` でキャンセルした場合は `EnableRoi=false` を固定。
+- 座標有無でログを分岐し、状態が追跡しやすいように調整。
+
+### Files Touched
+- `MainWindow.xaml.cs` — `SelectRoiAsync` のキャンセル判定ロジックを修正。
+
+### Behavioral Impact
+- ROI無効状態からF6キャンセルしても、ROIが勝手に有効化されない。
+- ROI有効状態でのキャンセル時は従来どおり既存ROIを継続可能。
+
+### Risk & Mitigation
+- Risk: キャンセル時の状態遷移が増え、条件分岐の見落としが起きる可能性。
+- Mitigation: 開始時状態 (`roiEnabledAtStart`) を明示的に保持して分岐条件を単純化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
