@@ -14705,3 +14705,29 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -v minimal は実行中プロセスロックで失敗（MSB3027/MSB3021）。
 - dotnet build Hotkey-Translator.sln -v minimal /p:UseAppHost=false は成功（0 errors、ファイルロック由来のwarningあり）。
+**2026-02-28 04:36 (Asia/Taipei) — PaddleOCR label width hotfix (step 3)**
+
+### Summary
+- SettingsPanelPaddle のラベル幅を拡張し、PaddleOCR設定ラベルの見切れを暫定解消した。
+
+### Context / Goal
+- PaddleOCR 設定画面でラベルの右端が切れ、可読性が低下していた。
+- まずはユーザー指定の暫定対応（幅拡張）を適用する必要があった。
+
+### Changes
+- Paddle Core / PaddleOCR-VL セクションのラベル Width を 120 から 180 へ拡張。
+- 対象は Detection model, Recognition model, 	ext_det_*, 	ext_rec_*, Pipeline version, Layout detection, Runtime control など。
+
+### Files Touched
+- MainWindow.xaml — SettingsPanelPaddle のラベル幅を拡張（120 -> 180）。
+
+### Behavioral Impact
+- PaddleOCR設定タブでラベルの見切れが起きにくくなり、表示可読性が改善する。
+- 入力欄や設定値のバインディング挙動は変更なし。
+
+### Risk & Mitigation
+- Risk: 固定幅方式のため将来さらに長いラベルで再度見切れる可能性。
+- Mitigation: 恒久対策は Grid + SharedSizeGroup への置換で対応予定（今回未実施）。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -v minimal /p:UseAppHost=false を実行し、0 warnings / 0 errors を確認。

@@ -581,7 +581,7 @@
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=1}">
                                 <TextBlock Text="PaddleOCR Core (gRPC)" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Detection model" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Detection model" Width="180" VerticalAlignment="Center" />
                                     <ComboBox x:Name="PaddleDetectionModelBox" Width="220"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.PaddleDetectionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -590,7 +590,7 @@
                                     </ComboBox>
                                 </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Recognition model" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Recognition model" Width="180" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleRecognitionModelBox" Width="220"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleRecognitionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -610,22 +610,22 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="text_det_thresh" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetThreshBox" Width="120"
                                                Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_box_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="text_det_box_thresh" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetBoxThreshBox" Width="120"
                                                Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_unclip_ratio" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="text_det_unclip_ratio" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextDetUnclipRatioBox" Width="120"
                                                Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_rec_score_thresh" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="text_rec_score_thresh" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleTextRecScoreThreshBox" Width="120"
                                                Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
@@ -635,7 +635,7 @@
                                             Visibility="Collapsed"
                                             IsChecked="{Binding Settings.EnablePaddleConfidenceFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
-                                      <TextBlock Text="Confidence threshold" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Confidence threshold" Width="180" VerticalAlignment="Center" />
                                       <Slider x:Name="PaddleConfidenceThresholdSlider"
                                               Width="180"
                                               Minimum="0"
@@ -657,7 +657,7 @@
 
                                   <TextBlock Text="PaddleOCR-VL (gRPC)" FontWeight="SemiBold" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Pipeline version" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Pipeline version" Width="180" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlPipelineVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -666,23 +666,23 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max pixels" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Max pixels" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlMaxPixelsBox" Width="120"
                                                Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Layout threshold" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Layout threshold" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlLayoutThresholdBox" Width="120"
                                                Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max new tokens" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Max new tokens" Width="180" VerticalAlignment="Center" />
                                       <TextBox x:Name="PaddleVlMaxNewTokensBox" Width="120"
                                                Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Layout detection" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Layout detection" Width="180" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlUseLayoutDetectionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlUseLayoutDetectionModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -692,7 +692,7 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Precision" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Precision" Width="180" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlPrecisionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlPrecisionTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -701,7 +701,7 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Runtime control" Width="180" VerticalAlignment="Center" />
                                       <Button Content="Apply &amp; Restart" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />
                                       <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
                                   </StackPanel>
