@@ -45,8 +45,11 @@
                          VerticalAlignment="Stretch"
                          SelectedIndex="{Binding SelectedSidebarIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                     <ListBoxItem Content="Home" />
-                    <ListBoxItem Content="Trans" />
-                    <ListBoxItem Content="OCR" />
+                    <ListBoxItem Content="OCR Settings" />
+                    <ListBoxItem Content="OCREngines" />
+                    <ListBoxItem Content="Auto Translate" />
+                    <ListBoxItem Content="Hook" />
+                    <ListBoxItem Content="Translation" />
                     <ListBoxItem Content="Hotkey" />
                     <ListBoxItem Content="System" />
                 </ListBox>
@@ -242,6 +245,8 @@
                                           IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableGeminiCheck" Content="Enable Gemini" Margin="12,0,0,0"
                                           IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableLlamaCppHomeCheck" Content="Enable LlamaCpp" Margin="12,0,0,0"
+                                          IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </Grid>
 
@@ -284,6 +289,44 @@
                                        Text="{Binding ElementName=OverlayBackgroundOpacitySlider, Path=Value, StringFormat={}{0:F2}}" />
                         </StackPanel>
 
+                        <Separator Margin="0,12,0,8" />
+                        <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
+                        <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0"
+                                  IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0"
+                                  IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0"
+                                  IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                            <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
+                            <Slider x:Name="SmallTextThresholdSlider"
+                                    Width="180"
+                                    Minimum="8"
+                                    Maximum="48"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="1"
+                                    SmallChange="1"
+                                    LargeChange="2"
+                                    IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
+                                    Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock x:Name="SmallTextThresholdValue"
+                                       Width="48"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Right"
+                                       Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
+                                                <Setter Property="Foreground" Value="DimGray" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+
                         <Separator Margin="0,10,0,10" />
                     </StackPanel>
                 </ScrollViewer>
@@ -299,10 +342,13 @@
                         <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0" Visibility="Collapsed">
                                 <ListBox x:Name="SettingsCategoryList"
                                          SelectedIndex="{Binding SelectedSettingsCategoryIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                    <ListBoxItem Content="OCR" />
-                                    <ListBoxItem Content="PaddleOCR-VL" />
+                                    <ListBoxItem Content="OCR Settings" />
+                                    <ListBoxItem Content="OCREngines" />
+                                    <ListBoxItem Content="Auto Translate" />
+                                    <ListBoxItem Content="Hook" />
                                     <ListBoxItem Content="Translation" />
-                                    <ListBoxItem Content="Hotkeys" />
+                                    <ListBoxItem Content="Hotkey" />
+                                    <ListBoxItem Content="System" />
                                 </ListBox>
                             </Border>
 
@@ -317,7 +363,7 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
 
-                                <TextBlock Text="OCR (Advanced)" FontWeight="SemiBold" />
+                                <TextBlock Text="OCR Tuning" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
                                     <TextBox x:Name="PhashThresholdBox" Width="80"
@@ -489,210 +535,8 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                                <Separator Margin="0,12,0,8" />
-                                <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="NOTE: auto-translate uses ROI-based watcher criteria. Configure ROI to target dialogue area."
-                                           Foreground="DimGray"
-                                           TextWrapping="Wrap"
-                                           Margin="0,4,0,0" />
-                                <CheckBox x:Name="ShowAutoTranslateBadgeIconCheck" Content="Show auto-translate badge icon" Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
-                                          IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <Separator Margin="0,8,0,6" />
-                                <TextBlock Text="DX11 Hook (Experimental)" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableDx11HookPipelineCheck"
-                                          Content="Enable DX11 hook pipeline"
-                                          Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableDx11HookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="Dx11HookOverlayEnabledCheck"
-                                          Content="Enable hook overlay rendering"
-                                          Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                          IsChecked="{Binding Settings.Dx11HookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="Dx11HookFallbackOnErrorCheck"
-                                          Content="Fallback to legacy capture on hook error"
-                                          Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                          IsChecked="{Binding Settings.Dx11HookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="Dx11HookCaptureFpsLimitBox" Width="80"
-                                             IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                             Text="{Binding Settings.Dx11HookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <Separator Margin="0,8,0,6" />
-                                <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableMirrorFullscreenModeCheck"
-                                          Content="Enable mirror fullscreen mode"
-                                          Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Magpie profile index" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="MagpieProfileIndexBox" Width="80"
-                                             IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
-                                             Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Magpie core path" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="MagpieCorePathBox" Width="240"
-                                             IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
-                                             Text="{Binding Settings.MagpieCorePathText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                </StackPanel>
-                                <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
-                                <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
-                                          IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Quiet window (ms)" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="SceneChangeQuietWindowMsBox" Width="80"
-                                             Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                                        <TextBox.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                                <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
-                                                <Binding Path="Settings.EnableSceneChangeQuietWindow" />
-                                            </MultiBinding>
-                                        </TextBox.IsEnabled>
-                                        <TextBox.Style>
-                                            <Style TargetType="TextBox">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBox.Style>
-                                    </TextBox>
-                                </StackPanel>
-                                <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
-                                          IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="SceneChangeThresholdSlider"
-                                            Width="180"
-                                            Minimum="0"
-                                            Maximum="1"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="0.05"
-                                            SmallChange="0.01"
-                                            LargeChange="0.1"
-                                            Value="{Binding Settings.SceneChangeThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <Slider.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
-                                                <Binding Path="Settings.EnableSceneChangeAutoHide" />
-                                                <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
-                                            </MultiBinding>
-                                        </Slider.IsEnabled>
-                                    </Slider>
-                                    <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SceneChangeThresholdSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Watch interval (ms)" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="SceneChangeWatchIntervalSlider"
-                                            Width="180"
-                                            Minimum="200"
-                                            Maximum="5000"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="200"
-                                            SmallChange="100"
-                                            LargeChange="500"
-                                            Value="{Binding Settings.SceneChangeWatchIntervalMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <Slider.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
-                                                <Binding Path="Settings.EnableSceneChangeAutoHide" />
-                                                <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
-                                            </MultiBinding>
-                                        </Slider.IsEnabled>
-                                    </Slider>
-                                    <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Watcher pHash threshold" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="SceneChangeWatchPhashSlider"
-                                            Width="180"
-                                            Minimum="0"
-                                            Maximum="64"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="2"
-                                            SmallChange="1"
-                                            LargeChange="5"
-                                            Value="{Binding Settings.SceneChangeWatchPhashThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <Slider.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
-                                                <Binding Path="Settings.EnableSceneChangeAutoHide" />
-                                                <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
-                                            </MultiBinding>
-                                        </Slider.IsEnabled>
-                                    </Slider>
-                                    <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
-                                               Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SceneChangeWatchPhashSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                <TextBlock Text="Performance" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
-                                          IsEnabled="{Binding Settings.EnableLogging}"
-                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
-                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                                        <TextBox.IsEnabled>
-                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                                <Binding Path="Settings.EnableLogging" />
-                                                <Binding Path="Settings.EnableOcrPerfLog" />
-                                            </MultiBinding>
-                                        </TextBox.IsEnabled>
-                                        <TextBox.Style>
-                                            <Style TargetType="TextBox">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBox.Style>
-                                    </TextBox>
-                                </StackPanel>
-                                <Separator Margin="0,12,0,8" />
                                 <TextBlock Text="OCR Input" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableOcrDownsamplingCheck"
                                           Content="Downsample OCR input"
@@ -728,43 +572,6 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <TextBlock Text="OCR input preview is available in the bottom drawer." Margin="0,10,0,4" Foreground="DimGray" />
-                                <Separator Margin="0,12,0,8" />
-                                <TextBlock Text="Overlay Layout" FontWeight="SemiBold" />
-                                <CheckBox x:Name="EnableFixedRoiOverlayCheck" Content="Fixed ROI overlay mode" Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOverlayFontStabilizationCheck" Content="Stabilize overlay font size" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableSmallBoxReadabilityBoostCheck" Content="Boost readability for small OCR boxes" Margin="0,4,0,0"
-                                          IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Small text sensitivity" Width="150" VerticalAlignment="Center" />
-                                    <Slider x:Name="SmallTextThresholdSlider"
-                                            Width="180"
-                                            Minimum="8"
-                                            Maximum="48"
-                                            IsSnapToTickEnabled="True"
-                                            TickFrequency="1"
-                                            SmallChange="1"
-                                            LargeChange="2"
-                                            IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
-                                            Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock x:Name="SmallTextThresholdValue"
-                                               Width="48"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
-                                               Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
-                                                        <Setter Property="Foreground" Value="DimGray" />
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
@@ -895,14 +702,196 @@
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                       <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
-                                      <Button Content="設定を反映して再起動" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />
-                                      <Button Content="停止" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
+                                      <Button Content="Apply &amp; Restart" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />
+                                      <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
+                                  </StackPanel>
+                              </StackPanel>
+
+                              <StackPanel x:Name="SettingsPanelAutoTranslate"
+                                          Margin="0,12,0,0"
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=2}">
+                                  <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
+                                            IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
+                                            IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <TextBlock Text="NOTE: auto-translate uses ROI-based watcher criteria. Configure ROI to target dialogue area."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
+                                  <CheckBox x:Name="ShowAutoTranslateBadgeIconCheck" Content="Show auto-translate badge icon" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
+                                            IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
+                                  <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
+                                            IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Quiet window (ms)" Width="150" VerticalAlignment="Center" />
+                                      <TextBox x:Name="SceneChangeQuietWindowMsBox" Width="80"
+                                               Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                          <TextBox.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                                  <Binding Path="Settings.EnableSceneChangeQuietWindow" />
+                                              </MultiBinding>
+                                          </TextBox.IsEnabled>
+                                          <TextBox.Style>
+                                              <Style TargetType="TextBox">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBox.Style>
+                                      </TextBox>
+                                  </StackPanel>
+                                  <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
+                                            IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeThresholdSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="1"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="0.05"
+                                              SmallChange="0.01"
+                                              LargeChange="0.1"
+                                              Value="{Binding Settings.SceneChangeThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeThresholdSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Watch interval (ms)" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeWatchIntervalSlider"
+                                              Width="180"
+                                              Minimum="200"
+                                              Maximum="5000"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="200"
+                                              SmallChange="100"
+                                              LargeChange="500"
+                                              Value="{Binding Settings.SceneChangeWatchIntervalMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Watcher pHash threshold" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeWatchPhashSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="64"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="2"
+                                              SmallChange="1"
+                                              LargeChange="5"
+                                              Value="{Binding Settings.SceneChangeWatchPhashThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeWatchPhashSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+                              </StackPanel>
+
+                              <StackPanel x:Name="SettingsPanelHook"
+                                          Margin="0,12,0,0"
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=3}">
+                                  <TextBlock Text="DX11 Hook (Experimental)" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableDx11HookPipelineCheck"
+                                            Content="Enable DX11 hook pipeline"
+                                            Margin="0,6,0,0"
+                                            IsChecked="{Binding Settings.EnableDx11HookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="Dx11HookOverlayEnabledCheck"
+                                            Content="Enable hook overlay rendering"
+                                            Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                            IsChecked="{Binding Settings.Dx11HookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="Dx11HookFallbackOnErrorCheck"
+                                            Content="Fallback to legacy capture on hook error"
+                                            Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                            IsChecked="{Binding Settings.Dx11HookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
+                                      <TextBox x:Name="Dx11HookCaptureFpsLimitBox" Width="80"
+                                               IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
+                                               Text="{Binding Settings.Dx11HookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <Separator Margin="0,8,0,6" />
+                                  <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableMirrorFullscreenModeCheck"
+                                            Content="Enable mirror fullscreen mode"
+                                            Margin="0,6,0,0"
+                                            IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Magpie profile index" Width="150" VerticalAlignment="Center" />
+                                      <TextBox x:Name="MagpieProfileIndexBox" Width="80"
+                                               IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
+                                               Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Magpie core path" Width="150" VerticalAlignment="Center" />
+                                      <TextBox x:Name="MagpieCorePathBox" Width="240"
+                                               IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
+                                               Text="{Binding Settings.MagpieCorePathText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelTranslation"
                                           Margin="0,12,0,0"
-                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=2}">
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=4}">
                                   <TextBlock Text="Translation priority" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <ListBox x:Name="TranslationPriorityList"
@@ -917,10 +906,6 @@
                                   </StackPanel>
                                   <Separator Margin="0,10,0,8" />
                                   <TextBlock Text="Local Llama.cpp (GGUF)" FontWeight="SemiBold" />
-                                  <CheckBox x:Name="EnableLlamaCppCheck"
-                                            Content="Enable Llama.cpp translation"
-                                            Margin="0,6,0,0"
-                                            IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
                                              Foreground="DimGray"
                                              TextWrapping="Wrap"
@@ -1012,8 +997,8 @@
 
                             <StackPanel x:Name="SettingsPanelHotkeys"
                                         Margin="0,12,0,0"
-                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=3}">
-                                <TextBlock Text="Hotkeys" FontWeight="SemiBold" />
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
+                                <TextBlock Text="Hotkey" FontWeight="SemiBold" />
                                 <Grid Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="170" />
@@ -1154,6 +1139,38 @@
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock Text="Note: Win key is not supported." Foreground="DimGray" Margin="0,8,0,0" />
+                            </StackPanel>
+
+                            <StackPanel x:Name="SettingsPanelSystem"
+                                        Margin="0,12,0,0"
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=6}">
+                                <TextBlock Text="Performance" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
+                                          IsEnabled="{Binding Settings.EnableLogging}"
+                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
+                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                        <TextBox.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableLogging" />
+                                                <Binding Path="Settings.EnableOcrPerfLog" />
+                                            </MultiBinding>
+                                        </TextBox.IsEnabled>
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Grid>

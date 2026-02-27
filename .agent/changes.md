@@ -14529,3 +14529,179 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 03:47 (Asia/Taipei) — UIタブ再編の実装案ドキュメント追加**
+
+### Summary
+- Home維持・Overlay Layout移設・OCR/Hook/自動翻訳/OCRエンジン分離の実装案を Doc/ に新規作成した。
+
+### Context / Goal
+- 設定UIでOCR/Hook/自動翻訳/Paddle設定が混在しており、発見性と保守性が低下していた。
+- ユーザー指定方針（Home維持、Overlay LayoutはHome下部、OCR(Advanced)維持、Expander不使用）を反映した実装計画を明文化する必要があった。
+
+### Changes
+- 新規ドキュメントを追加し、タブ再編の目標・非ゴール・移設マッピング・実装ステップ・リスクを整理。
+- OCR設定 / OCRエンジン / 自動翻訳 / Hook / Translation / Hotkeys のカテゴリ案を定義。
+- Home下部に Overlay Layout を通常ブロックで配置する方針を明記。
+
+### Files Touched
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md — UIタブ再編の詳細実装案を新規追加。
+
+### Behavioral Impact
+- 本変更はドキュメント追加のみで、実行時挙動の変更はない。
+
+### Risk & Mitigation
+- Risk: 計画と実装で項目移設の解釈がずれる可能性。
+- Mitigation: DoDとカテゴリ別の移設対象を明記し、実装前レビュー可能な形にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみのため）。
+**2026-02-28 03:52 (Asia/Taipei) — UI再編計画を英語UIラベル前提に調整**
+
+### Summary
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md を更新し、UIラベルを英語統一方針で整合させた。
+
+### Context / Goal
+- ユーザー要件として「UIは全部英語」にする方針が追加された。
+- 既存計画内に日本語カテゴリ名が残っていたため、実装時の齟齬を防ぐ必要があった。
+
+### Changes
+- 計画書に「Tab/Header/Section は英語統一」を明記。
+- カテゴリ名を OCR Settings / OCR Engines / Auto Translate / Hook / Translation / Hotkeys に統一。
+- Step名・DoD・Sidebar記述のカテゴリ参照を英語名へ更新。
+
+### Files Touched
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md — UIラベル方針とカテゴリ表記を英語で統一。
+
+### Behavioral Impact
+- 本変更はドキュメント更新のみで、実行時挙動への影響はない。
+
+### Risk & Mitigation
+- Risk: 実装側で旧カテゴリ名を参照して残存する可能性。
+- Mitigation: DoDとXAML想定表示順に英語カテゴリ名を明記し、実装チェック観点を固定化した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-28 03:55 (Asia/Taipei) — OCR(Advanced)名称をOCR Tuningへ更新**
+
+### Summary
+- UI再編計画書内の OCR(Advanced) 表記を OCR Tuning に更新した。
+
+### Context / Goal
+- OCRの上級設定セクション名を、より意図が明確な OCR Tuning に変更する方針が追加された。
+- 計画書内の名称整合を取る必要があった。
+
+### Changes
+- ゴール、カテゴリ構成、実装ステップ、DoD の OCR(Advanced) 表記を OCR Tuning に置換。
+- OCR Settings 配下での旧名称からの改名であることを注記。
+
+### Files Touched
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md — OCR(Advanced) を OCR Tuning に統一。
+
+### Behavioral Impact
+- 本変更はドキュメント更新のみで、実行時挙動への影響はない。
+
+### Risk & Mitigation
+- Risk: 実装時に旧ラベル文字列が残る可能性。
+- Mitigation: DoDに OCR Tuning 見出し表示を明記し、実装チェック対象を固定した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-28 03:59 (Asia/Taipei) — UI再編計画にHomeのLlamaCppトグル移設を反映**
+
+### Summary
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md に、Homeの翻訳簡易トグルへ Enable LlamaCpp を追加する方針を反映した。
+
+### Context / Goal
+- Homeには Enable DeepL / Enable Gemini が既にあるため、Enable LlamaCpp も同列に配置して操作性を統一する必要があった。
+- Translation詳細側との重複トグルは避ける方針を明文化する必要があった。
+
+### Changes
+- ゴールに「Home翻訳簡易トグルを Enable DeepL / Enable Gemini / Enable LlamaCpp 横並びに統一」を追加。
+- Homeタブ設計に Enable LlamaCpp 追加を明記。
+- XAML設計・実装手順に「Translation詳細側の重複トグル削除」を追加。
+- DoDにHome横並び表示の確認項目を追加。
+
+### Files Touched
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md — HomeのLlamaCppトグル移設方針を追記。
+
+### Behavioral Impact
+- 本変更はドキュメント更新のみで、実行時挙動への影響はない。
+
+### Risk & Mitigation
+- Risk: 実装時にHome/Translation両方へトグルが残る可能性。
+- Mitigation: Step 7 と DoD で重複削除と確認条件を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみのため）。
+**2026-02-28 04:09 (Asia/Taipei) — UI settings tab reorganization implementation**
+
+### Summary
+- Doc/UI_SettingsTab_Reorganization_Implementation_Plan.md に基づき、Settingsカテゴリ再編とHomeのOverlay/Llama配置を実装した。
+
+### Context / Goal
+- OCR/Hook/Scene/Paddle設定が混在しており、設定画面の導線が分かりにくかった。
+- Home維持、Overlay LayoutのHome移設、Auto Translate/Hook/OCR Engines分離、LlamaCppトグルのHome横並びを実装する必要があった。
+
+### Changes
+- Homeの翻訳トグル行を Enable DeepL / Enable Gemini / Enable LlamaCpp 横並びに変更。
+- Overlay Layout ブロックをSettingsからHome下部へ移設。
+- Settingsカテゴリを6分類へ更新（OCR Settings / OCR Engines / Auto Translate / Hook / Translation / Hotkeys）。
+- OCR (Advanced) 見出しを OCR Tuning へ改名。
+- Scene Change関連UIを SettingsPanelAutoTranslate（新規）へ移設。
+- DX11 Hook + Mirror UIを SettingsPanelHook（新規）へ移設。
+- Translation詳細側の Enable Llama.cpp translation トグルを削除（Homeの同設定と重複回避）。
+- MainWindowViewModel のSidebar↔Settingsカテゴリ同期マッピングを6カテゴリ向けに更新。
+- Paddle runtime controlボタン文言を英語化（Apply & Restart / Stop）。
+
+### Files Touched
+- MainWindow.xaml — Home/Settingsの再配置、カテゴリ再編、新規パネル追加、英語ラベル調整。
+- ViewModels/MainWindowViewModel.cs — SelectedSettingsCategoryIndex と SelectedSidebarIndex の相互マッピングを更新。
+
+### Behavioral Impact
+- Settings内で OCR Settings / OCR Engines / Auto Translate / Hook / Translation / Hotkeys を直接選択できる。
+- HomeでLlamaCpp含む翻訳プロバイダON/OFFが一括操作できる。
+- Overlay Layout設定はHome下部で操作する導線に変更された。
+
+### Risk & Mitigation
+- Risk: Sidebarの System が Hook カテゴリに対応するため、従来のカテゴリ期待とズレる可能性。
+- Mitigation: Settingsカテゴリリストを可視化して、必要カテゴリへ直接遷移できるようにした。
+- Risk: 大規模XAML移設でバインディング破損が起こる可能性。
+- Mitigation: ビルドで検証し、重複x:Nameや参照切れがないことを確認した。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -v minimal を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 04:26 (Asia/Taipei) — Sidebar single-column navigation and System panel migration**
+
+### Summary
+- 左サイドバーを単一ナビゲーション化し、Performance（Log関連）を System カテゴリへ移設した。
+
+### Context / Goal
+- 設定画面が「左サイドバー + Settings内カテゴリリスト」の二重ナビゲーションになっていたため、1列導線へ統一する必要があった。
+- 指示順（Home, OCR Settings, OCREngines, Auto Translate, Hook, Translation, Hotkey, System）に合わせる必要があった。
+- Log関連の Performance ブロックを System へ移す必要があった。
+
+### Changes
+- HomeSidebarList を 8 項目順に再構成（Home / OCR Settings / OCREngines / Auto Translate / Hook / Translation / Hotkey / System）。
+- SettingsCategoryList は内部同期用に残しつつ Collapsed 化し、UI上は単一サイドバーのみ表示。
+- MainWindowViewModel のサイドバー同期を単純化：
+  - サイドバー index 0 は Home、1 以上は Settings かつ SelectedSettingsCategoryIndex = index - 1。
+  - Settings側変更時は SelectedSidebarIndex = index + 1。
+- SettingsPanelOcr から Performance ブロックを削除。
+- 新規 SettingsPanelSystem（ConverterParameter=6）を追加し、Enable logging / Enable OCR perf log / Log threshold (ms) を移設。
+- SettingsPanelHotkeys 見出しを Hotkey に変更。
+
+### Files Touched
+- MainWindow.xaml — サイドバー順序変更、Settings内部カテゴリリスト非表示化、PerformanceのSystem移設、Systemパネル追加。
+- ViewModels/MainWindowViewModel.cs — サイドバー↔Settingsカテゴリ同期ロジックを単一列ナビ前提に更新。
+
+### Behavioral Impact
+- ユーザーは左サイドバー1列だけで Home と全Settingsカテゴリへ遷移できる。
+- Performance(Log)設定は System カテゴリでのみ表示される。
+
+### Risk & Mitigation
+- Risk: 実行中プロセスがビルド成果物をロックし、通常ビルドが失敗する。
+- Mitigation: 実行中アプリを止めるか、検証用に UseAppHost=false ビルドでコンパイル確認する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -v minimal は実行中プロセスロックで失敗（MSB3027/MSB3021）。
+- dotnet build Hotkey-Translator.sln -v minimal /p:UseAppHost=false は成功（0 errors、ファイルロック由来のwarningあり）。

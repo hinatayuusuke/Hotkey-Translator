@@ -188,21 +188,14 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         _suppressSidebarSync = true;
         try
         {
-            if (value <= 0)
+            if (value == 0)
             {
                 SelectedRootTabIndex = 0;
                 return;
             }
 
             SelectedRootTabIndex = 1;
-            SelectedSettingsCategoryIndex = value switch
-            {
-                1 => 2, // Translation
-                2 => 0, // OCR
-                3 => 3, // Hotkey
-                4 => 1, // System -> PaddleOCR-VL runtime
-                _ => 0
-            };
+            SelectedSettingsCategoryIndex = Math.Max(0, value - 1);
         }
         finally
         {
@@ -226,7 +219,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
             }
             else if (SelectedSidebarIndex == 0)
             {
-                SelectedSidebarIndex = 2;
+                SelectedSidebarIndex = 1;
             }
         }
         finally
@@ -245,14 +238,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         _suppressSidebarSync = true;
         try
         {
-            SelectedSidebarIndex = value switch
-            {
-                2 => 1, // Translation
-                0 => 2, // OCR
-                3 => 3, // Hotkey
-                1 => 4, // System
-                _ => 2
-            };
+            SelectedSidebarIndex = Math.Max(1, value + 1);
         }
         finally
         {
