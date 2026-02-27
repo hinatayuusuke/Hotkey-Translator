@@ -14395,3 +14395,32 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 02:36 (Asia/Taipei) — ROIログ削減: selector_move停止 + skip理由変化時のみ**
+
+### Summary
+- ROI調査ログのノイズを減らすため、`selector_move` ログを停止し、`skip` ログを理由変化時のみ出力するようにした。
+
+### Context / Goal
+- ROI調査ログが過多で、通常ログの可読性を下げていた。
+- 指示どおり「selector_move停止」「skip理由変化時のみ」を反映する必要があった。
+
+### Changes
+- `MainWindow.SelectRoiAsync` の `selector_move` ログ出力ロジックを削除。
+- `PipelineOrchestrator` に `_lastHookRoiSkipReason` を追加。
+- `UpdateHookRoiPreview` の `gate_busy` / `hook_preview_disabled` skipログを `LogHookRoiSkipIfChanged` 経由に変更。
+- 同一理由の連続skipはログを抑止し、理由が変わったときだけ1回出力するようにした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — ROIドラッグ中の `selector_move` ログを削除。
+- `Services/PipelineOrchestrator.cs` — skip理由差分ログ（change-only）を実装。
+
+### Behavioral Impact
+- ROI選択中の高頻度 `selector_move` ログは出なくなる。
+- `stage=hook_roi_preview event=skip` は理由が変わった時のみ出るため、同一原因の連投が抑制される。
+
+### Risk & Mitigation
+- Risk: 連続skipの回数情報が直接は見えなくなる。
+- Mitigation: 理由変化時ログは維持し、必要なら `HT_HOOK_ROI_TRACE` と他段のログで補完できる状態を保った。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

@@ -71,6 +71,7 @@ public sealed class PipelineOrchestrator
     private uint _lastCaptureCanvasW;
     private uint _lastCaptureCanvasH;
     private Rect? _hookRoiPreviewRectScreen;
+    private string? _lastHookRoiSkipReason;
     private bool? _lastWpfOverlaySuppressed;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
@@ -460,10 +461,7 @@ public sealed class PipelineOrchestrator
 
         if (!_gate.Wait(0))
         {
-            if (_hookRoiTraceEnabled)
-            {
-                _logger.Info("stage=hook_roi_preview event=skip reason=gate_busy.");
-            }
+            LogHookRoiSkipIfChanged("gate_busy");
             return;
         }
 
@@ -472,12 +470,10 @@ public sealed class PipelineOrchestrator
             var settings = _settingsService.Settings;
             if (!ShouldAllowHookRoiPreview(settings))
             {
-                if (_hookRoiTraceEnabled)
-                {
-                    _logger.Info("stage=hook_roi_preview event=skip reason=hook_preview_disabled.");
-                }
+                LogHookRoiSkipIfChanged("hook_preview_disabled");
                 return;
             }
+            _lastHookRoiSkipReason = null;
 
             var overlayItems = (_lastReadingUnits == null || _lastReadingUnits.Count == 0)
                 ? Array.Empty<OverlayItem>()
@@ -498,6 +494,22 @@ public sealed class PipelineOrchestrator
         {
             _gate.Release();
         }
+    }
+
+    private void LogHookRoiSkipIfChanged(string reason)
+    {
+        if (!_hookRoiTraceEnabled)
+        {
+            return;
+        }
+
+        if (string.Equals(_lastHookRoiSkipReason, reason, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastHookRoiSkipReason = reason;
+        _logger.Info($"stage=hook_roi_preview event=skip reason={reason}.");
     }
 
     private bool TryRepublishDx11HookOverlayForTextToggle(
