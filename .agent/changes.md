@@ -14306,3 +14306,34 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
 - `cmake --build build --config Release --target HookAgentDx11` を実行し、`HookAgentDx11.dll` のビルド成功を確認。
+**2026-02-28 01:56 (Asia/Taipei) — Hook-only ROI枠の調査ログを追加**
+
+### Summary
+- Hook-only ROIプレビューの経路（Selector → Orchestrator → Hook描画）を切り分けるための調査ログを追加した。
+
+### Context / Goal
+- exclusive fullscreenでROI枠が見えないため、どの段で止まっているかをログで特定する必要があった。
+- 既存実装の動作を崩さず、最小限の観測点を追加することが目的。
+
+### Changes
+- `MainWindow.SelectRoiAsync` に ROI選択開始/移動/終了ログを追加（`stage=hook_roi_preview`）。
+- ROI移動ログは120ms間引きで出力し、ログ洪水を抑制。
+- `PipelineOrchestrator.UpdateHookRoiPreview` に update/skip/republish_attempt のログを追加。
+- Native `Dx11PresentHook` の `HT_HOOK_OVL_TRACE` 出力に `roi_first=[x,y,w,h]` を追加し、ROIブロック受信座標を可視化。
+
+### Files Touched
+- `MainWindow.xaml.cs` — selector_start/selector_move/selector_end ログを追加。
+- `Services/PipelineOrchestrator.cs` — ROI preview update系ログを追加。
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — traceログにROI先頭矩形を追加。
+
+### Behavioral Impact
+- 既存機能の仕様は変えず、ログだけ増える。
+- `HT_HOOK_OVL_TRACE` 有効時はNative側でROI先頭座標も確認できる。
+
+### Risk & Mitigation
+- Risk: ROIドラッグ中のログ量が増える。
+- Mitigation: selector_moveは120ms間引きで出力し、無制限の高頻度出力を避けた。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+- `cmake --build build --config Release --target HookAgentDx11` は失敗（`HookAgentDx11.dll` 使用中で LNK1104）。

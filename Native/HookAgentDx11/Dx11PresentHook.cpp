@@ -907,6 +907,11 @@ namespace ht::hook::dx11
                 std::size_t traceSkipBlob = 0;
                 std::size_t traceOffscreen = 0;
                 std::size_t traceRoiPreviewBlocks = 0;
+                bool traceFirstRoiRectSet = false;
+                float traceFirstRoiX = 0.0f;
+                float traceFirstRoiY = 0.0f;
+                float traceFirstRoiW = 0.0f;
+                float traceFirstRoiH = 0.0f;
                 bool traceFirstRectSet = false;
                 float traceFirstX = 0.0f;
                 float traceFirstY = 0.0f;
@@ -944,6 +949,14 @@ namespace ht::hook::dx11
                         // NOTE: Wrap=2 + empty text is reserved for ROI preview border blocks from WPF ROI selector.
                         roiPreviewBlocks.push_back(&b);
                         traceRoiPreviewBlocks++;
+                        if (!traceFirstRoiRectSet)
+                        {
+                            traceFirstRoiRectSet = true;
+                            traceFirstRoiX = b.x;
+                            traceFirstRoiY = b.y;
+                            traceFirstRoiW = b.w;
+                            traceFirstRoiH = b.h;
+                        }
                         continue;
                     }
 
@@ -1097,7 +1110,7 @@ namespace ht::hook::dx11
                     std::snprintf(
                         msg,
                         sizeof(msg),
-                        "HT HookAgentDx11: ovl_v2_draw seq=%llu bb=%ux%u canvas=%ux%u scale=[%.3f,%.3f] blocks=%zu visible=%zu text=%zu roi=%zu skipSize=%zu skipBlob=%zu offscreen=%zu drawList=%u first=[%.1f,%.1f,%.1f,%.1f]\n",
+                        "HT HookAgentDx11: ovl_v2_draw seq=%llu bb=%ux%u canvas=%ux%u scale=[%.3f,%.3f] blocks=%zu visible=%zu text=%zu roi=%zu skipSize=%zu skipBlob=%zu offscreen=%zu drawList=%u first=[%.1f,%.1f,%.1f,%.1f] roi_first=[%.1f,%.1f,%.1f,%.1f]\n",
                         static_cast<unsigned long long>(rt.lastOverlayV2Seq),
                         static_cast<unsigned int>(rt.backBufferWidth),
                         static_cast<unsigned int>(rt.backBufferHeight),
@@ -1116,7 +1129,11 @@ namespace ht::hook::dx11
                         static_cast<double>(traceFirstX),
                         static_cast<double>(traceFirstY),
                         static_cast<double>(traceFirstW),
-                        static_cast<double>(traceFirstH));
+                        static_cast<double>(traceFirstH),
+                        static_cast<double>(traceFirstRoiX),
+                        static_cast<double>(traceFirstRoiY),
+                        static_cast<double>(traceFirstRoiW),
+                        static_cast<double>(traceFirstRoiH));
                     OutputDebugStringA(msg);
                     rt.lastOverlayTraceDrawSeq = rt.lastOverlayV2Seq;
                 }

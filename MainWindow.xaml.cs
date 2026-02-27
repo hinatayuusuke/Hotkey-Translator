@@ -672,11 +672,48 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var roiEnabledAtStart = settings.EnableRoi;
             var bounds = _captureManager.GetCaptureBounds(settings);
             var selector = new RoiSelectorWindow(bounds);
+            _logger?.Info(
+                $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
             // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
             // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
-            selector.PreviewRectChanged += previewRect => _pipeline?.UpdateHookRoiPreview(previewRect);
+            var lastPreviewLogTick = 0L;
+            Rect? lastLoggedRect = null;
+            void OnPreviewRectChanged(Rect? previewRect)
+            {
+                _pipeline?.UpdateHookRoiPreview(previewRect);
+                var hasRect = previewRect is { } r && !r.IsEmpty;
+                var now = Environment.TickCount64;
+                var shouldLog = !hasRect ||
+                                now - lastPreviewLogTick >= 120 ||
+                                (hasRect && (!lastLoggedRect.HasValue || lastLoggedRect.Value != previewRect!.Value));
+                if (!shouldLog)
+                {
+                    return;
+                }
+
+                if (hasRect)
+                {
+                    var rect = previewRect!.Value;
+                    _logger?.Info(
+                        $"stage=hook_roi_preview event=selector_move hasRect=1 rect=[{rect.X:0.##},{rect.Y:0.##},{rect.Width:0.##},{rect.Height:0.##}]");
+                    lastLoggedRect = rect;
+                }
+                else
+                {
+                    _logger?.Info("stage=hook_roi_preview event=selector_move hasRect=0.");
+                    lastLoggedRect = null;
+                }
+
+                lastPreviewLogTick = now;
+            }
+
+            selector.PreviewRectChanged += OnPreviewRectChanged;
             _pipeline?.UpdateHookRoiPreview(null);
             var result = selector.ShowDialog();
+            selector.PreviewRectChanged -= OnPreviewRectChanged;
+            _logger?.Info(
+                $"stage=hook_roi_preview event=selector_end result={(result == true ? "confirm" : "cancel")} " +
+                $"selected={(selector.SelectedRect.HasValue ? 1 : 0)}.");
             if (result == true && selector.SelectedRect is { } rect)
             {
                 settings.Roi = SerializableRect.FromRect(rect);
