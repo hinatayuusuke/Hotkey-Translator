@@ -13944,3 +13944,60 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - Get-Content -Encoding UTF8 Tools\Magpie\config.json で内容を確認。
 - Get-Item Tools\Magpie\config.json で配置先とファイルサイズを確認。
+**2026-02-27 22:10 (Asia/Taipei) — Magpie config を英語 + バイリニアへ調整**
+
+### Summary
+- Tools/Magpie/config.json の言語を英語に変更し、既定プロファイルをバイリニア拡大へ切り替えた。
+
+### Context / Goal
+- ユーザー要望により、Magpie の表示言語を英語化し、拡大方式をバイリニアへ変更する必要があった。
+
+### Changes
+- language を en-us に変更。
+- scalingModes[0] を Bilinear エフェクトに変更。
+- profiles[0].scalingMode を   に設定し、既定プロファイルが上記バイリニアモードを使用するよう調整。
+
+### Files Touched
+- Tools/Magpie/config.json — 言語と拡大モードを更新。
+
+### Behavioral Impact
+- Magpie 起動時の UI 言語が英語になる。
+- プロファイル0の拡大アルゴリズムがバイリニアになる。
+
+### Risk & Mitigation
+- Risk: effects/Bilinear が存在しない配布物では起動時にエフェクト解決失敗となる可能性。
+- Mitigation: 失敗時は Tools/Magpie/logs/magpie.log を確認し、利用可能な effect 名へ再設定する。
+
+### Tests / Verification
+- Get-Content -Encoding UTF8 Tools\Magpie\config.json で language=en-us、scalingModes[0].effects[0].name=Bilinear、profiles[0].scalingMode=0 を確認。
+**2026-02-27 22:35 (Asia/Taipei) — Mirror時のWPFオーバーレイ最前面同期（最小実装）**
+
+### Summary
+- Magpieミラー中にWPFオーバーレイが背面化する問題に対し、メッセージ受信＋定期再昇格でZオーダー同期を追加した。
+
+### Context / Goal
+- ミラーフルスクリーン上でオーバーレイが見えない事象を、最小変更で解消したい。
+- 対象は Z オーダー同期のみ（メッセージ受信、TopMost再昇格、定期再昇格）。
+
+### Changes
+- `MagpieScalingChanged` のメッセージIDを `MagpieSessionController` で公開。
+- `MainWindow` で `HwndSource` フックを追加し、`MagpieScalingChanged` 受信時にオーバーレイ再昇格を実行。
+- ミラー有効中のみ 500ms 間隔で再昇格する `DispatcherTimer` を追加。
+- `OverlayWindow` に `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE)` を使う再昇格APIを追加。
+- ミラー状態変化時／オーバーレイ再表示・更新時にも再昇格を実行するよう調整。
+
+### Files Touched
+- `MainWindow.xaml.cs` — Magpieメッセージフック、定期再昇格タイマー、ミラー状態連動の再昇格処理を追加。
+- `UI/OverlayWindow.xaml.cs` — `TryPromoteTopMost` と `SetWindowPos` P/Invoke を追加。
+- `Services/Application/MagpieSessionController.cs` — `MagpieScalingChanged` メッセージID公開とスケーリングウィンドウ取得APIを追加。
+
+### Behavioral Impact
+- ミラーフルスクリーン有効時、WPFオーバーレイが前面へ再同期されやすくなる。
+- ミラー無効時はタイマー停止・メッセージ受信処理は実質無効化され、通常挙動への影響を最小化。
+
+### Risk & Mitigation
+- Risk: 500ms 定期 `SetWindowPos` による過剰再昇格で一部環境で表示競合が起こる可能性。
+- Mitigation: ミラー有効時のみ動作し、失敗時は `stage=overlay_topmost` ログに理由を出す実装にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

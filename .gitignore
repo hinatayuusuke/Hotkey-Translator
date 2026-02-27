@@ -61,6 +61,8 @@ ocr_pb2_grpc.py
 .testpic
 OcrServiceNDL/reference/
 Code-Reference/
+Tools/Magpie/effects/
+Tools/Magpie/cache/
 
 # User-specific files
 *.rsuser

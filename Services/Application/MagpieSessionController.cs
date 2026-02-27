@@ -19,6 +19,7 @@ internal sealed class MagpieSessionController : IDisposable
     private IntPtr _targetHwnd;
     private Rect _sourceClientBounds;
     private Rect _monitorBounds;
+    private static readonly uint MagpieScalingChangedMessage = RegisterWindowMessage("MagpieScalingChanged");
 
     public MagpieSessionController(
         WindowBindingService windowBindingService,
@@ -37,6 +38,8 @@ internal sealed class MagpieSessionController : IDisposable
     public event Action<bool>? ActiveStateChanged;
 
     public bool IsActive { get; private set; }
+
+    public uint MagpieScalingChangedMessageId => MagpieScalingChangedMessage;
 
     public async Task ToggleAsync(AppSettings settings, Func<Task> persistSettingsAsync)
     {
@@ -97,6 +100,12 @@ internal sealed class MagpieSessionController : IDisposable
         }
 
         return clipped;
+    }
+
+    public bool TryGetScalingWindowHandle(out IntPtr scalingWindowHandle)
+    {
+        scalingWindowHandle = FindWindow(ScalingWindowClassName, null);
+        return scalingWindowHandle != IntPtr.Zero;
     }
 
     public void Shutdown()
@@ -327,7 +336,14 @@ internal sealed class MagpieSessionController : IDisposable
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetMonitorInfo(IntPtr hMonitor, ref MonitorInfo lpmi);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string lpString);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr FindWindow(string lpClassName, string? lpWindowName);
+
     private const int MonitorDefaultToNearest = 2;
+    private const string ScalingWindowClassName = "Window_Magpie_967EB565-6F73-4E94-AE53-00CC42592A22";
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     private struct MonitorInfo

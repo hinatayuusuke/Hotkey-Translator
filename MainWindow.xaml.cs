@@ -8,6 +8,8 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
+using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
@@ -57,6 +59,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly DrawerLayoutController _drawerLayoutController;
     private readonly PreviewZoomCoordinator _previewZoomCoordinator;
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
+    private readonly DispatcherTimer _mirrorOverlayTopmostTimer;
+    private HwndSource? _mainHwndSource;
+    private uint _wmMagpieScalingChanged;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
@@ -66,6 +71,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const double DrawerAutoResizeTolerance = 12.0;
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
+    private const int MirrorOverlayTopmostResyncIntervalMs = 500;
 
     public MainWindow()
     {
@@ -77,6 +83,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
+        _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
+        };
+        _mirrorOverlayTopmostTimer.Tick += OnMirrorOverlayTopmostTimerTick;
         _mainWindowViewModel = new MainWindowViewModel(
             new SettingsViewModel(_settingsChangeScheduler),
             new RuntimeStatusViewModel(),
@@ -183,6 +194,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         Closed += OnClosed;
     }
 
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+        _wmMagpieScalingChanged = _magpieSessionController.MagpieScalingChangedMessageId;
+        _mainHwndSource = PresentationSource.FromVisual(this) as HwndSource;
+        _mainHwndSource?.AddHook(WndProc);
+    }
+
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         _logger = new AppLogger(AppendLog);
@@ -256,8 +275,74 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _drawerLayoutController.SyncForCurrentState();
     }
 
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (_wmMagpieScalingChanged != 0 && (uint)msg == _wmMagpieScalingChanged)
+        {
+            if (_magpieSessionController.IsActive)
+            {
+                EnsureMirrorOverlayTopMost("magpie_message");
+                EnsureMirrorOverlayTopmostTimerActive(true);
+            }
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private void OnMirrorOverlayTopmostTimerTick(object? sender, EventArgs e)
+    {
+        if (!_magpieSessionController.IsActive)
+        {
+            EnsureMirrorOverlayTopmostTimerActive(false);
+            return;
+        }
+
+        EnsureMirrorOverlayTopMost("timer");
+    }
+
+    private void EnsureMirrorOverlayTopmostTimerActive(bool active)
+    {
+        if (active)
+        {
+            if (!_mirrorOverlayTopmostTimer.IsEnabled)
+            {
+                _mirrorOverlayTopmostTimer.Start();
+            }
+
+            return;
+        }
+
+        if (_mirrorOverlayTopmostTimer.IsEnabled)
+        {
+            _mirrorOverlayTopmostTimer.Stop();
+        }
+    }
+
+    private void EnsureMirrorOverlayTopMost(string source)
+    {
+        if (!_magpieSessionController.IsActive || _overlayWindow == null)
+        {
+            return;
+        }
+
+        if (_overlayWindow.TryPromoteTopMost(out var reason))
+        {
+            return;
+        }
+
+        _logger?.Info($"stage=overlay_topmost event=promote result=failed source={source} reason={reason ?? "unknown"}.");
+    }
+
     private void OnClosed(object? sender, EventArgs e)
     {
+        EnsureMirrorOverlayTopmostTimerActive(false);
+        _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
+        if (_mainHwndSource != null)
+        {
+            _mainHwndSource.RemoveHook(WndProc);
+            _mainHwndSource = null;
+        }
+
         _previewZoomCoordinator.Dispose();
         _previewFrameDispatcher.Dispose();
         _drawerLayoutController.Reset();
@@ -951,6 +1036,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _sceneChangeController.OnOverlayShown();
         UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
+        if (_magpieSessionController.IsActive)
+        {
+            EnsureMirrorOverlayTopMost("overlay_shown");
+        }
     }
 
     private void OnOverlayHidden() => _sceneChangeController.OnOverlayHidden();
@@ -959,17 +1048,26 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _sceneChangeController.OnOverlayUpdated();
         UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
+        if (_magpieSessionController.IsActive)
+        {
+            EnsureMirrorOverlayTopMost("overlay_updated");
+        }
     }
 
-    private void OnMirrorSessionActiveStateChanged(bool _)
+    private void OnMirrorSessionActiveStateChanged(bool isActive)
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.Invoke(ApplyMirrorOverlayMapper);
+            Dispatcher.Invoke(() => OnMirrorSessionActiveStateChanged(isActive));
             return;
         }
 
         ApplyMirrorOverlayMapper();
+        EnsureMirrorOverlayTopmostTimerActive(isActive);
+        if (isActive)
+        {
+            EnsureMirrorOverlayTopMost("mirror_state_changed");
+        }
     }
 
     private void ApplyMirrorOverlayMapper()

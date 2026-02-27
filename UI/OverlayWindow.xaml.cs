@@ -243,6 +243,32 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
     }
 
+    public bool TryPromoteTopMost(out string? reason)
+    {
+        reason = null;
+        var hwnd = new WindowInteropHelper(this).Handle;
+        if (hwnd == IntPtr.Zero)
+        {
+            reason = "overlay_handle_unavailable";
+            return false;
+        }
+
+        if (!SetWindowPos(
+                hwnd,
+                HwndTopMost,
+                0,
+                0,
+                0,
+                0,
+                SwpNoMove | SwpNoSize | SwpNoActivate))
+        {
+            reason = $"set_window_pos_failed(err={Marshal.GetLastWin32Error()})";
+            return false;
+        }
+
+        return true;
+    }
+
     public void SetSmallBoxClipBounds(Rect? boundsDip)
     {
         if (boundsDip is not { } rect || rect.IsEmpty || rect.Width <= 0 || rect.Height <= 0)
@@ -575,6 +601,10 @@ public partial class OverlayWindow : Window
     private const int WsExToolWindow = 0x00000080;
     private const int WsExNoActivate = 0x08000000;
     private const uint WindowDisplayAffinityExcludeFromCapture = 0x00000011;
+    private static readonly IntPtr HwndTopMost = new(-1);
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoActivate = 0x0010;
 
     [DllImport("user32.dll", EntryPoint = "GetWindowLong")]
     private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
@@ -590,6 +620,16 @@ public partial class OverlayWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(
+        IntPtr hWnd,
+        IntPtr hWndInsertAfter,
+        int X,
+        int Y,
+        int cx,
+        int cy,
+        uint uFlags);
 
     private static IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex)
     {
