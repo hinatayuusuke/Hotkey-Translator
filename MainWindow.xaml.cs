@@ -54,6 +54,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly DrawerLayoutController _drawerLayoutController;
     private readonly PreviewZoomCoordinator _previewZoomCoordinator;
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
+    private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
@@ -176,6 +177,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _settingsService.LoadAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
+        var geminiClient = new GeminiClient(_httpClient, _logger);
+        var translationProviders = new List<ITranslationProvider>
+        {
+            new LlamaGrpcTranslationProvider(_logger),
+            new DeepLTranslationProvider(_httpClient, _logger),
+            new GeminiTranslationProvider(geminiClient)
+        };
+        _registeredTranslationProviderNames = translationProviders.Select(provider => provider.Name).ToList();
         ApplySettingsToUi(settings);
         settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
@@ -205,13 +214,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var lineGrouper = new OcrLineGrouper(_logger);
         _sceneTextSnapshotService = new SceneTextSnapshotService(_captureManager, _ocrEngine, lineGrouper, _logger);
         var keyBuilder = new CacheKeyBuilder();
-        var geminiClient = new GeminiClient(_httpClient, _logger);
-        var translationProviders = new List<ITranslationProvider>
-        {
-            new LlamaGrpcTranslationProvider(_logger),
-            new DeepLTranslationProvider(_httpClient, _logger),
-            new GeminiTranslationProvider(geminiClient)
-        };
         var translationService = new TranslationFallbackService(translationProviders, _logger);
 
         _pipeline = new PipelineOrchestrator(
@@ -678,44 +680,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void ApplyTranslationPriority(AppSettings settings)
     {
-        var ordered = NormalizeTranslationPriority(settings);
+        var ordered = NormalizeTranslationPriority(settings.TranslationPriority, _registeredTranslationProviderNames);
         settings.TranslationPriority = ordered.ToList();
         _mainWindowViewModel.ResetTranslationPriority(ordered);
     }
 
-    private static List<string> NormalizeTranslationPriority(AppSettings settings)
+    private static List<string> NormalizeTranslationPriority(
+        IReadOnlyList<string>? currentPriority,
+        IReadOnlyList<string> registeredProviderNames)
     {
-        var allowed = new HashSet<string>(TranslationProviderNames.Defaults, StringComparer.OrdinalIgnoreCase);
-        var ordered = new List<string>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var current = settings.TranslationPriority ?? new List<string>();
-        foreach (var name in current)
-        {
-            if (string.IsNullOrWhiteSpace(name))
-            {
-                continue;
-            }
-
-            if (!allowed.Contains(name))
-            {
-                continue;
-            }
-
-            if (seen.Add(name))
-            {
-                ordered.Add(name);
-            }
-        }
-
-        foreach (var name in TranslationProviderNames.Defaults)
-        {
-            if (seen.Add(name))
-            {
-                ordered.Add(name);
-            }
-        }
-
-        return ordered;
+        return TranslationFallbackService.NormalizePriority(currentPriority, registeredProviderNames);
     }
 
     private async Task ReloadLlamaModelsAsync()
@@ -758,7 +732,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _mainWindowViewModel.Settings.ApplyTo(settings);
         settings.TranslationPriority =
-            _mainWindowViewModel.GetTranslationPriorityOrDefault(TranslationProviderNames.Defaults);
+            _mainWindowViewModel.GetTranslationPriorityOrDefault(_registeredTranslationProviderNames);
     }
 
     private void ApplyRuntimeStateAfterSave(AppSettings settings)

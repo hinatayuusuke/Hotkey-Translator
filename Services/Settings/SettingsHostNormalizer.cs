@@ -42,21 +42,6 @@ internal static class SettingsHostNormalizer
         return changed;
     }
 
-    public static bool NormalizeCTranslate2Settings(AppSettings settings)
-    {
-        var changed = false;
-        var normalizedDevice = NormalizeCTranslate2Device(settings.CTranslate2Device);
-        changed |= SetIfDifferent(normalizedDevice, settings.CTranslate2Device, value => settings.CTranslate2Device = value);
-        var precision = ResolveCTranslate2Precision(settings.CTranslate2Device);
-        changed |= SetIfDifferent(precision, settings.CTranslate2Precision, value => settings.CTranslate2Precision = value);
-        changed |= SetIfDifferent(true, settings.EnableCTranslate2AutoDownload, value => settings.EnableCTranslate2AutoDownload = value);
-        var modelId = string.IsNullOrWhiteSpace(settings.CTranslate2ModelId)
-            ? "entai2965/nllb-200-distilled-600M-ctranslate2"
-            : settings.CTranslate2ModelId;
-        changed |= SetIfDifferent(modelId, settings.CTranslate2ModelId, value => settings.CTranslate2ModelId = value);
-        return changed;
-    }
-
     public static string NormalizeLlamaModelFileName(string? value)
     {
         var fileName = Path.GetFileName((value ?? string.Empty).Trim());
@@ -64,24 +49,6 @@ internal static class SettingsHostNormalizer
                !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
             ? DefaultLlamaModelFileName
             : fileName;
-    }
-
-    public static string NormalizeCTranslate2Device(string? device)
-    {
-        var normalized = (device ?? string.Empty).Trim();
-        if (normalized.StartsWith("gpu", StringComparison.OrdinalIgnoreCase) ||
-            normalized.StartsWith("cuda", StringComparison.OrdinalIgnoreCase))
-        {
-            return "gpu";
-        }
-
-        return "cpu";
-    }
-
-    public static string ResolveCTranslate2Precision(string? device)
-    {
-        var normalized = NormalizeCTranslate2Device(device);
-        return normalized == "gpu" ? "fp16" : "int8";
     }
 
     private static bool SetIfDifferent<T>(T next, T current, Action<T> assign)

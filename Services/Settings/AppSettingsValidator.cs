@@ -18,7 +18,6 @@ internal sealed class AppSettingsValidator
             new SmallBoxReadabilitySettingsRule(),
             new PaddleOcrSettingsRule(),
             new NdlOcrSettingsRule(),
-            new CTranslate2HostSettingsRule(),
             new LlamaHostSettingsRule(),
             new Dx11HookSettingsRule()
         };

@@ -13700,3 +13700,84 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` 実行: 0 warning / 0 error。
+**2026-02-27 14:14 (Asia/Taipei) — Draft extensible cleanup plan for legacy translation engines**
+
+### Summary
+- 翻訳エンジン残留コード（主にCTranslate2）を精査し、将来拡張可能なregistry方針を含む削除実装案をDocへ新規作成した。
+
+### Context / Goal
+- 現状はLlama/Gemini/DeepLが実運用だが、CTranslate2関連の設定・UI・ホスト・実装コードが広範囲に残っている。
+- 退役コードを掃除しつつ、今後のエンジン追加時に固定配列へ依存しない構造へ整理する必要がある。
+
+### Changes
+- 現状実装を横断調査し、実運用経路と残留経路をファイル単位で整理。
+- CTranslate2削除ステップ、設定互換、UI/ViewModel整理、registry化方針を段階化。
+- Open Questions（TranslationService/の扱い、registry配置層）を明示。
+
+### Files Touched
+- Doc/TranslationEngine_LegacyCleanup_Extensible_Implementation_Plan.md — 精査結果と段階的クリーンアップ実装案を追加。
+
+### Behavioral Impact
+- 実行コードへの変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 実装時に設定互換を落とすと既存ユーザー設定が崩れる。
+- Mitigation: Docでmigration/priority正規化の互換要件を明示し、段階実装を前提化。
+
+### Tests / Verification
+- DocをUTF-8で出力し再読込して内容を確認。
+- 参照ファイル（MainWindow/Settings/ResourceHost/Provider）との整合を手動確認。
+**2026-02-27 14:32 (Asia/Taipei) — Remove CTranslate2 legacy translation path and switch priority normalization to registered providers**
+
+### Summary
+- CTranslate2残留コード（設定/UI/ホスト/翻訳プロバイダ/Pythonサービス）を削除し、翻訳優先度正規化を登録済みプロバイダ依存へ変更した。
+
+### Context / Goal
+- 実運用は LlamaCpp / Gemini / DeepL だが、退役済みCTranslate2のコードと設定が保守負荷を増やしていた。
+- 将来エンジン追加時に固定配列へ依存しない優先度処理へ整理する必要があった。
+
+### Changes
+- TranslationFallbackService を更新し、優先度正規化を currentPriority + registeredProviderNames ベースへ変更（固定Defaults依存を除去）。
+- MainWindow.xaml.cs で登録済みプロバイダ名を実インスタンスから取得し、UI保存/適用時の優先度正規化に利用。
+- TranslationProviderNames から CTranslate2 / GoogleWeb / Defaults を削除。
+- AppSettings から CTranslate2 設定項目群を削除し、TranslationPriority 初期値を空リスト化。
+- ResourceHostFacade から CTranslate2 host descriptor / config / stop / disable 経路を削除。
+- SettingsViewModel と MainWindow.xaml から CTranslate2 UI/設定バインディングを削除。
+- AppSettingsValidator から CTranslate2 rule を外し、CTranslate2HostSettingsRule を削除。
+- SettingsHostNormalizer / AppSettingsMigrator から CTranslate2 正規化・移行処理を削除。
+- 退役Python実装 TranslationService/*（追跡ファイル）を削除。
+
+### Files Touched
+- Services/TranslationFallbackService.cs — 登録済みプロバイダ依存の優先度正規化へ変更。
+- MainWindow.xaml.cs — 優先度正規化入力を実プロバイダ名へ変更。
+- Models/TranslationProviderNames.cs — 退役定数を削除。
+- Models/AppSettings.cs — CTranslate2設定群を削除。
+- Services/Application/ResourceHostFacade.cs — CTranslate2 host管理経路を削除。
+- ViewModels/SettingsViewModel.cs — CTranslate2設定プロパティを削除。
+- MainWindow.xaml — CTranslate2（Collapsed）設定UIを削除。
+- Services/Settings/AppSettingsValidator.cs — CTranslate2 rule登録を削除。
+- Services/Settings/SettingsHostNormalizer.cs — CTranslate2正規化関数を削除。
+- Services/Settings/AppSettingsMigrator.cs — CTranslate2 migrate処理を削除。
+- Services/Settings/Rules/CTranslate2HostSettingsRule.cs — 削除。
+- Services/CTranslate2GrpcHost.cs — 削除。
+- Services/CTranslate2GrpcTranslationProvider.cs — 削除。
+- TranslationService/pyproject.toml — 削除。
+- TranslationService/server.py — 削除。
+- TranslationService/test_translation_engine.py — 削除。
+- TranslationService/translation.proto — 削除。
+- TranslationService/translation_pb2.py — 削除。
+- TranslationService/translation_pb2_grpc.py — 削除。
+- TranslationService/translator_engine.py — 削除。
+- TranslationService/uv.lock — 削除。
+
+### Behavioral Impact
+- CTranslate2は設定/UI/実行経路すべてから除去される。
+- 翻訳優先度は「登録済みプロバイダ名」に対して正規化され、未登録名は自動除去される。
+- 実運用翻訳（LlamaCpp/Gemini/DeepL）の挙動は維持される。
+
+### Risk & Mitigation
+- Risk: 旧settings内のCTranslate2優先名や設定が消えることで順序が変わる。
+- Mitigation: 正規化時に登録済みプロバイダのみ採用し、保存時に新順序へ収束させる。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln を実行し、  warning / 0 error を確認。

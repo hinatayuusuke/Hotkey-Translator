@@ -34,13 +34,6 @@ internal sealed class AppSettingsMigrator
             report.Add("compat_scene_mode_priority", "Disabled scene auto-translate because auto-hide is enabled.");
         }
 
-        if (settings.EnableCTranslate2)
-        {
-            // COMPAT: CTranslate2 translation path is retired; keep disabled.
-            settings.EnableCTranslate2 = false;
-            report.Add("compat_disable_ct2", "Disabled retired CTranslate2 setting.");
-        }
-
         return report;
     }
 

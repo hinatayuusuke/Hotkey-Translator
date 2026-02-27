@@ -7,5 +7,4 @@ internal readonly record struct HostFeatureSettings(
     bool EnablePaddleGrpcHost,
     bool EnablePaddleVlGrpcHost,
     bool EnableNdlGrpcHost,
-    bool EnableCTranslate2,
     bool EnableLlamaCppTranslation);

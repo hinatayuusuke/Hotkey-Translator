@@ -15,7 +15,6 @@ internal sealed class ResourceHostFacade : IDisposable
     private const string HostIdPaddle = "paddle_grpc";
     private const string HostIdPaddleVl = "paddle_vl_grpc";
     private const string HostIdNdl = "ndl_grpc";
-    private const string HostIdCt2 = "ct2_grpc";
     private const string HostIdLlama = "llama_grpc";
 
     private readonly Func<AppLogger?> _loggerAccessor;
@@ -27,12 +26,10 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly PaddleGrpcHost _paddleGrpcHost;
     private readonly PaddleVlGrpcHost _paddleVlGrpcHost;
     private readonly NdlGrpcHost _ndlGrpcHost;
-    private readonly CTranslate2GrpcHost _ct2GrpcHost;
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
     private readonly FeatureSettingsProvider _featureSettingsProvider = new();
 
-    private CTranslate2HostConfig? _ct2HostConfig;
     private LlamaHostConfig? _llamaHostConfig;
 
     public ResourceHostFacade(
@@ -51,7 +48,6 @@ internal sealed class ResourceHostFacade : IDisposable
         _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor);
         _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor);
         _ndlGrpcHost = new NdlGrpcHost(_loggerAccessor);
-        _ct2GrpcHost = new CTranslate2GrpcHost(_loggerAccessor);
         _llamaGrpcHost = new LlamaGrpcHost(_loggerAccessor);
         _hostRegistry = new GrpcHostRegistry(BuildHostDescriptors());
     }
@@ -61,7 +57,7 @@ internal sealed class ResourceHostFacade : IDisposable
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
         if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
-            !ShouldLoadCTranslate2(settings) && !ShouldLoadLlama(settings))
+            !ShouldLoadLlama(settings))
         {
             return false;
         }
@@ -94,12 +90,6 @@ internal sealed class ResourceHostFacade : IDisposable
         _ndlGrpcHost.Stop();
     }
 
-    public void StopCTranslate2()
-    {
-        _ct2GrpcHost.Stop();
-        _ct2HostConfig = null;
-    }
-
     public void StopLlama()
     {
         _llamaGrpcHost.Stop();
@@ -111,7 +101,6 @@ internal sealed class ResourceHostFacade : IDisposable
         StopPaddle();
         StopPaddleVl();
         StopNdl();
-        StopCTranslate2();
         StopLlama();
     }
 
@@ -166,24 +155,6 @@ internal sealed class ResourceHostFacade : IDisposable
             },
             new()
             {
-                HostId = HostIdCt2,
-                ShouldLoad = ShouldLoadCTranslate2,
-                IsRunning = () => _ct2GrpcHost.IsRunning,
-                StartAsync = (settings, token) => _ct2GrpcHost.StartAsync(settings, token),
-                Stop = () => _ct2GrpcHost.Stop(),
-                BusyMessage = _ => "Loading CTranslate2...",
-                DisableOnFailure = DisableCTranslate2,
-                FailureLogMessage = "CTranslate2 gRPC host failed to start.",
-                FailureUserMessage = "Failed to load CTranslate2. The setting has been turned OFF. See the logs for details.",
-                HasDeferredConfigChange = settings =>
-                    _ct2HostConfig.HasValue && !_ct2HostConfig.Value.Equals(BuildCTranslate2HostConfig(settings)),
-                OnDeferredConfigDetected = () =>
-                    _loggerAccessor()?.Info("CTranslate2 settings changed; reload deferred until restart."),
-                OnStartSucceeded = settings => _ct2HostConfig = BuildCTranslate2HostConfig(settings),
-                OnStopped = () => _ct2HostConfig = null
-            },
-            new()
-            {
                 HostId = HostIdLlama,
                 ShouldLoad = ShouldLoadLlama,
                 IsRunning = () => _llamaGrpcHost.IsRunning,
@@ -193,7 +164,6 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisableLlamaTranslation,
                 FailureLogMessage = "Llama gRPC host failed to start.",
                 FailureUserMessage = "Failed to load Llama.cpp. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdCt2 },
                 HasDeferredConfigChange = settings =>
                     _llamaHostConfig.HasValue && !_llamaHostConfig.Value.Equals(BuildLlamaHostConfig(settings)),
                 OnDeferredConfigDetected = () =>
@@ -222,18 +192,6 @@ internal sealed class ResourceHostFacade : IDisposable
         return host.OcrEngine == OcrEngineKind.Ndl && host.EnableNdlGrpcHost;
     }
 
-    private bool ShouldLoadCTranslate2(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        if (!host.EnableCTranslate2)
-        {
-            return false;
-        }
-
-        // WHY: CTranslate2 translation path is retired; keep host disabled even if legacy settings remain.
-        return false;
-    }
-
     private bool ShouldLoadLlama(AppSettings settings)
     {
         var host = _featureSettingsProvider.GetHost(settings);
@@ -258,32 +216,10 @@ internal sealed class ResourceHostFacade : IDisposable
         _syncSettingsToView(settings, false);
     }
 
-    private void DisableCTranslate2(AppSettings settings)
-    {
-        settings.EnableCTranslate2 = false;
-        _syncSettingsToView(settings, true);
-    }
-
     private void DisableLlamaTranslation(AppSettings settings)
     {
         settings.EnableLlamaCppTranslation = false;
         _syncSettingsToView(settings, true);
-    }
-
-    private static CTranslate2HostConfig BuildCTranslate2HostConfig(AppSettings settings)
-    {
-        _ = SettingsHostNormalizer.NormalizeCTranslate2Settings(settings);
-        return new CTranslate2HostConfig(
-            settings.CTranslate2Device,
-            settings.CTranslate2Precision,
-            settings.CTranslate2ModelId,
-            settings.CTranslate2ModelDir,
-            settings.CTranslate2GrpcEndpoint,
-            settings.CTranslate2GrpcHost,
-            settings.CTranslate2GrpcPort,
-            settings.CTranslate2GrpcProjectDir,
-            settings.CTranslate2GrpcUvPath,
-            settings.CTranslate2GrpcServerScript);
     }
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
@@ -310,18 +246,6 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaGrpcUvPath,
             settings.LlamaGrpcServerScript);
     }
-
-    private readonly record struct CTranslate2HostConfig(
-        string Device,
-        string Precision,
-        string ModelId,
-        string? ModelDir,
-        string Endpoint,
-        string Host,
-        int Port,
-        string ProjectDir,
-        string UvPath,
-        string ServerScript);
 
     private readonly record struct LlamaHostConfig(
         string Host,

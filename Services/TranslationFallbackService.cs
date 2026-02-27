@@ -10,11 +10,14 @@ namespace Hotkey_Translator.Services;
 public sealed class TranslationFallbackService
 {
     private readonly Dictionary<string, ITranslationProvider> _providers;
+    private readonly IReadOnlyList<string> _providerOrder;
     private readonly AppLogger? _logger;
 
     public TranslationFallbackService(IEnumerable<ITranslationProvider> providers, AppLogger? logger = null)
     {
-        _providers = providers.ToDictionary(provider => provider.Name, provider => provider, StringComparer.OrdinalIgnoreCase);
+        var orderedProviders = providers.ToList();
+        _providers = orderedProviders.ToDictionary(provider => provider.Name, provider => provider, StringComparer.OrdinalIgnoreCase);
+        _providerOrder = orderedProviders.Select(provider => provider.Name).ToList();
         _logger = logger;
     }
 
@@ -67,7 +70,7 @@ public sealed class TranslationFallbackService
             return new Dictionary<string, string>();
         }
 
-        var priority = NormalizePriority(settings);
+        var priority = NormalizePriority(settings.TranslationPriority, _providerOrder);
         _logger?.Info($"Translation provider order: {string.Join(" > ", priority)}.");
         for (var i = 0; i < priority.Count; i++)
         {
@@ -108,13 +111,18 @@ public sealed class TranslationFallbackService
         return new Dictionary<string, string>();
     }
 
-    private static IReadOnlyList<string> NormalizePriority(AppSettings settings)
+    public static List<string> NormalizePriority(
+        IReadOnlyList<string>? currentPriority,
+        IReadOnlyList<string> registeredProviderNames)
     {
-        var allowed = new HashSet<string>(TranslationProviderNames.Defaults, StringComparer.OrdinalIgnoreCase);
+        var orderedRegistered = registeredProviderNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var allowed = new HashSet<string>(orderedRegistered, StringComparer.OrdinalIgnoreCase);
         var ordered = new List<string>();
         var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var current = settings.TranslationPriority ?? new List<string>();
-        foreach (var name in current)
+        foreach (var name in currentPriority ?? Array.Empty<string>())
         {
             if (string.IsNullOrWhiteSpace(name))
             {
@@ -132,7 +140,7 @@ public sealed class TranslationFallbackService
             }
         }
 
-        foreach (var name in TranslationProviderNames.Defaults)
+        foreach (var name in orderedRegistered)
         {
             if (existing.Add(name))
             {

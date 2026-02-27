@@ -11,7 +11,6 @@ internal sealed class FeatureSettingsProvider
             settings.EnablePaddleGrpcHost,
             settings.EnablePaddleVlGrpcHost,
             settings.EnableNdlGrpcHost,
-            settings.EnableCTranslate2,
             settings.EnableLlamaCppTranslation);
     }
 
