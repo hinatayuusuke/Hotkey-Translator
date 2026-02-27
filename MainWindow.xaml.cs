@@ -280,7 +280,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         if (_wmMagpieScalingChanged != 0 && (uint)msg == _wmMagpieScalingChanged)
         {
-            if (_magpieSessionController.IsActive)
+            var eventId = wParam.ToInt64();
+            var payload = lParam.ToInt64();
+            _logger?.Info($"stage=magpie_ipc event=scaling_changed wparam={eventId} lparam={payload}.");
+
+            if (eventId == 0)
+            {
+                if (_magpieSessionController.TrySyncExternalStop("magpie_message", payload))
+                {
+                    EnsureMirrorOverlayTopmostTimerActive(false);
+                }
+            }
+            else if (_magpieSessionController.IsActive)
             {
                 EnsureMirrorOverlayTopMost("magpie_message");
                 EnsureMirrorOverlayTopmostTimerActive(true);

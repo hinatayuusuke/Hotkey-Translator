@@ -108,6 +108,31 @@ internal sealed class MagpieSessionController : IDisposable
         return scalingWindowHandle != IntPtr.Zero;
     }
 
+    public bool TrySyncExternalStop(string source, long reasonCode)
+    {
+        // NOTE: MagpieScalingChanged event=0 uses lParam=0 when scaling truly ended.
+        // lParam=1 means temporary source focus loss and should not be treated as a terminal stop.
+        if (reasonCode != 0)
+        {
+            LogInfo(
+                $"stage=magpie_session event=state_sync_skip source={source} reason_code={reasonCode} active={(IsActive ? 1 : 0)}.");
+            return false;
+        }
+
+        if (!IsActive)
+        {
+            return false;
+        }
+
+        SetActive(false);
+        _targetHwnd = IntPtr.Zero;
+        _sourceClientBounds = Rect.Empty;
+        _monitorBounds = Rect.Empty;
+        _appendLog("Mirror fullscreen stopped.");
+        LogInfo($"stage=magpie_session event=state_sync active=0 source={source} reason_code={reasonCode}.");
+        return true;
+    }
+
     public void Shutdown()
     {
         if (IsActive)

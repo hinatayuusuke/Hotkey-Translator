@@ -14062,3 +14062,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-27 23:53 (Asia/Taipei) — Magpie外部停止イベントでミラー状態を即時同期**
+
+### Summary
+- ソースウィンドウ終了時に Magpie が先に停止しても、アプリ側 `IsActive` が残留しないよう `MagpieScalingChanged` で即時同期する処理を追加した。
+
+### Context / Goal
+- 現状は `Ctrl+F7` 押下時のみ `SetActive(false)` が走るため、外部停止後に状態不一致が起きていた。
+- ミラー停止イベントを受けて内部状態を即時反映する必要があった。
+
+### Changes
+- `MainWindow.WndProc` で `MagpieScalingChanged` の `wParam/lParam` をログ出力・分岐処理するよう変更。
+- `wParam=0`（停止系イベント）受信時に `MagpieSessionController.TrySyncExternalStop(...)` を呼び、外部停止を同期。
+- `MagpieSessionController` に `TrySyncExternalStop(string source, long reasonCode)` を追加。
+  - `reasonCode==0`（実停止）でのみ `SetActive(false)` を反映。
+  - `reasonCode==1`（source focus喪失）は停止扱いにしない。
+  - 状態クリア（target/source/monitor）とログ出力を追加。
+
+### Files Touched
+- `MainWindow.xaml.cs` — `MagpieScalingChanged` のイベント解釈と外部停止同期呼び出しを追加。
+- `Services/Application/MagpieSessionController.cs` — 外部停止同期APIを追加。
+
+### Behavioral Impact
+- ソースウィンドウを閉じて Magpie が停止した場合、ホットキー待ちせずにアプリ側状態が即時 `active=0` に同期される。
+- 一時的なフォーカス喪失（reasonCode=1）は停止扱いにしないため、不要な状態反転を避ける。
+
+### Risk & Mitigation
+- Risk: Magpieイベント仕様差で reasonCode 解釈が環境依存の可能性。
+- Mitigation: `stage=magpie_ipc event=scaling_changed wparam=... lparam=...` ログを追加し、実機で追跡可能にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
