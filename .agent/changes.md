@@ -14337,3 +14337,32 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
 - `cmake --build build --config Release --target HookAgentDx11` は失敗（`HookAgentDx11.dll` 使用中で LNK1104）。
+**2026-02-28 02:08 (Asia/Taipei) — ROIプレビュー判定をsettings基準へ変更し初回キャッシュ未設定を補完**
+
+### Summary
+- ROIプレビューの許可判定を `lastProvider` 依存から settings 依存へ変更し、初回Run前でもHook ROIプレビュー送信できるようにした。
+
+### Context / Goal
+- ログで `provider=none` により `not_hook_only` で毎回スキップされ、ROIプレビューが一度もpublishされていなかった。
+- ROI選択はRunOnceを通らないため、`_lastCaptureProviderKind` 未初期化でも動作する必要があった。
+
+### Changes
+- `UpdateHookRoiPreview` の許可条件を `ShouldAllowHookRoiPreview(settings)` に変更。
+- skip理由ログを `hook_preview_disabled` へ更新。
+- `TryRepublishDx11HookOverlayFromCachedFrame` で `roi_preview_update` フェーズは providerチェックを緩和。
+- フレームキャッシュ未設定時、`_captureManager.GetCaptureBounds(settings)` から bounds/canvas を補完するブートストラップを追加。
+- 補完後は内部キャッシュへ保存し、以降のROIプレビュー更新で再利用するようにした。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — ROIプレビュー許可判定、republish条件、キャッシュ補完ロジックを修正。
+
+### Behavioral Impact
+- RunOnce前でも、Hook設定が有効ならF6 ROIプレビューがHook側へpublishされる。
+- `provider=none` 状態でもROIプレビュー更新が進み、exclusive fullscreenで枠表示できる前提が整う。
+
+### Risk & Mitigation
+- Risk: `GetCaptureBounds` 依存の補完値がタイトルによって一時不安定な可能性。
+- Mitigation: 補完はキャッシュ未設定時のみ実行し、取得後はキャッシュ再利用で更新を安定化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

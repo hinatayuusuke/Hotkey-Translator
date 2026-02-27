@@ -462,9 +462,9 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
-            if (!ShouldSuppressWpfOverlayForLastProvider(settings))
+            if (!ShouldAllowHookRoiPreview(settings))
             {
-                _logger.Info("stage=hook_roi_preview event=skip reason=not_hook_only.");
+                _logger.Info("stage=hook_roi_preview event=skip reason=hook_preview_disabled.");
                 return;
             }
 
@@ -501,10 +501,8 @@ public sealed class PipelineOrchestrator
         out string? reason)
     {
         reason = null;
-        if (_lastCaptureProviderKind != CaptureProviderKind.GraphicsHook ||
-            _lastCaptureFrameBounds is not { } frameBounds ||
-            _lastCaptureCanvasW == 0 ||
-            _lastCaptureCanvasH == 0)
+        var isRoiPreviewPhase = string.Equals(phase, "roi_preview_update", StringComparison.Ordinal);
+        if (!isRoiPreviewPhase && _lastCaptureProviderKind != CaptureProviderKind.GraphicsHook)
         {
             reason = phase == "f11_toggle"
                 ? "F11: toggle ignored (hook frame cache missing)."
@@ -515,10 +513,43 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
+        var frameBounds = _lastCaptureFrameBounds ?? Rect.Empty;
+        var canvasW = _lastCaptureCanvasW;
+        var canvasH = _lastCaptureCanvasH;
+        if (frameBounds.IsEmpty || canvasW == 0 || canvasH == 0)
+        {
+            if (isRoiPreviewPhase)
+            {
+                // WHY: ROI selection can start before first RunOnce() initializes frame cache.
+                // Use current capture bounds as a bootstrap frame for hook-only ROI preview updates.
+                var fallbackBounds = _captureManager.GetCaptureBounds(settings);
+                if (!fallbackBounds.IsEmpty && fallbackBounds.Width > 0 && fallbackBounds.Height > 0)
+                {
+                    frameBounds = fallbackBounds;
+                    canvasW = (uint)Math.Max(0, Math.Round(fallbackBounds.Width));
+                    canvasH = (uint)Math.Max(0, Math.Round(fallbackBounds.Height));
+                    _lastCaptureFrameBounds = frameBounds;
+                    _lastCaptureCanvasW = canvasW;
+                    _lastCaptureCanvasH = canvasH;
+                }
+            }
+        }
+
+        if (frameBounds.IsEmpty || canvasW == 0 || canvasH == 0)
+        {
+            reason = phase == "f11_toggle"
+                ? "F11: toggle ignored (hook frame cache missing)."
+                : null;
+            _logger.Info(
+                $"stage=hook_v2_write event=skip phase={phase} reason=no_cached_hook_frame " +
+                $"provider={_lastCaptureProviderKind?.ToString() ?? "none"} canvas={canvasW}x{canvasH}.");
+            return false;
+        }
+
         // WHY: Reuse the existing hook v2 mapping/write pipeline for F11 mode toggles without running OCR again.
         // The bitmap content is not read in this path; only size and frame bounds are used for coordinate mapping.
         using var dummyFrame = new CaptureFrame(
-            new Bitmap((int)_lastCaptureCanvasW, (int)_lastCaptureCanvasH),
+            new Bitmap((int)canvasW, (int)canvasH),
             frameBounds,
             CaptureProviderKind.GraphicsHook,
             DateTimeOffset.UtcNow);
@@ -682,6 +713,26 @@ public sealed class PipelineOrchestrator
         }
 
         return providerKind == CaptureProviderKind.GraphicsHook;
+    }
+
+    private bool ShouldAllowHookRoiPreview(AppSettings settings)
+    {
+        if (_dx11HookClientService == null)
+        {
+            return false;
+        }
+
+        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        {
+            return false;
+        }
+
+        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     private bool ShouldSuppressWpfOverlayForLastProvider(AppSettings settings)
