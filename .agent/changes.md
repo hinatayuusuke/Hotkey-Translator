@@ -14185,3 +14185,30 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 00:30 (Asia/Taipei) — ROI選択のF6再入を禁止**
+
+### Summary
+- ROI選択中にF6を再押下しても新しい選択UIを起動しない再入ガードを追加した。
+
+### Context / Goal
+- F6描画中に再度F6を押すとROI選択UIが重複起動し、操作競合の原因になっていた。
+- ROI選択中はF6動作を無効化する必要があった。
+
+### Changes
+- `MainWindow` に `_isSelectingRoi` フラグを追加。
+- `SelectRoiAsync()` 冒頭で再入チェックを追加し、選択中は早期return + ログ出力。
+- `SelectRoiAsync()` 本体を `try/finally` 化し、例外やキャンセル時でも `_isSelectingRoi` を確実に解除。
+
+### Files Touched
+- `MainWindow.xaml.cs` — ROI選択再入ガードとフラグ管理を追加。
+
+### Behavioral Impact
+- ROI選択中のF6再押下は無効化され、UI重複起動が起きない。
+- 既存のROI確定/キャンセル挙動には影響しない。
+
+### Risk & Mitigation
+- Risk: フラグ解除漏れがあると以降F6が効かなくなる可能性。
+- Mitigation: `try/finally` でフラグを必ず解除する実装にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

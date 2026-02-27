@@ -56,6 +56,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
     private bool _isApplyingSettings;
+    private bool _isSelectingRoi;
     private readonly DrawerLayoutController _drawerLayoutController;
     private readonly PreviewZoomCoordinator _previewZoomCoordinator;
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
@@ -653,72 +654,86 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async Task SelectRoiAsync()
     {
+        if (_isSelectingRoi)
+        {
+            AppendLog("ROI selection already in progress.");
+            return;
+        }
+
         if (_captureManager == null)
         {
             return;
         }
 
-        var settings = _settingsService.Settings;
-        var roiEnabledAtStart = settings.EnableRoi;
-        var bounds = _captureManager.GetCaptureBounds(settings);
-        var selector = new RoiSelectorWindow(bounds);
-        var result = selector.ShowDialog();
-        if (result == true && selector.SelectedRect is { } rect)
+        _isSelectingRoi = true;
+        try
         {
-            settings.Roi = SerializableRect.FromRect(rect);
-            settings.NormalizedRoi = selector.SelectedNormalizedRect;
-            var roiWasDisabled = !settings.EnableRoi;
-            settings.EnableRoi = true;
-            _mainWindowViewModel.Settings.LoadFrom(settings);
-
-            UpdateRoiStatus(settings);
-            await _settingsService.SaveAsync().ConfigureAwait(true);
-            if (roiWasDisabled)
+            var settings = _settingsService.Settings;
+            var roiEnabledAtStart = settings.EnableRoi;
+            var bounds = _captureManager.GetCaptureBounds(settings);
+            var selector = new RoiSelectorWindow(bounds);
+            var result = selector.ShowDialog();
+            if (result == true && selector.SelectedRect is { } rect)
             {
-                AppendLog("ROI enabled automatically.");
+                settings.Roi = SerializableRect.FromRect(rect);
+                settings.NormalizedRoi = selector.SelectedNormalizedRect;
+                var roiWasDisabled = !settings.EnableRoi;
+                settings.EnableRoi = true;
+                _mainWindowViewModel.Settings.LoadFrom(settings);
+
+                UpdateRoiStatus(settings);
+                await _settingsService.SaveAsync().ConfigureAwait(true);
+                if (roiWasDisabled)
+                {
+                    AppendLog("ROI enabled automatically.");
+                }
+
+                AppendLog("ROI updated.");
+                return;
             }
 
-            AppendLog("ROI updated.");
-            return;
-        }
-
-        var hasNormalized = settings.NormalizedRoi is { } normalized && !normalized.IsEmpty;
-        var hasAbsolute = settings.Roi is { } absolute && !absolute.IsEmpty;
-        if (roiEnabledAtStart && (hasNormalized || hasAbsolute))
-        {
-            // WHY: Escape cancel should preserve the previous ROI selection if coordinates already exist.
-            if (!settings.EnableRoi)
+            var hasNormalized = settings.NormalizedRoi is { } normalized && !normalized.IsEmpty;
+            var hasAbsolute = settings.Roi is { } absolute && !absolute.IsEmpty;
+            if (roiEnabledAtStart && (hasNormalized || hasAbsolute))
             {
-                settings.EnableRoi = true;
+                // WHY: Escape cancel should preserve the previous ROI selection if coordinates already exist.
+                if (!settings.EnableRoi)
+                {
+                    settings.EnableRoi = true;
+                    _mainWindowViewModel.Settings.LoadFrom(settings);
+                    UpdateRoiStatus(settings);
+                    await _settingsService.SaveAsync().ConfigureAwait(true);
+                }
+
+                AppendLog("ROI selection canceled. Keeping previous ROI.");
+                return;
+            }
+
+            // WHY: If ROI was disabled when selection started, cancel must return to disabled state.
+            var changed = settings.EnableRoi ||
+                          (!hasNormalized && settings.NormalizedRoi is not null) ||
+                          (!hasAbsolute && settings.Roi is not null);
+            settings.EnableRoi = false;
+            if (!hasNormalized && !hasAbsolute)
+            {
+                settings.Roi = null;
+                settings.NormalizedRoi = null;
+            }
+            if (changed)
+            {
                 _mainWindowViewModel.Settings.LoadFrom(settings);
                 UpdateRoiStatus(settings);
                 await _settingsService.SaveAsync().ConfigureAwait(true);
             }
 
-            AppendLog("ROI selection canceled. Keeping previous ROI.");
-            return;
+            AppendLog(hasNormalized || hasAbsolute
+                ? "ROI selection canceled. ROI kept but disabled."
+                : "ROI selection canceled. ROI disabled (no previous ROI).");
         }
-
-        // WHY: If ROI was disabled when selection started, cancel must return to disabled state.
-        var changed = settings.EnableRoi ||
-                      (!hasNormalized && settings.NormalizedRoi is not null) ||
-                      (!hasAbsolute && settings.Roi is not null);
-        settings.EnableRoi = false;
-        if (!hasNormalized && !hasAbsolute)
+        finally
         {
-            settings.Roi = null;
-            settings.NormalizedRoi = null;
+            _isSelectingRoi = false;
         }
-        if (changed)
-        {
-            _mainWindowViewModel.Settings.LoadFrom(settings);
-            UpdateRoiStatus(settings);
-            await _settingsService.SaveAsync().ConfigureAwait(true);
-        }
-
-        AppendLog(hasNormalized || hasAbsolute
-            ? "ROI selection canceled. ROI kept but disabled."
-            : "ROI selection canceled. ROI disabled (no previous ROI).");
     }
 
     private void ApplySettingsToUi(AppSettings settings)
