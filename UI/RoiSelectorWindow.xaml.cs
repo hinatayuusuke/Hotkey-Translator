@@ -29,6 +29,10 @@ public partial class RoiSelectorWindow : Window
         Top = SystemParameters.VirtualScreenTop;
         Width = SystemParameters.VirtualScreenWidth;
         Height = SystemParameters.VirtualScreenHeight;
+        // WHY: ROI selection relies on Esc cancellation; force focus to this window so keyboard events are reliable.
+        Activate();
+        Focus();
+        _ = Keyboard.Focus(this);
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
@@ -77,8 +81,26 @@ public partial class RoiSelectorWindow : Window
     {
         if (e.Key == Key.Escape)
         {
-            DialogResult = false;
+            e.Handled = true;
+            CancelSelection();
         }
+    }
+
+    private void OnPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        CancelSelection();
+    }
+
+    private void OnMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        e.Handled = true;
+        CancelSelection();
     }
 
     private void UpdateSelection(Point start, Point end)
@@ -97,5 +119,19 @@ public partial class RoiSelectorWindow : Window
         var width = Math.Abs(start.X - end.X);
         var height = Math.Abs(start.Y - end.Y);
         return new Rect(x, y, width, height);
+    }
+
+    private void CancelSelection()
+    {
+        if (IsMouseCaptured)
+        {
+            ReleaseMouseCapture();
+        }
+
+        _start = null;
+        SelectionRect.Visibility = Visibility.Collapsed;
+        SelectedRect = null;
+        SelectedNormalizedRect = null;
+        DialogResult = false;
     }
 }

@@ -14093,3 +14093,67 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 00:00 (Asia/Taipei) — F6 ROI選択のEscキャンセル挙動を明確化**
+
+### Summary
+- ROI選択中にEscキャンセルした場合、既存ROIがあれば継続使用し、既存ROIが無ければROIを無効化する分岐を実装した。
+
+### Context / Goal
+- ユーザー要件として、F6中断時の挙動を「既存ROI保持 / 未設定なら無効化」に統一する必要があった。
+
+### Changes
+- `MainWindow.SelectRoiAsync()` のキャンセル経路を拡張。
+- キャンセル時に既存ROI座標（`NormalizedRoi` または `Roi`）の有無を判定。
+  - 存在する場合: 既存ROIを維持し、必要なら `EnableRoi=true` に戻して保存。
+  - 存在しない場合: `EnableRoi=false`, `Roi=null`, `NormalizedRoi=null` を適用。
+- キャンセル時ログを追加。
+  - `ROI selection canceled. Keeping previous ROI.`
+  - `ROI selection canceled. ROI disabled (no previous ROI).`
+
+### Files Touched
+- `MainWindow.xaml.cs` — `SelectRoiAsync` のEscキャンセル分岐を追加。
+
+### Behavioral Impact
+- ROI選択キャンセル時の挙動が明確になり、既存ROIの意図しない消失を防止。
+- ROI未設定状態でのキャンセルは、確実にROI無効状態へ収束。
+
+### Risk & Mitigation
+- Risk: 既存ROIあり＋`EnableRoi=false` の特殊状態で、キャンセル時に `EnableRoi=true` へ戻る。
+- Mitigation: 要件「既存座標は継続使用」に合わせた設計で、状態遷移をログに残す。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 00:10 (Asia/Taipei) — ROIセレクタのEsc/右クリックキャンセル入力を安定化**
+
+### Summary
+- ROI選択ウィンドウでEscキャンセルが効かないケースに対応し、フォーカス強制 + PreviewKeyDown + 右クリックキャンセルを追加した。
+
+### Context / Goal
+- ROI無効時の新規描画フローでEscが届かず、選択中止できない事象があった。
+- ドラッグ中でも確実にキャンセルできる入力処理が必要だった。
+
+### Changes
+- `RoiSelectorWindow` の `Loaded` で `Activate()/Focus()/Keyboard.Focus(this)` を実行。
+- `PreviewKeyDown` を追加し、Escをトンネル段階で捕捉。
+- `MouseRightButtonDown` でキャンセルできるよう追加。
+- キャンセル処理を `CancelSelection()` に集約。
+  - マウスキャプチャ解除
+  - 選択矩形の非表示
+  - `SelectedRect/SelectedNormalizedRect` クリア
+  - `DialogResult=false`
+
+### Files Touched
+- `UI/RoiSelectorWindow.xaml` — `PreviewKeyDown` と `MouseRightButtonDown` をバインド。
+- `UI/RoiSelectorWindow.xaml.cs` — フォーカス強制、Esc/右クリックキャンセル、共通キャンセル処理を追加。
+
+### Behavioral Impact
+- ROI選択中はEscで安定して中止できる。
+- ドラッグ中でもEsc/右クリックで中止できる。
+- MainWindow側の既存キャンセル分岐（既存ROI維持/未設定時ROI無効化）が確実に実行される。
+
+### Risk & Mitigation
+- Risk: 表示直後の `Activate()` が環境によってはフォーカス挙動に影響する可能性。
+- Mitigation: ROI選択用モーダルウィンドウ限定で適用し、Esc入力の確実性を優先。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

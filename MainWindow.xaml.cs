@@ -658,12 +658,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        var bounds = _captureManager.GetCaptureBounds(_settingsService.Settings);
+        var settings = _settingsService.Settings;
+        var bounds = _captureManager.GetCaptureBounds(settings);
         var selector = new RoiSelectorWindow(bounds);
         var result = selector.ShowDialog();
         if (result == true && selector.SelectedRect is { } rect)
         {
-            var settings = _settingsService.Settings;
             settings.Roi = SerializableRect.FromRect(rect);
             settings.NormalizedRoi = selector.SelectedNormalizedRect;
             var roiWasDisabled = !settings.EnableRoi;
@@ -678,7 +678,38 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             }
 
             AppendLog("ROI updated.");
+            return;
         }
+
+        var hasNormalized = settings.NormalizedRoi is { } normalized && !normalized.IsEmpty;
+        var hasAbsolute = settings.Roi is { } absolute && !absolute.IsEmpty;
+        if (hasNormalized || hasAbsolute)
+        {
+            // WHY: Escape cancel should preserve the previous ROI selection if coordinates already exist.
+            if (!settings.EnableRoi)
+            {
+                settings.EnableRoi = true;
+                _mainWindowViewModel.Settings.LoadFrom(settings);
+                UpdateRoiStatus(settings);
+                await _settingsService.SaveAsync().ConfigureAwait(true);
+            }
+
+            AppendLog("ROI selection canceled. Keeping previous ROI.");
+            return;
+        }
+
+        var changed = settings.EnableRoi || settings.Roi is not null || settings.NormalizedRoi is not null;
+        settings.EnableRoi = false;
+        settings.Roi = null;
+        settings.NormalizedRoi = null;
+        if (changed)
+        {
+            _mainWindowViewModel.Settings.LoadFrom(settings);
+            UpdateRoiStatus(settings);
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+        }
+
+        AppendLog("ROI selection canceled. ROI disabled (no previous ROI).");
     }
 
     private void ApplySettingsToUi(AppSettings settings)
