@@ -14424,3 +14424,29 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 02:42 (Asia/Taipei) — hook_v2_statusログをデフォルトOFF化（HT_HOOK_V2_STATUS_TRACE）**
+
+### Summary
+- `stage=hook_v2_status` の大量ログを抑えるため、環境変数有効時のみ出力するようにした。
+
+### Context / Goal
+- ROI/Hook更新時に `hook_v2_status event=read` が高頻度で出力され、通常ログの可読性を下げていた。
+- 指示どおり「対処1のみ（フラグ化）」を最小差分で反映する必要があった。
+
+### Changes
+- `PipelineOrchestrator` に `HT_HOOK_V2_STATUS_TRACE` フラグを追加。
+- `LogHookV2StatusSnapshot(...)` 冒頭にフラグガードを追加し、既定では即returnするよう変更。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — `hook_v2_status` 出力を `HT_HOOK_V2_STATUS_TRACE=1` 条件に変更。
+
+### Behavioral Impact
+- デフォルトでは `stage=hook_v2_status` ログが出なくなる。
+- `HT_HOOK_V2_STATUS_TRACE=1` を設定した場合のみ、従来どおり `event=read/missing` が出力される。
+
+### Risk & Mitigation
+- Risk: 既定状態でHook statusの継続観測が見えなくなる。
+- Mitigation: 調査時は環境変数1つで即再有効化できるようにした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

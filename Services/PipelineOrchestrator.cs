@@ -54,6 +54,8 @@ public sealed class PipelineOrchestrator
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_WRITE_DEBUG"), "1", StringComparison.Ordinal);
     private readonly bool _overlayV2TraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_TRACE"), "1", StringComparison.Ordinal);
+    private readonly bool _hookV2StatusTraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_V2_STATUS_TRACE"), "1", StringComparison.Ordinal);
     private readonly bool _hookRoiTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -1274,6 +1276,11 @@ public sealed class PipelineOrchestrator
 
     private void LogHookV2StatusSnapshot(int pid, ulong seq, string phase, uint canvasW, uint canvasH)
     {
+        if (!_hookV2StatusTraceEnabled)
+        {
+            return;
+        }
+
         if (pid <= 0)
         {
             return;
