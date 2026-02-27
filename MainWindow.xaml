@@ -524,6 +524,24 @@
                                              IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
                                              Text="{Binding Settings.Dx11HookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
+                                <Separator Margin="0,8,0,6" />
+                                <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableMirrorFullscreenModeCheck"
+                                          Content="Enable mirror fullscreen mode"
+                                          Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Magpie profile index" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="MagpieProfileIndexBox" Width="80"
+                                             IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
+                                             Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Magpie core path" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="MagpieCorePathBox" Width="240"
+                                             IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
+                                             Text="{Binding Settings.MagpieCorePathText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
                                 <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
                                 <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
@@ -1012,6 +1030,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                     <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,12,0" Text="Run once" VerticalAlignment="Center" />
@@ -1120,6 +1139,18 @@
                                                   IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <CheckBox x:Name="HotkeyUnlockCaptureWindowShift" Content="Shift" Margin="6,0,0,0"
                                                   IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Row="9" Grid.Column="0" Margin="0,6,12,0" Text="Mirror fullscreen toggle" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="9" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleMirrorFullscreenKeyBox" Width="80"
+                                              SelectedItem="{Binding Settings.HotkeyToggleMirrorFullscreenKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <StackPanel Grid.Row="9" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
+                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenCtrl" Content="Ctrl"
+                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenAlt" Content="Alt" Margin="6,0,0,0"
+                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenShift" Content="Shift" Margin="6,0,0,0"
+                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock Text="Note: Win key is not supported." Foreground="DimGray" Margin="0,8,0,0" />

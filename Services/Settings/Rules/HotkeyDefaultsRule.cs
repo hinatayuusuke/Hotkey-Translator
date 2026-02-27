@@ -51,6 +51,18 @@ internal sealed class HotkeyDefaultsRule : ISettingsRule
             changed = true;
         }
 
+        if (string.IsNullOrWhiteSpace(settings.HotkeyToggleMirrorFullscreenKey))
+        {
+            settings.HotkeyToggleMirrorFullscreenKey = "F7";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyToggleMirrorFullscreenModifiers))
+        {
+            settings.HotkeyToggleMirrorFullscreenModifiers = "Control";
+            changed = true;
+        }
+
         if (changed)
         {
             report.Add(RuleId, "Default hotkeys were applied.");

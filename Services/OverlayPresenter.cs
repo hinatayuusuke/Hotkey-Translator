@@ -20,6 +20,7 @@ public sealed class OverlayPresenter
     private Rect? _autoTranslateBadgeAnchorScreenRect;
     private bool _perfLogEnabled;
     private int _perfLogThresholdMs;
+    private Func<Rect, Rect?>? _screenRectMapper;
 
     public event Action? Shown;
     public event Action? Hidden;
@@ -76,8 +77,9 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayUpdate", measureRender: true, () =>
         {
-            _window.SetSmallBoxClipBounds(ToWindowDipRect(_lastSmallBoxClipScreenRect));
-            var converted = ConvertToDip(_lastItems);
+            var mappedClip = MapScreenRect(_lastSmallBoxClipScreenRect, fallbackToOriginal: false);
+            _window.SetSmallBoxClipBounds(ToWindowDipRect(mappedClip));
+            var converted = ConvertToDip(MapItemsForPresentation(_lastItems));
             _window.UpdateItems(converted);
             Updated?.Invoke();
         });
@@ -97,8 +99,9 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayShowLast", measureRender: true, () =>
         {
-            _window.SetSmallBoxClipBounds(ToWindowDipRect(_lastSmallBoxClipScreenRect));
-            var converted = ConvertToDip(_lastItems);
+            var mappedClip = MapScreenRect(_lastSmallBoxClipScreenRect, fallbackToOriginal: false);
+            _window.SetSmallBoxClipBounds(ToWindowDipRect(mappedClip));
+            var converted = ConvertToDip(MapItemsForPresentation(_lastItems));
             _window.UpdateItems(converted);
             Updated?.Invoke();
         });
@@ -123,7 +126,7 @@ public sealed class OverlayPresenter
     {
         InvokeOnUi("OverlayToast", measureRender: false, () =>
         {
-            _window.ShowToast(text, anchor);
+            _window.ShowToast(text, MapScreenRect(anchor) ?? anchor);
         });
     }
 
@@ -136,7 +139,8 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlaySpinnerShow", measureRender: false, () =>
         {
-            var anchorDip = anchor.IsEmpty ? Rect.Empty : DpiHelper.ScreenRectToWindowDip(_window, anchor);
+            var mappedAnchor = MapScreenRect(anchor) ?? anchor;
+            var anchorDip = mappedAnchor.IsEmpty ? Rect.Empty : DpiHelper.ScreenRectToWindowDip(_window, mappedAnchor);
             _window.ShowLoadingSpinner(anchorDip);
         });
     }
@@ -160,7 +164,8 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayAutoBadge", measureRender: false, () =>
         {
-            _window.SetAutoTranslateBadgeVisible(visible, ToWindowDipRect(_autoTranslateBadgeAnchorScreenRect) ?? Rect.Empty);
+            var mappedAnchor = MapScreenRect(_autoTranslateBadgeAnchorScreenRect, fallbackToOriginal: true);
+            _window.SetAutoTranslateBadgeVisible(visible, ToWindowDipRect(mappedAnchor) ?? Rect.Empty);
         });
     }
 
@@ -265,6 +270,63 @@ public sealed class OverlayPresenter
     {
         _perfLogEnabled = enabled;
         _perfLogThresholdMs = Math.Max(0, thresholdMs);
+    }
+
+    public void SetScreenRectMapper(Func<Rect, Rect?>? mapper)
+    {
+        _screenRectMapper = mapper;
+        if (!_isEnabled)
+        {
+            return;
+        }
+
+        ShowLast();
+        SetAutoTranslateBadgeVisible(_autoTranslateBadgeVisible, _autoTranslateBadgeAnchorScreenRect);
+    }
+
+    private IReadOnlyList<OverlayItem> MapItemsForPresentation(IReadOnlyList<OverlayItem> items)
+    {
+        if (_screenRectMapper == null)
+        {
+            return items;
+        }
+
+        var mappedItems = new List<OverlayItem>(items.Count);
+        foreach (var item in items)
+        {
+            var mappedRect = MapScreenRect(item.Rect, fallbackToOriginal: true) ?? item.Rect;
+            var mappedLineHeight = item.LineHeight;
+            if (item.LineHeight > 0 && item.Rect.Height > 0 && mappedRect.Height > 0)
+            {
+                mappedLineHeight *= mappedRect.Height / item.Rect.Height;
+            }
+
+            mappedItems.Add(new OverlayItem(item.Text, mappedRect, item.LineCount, mappedLineHeight));
+        }
+
+        return mappedItems;
+    }
+
+    private Rect? MapScreenRect(Rect sourceRect)
+    {
+        return MapScreenRect(sourceRect, fallbackToOriginal: true);
+    }
+
+    private Rect? MapScreenRect(Rect? sourceRect, bool fallbackToOriginal)
+    {
+        var normalized = NormalizeRect(sourceRect);
+        if (normalized is not { } validSourceRect)
+        {
+            return null;
+        }
+
+        if (_screenRectMapper == null)
+        {
+            return validSourceRect;
+        }
+
+        var mapped = NormalizeRect(_screenRectMapper(validSourceRect));
+        return mapped ?? (fallbackToOriginal ? validSourceRect : null);
     }
 
     private void InvokeOnUi(string label, bool measureRender, Action action)

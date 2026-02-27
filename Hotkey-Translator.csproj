@@ -40,6 +40,10 @@
     <Compile Remove="Doc\**\*" />
     <Page Remove="Doc\**\*" />
     <None Remove="Doc\**\*" />
+    <Compile Remove="Code-Reference\**\*" />
+    <Page Remove="Code-Reference\**\*" />
+    <None Remove="Code-Reference\**\*" />
+    
   </ItemGroup>
 
   <ItemGroup>

@@ -44,6 +44,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
     private readonly Dx11HookClientService _dx11HookClientService;
+    private readonly IMagpieProcessService _magpieProcessService;
+    private readonly IMagpieIpcClient _magpieIpcClient;
+    private readonly MagpieSessionController _magpieSessionController;
     private PhashService? _phashService;
     private CancellationTokenSource? _translationOverlayCts;
     private AppLogger? _logger;
@@ -110,6 +113,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _dx11HookClientService = new Dx11HookClientService(() => _logger);
+        _magpieProcessService = new MagpieProcessService();
+        _magpieIpcClient = new MagpieIpcClient();
+        _magpieSessionController = new MagpieSessionController(
+            _windowBindingService,
+            _magpieProcessService,
+            _magpieIpcClient,
+            () => _logger,
+            AppendLog);
+        _magpieSessionController.ActiveStateChanged += OnMirrorSessionActiveStateChanged;
         _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
         SceneChangeController? sceneChangeController = null;
@@ -163,6 +175,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _overlayPresenter,
             () => _overlayEnabled,
             enabled => _overlayEnabled = enabled,
+            ToggleMirrorFullscreenHotkeyAsync,
             AppendLog);
         sceneChangeController = _sceneChangeController;
         PopulateHotkeyKeyBoxes();
@@ -201,6 +214,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayPresenter.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging,
             settings.OcrPerfLogThresholdMs);
         _overlayPresenter.Show();
+        ApplyMirrorOverlayMapper();
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
@@ -238,7 +252,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window.");
+        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
         _drawerLayoutController.SyncForCurrentState();
     }
 
@@ -248,6 +262,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _previewFrameDispatcher.Dispose();
         _drawerLayoutController.Reset();
         _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
+        _magpieSessionController.ActiveStateChanged -= OnMirrorSessionActiveStateChanged;
         _runCoordinator.Dispose();
         _settingsChangeScheduler.CancelPending();
         _settingsChangeScheduler.Dispose();
@@ -263,6 +278,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _logger?.Error(ex, "Failed to stop DX11 hook client.");
         }
         _dx11HookClientService.Dispose();
+        _magpieSessionController.Dispose();
+        _magpieProcessService.Dispose();
         _hotkeyController.Dispose();
         _uiLogController.Dispose();
         _sceneChangeController.Dispose();
@@ -347,6 +364,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _dx11HookClientService.StopAsync().ConfigureAwait(true);
     }
 
+    private async void OnToggleMirrorFullscreenHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleToggleMirrorFullscreenHotkeyAsync().ConfigureAwait(true);
+    }
+
     private async void OnSelectRoiHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
@@ -413,6 +435,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private async Task RunOnceAsync()
     {
         await RunOnceAsync(ForceRunOptions.None).ConfigureAwait(true);
+    }
+
+    private async Task ToggleMirrorFullscreenHotkeyAsync()
+    {
+        await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
+        var settings = _settingsService.Settings;
+        await _magpieSessionController.ToggleAsync(settings, SaveSettingsImmediatelyAsync).ConfigureAwait(true);
+        // WHY: Mirror toggle may bind foreground window, so keep UI hotkey/settings panes in sync.
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+        UpdateAutoTranslateBadgeVisibility(settings);
     }
 
     private async Task RunOnceAsync(ForceRunOptions options)
@@ -745,6 +777,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateAutoTranslateBadgeVisibility(settings);
         UpdateRoiStatus(settings);
         UpdateTranslationStatus(settings);
+        _magpieSessionController.ApplySettings(settings);
+        ApplyMirrorOverlayMapper();
         _ = _dx11HookClientService.ApplySettingsAsync(settings);
     }
 
@@ -760,6 +794,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         HotkeySelectRoiKeyBox.ItemsSource = keys;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
         HotkeyUnlockCaptureWindowKeyBox.ItemsSource = keys;
+        HotkeyToggleMirrorFullscreenKeyBox.ItemsSource = keys;
     }
 
     private static IReadOnlyList<string> BuildHotkeyKeyOptions()
@@ -810,7 +845,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                       $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
-                      $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}.");
+                      $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}, " +
+                      $"Mirror={FormatHotkey(config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers)}.");
         }
         else
         {
@@ -839,7 +875,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             new("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7,
                 OnLockCaptureWindowHotkeyPressed),
             new("UnlockWindow", config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, 8,
-                OnUnlockCaptureWindowHotkeyPressed)
+                OnUnlockCaptureWindowHotkeyPressed),
+            new("MirrorFullscreen", config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers, 10,
+                OnToggleMirrorFullscreenHotkeyPressed)
         };
     }
 
@@ -863,7 +901,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
             ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
             ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F7),
-            ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers));
+            ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers),
+            ParseKey(settings.HotkeyToggleMirrorFullscreenKey, Key.F7),
+            ParseModifiers(settings.HotkeyToggleMirrorFullscreenModifiers));
     }
 
     private static Key ParseKey(string value, Key fallback)
@@ -919,6 +959,30 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _sceneChangeController.OnOverlayUpdated();
         UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
+    }
+
+    private void OnMirrorSessionActiveStateChanged(bool _)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(ApplyMirrorOverlayMapper);
+            return;
+        }
+
+        ApplyMirrorOverlayMapper();
+    }
+
+    private void ApplyMirrorOverlayMapper()
+    {
+        if (_overlayPresenter == null)
+        {
+            return;
+        }
+
+        _overlayPresenter.SetScreenRectMapper(
+            _magpieSessionController.IsActive
+                ? _magpieSessionController.MapScreenRect
+                : null);
     }
 
     private void InitializeAutoHideWatcher(AppSettings settings) => _sceneChangeController.Initialize(settings);
@@ -1029,7 +1093,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         Key LockCaptureWindowKey,
         ModifierKeys LockCaptureWindowModifiers,
         Key UnlockCaptureWindowKey,
-        ModifierKeys UnlockCaptureWindowModifiers)
+        ModifierKeys UnlockCaptureWindowModifiers,
+        Key ToggleMirrorFullscreenKey,
+        ModifierKeys ToggleMirrorFullscreenModifiers)
     {
         public readonly IEnumerable<(string Name, Key Key, ModifierKeys Modifiers)> GetBindings()
         {
@@ -1042,6 +1108,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
             yield return ("Unlock window", UnlockCaptureWindowKey, UnlockCaptureWindowModifiers);
+            yield return ("Mirror fullscreen", ToggleMirrorFullscreenKey, ToggleMirrorFullscreenModifiers);
         }
 
         public static HotkeyConfig Default => new(
@@ -1062,7 +1129,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             Key.F7,
             ModifierKeys.None,
             Key.F7,
-            ModifierKeys.Shift);
+            ModifierKeys.Shift,
+            Key.F7,
+            ModifierKeys.Control);
     }
 }
 

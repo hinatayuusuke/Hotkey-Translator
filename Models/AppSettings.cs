@@ -84,6 +84,9 @@ public sealed class AppSettings
     public bool Dx11HookFallbackOnError { get; set; } = true;
     public string Dx11HookHostPath { get; set; } = "Native\\HookHost\\bin\\HookHost.exe";
     public string Dx11HookPipeName { get; set; } = "hotkey_translator_hook";
+    public bool EnableMirrorFullscreenMode { get; set; } = false;
+    public int MagpieProfileIndex { get; set; } = 0;
+    public string MagpieCorePath { get; set; } = "Tools\\Magpie\\Magpie.Core.exe";
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
     public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
@@ -217,6 +220,8 @@ public sealed class AppSettings
     public string HotkeyLockCaptureWindowModifiers { get; set; } = "None";
     public string HotkeyUnlockCaptureWindowKey { get; set; } = "F7";
     public string HotkeyUnlockCaptureWindowModifiers { get; set; } = "Shift";
+    public string HotkeyToggleMirrorFullscreenKey { get; set; } = "F7";
+    public string HotkeyToggleMirrorFullscreenModifiers { get; set; } = "Control";
     public string SourceLanguage { get; set; } = "en";
     public string TargetLanguage { get; set; } = "ja";
     public string StyleId { get; set; } = "default";

@@ -23,6 +23,7 @@ internal sealed class HotkeyCommandController
     private readonly Func<OverlayPresenter?> _overlayPresenterAccessor;
     private readonly Func<bool> _overlayEnabledAccessor;
     private readonly Action<bool> _setOverlayEnabled;
+    private readonly Func<Task> _toggleMirrorFullscreenAsync;
     private readonly Action<string> _appendLog;
 
     public HotkeyCommandController(
@@ -42,6 +43,7 @@ internal sealed class HotkeyCommandController
         Func<OverlayPresenter?> overlayPresenterAccessor,
         Func<bool> overlayEnabledAccessor,
         Action<bool> setOverlayEnabled,
+        Func<Task> toggleMirrorFullscreenAsync,
         Action<string> appendLog)
     {
         _hasRunOnce = hasRunOnce;
@@ -60,6 +62,7 @@ internal sealed class HotkeyCommandController
         _overlayPresenterAccessor = overlayPresenterAccessor;
         _overlayEnabledAccessor = overlayEnabledAccessor;
         _setOverlayEnabled = setOverlayEnabled;
+        _toggleMirrorFullscreenAsync = toggleMirrorFullscreenAsync;
         _appendLog = appendLog;
     }
 
@@ -191,6 +194,11 @@ internal sealed class HotkeyCommandController
         _setOverlayEnabled(nextEnabled);
         overlayPresenter.SetEnabled(nextEnabled);
         _appendLog(nextEnabled ? "Overlay shown." : "Overlay hidden.");
+    }
+
+    public Task HandleToggleMirrorFullscreenHotkeyAsync()
+    {
+        return _toggleMirrorFullscreenAsync();
     }
 
     private void EnsureTranslatedOverlayForRunHotkeys()

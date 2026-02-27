@@ -19,7 +19,8 @@ internal sealed class AppSettingsValidator
             new PaddleOcrSettingsRule(),
             new NdlOcrSettingsRule(),
             new LlamaHostSettingsRule(),
-            new Dx11HookSettingsRule()
+            new Dx11HookSettingsRule(),
+            new MirrorModeSettingsRule()
         };
     }
 

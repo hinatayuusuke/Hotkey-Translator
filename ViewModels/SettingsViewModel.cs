@@ -19,6 +19,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         "ru"
     };
     private bool _suspendSceneModeSync;
+    private bool _suspendMirrorModeSync;
     private bool _suspendAutoSave;
 
     public SettingsViewModel(ISettingsChangeScheduler changeScheduler)
@@ -74,6 +75,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
     [ObservableProperty] private bool _enableDx11HookPipeline;
+    [ObservableProperty] private bool _enableMirrorFullscreenMode;
     [ObservableProperty] private bool _dx11HookOverlayEnabled;
     [ObservableProperty] private bool _dx11HookFallbackOnError;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
@@ -83,6 +85,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
     [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
     [ObservableProperty] private string _dx11HookCaptureFpsLimitText = string.Empty;
+    [ObservableProperty] private string _magpieProfileIndexText = string.Empty;
+    [ObservableProperty] private string _magpieCorePathText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetUnclipRatioText = string.Empty;
@@ -141,6 +145,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowCtrl;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowAlt;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift = true;
+    [ObservableProperty] private string _hotkeyToggleMirrorFullscreenKey = "F7";
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl = true;
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenAlt;
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift;
 
     public void LoadFrom(AppSettings settings)
     {
@@ -190,6 +198,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
             EnableDx11HookPipeline = settings.EnableDx11HookPipeline;
+            EnableMirrorFullscreenMode = settings.EnableMirrorFullscreenMode;
             Dx11HookOverlayEnabled = settings.Dx11HookOverlayEnabled;
             Dx11HookFallbackOnError = settings.Dx11HookFallbackOnError;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
@@ -199,6 +208,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
             SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
             Dx11HookCaptureFpsLimitText = settings.Dx11HookCaptureFpsLimit.ToString();
+            MagpieProfileIndexText = settings.MagpieProfileIndex.ToString();
+            MagpieCorePathText = settings.MagpieCorePath;
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
             PaddleTextDetUnclipRatioText = settings.PaddleTextDetUnclipRatio.ToString("0.###");
@@ -298,6 +309,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
         settings.EnableDx11HookPipeline = EnableDx11HookPipeline;
+        settings.EnableMirrorFullscreenMode = EnableMirrorFullscreenMode;
         settings.Dx11HookOverlayEnabled = Dx11HookOverlayEnabled;
         settings.Dx11HookFallbackOnError = Dx11HookFallbackOnError;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
@@ -319,6 +331,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
         {
             settings.Dx11HookCaptureFpsLimit = hookCaptureFpsLimit;
         }
+
+        if (string.IsNullOrWhiteSpace(MagpieProfileIndexText))
+        {
+            settings.MagpieProfileIndex = 0;
+        }
+        else if (int.TryParse(MagpieProfileIndexText.Trim(), out var magpieProfileIndex))
+        {
+            settings.MagpieProfileIndex = magpieProfileIndex;
+        }
+
+        settings.MagpieCorePath = (MagpieCorePathText ?? string.Empty).Trim();
         if (int.TryParse(PhashThresholdText.Trim(), out var phashThreshold))
         {
             settings.PhashThreshold = phashThreshold;
@@ -578,11 +601,63 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyUnlockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleMirrorFullscreenKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleMirrorFullscreenCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleMirrorFullscreenAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnEnableDx11HookPipelineChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableDx11HookPipelineChanged(bool value)
+    {
+        if (_suspendMirrorModeSync)
+        {
+            RequestSaveOnValueChange();
+            return;
+        }
+
+        if (value && EnableMirrorFullscreenMode)
+        {
+            _suspendMirrorModeSync = true;
+            try
+            {
+                EnableMirrorFullscreenMode = false;
+            }
+            finally
+            {
+                _suspendMirrorModeSync = false;
+            }
+        }
+
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnEnableMirrorFullscreenModeChanged(bool value)
+    {
+        if (_suspendMirrorModeSync)
+        {
+            RequestSaveOnValueChange();
+            return;
+        }
+
+        if (value && EnableDx11HookPipeline)
+        {
+            _suspendMirrorModeSync = true;
+            try
+            {
+                EnableDx11HookPipeline = false;
+            }
+            finally
+            {
+                _suspendMirrorModeSync = false;
+            }
+        }
+
+        RequestSaveOnValueChange();
+    }
     partial void OnDx11HookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
     partial void OnDx11HookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
     partial void OnDx11HookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnMagpieCorePathTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
     partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();
@@ -694,6 +769,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
         HotkeyUnlockCaptureWindowCtrl = unlockWindowCtrl;
         HotkeyUnlockCaptureWindowAlt = unlockWindowAlt;
         HotkeyUnlockCaptureWindowShift = unlockWindowShift;
+
+        HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(settings.HotkeyToggleMirrorFullscreenKey, "F7");
+        AssignHotkeyModifiers(settings.HotkeyToggleMirrorFullscreenModifiers, out var toggleMirrorCtrl, out var toggleMirrorAlt,
+            out var toggleMirrorShift);
+        HotkeyToggleMirrorFullscreenCtrl = toggleMirrorCtrl;
+        HotkeyToggleMirrorFullscreenAlt = toggleMirrorAlt;
+        HotkeyToggleMirrorFullscreenShift = toggleMirrorShift;
     }
 
     private void ApplyHotkeySettings(AppSettings settings)
@@ -723,6 +805,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(HotkeyUnlockCaptureWindowKey, "F7");
         settings.HotkeyUnlockCaptureWindowModifiers =
             BuildHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
+        settings.HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(HotkeyToggleMirrorFullscreenKey, "F7");
+        settings.HotkeyToggleMirrorFullscreenModifiers =
+            BuildHotkeyModifiers(HotkeyToggleMirrorFullscreenCtrl, HotkeyToggleMirrorFullscreenAlt, HotkeyToggleMirrorFullscreenShift);
     }
 
     private static void AssignHotkeyModifiers(string modifiers, out bool ctrl, out bool alt, out bool shift)

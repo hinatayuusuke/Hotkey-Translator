@@ -13781,3 +13781,166 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、  warning / 0 error を確認。
+
+**2026-02-27 21:06 (Asia/Taipei) — MagpieCore外部連携MVP計画書の作成と実行資産配置**
+
+### Summary
+- `Magpie.Core.exe` を `Tools/Magpie/` に配置し、LunaTranslator方式を参考にした外部連携MVPの実装計画書を `Doc/` に作成した。
+
+### Context / Goal
+- 目的は Window ゲームをミラーフルスクリーン化した上で、既存 OCR・翻訳オーバーレイを連携すること。
+- WPFミラー方式では性能と入力面で限界があるため、`Magpie.Core.exe` の外部連携方式へ移行するための実装案が必要だった。
+
+### Changes
+- `HIllya51/Magpie` の `magpie.zip` から `Magpie.Core.exe` を取得し、`Tools/Magpie/Magpie.Core.exe` に配置。
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` を新規作成。
+- 計画書にはゴール/非ゴール、アーキテクチャ、IPC設計、段階実装、リスク、DoDを明記。
+
+### Files Touched
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` — MagpieCore外部連携MVPの詳細実装案を新規追加。
+- `Tools/Magpie/Magpie.Core.exe` — 実行資産として配置（Git管理対象外設定のためステータスには出ない）。
+
+### Behavioral Impact
+- コード動作は未変更（ドキュメント追加と実行資産配置のみ）。
+
+### Risk & Mitigation
+- Risk: `Magpie.Core.exe` 単体では依存ファイル不足で起動失敗する可能性。
+- Mitigation: 計画書に依存ファイル同梱チェック（manifest検証）を明記し、Step 1 で先に実行確認する。
+
+### Tests / Verification
+- `Tools/Magpie/Magpie.Core.exe` のファイル配置を確認。
+- 計画書の先頭内容を `Get-Content -Encoding UTF8` で確認。
+
+**2026-02-27 21:12 (Asia/Taipei) — ロールバックブランチ前提でMagpieCore実装計画を再調整**
+
+### Summary
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` を、現ブランチ（ミラー未導入）前提に全面更新した。
+
+### Context / Goal
+- ユーザーから「自前ミラー実装以前にロールバック済み」の前提が提示された。
+- 既存にミラー設定/ホットキー土台がある想定は不整合のため、計画をゼロベース追加手順へ修正する必要があった。
+
+### Changes
+- 計画タイトルに `Rollback Branch Baseline` を明記。
+- 既存前提の誤記（ミラー土台がある想定）を削除し、「新規追加が必要」に統一。
+- 実装手順を再構成し、`AppSettings/SettingsViewModel/MainWindow` へのミラー設定・ホットキー追加を Step 2 に明示。
+- `F7/Shift+F7` 維持、`Ctrl+F7` 新規追加、Hook排他（ミラー優先）を仕様として固定。
+- 影響範囲・DoDを現ブランチ実態に合わせて更新。
+
+### Files Touched
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` — ロールバック前提へ整合するよう全面改訂。
+
+### Behavioral Impact
+- ドキュメント更新のみ。実行時挙動への直接影響なし。
+
+### Risk & Mitigation
+- Risk: ブランチ差分により将来の実装対象が再変動する可能性。
+- Mitigation: 現ブランチの `AppSettings/MainWindow/SettingsViewModel` 実体を参照した内容に固定し、実装時に再差分確認を前提化。
+
+### Tests / Verification
+- `Get-Content -Encoding UTF8 Doc\MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` で内容反映を確認。
+- `rg` で現ブランチにミラー設定/ホットキー土台がないことを確認した上で文面整合を確認。
+
+**2026-02-27 21:15 (Asia/Taipei) — MagpieCore計画書にUI排他の即時反映仕様を明記**
+
+### Summary
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` に、UI操作時の Mirror/Hook 排他挙動（片方ONで片方OFF）を明記した。
+
+### Context / Goal
+- ユーザー要求として、排他は設定正規化だけでなく UI 操作時にも即時反映される仕様を文書化する必要があった。
+
+### Changes
+- 前提・仮定に「確認ダイアログ無しで即時排他」の具体ルールを追加。
+- Step 2 に UI 操作時の排他適用（Mirror ON -> Hook OFF / Hook ON -> Mirror OFF）を追加。
+- DoD に UI排他の即時反映確認項目を追加。
+
+### Files Touched
+- `Doc/MagpieCore_External_MirrorFullscreen_OcrOverlay_Implementation_Plan.md` — UI排他の即時反映仕様を追記。
+
+### Behavioral Impact
+- ドキュメント更新のみ。実行時挙動への直接影響なし。
+
+### Risk & Mitigation
+- Risk: 実装時にUI排他と保存時正規化の順序がずれる可能性。
+- Mitigation: Step 2 と DoD に即時排他確認を明記し、実装と検証観点を固定。
+
+### Tests / Verification
+- ドキュメント差分を確認し、前提/Step2/DoD の3箇所に排他即時反映が記載されたことを確認。
+**2026-02-27 21:38 (Asia/Taipei) — Magpie外部ミラーフルスクリーンMVP実装（Ctrl+F7 + 設定/UI + 座標マッピング）**
+
+### Summary
+- Magpie.Core 外部連携のミラー表示トグル、設定UI、ホットキー、Overlay座標マッピングを実装した。
+
+### Context / Goal
+- Window固定ゲームを Magpie でミラーフルスクリーン表示し、既存OCR/翻訳オーバーレイを継続利用する。
+- Ctrl+F7 で開始/停止、Mirror/Hook 排他（Mirror優先）を設定段階で一貫適用する。
+
+### Changes
+- AppSettings に Mirror 設定と Mirror トグルホットキー設定を追加。
+- SettingsViewModel と MainWindow.xaml に Mirror 設定UI（有効化、profile index、core path）と hotkey UI 行を追加。
+- SettingsViewModel に Mirror/Hook 即時排他ロジックを追加（Mirror ON -> Hook OFF、Hook ON -> Mirror OFF）。
+- HotkeyDefaultsRule と新規 MirrorModeSettingsRule を追加し、設定正規化でも Mirror優先排他を保証。
+- MainWindow.xaml.cs に Ctrl+F7 登録・実行経路、Mirror hotkey 表示文言、設定反映時のMirror状態同期を追加。
+- 新規 MagpieProcessService / MagpieIpcClient / MagpieSessionController を実装し、Start/Stop/Exit と座標マッピング状態を管理。
+- OverlayPresenter に screen rect mapper 注入機能を追加し、Mirror有効時は source座標を monitor座標へ変換して描画。
+- WindowBindingService に target HWND の client screen rect 取得APIを追加。
+
+### Files Touched
+- Models/AppSettings.cs — Mirror設定・Mirror hotkey設定を追加。
+- ViewModels/SettingsViewModel.cs — Mirror設定バインド、hotkeyバインド、Mirror/Hook即時排他、保存適用を追加。
+- MainWindow.xaml — Mirror設定UIと Mirror hotkey UI 行を追加。
+- MainWindow.xaml.cs — Mirror session配線、Ctrl+F7 hotkey登録、overlay mapper適用、終了処理を追加。
+- Services/Application/HotkeyCommandController.cs — Mirrorトグルコマンド経路を追加。
+- Services/Application/MagpieProcessService.cs — Magpie.Core プロセス起動/停止を実装（新規）。
+- Services/Application/MagpieIpcClient.cs — Magpie CLI message 送信を実装（新規）。
+- Services/Application/MagpieSessionController.cs — Mirrorセッション制御と座標マッピングを実装（新規）。
+- Services/OverlayPresenter.cs — mapper経由の矩形変換描画を追加。
+- Services/WindowBindingService.cs — client rect取得公開メソッドを追加。
+- Services/Settings/AppSettingsValidator.cs — MirrorModeSettingsRule を検証ルールへ追加。
+- Services/Settings/Rules/HotkeyDefaultsRule.cs — Mirror hotkey 既定値を追加。
+- Services/Settings/Rules/MirrorModeSettingsRule.cs — Mirror設定正規化とHook排他を実装（新規）。
+
+### Behavioral Impact
+- Mirror設定有効時に Ctrl+F7 で Magpie ミラー開始/停止できる。
+- MirrorとDX11 Hookは排他になり、設定/UIのどちらからでもMirror優先で正規化される。
+- Mirrorセッション有効中は WPF overlay が monitor座標へマッピングされ、ミラー画面上に重畳される。
+
+### Risk & Mitigation
+- Risk: Tools/Magpie/config.json や依存ファイル不足で起動失敗する。
+- Mitigation: 起動前チェックと失敗理由ログを追加し、UIログへも失敗理由を表示。
+- Risk: Magpie IPC window/message 未取得で開始失敗する。
+- Mitigation: core window待機タイムアウトと IPC 失敗ログを追加し、失敗時はプロセス回収する。
+- Risk: source/monitor bounds 解決失敗時に座標マッピングが無効化される。
+- Mitigation: mapping refresh 失敗ログを追加し、mapperは安全に null フォールバックする。
+
+### Tests / Verification
+- dotnet build -v minimal を実行（失敗）。
+  - 失敗理由: 既存の Code-Reference/Magpie/src/Magpie/*.xaml が WPF プロジェクト入力に混在し、XAMLコンパイルエラー（本変更外）。
+- dotnet msbuild Hotkey-Translator.csproj /t:Compile /p:DesignTimeBuild=true /v:minimal を実行（完了、Code-Reference 由来の警告あり）。
+**2026-02-27 21:57 (Asia/Taipei) — Magpie config.json 初期作成（推奨テンプレート適用）**
+
+### Summary
+- Tools/Magpie/config.json を既知動作テンプレートから作成した。
+
+### Context / Goal
+- Magpie 外部連携の起動要件として Magpie.Core.exe と同階層の config.json が必要。
+- 初期は安定優先で、参照実装（LunaTranslator）の実績ある設定を適用する。
+
+### Changes
+- Code-Reference/lunatranslator/LunaTranslator/defaultconfig/Magpie/config.json を Tools/Magpie/config.json としてコピー。
+- 既存ファイルがある場合は上書きして整合性を確保。
+
+### Files Touched
+- Tools/Magpie/config.json — 既知動作テンプレートを新規配置。
+
+### Behavioral Impact
+- Mirror fullscreen 開始時に Magpie 設定ファイル欠如で失敗する経路を解消。
+- MagpieProfileIndex=0 を前提に既定 profiles[0] を利用可能。
+
+### Risk & Mitigation
+- Risk: テンプレート由来のローカライズ/ショートカット値が環境に合わない可能性。
+- Mitigation: 最初は起動確認を優先し、必要に応じて language や profiles を後続で調整する。
+
+### Tests / Verification
+- Get-Content -Encoding UTF8 Tools\Magpie\config.json で内容を確認。
+- Get-Item Tools\Magpie\config.json で配置先とファイルサイズを確認。

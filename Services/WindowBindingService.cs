@@ -52,6 +52,11 @@ public sealed class WindowBindingService
         settings.FixedCaptureWindowTitle = string.Empty;
     }
 
+    public bool TryGetWindowClientScreenRect(IntPtr hwnd, out System.Windows.Rect rect)
+    {
+        return TryGetClientScreenRect(hwnd, out rect);
+    }
+
     public bool TryResolveWindowHandle(AppSettings settings, out IntPtr hwnd, out string? reason)
     {
         hwnd = IntPtr.Zero;

@@ -15,7 +15,7 @@ install_manifest.txt
 *.cmake
 
 # --- コンパイル済みバイナリ・ライブラリ ---
-*.exe
+
 *.out
 *.app
 *.o
@@ -48,7 +48,7 @@ Thumbs.db
 .serena/
 .testpicture/
 .TransTest/
-TranslationServiceLlama/LlamaCpp/
+TranslationServiceLlama/LlamaCpp/models/
 # dotenv files
 .env
 TranslationService/models/
@@ -60,7 +60,7 @@ ocr_pb2.py
 ocr_pb2_grpc.py
 .testpic
 OcrServiceNDL/reference/
-
+Code-Reference/
 
 # User-specific files
 *.rsuser
