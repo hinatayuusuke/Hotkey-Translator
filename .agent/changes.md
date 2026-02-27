@@ -14366,3 +14366,32 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。
+**2026-02-28 02:13 (Asia/Taipei) — ROI調査ログをデフォルトOFF化（HT_HOOK_ROI_TRACE）**
+
+### Summary
+- ROI調査ログを常時出力からフラグ制御へ変更し、通常運用時のログノイズを削減した。
+
+### Context / Goal
+- ROI枠問題の切り分け用に追加したログが高頻度で出力され、通常運用の可読性を下げていた。
+- 必要時のみ詳細ログを出せるようにする必要があった。
+
+### Changes
+- `PipelineOrchestrator` に `HT_HOOK_ROI_TRACE` フラグを追加。
+- `UpdateHookRoiPreview` の `update/skip/republish_attempt` ログをフラグ有効時のみ出力するよう変更。
+- `MainWindow` に `HT_HOOK_ROI_TRACE` フラグを追加。
+- ROI selector の `selector_start/selector_move/selector_end` ログをフラグ有効時のみ出力するよう変更。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — ROI調査ログの出力を `HT_HOOK_ROI_TRACE=1` 条件に変更。
+- `MainWindow.xaml.cs` — ROI selector 調査ログの出力を `HT_HOOK_ROI_TRACE=1` 条件に変更。
+
+### Behavioral Impact
+- デフォルトではROI調査ログが出なくなる。
+- `HT_HOOK_ROI_TRACE=1` を設定した場合のみ、従来の詳細ROIログが出力される。
+
+### Risk & Mitigation
+- Risk: デフォルトで詳細ログが減り、再発時の情報取得が遅れる可能性。
+- Mitigation: 既存の環境変数方式に合わせ、再現時に `HT_HOOK_ROI_TRACE=1` で即時再有効化できるようにした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln` を実行し、0 warnings / 0 errors を確認。

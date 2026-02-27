@@ -54,6 +54,8 @@ public sealed class PipelineOrchestrator
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_WRITE_DEBUG"), "1", StringComparison.Ordinal);
     private readonly bool _overlayV2TraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_OVL_TRACE"), "1", StringComparison.Ordinal);
+    private readonly bool _hookRoiTraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly object _hookRoiPreviewSync = new();
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
@@ -444,9 +446,12 @@ public sealed class PipelineOrchestrator
     public void UpdateHookRoiPreview(Rect? roiRectScreen)
     {
         var hasRect = roiRectScreen is { } rect && !rect.IsEmpty;
-        _logger.Info(
-            $"stage=hook_roi_preview event=update hasRect={(hasRect ? 1 : 0)} " +
-            $"provider={_lastCaptureProviderKind?.ToString() ?? "none"}.");
+        if (_hookRoiTraceEnabled)
+        {
+            _logger.Info(
+                $"stage=hook_roi_preview event=update hasRect={(hasRect ? 1 : 0)} " +
+                $"provider={_lastCaptureProviderKind?.ToString() ?? "none"}.");
+        }
 
         lock (_hookRoiPreviewSync)
         {
@@ -455,7 +460,10 @@ public sealed class PipelineOrchestrator
 
         if (!_gate.Wait(0))
         {
-            _logger.Info("stage=hook_roi_preview event=skip reason=gate_busy.");
+            if (_hookRoiTraceEnabled)
+            {
+                _logger.Info("stage=hook_roi_preview event=skip reason=gate_busy.");
+            }
             return;
         }
 
@@ -464,7 +472,10 @@ public sealed class PipelineOrchestrator
             var settings = _settingsService.Settings;
             if (!ShouldAllowHookRoiPreview(settings))
             {
-                _logger.Info("stage=hook_roi_preview event=skip reason=hook_preview_disabled.");
+                if (_hookRoiTraceEnabled)
+                {
+                    _logger.Info("stage=hook_roi_preview event=skip reason=hook_preview_disabled.");
+                }
                 return;
             }
 
@@ -476,8 +487,11 @@ public sealed class PipelineOrchestrator
                     _lastOverlayRoiScreen,
                     settings,
                     _overlayTextMode);
-            _logger.Info(
-                $"stage=hook_roi_preview event=republish_attempt hasRect={(hasRect ? 1 : 0)} overlayItems={overlayItems.Count}.");
+            if (_hookRoiTraceEnabled)
+            {
+                _logger.Info(
+                    $"stage=hook_roi_preview event=republish_attempt hasRect={(hasRect ? 1 : 0)} overlayItems={overlayItems.Count}.");
+            }
             _ = TryRepublishDx11HookOverlayFromCachedFrame(overlayItems, settings, "roi_preview_update", out _);
         }
         finally

@@ -65,6 +65,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
+    private readonly bool _hookRoiTraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
     private const int OverlayBaselineDelayMs = 150;
     private const int LogFlushIntervalMs = 150;
     private const int MaxLogLines = 1000;
@@ -672,8 +674,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var roiEnabledAtStart = settings.EnableRoi;
             var bounds = _captureManager.GetCaptureBounds(settings);
             var selector = new RoiSelectorWindow(bounds);
-            _logger?.Info(
-                $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
+            if (_hookRoiTraceEnabled)
+            {
+                _logger?.Info(
+                    $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
+            }
             // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
             // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
             var lastPreviewLogTick = 0L;
@@ -686,7 +691,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 var shouldLog = !hasRect ||
                                 now - lastPreviewLogTick >= 120 ||
                                 (hasRect && (!lastLoggedRect.HasValue || lastLoggedRect.Value != previewRect!.Value));
-                if (!shouldLog)
+                if (!_hookRoiTraceEnabled || !shouldLog)
                 {
                     return;
                 }
@@ -711,9 +716,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _pipeline?.UpdateHookRoiPreview(null);
             var result = selector.ShowDialog();
             selector.PreviewRectChanged -= OnPreviewRectChanged;
-            _logger?.Info(
-                $"stage=hook_roi_preview event=selector_end result={(result == true ? "confirm" : "cancel")} " +
-                $"selected={(selector.SelectedRect.HasValue ? 1 : 0)}.");
+            if (_hookRoiTraceEnabled)
+            {
+                _logger?.Info(
+                    $"stage=hook_roi_preview event=selector_end result={(result == true ? "confirm" : "cancel")} " +
+                    $"selected={(selector.SelectedRect.HasValue ? 1 : 0)}.");
+            }
             if (result == true && selector.SelectedRect is { } rect)
             {
                 settings.Roi = SerializableRect.FromRect(rect);
