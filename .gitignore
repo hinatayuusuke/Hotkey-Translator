@@ -15,6 +15,7 @@ install_manifest.txt
 *.cmake
 
 # --- コンパイル済みバイナリ・ライブラリ ---
+*.onnx
 *.exe
 *.dll
 *.out
