@@ -15,7 +15,8 @@ install_manifest.txt
 *.cmake
 
 # --- コンパイル済みバイナリ・ライブラリ ---
-
+*.exe
+*.dll
 *.out
 *.app
 *.o
