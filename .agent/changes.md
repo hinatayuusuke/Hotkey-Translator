@@ -14731,3 +14731,30 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -v minimal /p:UseAppHost=false を実行し、0 warnings / 0 errors を確認。
+**2026-03-01 00:28 (Asia/Taipei) — Set capture cooldown default to 0.5s**
+
+### Summary
+- Capture provider cooldown を double 化し、既定値を  .5 秒へ変更した。
+
+### Context / Goal
+- クールダウンを 1 秒未満（0.5秒）に設定したい要件がある。
+- 現行実装は int と 1秒下限のため、0.5秒を保持できない。
+
+### Changes
+- AppSettings.ProviderCooldownSeconds を int から double へ変更し、既定値を  .5 に変更。
+- クールダウン計算の下限を Math.Max(1, ...) から Math.Max(0.05, ...) に変更。
+
+### Files Touched
+- Models/AppSettings.cs — ProviderCooldownSeconds を double 化し既定値を  .5 に変更。
+- Services/Capture/DefaultCapturePolicy.cs — クールダウン計算を double 秒対応に変更。
+
+### Behavioral Impact
+- ProviderCooldownSeconds=0.5 の設定が有効になり、キャプチャ再試行待ち時間を短縮できる。
+- 既存の整数設定値（例: 1, 3）もそのまま動作する。
+
+### Risk & Mitigation
+- Risk: 低すぎる値により失敗再試行頻度が上がり、ログノイズ/負荷が増える可能性。
+- Mitigation: 下限ガード  .05 秒を維持し、必要に応じて設定値を戻せる。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false を実行し、0 warnings / 0 errors を確認。

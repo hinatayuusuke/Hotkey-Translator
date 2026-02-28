@@ -49,7 +49,7 @@ public sealed class AppSettings
     public double BlackLumaThreshold { get; set; } = 16.0;
     public double BlackVarianceThreshold { get; set; } = 8.0;
     public int BlackSampleStride { get; set; } = 8;
-    public int ProviderCooldownSeconds { get; set; } = 3;
+    public double ProviderCooldownSeconds { get; set; } = 0.5;
     public int PhashThreshold { get; set; } = 4;
     public double OcrIouThreshold { get; set; } = 0.85;
     public bool EnableOcrBinarization { get; set; } = false;

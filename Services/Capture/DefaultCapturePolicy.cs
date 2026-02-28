@@ -44,7 +44,7 @@ internal sealed class DefaultCapturePolicy : ICapturePolicy
 
     public DateTimeOffset ResolveCooldownUntil(DateTimeOffset now, AppSettings settings)
     {
-        return now.AddSeconds(Math.Max(1, settings.ProviderCooldownSeconds));
+        return now.AddSeconds(Math.Max(0.05, settings.ProviderCooldownSeconds));
     }
 
     private static bool IsDxgiWaitTimeout(string? error)
