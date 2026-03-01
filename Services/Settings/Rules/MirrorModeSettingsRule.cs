@@ -4,8 +4,6 @@ namespace Hotkey_Translator.Services.Settings.Rules;
 
 internal sealed class MirrorModeSettingsRule : ISettingsRule
 {
-    private const string DefaultMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
-
     public string RuleId => "mirror_mode_settings";
 
     public bool Apply(AppSettings settings, SettingsValidationReport report)
@@ -14,21 +12,6 @@ internal sealed class MirrorModeSettingsRule : ISettingsRule
 
         changed |= SettingsRuleHelpers.ClampSetting(settings.MagpieProfileIndex, 0, 99, 0, out var profileIndex);
         settings.MagpieProfileIndex = profileIndex;
-
-        if (string.IsNullOrWhiteSpace(settings.MagpieCorePath))
-        {
-            settings.MagpieCorePath = DefaultMagpieCoreRelativePath;
-            changed = true;
-        }
-        else
-        {
-            var normalizedPath = settings.MagpieCorePath.Trim();
-            if (!string.Equals(normalizedPath, settings.MagpieCorePath, System.StringComparison.Ordinal))
-            {
-                settings.MagpieCorePath = normalizedPath;
-                changed = true;
-            }
-        }
 
         if (settings.EnableMirrorFullscreenMode && settings.EnableDx11HookPipeline)
         {
@@ -41,7 +24,7 @@ internal sealed class MirrorModeSettingsRule : ISettingsRule
         {
             report.Add(
                 RuleId,
-                $"Normalized mirror settings: enabled={settings.EnableMirrorFullscreenMode}, profile={settings.MagpieProfileIndex}, core=\"{settings.MagpieCorePath}\".");
+                $"Normalized mirror settings: enabled={settings.EnableMirrorFullscreenMode}, profile={settings.MagpieProfileIndex}.");
         }
 
         return changed;

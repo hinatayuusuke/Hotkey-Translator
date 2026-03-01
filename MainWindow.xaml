@@ -881,12 +881,10 @@
                                                IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
                                                Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Magpie core path" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="MagpieCorePathBox" Width="240"
-                                               IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
-                                               Text="{Binding Settings.MagpieCorePathText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                  </StackPanel>
+                                  <TextBlock Text="Magpie core path: Tools\Magpie\Magpie.Core.exe (app relative)"
+                                             Margin="0,6,0,0"
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap" />
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelTranslation"

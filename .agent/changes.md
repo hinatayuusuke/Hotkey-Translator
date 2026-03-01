@@ -14989,3 +14989,37 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+**2026-03-02 02:10 (Asia/Taipei) — Remove configurable Magpie path and fix to Tools\Magpie**
+
+### Summary
+- Magpie core path の設定項目を廃止し、`Tools\\Magpie\\Magpie.Core.exe` 固定参照へ統一した。
+
+### Context / Goal
+- 未リリース前提で互換性より運用の単純性を優先。
+- ミラーモードの起動パスを設定値依存から排除し、配布構成と実装を一致させる。
+
+### Changes
+- `AppSettings` から `MagpieCorePath` を削除。
+- `MagpieSessionController` は固定相対 `Tools\\Magpie\\Magpie.Core.exe` を `AppContext.BaseDirectory` 基準で解決するよう変更。
+- `MirrorModeSettingsRule` から `MagpieCorePath` 正規化処理を削除し、ミラー設定の正規化対象を簡素化。
+- `SettingsViewModel` から `MagpieCorePathText` の読み書き・保存トリガを削除。
+- `MainWindow.xaml` の Magpie パス入力UIを削除し、固定パス説明テキストへ置換。
+
+### Files Touched
+- `Models/AppSettings.cs` — `MagpieCorePath` プロパティを削除。
+- `Services/Application/MagpieSessionController.cs` — 固定パス解決へ変更。
+- `Services/Settings/Rules/MirrorModeSettingsRule.cs` — Magpieパス関連の正規化を削除。
+- `ViewModels/SettingsViewModel.cs` — MagpieパスのViewModel項目を削除。
+- `MainWindow.xaml` — Magpieパス編集UIを削除して固定説明に変更。
+
+### Behavioral Impact
+- Magpie の実行ファイル参照先は常に `Tools\\Magpie\\Magpie.Core.exe`（アプリ相対）になる。
+- 設定画面で Magpie パスを変更できなくなる。
+
+### Risk & Mitigation
+- Risk: 配布物に `Tools\\Magpie\\Magpie.Core.exe` が存在しないとミラー起動に失敗する。
+- Mitigation: 起動失敗時に既存のエラーログでファイル未存在理由が確認できる。配布前チェックで存在確認を実施する。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+- `rg -n "MagpieCorePath|MagpieCorePathText" Models Services ViewModels MainWindow.xaml -S` で設定依存の残存を確認。

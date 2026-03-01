@@ -86,7 +86,6 @@ public sealed class AppSettings
     public string Dx11HookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;
-    public string MagpieCorePath { get; set; } = "Tools\\Magpie\\Magpie.Core.exe";
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
     public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;

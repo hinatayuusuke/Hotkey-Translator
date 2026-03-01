@@ -86,7 +86,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
     [ObservableProperty] private string _dx11HookCaptureFpsLimitText = string.Empty;
     [ObservableProperty] private string _magpieProfileIndexText = string.Empty;
-    [ObservableProperty] private string _magpieCorePathText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetUnclipRatioText = string.Empty;
@@ -209,7 +208,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
             SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
             Dx11HookCaptureFpsLimitText = settings.Dx11HookCaptureFpsLimit.ToString();
             MagpieProfileIndexText = settings.MagpieProfileIndex.ToString();
-            MagpieCorePathText = settings.MagpieCorePath;
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
             PaddleTextDetUnclipRatioText = settings.PaddleTextDetUnclipRatio.ToString("0.###");
@@ -341,7 +339,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
             settings.MagpieProfileIndex = magpieProfileIndex;
         }
 
-        settings.MagpieCorePath = (MagpieCorePathText ?? string.Empty).Trim();
         if (int.TryParse(PhashThresholdText.Trim(), out var phashThreshold))
         {
             settings.PhashThreshold = phashThreshold;
@@ -657,7 +654,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnDx11HookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
     partial void OnDx11HookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnMagpieCorePathTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
     partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();
