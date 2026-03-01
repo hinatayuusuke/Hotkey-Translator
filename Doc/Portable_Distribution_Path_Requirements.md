@@ -86,3 +86,13 @@
   - `Services/Application/MagpieSessionController.cs`
 - 設定保存先:
   - `Services/SettingsService.cs`
+
+
+$bin = "G:\APP Local\Hotkey-Translator\bin\Debug\net8.0-windows10.0.22621.0"
+cd $bin
+cmd /c mklink /J Tools "G:\APP Local\Hotkey-Translator\Tools"
+cmd /c mklink /J Native "G:\APP Local\Hotkey-Translator\Native"
+cmd /c mklink /J OcrService "G:\APP Local\Hotkey-Translator\OcrService"
+cmd /c mklink /J OcrServiceVL "G:\APP Local\Hotkey-Translator\OcrServiceVL"
+cmd /c mklink /J OcrServiceNDL "G:\APP Local\Hotkey-Translator\OcrServiceNDL"
+cmd /c mklink /J TranslationServiceLlama "G:\APP Local\Hotkey-Translator\TranslationServiceLlama"
