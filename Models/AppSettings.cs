@@ -98,9 +98,6 @@ public sealed class AppSettings
     public int SceneSemanticMinChars { get; set; } = 2;
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
-    public string PaddleProjectDir { get; set; } = "Tools\\PaddleOcr";
-    public string PaddleUvPath { get; set; } = "uv";
-    public string PaddleLanguage { get; set; } = "japan";
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";

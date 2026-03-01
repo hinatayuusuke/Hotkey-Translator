@@ -14879,3 +14879,30 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-02 01:40 (Asia/Taipei) — Remove unused legacy Paddle settings keys**
+
+### Summary
+- 未使用になっていた旧Paddle設定キー3件を `AppSettings` から削除した。
+
+### Context / Goal
+- Paddle OCRは現在 gRPC 経路に統一され、旧キーが実行経路で参照されていなかった。
+- 残骸設定を減らし、設定モデルを現行仕様に合わせる。
+
+### Changes
+- `AppSettings` から `PaddleProjectDir` / `PaddleUvPath` / `PaddleLanguage` を削除。
+- 実行経路への参照がないことを検索で再確認。
+
+### Files Touched
+- `Models/AppSettings.cs` — 未使用の旧Paddle設定プロパティ3件を削除。
+
+### Behavioral Impact
+- 新規保存される `settings.json` には上記3キーが出力されなくなる。
+- 既存 `settings.json` に残っていても未定義キーとして読み込み時に無視されるため、動作互換は維持される。
+
+### Risk & Mitigation
+- Risk: 外部ツールが `settings.json` の旧キーを参照している場合に影響する可能性。
+- Mitigation: アプリ本体では未使用であり、ビルド確認済み。必要なら外部連携側でキー参照を削除する。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+- `rg -n "PaddleProjectDir|PaddleUvPath|PaddleLanguage" -S` で定義/参照の残存を確認。
