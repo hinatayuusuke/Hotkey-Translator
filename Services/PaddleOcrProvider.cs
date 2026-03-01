@@ -213,7 +213,38 @@ public sealed class PaddleOcrProvider : IOcrProvider
         }
 
         var source = settings.SourceLanguage?.Trim() ?? string.Empty;
-        return source.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? "japan" : "en";
+        if (source.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
+        {
+            return "japan";
+        }
+
+        if (source.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
+        {
+            // WHY: PaddleOCR expects language families ("ch"/"chinese_cht"), not BCP-47 script tags.
+            if (IsTraditionalChinese(source))
+            {
+                return "chinese_cht";
+            }
+
+            return "ch";
+        }
+
+        if (source.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
+        {
+            return "cyrillic";
+        }
+
+        return "en";
+    }
+
+    private static bool IsTraditionalChinese(string language)
+    {
+        var normalized = language.Trim().ToLowerInvariant().Replace('_', '-');
+        return normalized == "zh-tw"
+               || normalized == "zh-hk"
+               || normalized == "zh-mo"
+               || normalized == "zh-hant"
+               || normalized.StartsWith("zh-hant-", StringComparison.Ordinal);
     }
 
     private static string? ExtractJson(string output)

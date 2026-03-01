@@ -14758,3 +14758,33 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false を実行し、0 warnings / 0 errors を確認。
+**2026-03-02 00:47 (Asia/Taipei) — Normalize PaddleOCR language mapping for zh/ru**
+
+### Summary
+- PaddleOCR の言語正規化に ch / chinese_cht / cyrillic を追加し、gRPC実行経路とPython実装を一致させた。
+
+### Context / Goal
+- 現状の PaddleOCR 言語解決は ja -> japan / それ以外 -> en で固定されており、中国語・ロシア語を適切な Paddle 言語タグへ落とせなかった。
+- 中国語（簡体/繁体）とロシア語を指定可能にする必要があった。
+
+### Changes
+- C# 側 ResolvePaddleLanguage を拡張し、zh-* を ch / chinese_cht に、u* を cyrillic に正規化。
+- Python 側 OcrService/ocr_engine.py の最終 lang_for_engine 解決を同ルールへ更新し、C#から渡したタグが en に潰れないように修正。
+
+### Files Touched
+- Services/PaddleGrpcHost.cs — gRPCホスト起動時の --lang 解決に zh/ru 正規化を追加。
+- Services/PaddleGrpcOcrProvider.cs — gRPCリクエスト Language 解決に zh/ru 正規化を追加。
+- Services/PaddleOcrProvider.cs — 旧CLI経路の言語解決にも同じ正規化を反映。
+- OcrService/ocr_engine.py — PaddleOCR 初期化時の lang_for_engine マッピングを拡張。
+
+### Behavioral Impact
+- SourceLanguage=zh-CN は ch、zh-TW/zh-HK/zh-MO/zh-Hant は chinese_cht、u は cyrillic として PaddleOCR に渡る。
+- gRPCホスト引数・gRPC実行時リクエスト・Python側内部正規化が同じ判定ルールで動作する。
+
+### Risk & Mitigation
+- Risk: SourceLanguage の表記ゆれ（例: 非標準タグ）で期待外の en へ落ちる可能性。
+- Mitigation: zh-Hant-* / zh-TW/HK/MO / u-* を明示的に許容し、その他は従来どおり en へ安全フォールバック。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+- python -m py_compile OcrService/ocr_engine.py 実行成功。

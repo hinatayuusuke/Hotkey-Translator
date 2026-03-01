@@ -107,8 +107,17 @@ class PaddleOcrEngine:
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("MKL_NUM_THREADS", "1")
 
-        source_key = (language or "").strip().lower()
-        lang_for_engine = "japan" if source_key.startswith("ja") else "en"
+        source_key = (language or "").strip().lower().replace("_", "-")
+        if source_key.startswith("ja"):
+            lang_for_engine = "japan"
+        elif source_key in ("chinese-cht", "zh-tw", "zh-hk", "zh-mo", "zh-hant") or source_key.startswith("zh-hant-"):
+            lang_for_engine = "chinese_cht"
+        elif source_key == "ch" or source_key.startswith("zh"):
+            lang_for_engine = "ch"
+        elif source_key in ("cyrillic", "ru") or source_key.startswith("ru-"):
+            lang_for_engine = "cyrillic"
+        else:
+            lang_for_engine = "en"
         rec_model_name = (text_recognition_model_name or "PP-OCRv5_server_rec").strip() or "PP-OCRv5_server_rec"
 
         kwargs: dict[str, Any] = {
