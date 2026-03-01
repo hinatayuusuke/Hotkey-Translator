@@ -15181,3 +15181,28 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+**2026-03-02 03:52 (Asia/Taipei) — Add WinRT OCR language-pack on-demand install plan document**
+
+### Summary
+- WinRT OCR 言語パック未導入時の確認ダイアログ + オンデマンド導入フロー案を `Doc/` に追加した。
+
+### Context / Goal
+- WinRTで選択言語がOS未対応の場合に、ユーザーへ明示し、OK/Cancelで導入可否を選べる仕様案を整理する。
+- 実装前に最小構成（判定・確認・導入・失敗時導線）を明確化する。
+
+### Changes
+- `Doc/WinRT_OcrLanguagePack_OnDemandInstall_Plan.md` を新規作成。
+- 目的/非目的、フロー、インターフェース、失敗時挙動、DoDを記載。
+
+### Files Touched
+- `Doc/WinRT_OcrLanguagePack_OnDemandInstall_Plan.md` — WinRT言語パック導入の実装案を追加。
+
+### Behavioral Impact
+- 実行コードの挙動変更なし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 将来実装との差分で文書が古くなる可能性。
+- Mitigation: フローとDoDを明示し、実装時の差分レビューを容易化。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
