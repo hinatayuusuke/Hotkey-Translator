@@ -14906,3 +14906,86 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
 - `rg -n "PaddleProjectDir|PaddleUvPath|PaddleLanguage" -S` で定義/参照の残存を確認。
+**2026-03-02 01:50 (Asia/Taipei) — Add portable distribution path requirements document**
+
+### Summary
+- コード修正なし運用向けに、ポータブル配布時の必要パス構成と設定キーを `Doc/` に整理した。
+
+### Context / Goal
+- 単体化したWPF本体を前提に、実行時に必要な外部サービス群（OCR/Llama/Hook/Magpie）の配置を明確化したい。
+- 現行実装に沿った相対パス運用の安全な基準を文書化する。
+
+### Changes
+- `Doc/Portable_Distribution_Path_Requirements.md` を新規作成。
+- 必須フォルダ構成、settings推奨値、運用注意（uv、working directory、Llama CUDA DLL前提）を記載。
+- 関連する実装参照ファイルを記載。
+
+### Files Touched
+- `Doc/Portable_Distribution_Path_Requirements.md` — ポータブル配布向けの必要パス構成と設定運用を記載。
+
+### Behavioral Impact
+- 実行コードの挙動変更はなし。
+- 配布・運用時の手順誤りを減らせる。
+
+### Risk & Mitigation
+- Risk: 将来実装変更でドキュメントが古くなる可能性。
+- Mitigation: 参照実装ファイルを明示し、変更時に追従更新しやすくした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-03-02 01:57 (Asia/Taipei) — Force Magpie core path to app-local relative resolution**
+
+### Summary
+- Magpie core path を相対前提に統一し、AppContext.BaseDirectory 基準で解決するよう変更した。
+
+### Context / Goal
+- 未リリース前提のため絶対パス互換は不要。
+- ポータブル配布時に CWD 依存で Magpie が見つからない事故を防ぐ。
+
+### Changes
+- `MirrorModeSettingsRule` で `MagpieCorePath` が絶対パスなら既定相対 `Tools\\Magpie\\Magpie.Core.exe` に正規化。
+- `MagpieSessionController.ResolveMagpieCorePath` を AppContext.BaseDirectory 固定解決へ変更（CWD フォールバック削除）。
+- ミラー起動時に configured/core/config の解決ログを追加。
+
+### Files Touched
+- `Services/Settings/Rules/MirrorModeSettingsRule.cs` — MagpieCorePath の相対固定正規化を追加。
+- `Services/Application/MagpieSessionController.cs` — MagpieCorePath 解決ロジックを app-local 相対固定に変更し、診断ログを追加。
+
+### Behavioral Impact
+- `MagpieCorePath` は相対運用に統一され、絶対パス設定は既定相対へ上書きされる。
+- Magpie 起動パスは常にアプリ配置先基準で決定される。
+
+### Risk & Mitigation
+- Risk: 絶対パスで運用していた設定は起動後に既定相対へ変わる。
+- Mitigation: 未リリース前提として互換は切り、配布構成の決定性を優先。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+**2026-03-02 02:01 (Asia/Taipei) — Enforce relative-only Magpie path without auto-rewrite**
+
+### Summary
+- Magpie path 方針を相対専用に揃え、絶対パスの自動補正を削除した。
+
+### Context / Goal
+- 方針: `MagpieCorePath` は相対専用、解決は AppContext.BaseDirectory 固定、絶対パス互換は不要。
+- 設定の暗黙補正を減らし、誤設定を明示エラーとして扱う。
+
+### Changes
+- `MirrorModeSettingsRule` から「絶対パスを既定相対へ置換する正規化」を削除。
+- `MagpieSessionController.ResolveMagpieCorePath` で絶対パスを `InvalidOperationException` として明示拒否。
+- ミラー起動時に上記エラーを捕捉し、UIログに失敗理由を表示して安全に起動失敗へ戻す。
+
+### Files Touched
+- `Services/Settings/Rules/MirrorModeSettingsRule.cs` — MagpieCorePath 正規化を trim/空補完のみに縮小。
+- `Services/Application/MagpieSessionController.cs` — 絶対パス拒否と失敗時ログ出力を追加。
+
+### Behavioral Impact
+- `MagpieCorePath` が絶対パスの場合、自動補正は行われず起動失敗として明示される。
+- 相対パスのみ `AppContext.BaseDirectory` 基準で解決される。
+
+### Risk & Mitigation
+- Risk: 既存設定に絶対パスが残っているとミラー起動が失敗する。
+- Mitigation: 失敗理由をログ表示し、設定を相対値へ修正すべきことが即時に分かる。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。

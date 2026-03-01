@@ -4,6 +4,8 @@ namespace Hotkey_Translator.Services.Settings.Rules;
 
 internal sealed class MirrorModeSettingsRule : ISettingsRule
 {
+    private const string DefaultMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
+
     public string RuleId => "mirror_mode_settings";
 
     public bool Apply(AppSettings settings, SettingsValidationReport report)
@@ -15,7 +17,7 @@ internal sealed class MirrorModeSettingsRule : ISettingsRule
 
         if (string.IsNullOrWhiteSpace(settings.MagpieCorePath))
         {
-            settings.MagpieCorePath = "Tools\\Magpie\\Magpie.Core.exe";
+            settings.MagpieCorePath = DefaultMagpieCoreRelativePath;
             changed = true;
         }
         else

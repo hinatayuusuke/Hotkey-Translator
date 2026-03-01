@@ -10,6 +10,7 @@ namespace Hotkey_Translator.Services.Application;
 
 internal sealed class MagpieSessionController : IDisposable
 {
+    private const string DefaultMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
     private readonly WindowBindingService _windowBindingService;
     private readonly IMagpieProcessService _processService;
     private readonly IMagpieIpcClient _ipcClient;
@@ -187,8 +188,21 @@ internal sealed class MagpieSessionController : IDisposable
             return false;
         }
 
-        var corePath = ResolveMagpieCorePath(settings.MagpieCorePath);
+        string corePath;
+        try
+        {
+            corePath = ResolveMagpieCorePath(settings.MagpieCorePath);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException)
+        {
+            _appendLog($"Mirror fullscreen start failed: {ex.Message}");
+            LogInfo($"stage=magpie_path event=resolve result=failed reason=\"{ex.Message}\".");
+            return false;
+        }
+
         var configPath = ResolveMagpieConfigPath(corePath);
+        LogInfo(
+            $"stage=magpie_path event=resolve configured=\"{settings.MagpieCorePath}\" core=\"{corePath}\" config=\"{configPath}\".");
         if (!_processService.EnsureStarted(corePath, configPath, out reason))
         {
             _appendLog($"Mirror fullscreen start failed: {reason ?? "Failed to start Magpie.Core."}");
@@ -293,10 +307,16 @@ internal sealed class MagpieSessionController : IDisposable
 
     private static string ResolveMagpieCorePath(string? configuredPath)
     {
-        var path = string.IsNullOrWhiteSpace(configuredPath)
-            ? "Tools\\Magpie\\Magpie.Core.exe"
+        var relativePath = string.IsNullOrWhiteSpace(configuredPath)
+            ? DefaultMagpieCoreRelativePath
             : configuredPath.Trim();
-        return Path.GetFullPath(path);
+        if (Path.IsPathRooted(relativePath))
+        {
+            // WHY: Relative-only path keeps portable deployment deterministic and avoids machine-specific settings.
+            throw new InvalidOperationException("Magpie core path must be relative to the app directory.");
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
     }
 
     private static string ResolveMagpieConfigPath(string corePath)
