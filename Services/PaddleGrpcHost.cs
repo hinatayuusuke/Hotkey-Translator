@@ -15,7 +15,7 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
 {
     private const string FixedProjectRelativePath = "OcrService";
     private const string FixedServerScriptName = "server.py";
-    private const string FixedUvCommand = "uv";
+    private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
 
     public PaddleGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
@@ -38,7 +38,7 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
             throw new FileNotFoundException($"Paddle gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = FixedUvCommand;
+        var uvPath = ResolveUvExecutablePath();
         var host = string.IsNullOrWhiteSpace(settings.PaddleGrpcHost) ? "127.0.0.1" : settings.PaddleGrpcHost.Trim();
         var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
         var modelDir = string.IsNullOrWhiteSpace(settings.PaddleModelDir) ? null : ResolvePath(settings.PaddleModelDir);
@@ -166,6 +166,17 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
     private static string ResolvePath(string path)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static string ResolveUvExecutablePath()
+    {
+        var resolved = ResolvePath(FixedUvRelativePath);
+        if (!File.Exists(resolved))
+        {
+            throw new FileNotFoundException($"uv executable not found: {resolved}");
+        }
+
+        return resolved;
     }
 
     private static string ResolvePaddleLanguage(AppSettings settings)

@@ -21,7 +21,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
 {
     private const string FixedProjectRelativePath = "TranslationServiceLlama";
     private const string FixedServerScriptName = "server.py";
-    private const string FixedUvCommand = "uv";
+    private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
     private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
@@ -76,7 +76,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
             throw new FileNotFoundException($"Llama gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = FixedUvCommand;
+        var uvPath = ResolveUvExecutablePath();
         var host = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim();
         var port = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
         var selectedModelFileName = _modelCatalog.NormalizeModelFileName(
@@ -236,6 +236,17 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private static string ResolvePath(string path)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static string ResolveUvExecutablePath()
+    {
+        var resolved = ResolvePath(FixedUvRelativePath);
+        if (!File.Exists(resolved))
+        {
+            throw new FileNotFoundException($"uv executable not found: {resolved}");
+        }
+
+        return resolved;
     }
 
     private static FixedLlamaPaths ResolveFixedLlamaPaths(string projectDir, string modelFileName)

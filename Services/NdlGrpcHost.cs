@@ -15,7 +15,7 @@ internal sealed class NdlGrpcHost : GrpcHostBase
 {
     private const string FixedProjectRelativePath = "OcrServiceNDL";
     private const string FixedServerScriptName = "server.py";
-    private const string FixedUvCommand = "uv";
+    private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
 
     public NdlGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
@@ -38,7 +38,7 @@ internal sealed class NdlGrpcHost : GrpcHostBase
             throw new FileNotFoundException($"NDLOCR gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = FixedUvCommand;
+        var uvPath = ResolveUvExecutablePath();
         var port = settings.NdlGrpcPort <= 0 ? 50053 : settings.NdlGrpcPort;
         var device = NormalizeDevice(settings.NdlDevice);
         var detScoreThreshold = Math.Clamp(settings.NdlDetScoreThreshold, 0.0, 1.0);
@@ -153,6 +153,17 @@ internal sealed class NdlGrpcHost : GrpcHostBase
     private static string ResolvePath(string path)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static string ResolveUvExecutablePath()
+    {
+        var resolved = ResolvePath(FixedUvRelativePath);
+        if (!File.Exists(resolved))
+        {
+            throw new FileNotFoundException($"uv executable not found: {resolved}");
+        }
+
+        return resolved;
     }
 
     private static string NormalizeDevice(string? value)

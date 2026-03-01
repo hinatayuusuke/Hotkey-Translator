@@ -15074,3 +15074,36 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
 - `rg -n "Dx11HookHostPath|PaddleGrpcProjectDir|PaddleVlGrpcProjectDir|NdlGrpcProjectDir|LlamaGrpcProjectDir" -S` でコード参照が残っていないことを確認。
+**2026-03-02 02:58 (Asia/Taipei) — Fix uv executable to Tools\uv\uv.exe and verify debug junctions**
+
+### Summary
+- OCR/Llama gRPC Host の uv 実行先を `Tools\\uv\\uv.exe` 固定に変更し、Debug 出力先ジャンクションを確認した。
+
+### Context / Goal
+- `uv` を配布物同梱（`Tools\\uv\\uv.exe`）で運用し、PATH 依存を排除したい。
+- 既存の app-relative 固定パス方針と整合させる。
+
+### Changes
+- `PaddleGrpcHost` / `PaddleVlGrpcHost` / `NdlGrpcHost` / `LlamaGrpcHost` で `uv` コマンド固定を廃止。
+- 各 Host に `ResolveUvExecutablePath()` を追加し、`AppContext.BaseDirectory + Tools\\uv\\uv.exe` を解決。
+- `uv.exe` が存在しない場合は `FileNotFoundException` を明示的に送出。
+- `bin\\Debug\\net8.0-windows10.0.22621.0` のジャンクション群（Tools/Native/OcrService*/TranslationServiceLlama）を確認。
+
+### Files Touched
+- `Services/PaddleGrpcHost.cs` — uv 実行パスを `Tools\\uv\\uv.exe` 固定に変更。
+- `Services/PaddleVlGrpcHost.cs` — uv 実行パスを `Tools\\uv\\uv.exe` 固定に変更。
+- `Services/NdlGrpcHost.cs` — uv 実行パスを `Tools\\uv\\uv.exe` 固定に変更。
+- `Services/LlamaGrpcHost.cs` — uv 実行パスを `Tools\\uv\\uv.exe` 固定に変更。
+
+### Behavioral Impact
+- PATH に `uv` が無くても、配布同梱 `Tools\\uv\\uv.exe` があれば起動できる。
+- `Tools\\uv\\uv.exe` 欠落時は即時エラーで検知できる。
+
+### Risk & Mitigation
+- Risk: `Tools\\uv\\uv.exe` を同梱し忘れると全 gRPC Host 起動に失敗する。
+- Mitigation: 欠落時は明確な `FileNotFoundException` を返し、運用チェックで同梱確認可能。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+- Debug 出力先ジャンクション確認:
+  - `Tools`, `Native`, `OcrService`, `OcrServiceVL`, `OcrServiceNDL`, `TranslationServiceLlama` は全て reparse point で存在。

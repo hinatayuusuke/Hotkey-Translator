@@ -16,7 +16,7 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
 {
     private const string FixedProjectRelativePath = "OcrServiceVL";
     private const string FixedServerScriptName = "server.py";
-    private const string FixedUvCommand = "uv";
+    private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
 
     public PaddleVlGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
@@ -39,7 +39,7 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
             throw new FileNotFoundException($"PaddleOCR-VL gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = FixedUvCommand;
+        var uvPath = ResolveUvExecutablePath();
         var host = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcHost) ? "127.0.0.1" : settings.PaddleVlGrpcHost.Trim();
         var port = settings.PaddleVlGrpcPort <= 0 ? 50052 : settings.PaddleVlGrpcPort;
         var device = string.IsNullOrWhiteSpace(settings.PaddleVlDevice) ? "gpu:0" : settings.PaddleVlDevice.Trim();
@@ -188,6 +188,17 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
     private static string ResolvePath(string path)
     {
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static string ResolveUvExecutablePath()
+    {
+        var resolved = ResolvePath(FixedUvRelativePath);
+        if (!File.Exists(resolved))
+        {
+            throw new FileNotFoundException($"uv executable not found: {resolved}");
+        }
+
+        return resolved;
     }
 
     private static int? ClampMaxNewTokens(int? value)
