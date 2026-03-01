@@ -15144,3 +15144,40 @@ dl_ocr_engine.py.
 - Debug ジャンクション確認:
   - `Tools`, `Native`, `OcrService`, `OcrServiceVL`, `OcrServiceNDL`, `TranslationServiceLlama` は全て reparse point。
 - `bin\\Debug\\net8.0-windows10.0.22621.0\\Tools\\uv\\uv.exe` の存在を確認。
+**2026-03-02 03:45 (Asia/Taipei) — Add minimal prerequisite dialogs for missing API keys and binaries**
+
+### Summary
+- 最低限の前提チェックとして、APIキー欠落と必須バイナリ欠落をダイアログ表示する仕組みを追加した。
+
+### Context / Goal
+- ログだけでは見逃しやすい初期不備（キー未設定・実行ファイル欠落）を即時に気づけるようにする。
+- 実装は最小に留め、同一原因のダイアログ連打を防ぐ。
+
+### Changes
+- `MainWindow` に前提チェックロジックを追加。
+  - Gemini有効かつ APIキー未設定
+  - DeepL有効かつ APIキー未設定
+  - 必須バイナリ欠落（条件付き）
+    - `Tools\\uv\\uv.exe`（Paddle/PaddleVL/NDL/Llamaを使う場合）
+    - `Native\\HookHost\\bin\\HookHost.exe`（DX11 Hook有効時）
+    - `Tools\\Magpie\\Magpie.Core.exe`（Mirror有効時）
+    - `TranslationServiceLlama\\LlamaCpp\\llama-server.exe`（Llama有効時）
+- 同一原因はセッション中1回だけ表示する制御を追加（`HashSet`キー管理）。
+- 前提チェックの呼び出しタイミングを追加。
+  - 起動時 (`OnLoaded`)
+  - 明示Run前 (`RunOnceAsync`)
+  - 設定保存反映後 (`ApplyRuntimeStateAfterSave`)
+
+### Files Touched
+- `MainWindow.xaml.cs` — 前提チェック・1回表示ダイアログ制御・呼び出しタイミングを追加。
+
+### Behavioral Impact
+- APIキー未設定や必須バイナリ欠落時、ユーザーへ最小ダイアログが表示される。
+- 同一原因のダイアログは連続表示されない。
+
+### Risk & Mitigation
+- Risk: 条件に該当する設定で起動時に警告ダイアログが出るため、初回は通知が増える。
+- Mitigation: 1回表示制御で連打を防止。文言は「不足項目」と「対処（配置 or 無効化）」を簡潔化。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。

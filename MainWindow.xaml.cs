@@ -27,6 +27,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
     private readonly WindowBindingService _windowBindingService = new();
     private readonly HttpClient _httpClient = new();
+    private readonly HashSet<string> _shownPrerequisiteDialogKeys = new(StringComparer.Ordinal);
     private OverlayWindow? _overlayWindow;
     private OverlayPresenter? _overlayPresenter;
     private CacheRepository? _cacheRepository;
@@ -76,6 +77,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const int MirrorOverlayTopmostResyncIntervalMs = 500;
+    private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
+    private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
+    private const string FixedMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
+    private const string FixedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
 
     public MainWindow()
     {
@@ -222,6 +227,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         };
         _registeredTranslationProviderNames = translationProviders.Select(provider => provider.Name).ToList();
         ApplySettingsToUi(settings);
+        CheckAndShowPrerequisiteDialogs(settings);
         settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
         if (settingsChanged)
         {
@@ -589,6 +595,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         // WHY: Explicit actions should observe the latest UI edits before pipeline execution.
         await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
+        CheckAndShowPrerequisiteDialogs(_settingsService.Settings);
         await _runCoordinator.RunOnceAsync(options).ConfigureAwait(true);
     }
 
@@ -998,6 +1005,98 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _magpieSessionController.ApplySettings(settings);
         ApplyMirrorOverlayMapper();
         _ = _dx11HookClientService.ApplySettingsAsync(settings);
+        CheckAndShowPrerequisiteDialogs(settings);
+    }
+
+    private void CheckAndShowPrerequisiteDialogs(AppSettings settings)
+    {
+        if (settings.EnableGemini && string.IsNullOrWhiteSpace(settings.ApiKey))
+        {
+            ShowPrerequisiteDialogOnce(
+                "api_gemini_missing",
+                "Gemini is enabled but Gemini API key is empty.\nSet the Gemini API key in settings or disable Gemini.");
+        }
+
+        if (settings.EnableDeepL && string.IsNullOrWhiteSpace(settings.DeepLApiKey))
+        {
+            ShowPrerequisiteDialogOnce(
+                "api_deepl_missing",
+                "DeepL is enabled but DeepL API key is empty.\nSet the DeepL API key in settings or disable DeepL.");
+        }
+
+        if (IsUvRequired(settings))
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_uv_missing", FixedUvRelativePath, "OCR/Llama gRPC");
+        }
+
+        if (settings.EnableDx11HookPipeline)
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_hookhost_missing", FixedHookHostRelativePath, "DX11 hook");
+        }
+
+        if (settings.EnableMirrorFullscreenMode)
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_magpie_missing", FixedMagpieCoreRelativePath, "mirror fullscreen");
+        }
+
+        if (settings.EnableLlamaCppTranslation)
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_llamaserver_missing", FixedLlamaServerRelativePath, "Llama.cpp translation");
+        }
+    }
+
+    private static bool IsUvRequired(AppSettings settings)
+    {
+        if (settings.EnableLlamaCppTranslation)
+        {
+            return true;
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost)
+        {
+            return true;
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost)
+        {
+            return true;
+        }
+
+        return settings.OcrEngine == OcrEngineKind.Ndl && settings.EnableNdlGrpcHost;
+    }
+
+    private void ShowMissingBinaryDialogIfNeeded(string key, string relativePath, string featureName)
+    {
+        var fullPath = ResolveAppRelativePath(relativePath);
+        if (File.Exists(fullPath))
+        {
+            return;
+        }
+
+        ShowPrerequisiteDialogOnce(
+            key,
+            $"Required file for {featureName} is missing:\n{fullPath}\n\nPlace the file at this path or disable {featureName}.");
+    }
+
+    private static string ResolveAppRelativePath(string relativePath)
+    {
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
+    }
+
+    private void ShowPrerequisiteDialogOnce(string key, string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowPrerequisiteDialogOnce(key, message));
+            return;
+        }
+
+        if (!_shownPrerequisiteDialogKeys.Add(key))
+        {
+            return;
+        }
+
+        MessageBox.Show(this, message, "Configuration required", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void PopulateHotkeyKeyBoxes()
