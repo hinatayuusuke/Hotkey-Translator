@@ -128,86 +128,19 @@ public sealed class PaddleGrpcOcrProvider : IOcrProvider, IDisposable
 
     private static string ResolvePaddleLanguage(AppSettings settings)
     {
-        var source = settings.SourceLanguage?.Trim() ?? string.Empty;
-        if (source.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
-        {
-            return "japan";
-        }
-
-        if (source.StartsWith("zh", StringComparison.OrdinalIgnoreCase))
-        {
-            // WHY: PaddleOCR expects language families ("ch"/"chinese_cht"), not BCP-47 script tags.
-            if (IsTraditionalChinese(source))
-            {
-                return "chinese_cht";
-            }
-
-            return "ch";
-        }
-
-        if (source.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
-        {
-            return "cyrillic";
-        }
-
-        return "en";
-    }
-
-    private static bool IsTraditionalChinese(string language)
-    {
-        var normalized = language.Trim().ToLowerInvariant().Replace('_', '-');
-        return normalized == "zh-tw"
-               || normalized == "zh-hk"
-               || normalized == "zh-mo"
-               || normalized == "zh-hant"
-               || normalized.StartsWith("zh-hant-", StringComparison.Ordinal);
+        return PaddleModelResolver.ResolvePaddleLanguage(settings.SourceLanguage);
     }
 
     private static string ResolveTextDetectionModelName(AppSettings settings)
     {
-        if (!string.IsNullOrWhiteSpace(settings.PaddleTextDetectionModelName))
-        {
-            return settings.PaddleTextDetectionModelName.Trim();
-        }
-
-        return "PP-OCRv5_mobile_det";
+        return PaddleModelResolver.NormalizeDetectionModelName(settings.PaddleTextDetectionModelName);
     }
 
     private static string ResolveTextRecognitionModelName(AppSettings settings)
     {
-        var selected = settings.PaddleTextRecognitionModelName?.Trim();
-        if (string.IsNullOrWhiteSpace(selected))
-        {
-            return "PP-OCRv5_server_rec";
-        }
-
-        if (selected.Equals("auto", StringComparison.OrdinalIgnoreCase))
-        {
-            return ResolveRecognitionModelByLanguage(settings.SourceLanguage);
-        }
-
-        return selected;
-    }
-
-    private static string ResolveRecognitionModelByLanguage(string? language)
-    {
-        if (string.IsNullOrWhiteSpace(language))
-        {
-            return "PP-OCRv5_server_rec";
-        }
-
-        var normalized = language.Trim();
-        if (normalized.StartsWith("en", StringComparison.OrdinalIgnoreCase))
-        {
-            return "en_PP-OCRv5_mobile_rec";
-        }
-
-        if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
-        {
-            return "eslav_PP-OCRv5_mobile_rec";
-        }
-
-        return "PP-OCRv5_server_rec";
+        return PaddleModelResolver.ResolveRecognitionModelForExecution(
+            settings.PaddleTextRecognitionModelName,
+            settings.SourceLanguage);
     }
 
     private sealed class PaddleOcrResponse

@@ -14816,3 +14816,38 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - g -n "PaddleOcrProvider|paddle_ocr_bridge.py" Services Models ViewModels MainWindow.xaml.cs MainWindow.xaml で参照なしを確認。
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-02 01:18 (Asia/Taipei) — Unify Paddle model normalization and auto model selection**
+
+### Summary
+- PaddleOCR の言語/モデル解決を共通Resolverへ統一し、UIで選択可能な認識モデル全体に対して正規化と auto 選択を実装した。
+
+### Context / Goal
+- Host と Provider に重複した判定ロジックがあり、uto の認識モデル選択が英語/ロシア語のみだった。
+- settings.json の手編集で不正値が入ると経路ごとに挙動がズレるため、SettingsRuleで一元正規化したい。
+
+### Changes
+- Services/PaddleModelResolver.cs を新規追加し、以下を共通化:
+  - Paddle lang 正規化（ja/zh/ru など）
+  - Detection model の正規化
+  - Recognition model の正規化
+  - uto 時の source language からの認識モデル自動選択（UI候補モデル対応）
+- Services/PaddleGrpcHost.cs と Services/PaddleGrpcOcrProvider.cs を共通Resolver呼び出しへ置換し、重複ロジックを削除。
+- Services/Settings/Rules/PaddleOcrSettingsRule.cs に detection/recognition モデルの正規化を追加し、不正/旧値を保存時に書き戻すようにした。
+
+### Files Touched
+- Services/PaddleModelResolver.cs — Paddle言語/モデル解決の共通ロジックを新規追加。
+- Services/PaddleGrpcHost.cs — --lang / --det-model / --rec-model を共通Resolver経由に変更。
+- Services/PaddleGrpcOcrProvider.cs — gRPC request の language/det/rec 解決を共通Resolver経由に変更。
+- Services/Settings/Rules/PaddleOcrSettingsRule.cs — settings正規化（検出/認識モデル）を追加。
+
+### Behavioral Impact
+- uto の認識モデル選択が、英語/ロシア語以外のUI候補モデル（korean/th/el/arabic/cyrillic/devanagari/te/ta/latin）まで拡張される。
+- settings.json に不正な Paddle モデル名があっても、ルール適用時に正規値へ補正され、以後の実行経路が一致する。
+
+### Risk & Mitigation
+- Risk: 一部言語タグが意図と異なるモデルへマップされる可能性。
+- Mitigation: 未対応言語は PP-OCRv5_server_rec へフォールバックし、破綻しない既定動作を維持。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+- g -n "PaddleModelResolver" Services/PaddleGrpcHost.cs Services/PaddleGrpcOcrProvider.cs Services/Settings/Rules/PaddleOcrSettingsRule.cs で置換経路を確認。

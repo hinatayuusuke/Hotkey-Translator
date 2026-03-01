@@ -1,5 +1,6 @@
 using System;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.Services.Settings.Rules;
 
@@ -22,6 +23,20 @@ internal sealed class PaddleOcrSettingsRule : ISettingsRule
         {
             // COMPAT: Keep one confidence gate path to avoid double-filtering with text_rec_score_thresh.
             settings.EnablePaddleConfidenceFilter = false;
+            changed = true;
+        }
+
+        var normalizedDetectionModel = PaddleModelResolver.NormalizeDetectionModelName(settings.PaddleTextDetectionModelName);
+        if (!string.Equals(settings.PaddleTextDetectionModelName, normalizedDetectionModel, StringComparison.Ordinal))
+        {
+            settings.PaddleTextDetectionModelName = normalizedDetectionModel;
+            changed = true;
+        }
+
+        var normalizedRecognitionModel = PaddleModelResolver.NormalizeRecognitionModelName(settings.PaddleTextRecognitionModelName);
+        if (!string.Equals(settings.PaddleTextRecognitionModelName, normalizedRecognitionModel, StringComparison.Ordinal))
+        {
+            settings.PaddleTextRecognitionModelName = normalizedRecognitionModel;
             changed = true;
         }
 
