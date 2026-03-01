@@ -14851,3 +14851,31 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
 - g -n "PaddleModelResolver" Services/PaddleGrpcHost.cs Services/PaddleGrpcOcrProvider.cs Services/Settings/Rules/PaddleOcrSettingsRule.cs で置換経路を確認。
+**2026-03-02 01:23 (Asia/Taipei) — Drop legacy-style Paddle model remap and keep strict allowlist guard**
+
+### Summary
+- Paddle model settings normalization を「旧値補正」ではなく「現行許可値のみ受理」に整理した。
+
+### Context / Goal
+- 未リリース前提のため、旧値互換のための remap は不要。
+- ただし settings.json 手編集などの不正値は安全にガードしたい。
+
+### Changes
+- PaddleModelResolver に IsSupportedDetectionModel / IsSupportedRecognitionModel を追加。
+- PaddleOcrSettingsRule のモデル正規化を変更し、未知値のみ既定値へフォールバックする形へ整理。
+- 既知値はトリムのみ適用し、nullability warning を解消。
+
+### Files Touched
+- Services/PaddleModelResolver.cs — Paddleモデル許可値判定メソッドを追加。
+- Services/Settings/Rules/PaddleOcrSettingsRule.cs — 旧値再マップではなく allowlist ベースの検証へ変更。
+
+### Behavioral Impact
+- 旧値エイリアス変換は行わず、現行UIで許可されたモデルIDのみ有効。
+- 不明なモデルIDは PP-OCRv5_mobile_det / PP-OCRv5_server_rec に自動復帰し、設定保存で書き戻される。
+
+### Risk & Mitigation
+- Risk: 想定外のカスタムモデルIDを settings.json に入れても既定値へ戻る。
+- Mitigation: 実行破綻を防ぐため allowlist を採用。必要なら今後UI候補へ追加して正式対応する。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。

@@ -107,6 +107,26 @@ internal static class PaddleModelResolver
             : DefaultRecognitionModel;
     }
 
+    public static bool IsSupportedDetectionModel(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            return false;
+        }
+
+        return DetectionModels.ContainsKey(modelName.Trim());
+    }
+
+    public static bool IsSupportedRecognitionModel(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName))
+        {
+            return false;
+        }
+
+        return RecognitionModels.ContainsKey(modelName.Trim());
+    }
+
     public static string ResolveRecognitionModelForExecution(string? selectedModel, string? sourceLanguage)
     {
         var normalized = NormalizeRecognitionModelName(selectedModel);

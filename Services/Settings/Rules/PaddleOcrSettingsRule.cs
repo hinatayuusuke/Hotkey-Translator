@@ -26,17 +26,29 @@ internal sealed class PaddleOcrSettingsRule : ISettingsRule
             changed = true;
         }
 
-        var normalizedDetectionModel = PaddleModelResolver.NormalizeDetectionModelName(settings.PaddleTextDetectionModelName);
-        if (!string.Equals(settings.PaddleTextDetectionModelName, normalizedDetectionModel, StringComparison.Ordinal))
+        var trimmedDetectionModel = settings.PaddleTextDetectionModelName?.Trim();
+        if (!PaddleModelResolver.IsSupportedDetectionModel(trimmedDetectionModel))
         {
-            settings.PaddleTextDetectionModelName = normalizedDetectionModel;
+            // WHY: No legacy alias mapping; accept only current UI-supported model ids.
+            settings.PaddleTextDetectionModelName = PaddleModelResolver.DefaultDetectionModel;
+            changed = true;
+        }
+        else if (!string.Equals(settings.PaddleTextDetectionModelName, trimmedDetectionModel, StringComparison.Ordinal))
+        {
+            settings.PaddleTextDetectionModelName = trimmedDetectionModel!;
             changed = true;
         }
 
-        var normalizedRecognitionModel = PaddleModelResolver.NormalizeRecognitionModelName(settings.PaddleTextRecognitionModelName);
-        if (!string.Equals(settings.PaddleTextRecognitionModelName, normalizedRecognitionModel, StringComparison.Ordinal))
+        var trimmedRecognitionModel = settings.PaddleTextRecognitionModelName?.Trim();
+        if (!PaddleModelResolver.IsSupportedRecognitionModel(trimmedRecognitionModel))
         {
-            settings.PaddleTextRecognitionModelName = normalizedRecognitionModel;
+            // WHY: No legacy alias mapping; unknown values fall back to the stable default.
+            settings.PaddleTextRecognitionModelName = PaddleModelResolver.DefaultRecognitionModel;
+            changed = true;
+        }
+        else if (!string.Equals(settings.PaddleTextRecognitionModelName, trimmedRecognitionModel, StringComparison.Ordinal))
+        {
+            settings.PaddleTextRecognitionModelName = trimmedRecognitionModel!;
             changed = true;
         }
 
