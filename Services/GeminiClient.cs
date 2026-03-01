@@ -225,7 +225,7 @@ public sealed class GeminiClient
         var inputJson = JsonSerializer.Serialize(texts, PromptJsonOptions);
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
         return $@"Translate each input text into {targetLanguage}.
-            Output must be in UTF-8 characters; do not use Unicode escape sequences like \uXXXX.
+            Output must be in UTF-8 characters; Fix OCR typos/noise naturally; do not use Unicode escape sequences like \uXXXX.
             Keep the same array length and order as the input.
             Input: {inputJson}";
     }
