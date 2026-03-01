@@ -92,7 +92,18 @@ internal sealed class NdlGrpcHost : GrpcHostBase
     protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
-        var timeoutMs = Math.Max(1000, settings.NdlGrpcReadyTimeoutMs);
+        var projectDir = ResolveProjectDirectory();
+        var configuredTimeoutMs = Math.Max(1000, settings.NdlGrpcReadyTimeoutMs);
+        var timeoutMs = GrpcStartupTimeoutPolicy.ResolveReadyTimeoutMs(
+            settings.NdlGrpcReadyTimeoutMs,
+            projectDir,
+            out var bootstrapMode);
+        if (bootstrapMode)
+        {
+            Logger?.Info(
+                $"stage=grpc_host host={HostId} event=ready_timeout policy=bootstrap_missing_venv configured_ms={configuredTimeoutMs} effective_ms={timeoutMs}.");
+        }
+
         var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
 
         while (DateTimeOffset.UtcNow < deadline)

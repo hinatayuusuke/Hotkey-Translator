@@ -15107,3 +15107,40 @@ dl_ocr_engine.py.
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
 - Debug 出力先ジャンクション確認:
   - `Tools`, `Native`, `OcrService`, `OcrServiceVL`, `OcrServiceNDL`, `TranslationServiceLlama` は全て reparse point で存在。
+**2026-03-02 03:17 (Asia/Taipei) — Add bootstrap ready-timeout policy for uv first-run setup**
+
+### Summary
+- 初回 `.venv` 未作成時のみ gRPC Ready timeout を自動延長する共通ポリシーを追加し、4つのHostへ適用した。
+
+### Context / Goal
+- 簡易セットアップ時、`uv run`/依存取得で初回起動が長引き、通常 timeout に達して失敗するケースを減らしたい。
+- ただし通常運用時は timeout を必要以上に延ばしたくない。
+
+### Changes
+- `Services/GrpcHost/GrpcStartupTimeoutPolicy.cs` を新規追加。
+  - `.venv` 不在時を bootstrap と判定。
+  - bootstrap 時の Ready timeout 下限を 900000ms（15分）に設定。
+- `PaddleGrpcHost` / `PaddleVlGrpcHost` / `NdlGrpcHost` / `LlamaGrpcHost` の `WaitForReadyCoreAsync` に共通ポリシーを適用。
+- bootstrap 判定時は `stage=grpc_host ... policy=bootstrap_missing_venv` ログを出力。
+- 依頼に合わせて Debug 出力先ジャンクションを再確認（既存維持、追加作成なし）。
+
+### Files Touched
+- `Services/GrpcHost/GrpcStartupTimeoutPolicy.cs` — 初回ブートストラップ timeout 判定ポリシーを追加。
+- `Services/PaddleGrpcHost.cs` — Ready timeout を共通ポリシー経由に変更。
+- `Services/PaddleVlGrpcHost.cs` — Ready timeout を共通ポリシー経由に変更。
+- `Services/NdlGrpcHost.cs` — Ready timeout を共通ポリシー経由に変更。
+- `Services/LlamaGrpcHost.cs` — Ready timeout を共通ポリシー経由に変更。
+
+### Behavioral Impact
+- `.venv` が未作成の初回のみ Ready timeout が延長され、初回依存取得による誤タイムアウトが起きにくくなる。
+- `.venv` 作成済みの通常起動では従来どおり各 `*ReadyTimeoutMs` が適用される。
+
+### Risk & Mitigation
+- Risk: `.venv` 欠損状態で実際に起動不能な場合、失敗確定まで待ち時間が長くなる。
+- Mitigation: bootstrap 判定ログを追加し、原因切り分けを容易化。通常運用時は延長がかからない。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+- Debug ジャンクション確認:
+  - `Tools`, `Native`, `OcrService`, `OcrServiceVL`, `OcrServiceNDL`, `TranslationServiceLlama` は全て reparse point。
+- `bin\\Debug\\net8.0-windows10.0.22621.0\\Tools\\uv\\uv.exe` の存在を確認。

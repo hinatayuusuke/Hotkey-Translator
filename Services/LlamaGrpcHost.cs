@@ -159,7 +159,18 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         var endpoint = ResolveEndpoint(settings);
-        var timeoutMs = Math.Max(1000, settings.LlamaGrpcReadyTimeoutMs);
+        var projectDir = ResolveProjectDirectory();
+        var configuredTimeoutMs = Math.Max(1000, settings.LlamaGrpcReadyTimeoutMs);
+        var timeoutMs = GrpcStartupTimeoutPolicy.ResolveReadyTimeoutMs(
+            settings.LlamaGrpcReadyTimeoutMs,
+            projectDir,
+            out var bootstrapMode);
+        if (bootstrapMode)
+        {
+            _logger?.Info(
+                $"stage=grpc_host host={HostId} event=ready_timeout policy=bootstrap_missing_venv configured_ms={configuredTimeoutMs} effective_ms={timeoutMs}.");
+        }
+
         var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
 
         while (DateTimeOffset.UtcNow < deadline)
