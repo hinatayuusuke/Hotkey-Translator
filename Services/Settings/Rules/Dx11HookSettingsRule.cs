@@ -19,12 +19,6 @@ internal sealed class Dx11HookSettingsRule : ISettingsRule
 
         settings.Dx11HookCaptureFpsLimit = captureFpsLimit;
 
-        if (string.IsNullOrWhiteSpace(settings.Dx11HookHostPath))
-        {
-            settings.Dx11HookHostPath = "Native\\HookHost\\bin\\HookHost.exe";
-            changed = true;
-        }
-
         if (string.IsNullOrWhiteSpace(settings.Dx11HookPipeName))
         {
             settings.Dx11HookPipeName = "hotkey_translator_hook";

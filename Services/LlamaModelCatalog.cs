@@ -7,12 +7,12 @@ namespace Hotkey_Translator.Services;
 
 public sealed class LlamaModelCatalog
 {
-    private const string DefaultProjectDirectory = "TranslationServiceLlama";
+    private const string FixedProjectDirectory = "TranslationServiceLlama";
     private const string ModelsRelativePath = "LlamaCpp\\Models";
 
-    public IReadOnlyList<string> GetAvailableModelFileNames(string? projectDirSetting)
+    public IReadOnlyList<string> GetAvailableModelFileNames()
     {
-        var modelsDirectory = ResolveModelsDirectory(projectDirSetting);
+        var modelsDirectory = ResolveModelsDirectory();
         if (!Directory.Exists(modelsDirectory))
         {
             return Array.Empty<string>();
@@ -35,9 +35,9 @@ public sealed class LlamaModelCatalog
         return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
     }
 
-    public string ResolveModelPath(string? projectDirSetting, string modelFileName)
+    public string ResolveModelPath(string modelFileName)
     {
-        var modelsDirectory = ResolveModelsDirectory(projectDirSetting);
+        var modelsDirectory = ResolveModelsDirectory();
         var safeFileName = ExtractSafeModelFileName(modelFileName);
         if (string.IsNullOrWhiteSpace(safeFileName))
         {
@@ -47,28 +47,14 @@ public sealed class LlamaModelCatalog
         return Path.Combine(modelsDirectory, safeFileName);
     }
 
-    private static string ResolveModelsDirectory(string? projectDirSetting)
+    private static string ResolveModelsDirectory()
     {
-        var projectDir = string.IsNullOrWhiteSpace(projectDirSetting)
-            ? DefaultProjectDirectory
-            : projectDirSetting.Trim();
-        return Path.Combine(ResolvePath(projectDir), ModelsRelativePath);
+        return Path.Combine(ResolvePath(FixedProjectDirectory), ModelsRelativePath);
     }
 
     private static string ResolvePath(string path)
     {
-        if (Path.IsPathRooted(path))
-        {
-            return path;
-        }
-
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static string ExtractSafeModelFileName(string? value)

@@ -884,7 +884,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ? settings.LlamaSelectedModelFileName
             : selectedFromViewModel;
         var selected = _llamaModelCatalog.NormalizeModelFileName(selectedModel, fallback);
-        var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames(settings.LlamaGrpcProjectDir);
+        var modelFileNames = _llamaModelCatalog.GetAvailableModelFileNames();
         var modelOptions = modelFileNames
             .Select(fileName => new LlamaModelOption(fileName, fileName))
             .ToList();

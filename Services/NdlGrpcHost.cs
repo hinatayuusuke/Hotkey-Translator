@@ -13,6 +13,10 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class NdlGrpcHost : GrpcHostBase
 {
+    private const string FixedProjectRelativePath = "OcrServiceNDL";
+    private const string FixedServerScriptName = "server.py";
+    private const string FixedUvCommand = "uv";
+
     public NdlGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
     {
@@ -27,15 +31,14 @@ internal sealed class NdlGrpcHost : GrpcHostBase
 
     protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var projectDir = ResolveDirectory(settings.NdlGrpcProjectDir);
-        var script = string.IsNullOrWhiteSpace(settings.NdlGrpcServerScript) ? "server.py" : settings.NdlGrpcServerScript.Trim();
-        var scriptPath = Path.Combine(projectDir, script);
+        var projectDir = ResolveProjectDirectory();
+        var scriptPath = Path.Combine(projectDir, FixedServerScriptName);
         if (!File.Exists(scriptPath))
         {
             throw new FileNotFoundException($"NDLOCR gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = string.IsNullOrWhiteSpace(settings.NdlGrpcUvPath) ? "uv" : settings.NdlGrpcUvPath.Trim();
+        var uvPath = FixedUvCommand;
         var port = settings.NdlGrpcPort <= 0 ? 50053 : settings.NdlGrpcPort;
         var device = NormalizeDevice(settings.NdlDevice);
         var detScoreThreshold = Math.Clamp(settings.NdlDetScoreThreshold, 0.0, 1.0);
@@ -136,14 +139,9 @@ internal sealed class NdlGrpcHost : GrpcHostBase
         return $"http://{host}:{port}";
     }
 
-    private static string ResolveDirectory(string path)
+    private static string ResolveProjectDirectory()
     {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new InvalidOperationException("NDLOCR gRPC project directory is not set.");
-        }
-
-        var resolved = ResolvePath(path);
+        var resolved = ResolvePath(FixedProjectRelativePath);
         if (!Directory.Exists(resolved))
         {
             throw new DirectoryNotFoundException($"NDLOCR gRPC project directory not found: {resolved}");
@@ -154,18 +152,7 @@ internal sealed class NdlGrpcHost : GrpcHostBase
 
     private static string ResolvePath(string path)
     {
-        if (Path.IsPathRooted(path))
-        {
-            return path;
-        }
-
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static string NormalizeDevice(string? value)

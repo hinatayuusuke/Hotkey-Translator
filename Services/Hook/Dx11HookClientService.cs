@@ -13,6 +13,7 @@ namespace Hotkey_Translator.Services.Hook;
 
 internal sealed class Dx11HookClientService : IDisposable
 {
+    private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -246,7 +247,7 @@ internal sealed class Dx11HookClientService : IDisposable
             return true;
         }
 
-        var hostPath = ResolveHostPath(settings.Dx11HookHostPath);
+        var hostPath = ResolveHostPath();
         if (!File.Exists(hostPath))
         {
             _loggerAccessor()?.Error($"DX11 HookHost executable not found: {hostPath}");
@@ -595,27 +596,9 @@ internal sealed class Dx11HookClientService : IDisposable
         }
     }
 
-    private static string ResolveHostPath(string configuredPath)
+    private static string ResolveHostPath()
     {
-        if (Path.IsPathRooted(configuredPath))
-        {
-            return configuredPath;
-        }
-
-        var cwdCandidate = Path.GetFullPath(Path.Combine(Environment.CurrentDirectory, configuredPath));
-        if (File.Exists(cwdCandidate))
-        {
-            return cwdCandidate;
-        }
-
-        var baseDirCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, configuredPath));
-        if (File.Exists(baseDirCandidate))
-        {
-            return baseDirCandidate;
-        }
-
-        // WHY: Return deterministic path even before host binary is built.
-        return cwdCandidate;
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePath));
     }
 
     private void DisposePipe()

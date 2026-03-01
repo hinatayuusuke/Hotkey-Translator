@@ -12,18 +12,6 @@ internal sealed class NdlOcrSettingsRule : ISettingsRule
         var changed = false;
 
         changed |= NormalizeStringDefault(
-            settings.NdlGrpcProjectDir,
-            "OcrServiceNDL",
-            value => settings.NdlGrpcProjectDir = value);
-        changed |= NormalizeStringDefault(
-            settings.NdlGrpcUvPath,
-            "uv",
-            value => settings.NdlGrpcUvPath = value);
-        changed |= NormalizeStringDefault(
-            settings.NdlGrpcServerScript,
-            "server.py",
-            value => settings.NdlGrpcServerScript = value);
-        changed |= NormalizeStringDefault(
             settings.NdlGrpcHost,
             "127.0.0.1",
             value => settings.NdlGrpcHost = value);

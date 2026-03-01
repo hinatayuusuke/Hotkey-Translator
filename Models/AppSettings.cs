@@ -82,7 +82,6 @@ public sealed class AppSettings
     public int Dx11HookCaptureFpsLimit { get; set; } = 15;
     public bool Dx11HookOverlayEnabled { get; set; } = true;
     public bool Dx11HookFallbackOnError { get; set; } = true;
-    public string Dx11HookHostPath { get; set; } = "Native\\HookHost\\bin\\HookHost.exe";
     public string Dx11HookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;
@@ -108,9 +107,6 @@ public sealed class AppSettings
     public bool EnablePaddleConfidenceFilter { get; set; } = false;
     public double PaddleConfidenceThreshold { get; set; } = 0.6;
     public bool EnablePaddleGrpcHost { get; set; } = true;
-    public string PaddleGrpcProjectDir { get; set; } = "OcrService";
-    public string PaddleGrpcUvPath { get; set; } = "uv";
-    public string PaddleGrpcServerScript { get; set; } = "server.py";
     public string PaddleGrpcEndpoint { get; set; } = "http://127.0.0.1:50051";
     public string PaddleGrpcHost { get; set; } = "127.0.0.1";
     public int PaddleGrpcPort { get; set; } = 50051;
@@ -118,9 +114,6 @@ public sealed class AppSettings
     public int PaddleGrpcRestartMax { get; set; } = 3;
     public int PaddleGrpcRestartWindowSeconds { get; set; } = 30;
     public bool EnablePaddleVlGrpcHost { get; set; } = true;
-    public string PaddleVlGrpcProjectDir { get; set; } = "OcrServiceVL";
-    public string PaddleVlGrpcUvPath { get; set; } = "uv";
-    public string PaddleVlGrpcServerScript { get; set; } = "server.py";
     public string PaddleVlGrpcEndpoint { get; set; } = "http://127.0.0.1:50052";
     public string PaddleVlGrpcHost { get; set; } = "127.0.0.1";
     public int PaddleVlGrpcPort { get; set; } = 50052;
@@ -143,9 +136,6 @@ public sealed class AppSettings
     public bool? PaddleVlUseTensorrt { get; set; }
     public string? PaddleVlPrecision { get; set; } = "fp16";
     public bool EnableNdlGrpcHost { get; set; } = true;
-    public string NdlGrpcProjectDir { get; set; } = "OcrServiceNDL";
-    public string NdlGrpcUvPath { get; set; } = "uv";
-    public string NdlGrpcServerScript { get; set; } = "server.py";
     public string NdlGrpcEndpoint { get; set; } = "http://127.0.0.1:50053";
     public string NdlGrpcHost { get; set; } = "127.0.0.1";
     public int NdlGrpcPort { get; set; } = 50053;
@@ -228,9 +218,6 @@ public sealed class AppSettings
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";
     public bool EnableLlamaCppTranslation { get; set; } = false;
-    public string LlamaGrpcProjectDir { get; set; } = "TranslationServiceLlama";
-    public string LlamaGrpcUvPath { get; set; } = "uv";
-    public string LlamaGrpcServerScript { get; set; } = "server.py";
     public string LlamaGrpcEndpoint { get; set; } = "http://127.0.0.1:50071";
     public string LlamaGrpcHost { get; set; } = "127.0.0.1";
     public int LlamaGrpcPort { get; set; } = 50071;

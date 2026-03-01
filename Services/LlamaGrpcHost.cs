@@ -19,6 +19,9 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class LlamaGrpcHost : GrpcHostBase
 {
+    private const string FixedProjectRelativePath = "TranslationServiceLlama";
+    private const string FixedServerScriptName = "server.py";
+    private const string FixedUvCommand = "uv";
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
     private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
@@ -66,15 +69,14 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
 
     protected override async Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var projectDir = ResolveDirectory(settings.LlamaGrpcProjectDir);
-        var script = string.IsNullOrWhiteSpace(settings.LlamaGrpcServerScript) ? "server.py" : settings.LlamaGrpcServerScript.Trim();
-        var scriptPath = Path.Combine(projectDir, script);
+        var projectDir = ResolveProjectDirectory();
+        var scriptPath = Path.Combine(projectDir, FixedServerScriptName);
         if (!File.Exists(scriptPath))
         {
             throw new FileNotFoundException($"Llama gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = string.IsNullOrWhiteSpace(settings.LlamaGrpcUvPath) ? "uv" : settings.LlamaGrpcUvPath.Trim();
+        var uvPath = FixedUvCommand;
         var host = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim();
         var port = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
         var selectedModelFileName = _modelCatalog.NormalizeModelFileName(
@@ -220,14 +222,9 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         return $"http://{host}:{port}";
     }
 
-    private static string ResolveDirectory(string path)
+    private static string ResolveProjectDirectory()
     {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new InvalidOperationException("Llama gRPC project directory is not set.");
-        }
-
-        var resolved = ResolvePath(path);
+        var resolved = ResolvePath(FixedProjectRelativePath);
         if (!Directory.Exists(resolved))
         {
             throw new DirectoryNotFoundException($"Llama gRPC project directory not found: {resolved}");
@@ -238,18 +235,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
 
     private static string ResolvePath(string path)
     {
-        if (Path.IsPathRooted(path))
-        {
-            return path;
-        }
-
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static FixedLlamaPaths ResolveFixedLlamaPaths(string projectDir, string modelFileName)

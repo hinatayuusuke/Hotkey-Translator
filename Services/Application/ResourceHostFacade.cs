@@ -241,10 +241,7 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaSelectedModelFileName,
             settings.LlamaGrpcEndpoint,
             settings.LlamaGrpcHost,
-            settings.LlamaGrpcPort,
-            settings.LlamaGrpcProjectDir,
-            settings.LlamaGrpcUvPath,
-            settings.LlamaGrpcServerScript);
+            settings.LlamaGrpcPort);
     }
 
     private readonly record struct LlamaHostConfig(
@@ -263,8 +260,5 @@ internal sealed class ResourceHostFacade : IDisposable
         string ModelFileName,
         string Endpoint,
         string GrpcHost,
-        int GrpcPort,
-        string ProjectDir,
-        string UvPath,
-        string ServerScript);
+        int GrpcPort);
 }

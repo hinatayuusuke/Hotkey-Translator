@@ -14,6 +14,10 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class PaddleVlGrpcHost : GrpcHostBase
 {
+    private const string FixedProjectRelativePath = "OcrServiceVL";
+    private const string FixedServerScriptName = "server.py";
+    private const string FixedUvCommand = "uv";
+
     public PaddleVlGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
     {
@@ -28,15 +32,14 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
 
     protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var projectDir = ResolveDirectory(settings.PaddleVlGrpcProjectDir);
-        var script = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcServerScript) ? "server.py" : settings.PaddleVlGrpcServerScript.Trim();
-        var scriptPath = Path.Combine(projectDir, script);
+        var projectDir = ResolveProjectDirectory();
+        var scriptPath = Path.Combine(projectDir, FixedServerScriptName);
         if (!File.Exists(scriptPath))
         {
             throw new FileNotFoundException($"PaddleOCR-VL gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcUvPath) ? "uv" : settings.PaddleVlGrpcUvPath.Trim();
+        var uvPath = FixedUvCommand;
         var host = string.IsNullOrWhiteSpace(settings.PaddleVlGrpcHost) ? "127.0.0.1" : settings.PaddleVlGrpcHost.Trim();
         var port = settings.PaddleVlGrpcPort <= 0 ? 50052 : settings.PaddleVlGrpcPort;
         var device = string.IsNullOrWhiteSpace(settings.PaddleVlDevice) ? "gpu:0" : settings.PaddleVlDevice.Trim();
@@ -171,14 +174,9 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
         return $"http://{host}:{port}";
     }
 
-    private static string ResolveDirectory(string path)
+    private static string ResolveProjectDirectory()
     {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new InvalidOperationException("PaddleOCR-VL gRPC project directory is not set.");
-        }
-
-        var resolved = ResolvePath(path);
+        var resolved = ResolvePath(FixedProjectRelativePath);
         if (!Directory.Exists(resolved))
         {
             throw new DirectoryNotFoundException($"PaddleOCR-VL gRPC project directory not found: {resolved}");
@@ -189,18 +187,7 @@ internal sealed class PaddleVlGrpcHost : GrpcHostBase
 
     private static string ResolvePath(string path)
     {
-        if (Path.IsPathRooted(path))
-        {
-            return path;
-        }
-
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static int? ClampMaxNewTokens(int? value)

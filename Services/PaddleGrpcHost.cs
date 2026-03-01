@@ -13,6 +13,10 @@ namespace Hotkey_Translator.Services;
 
 internal sealed class PaddleGrpcHost : GrpcHostBase
 {
+    private const string FixedProjectRelativePath = "OcrService";
+    private const string FixedServerScriptName = "server.py";
+    private const string FixedUvCommand = "uv";
+
     public PaddleGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
     {
@@ -27,15 +31,14 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
 
     protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var projectDir = ResolveDirectory(settings.PaddleGrpcProjectDir);
-        var script = string.IsNullOrWhiteSpace(settings.PaddleGrpcServerScript) ? "server.py" : settings.PaddleGrpcServerScript.Trim();
-        var scriptPath = Path.Combine(projectDir, script);
+        var projectDir = ResolveProjectDirectory();
+        var scriptPath = Path.Combine(projectDir, FixedServerScriptName);
         if (!File.Exists(scriptPath))
         {
             throw new FileNotFoundException($"Paddle gRPC server not found: {scriptPath}");
         }
 
-        var uvPath = string.IsNullOrWhiteSpace(settings.PaddleGrpcUvPath) ? "uv" : settings.PaddleGrpcUvPath.Trim();
+        var uvPath = FixedUvCommand;
         var host = string.IsNullOrWhiteSpace(settings.PaddleGrpcHost) ? "127.0.0.1" : settings.PaddleGrpcHost.Trim();
         var port = settings.PaddleGrpcPort <= 0 ? 50051 : settings.PaddleGrpcPort;
         var modelDir = string.IsNullOrWhiteSpace(settings.PaddleModelDir) ? null : ResolvePath(settings.PaddleModelDir);
@@ -149,14 +152,9 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
         return $"http://{host}:{port}";
     }
 
-    private static string ResolveDirectory(string path)
+    private static string ResolveProjectDirectory()
     {
-        if (string.IsNullOrWhiteSpace(path))
-        {
-            throw new InvalidOperationException("Paddle gRPC project directory is not set.");
-        }
-
-        var resolved = ResolvePath(path);
+        var resolved = ResolvePath(FixedProjectRelativePath);
         if (!Directory.Exists(resolved))
         {
             throw new DirectoryNotFoundException($"Paddle gRPC project directory not found: {resolved}");
@@ -167,18 +165,7 @@ internal sealed class PaddleGrpcHost : GrpcHostBase
 
     private static string ResolvePath(string path)
     {
-        if (Path.IsPathRooted(path))
-        {
-            return path;
-        }
-
-        var baseCandidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
-        if (Directory.Exists(baseCandidate) || File.Exists(baseCandidate))
-        {
-            return baseCandidate;
-        }
-
-        return Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), path));
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
     }
 
     private static string ResolvePaddleLanguage(AppSettings settings)

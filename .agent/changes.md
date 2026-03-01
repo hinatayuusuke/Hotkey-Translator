@@ -15023,3 +15023,54 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
 - `rg -n "MagpieCorePath|MagpieCorePathText" Models Services ViewModels MainWindow.xaml -S` で設定依存の残存を確認。
+**2026-03-02 02:30 (Asia/Taipei) — Unify Hook/OCR/Llama paths to app-relative fixed layout**
+
+### Summary
+- HookHost と OCR/Llama gRPC サービスの実行パスを固定相対に統一し、`AppContext.BaseDirectory` 基準のみで解決するよう変更した。
+
+### Context / Goal
+- 開発運用とポータブル配布で同一のパス解決ルールを使い、CWD依存を排除する。
+- 未リリース前提として、パス系設定を削減し、設定は有効/無効・ポート・モデル選択に寄せる。
+
+### Changes
+- `AppSettings` からパス系設定を削除:
+  - `Dx11HookHostPath`
+  - `PaddleGrpcProjectDir` / `PaddleGrpcServerScript`
+  - `PaddleVlGrpcProjectDir` / `PaddleVlGrpcServerScript`
+  - `NdlGrpcProjectDir` / `NdlGrpcServerScript`
+  - `LlamaGrpcProjectDir` / `LlamaGrpcServerScript`
+- HookHost 実行パスを固定化:
+  - `Native\\HookHost\\bin\\HookHost.exe` を `AppContext.BaseDirectory` 基準で解決。
+- Paddle / PaddleVL / NDL / Llama gRPC Host を固定化:
+  - `OcrService` / `OcrServiceVL` / `OcrServiceNDL` / `TranslationServiceLlama`
+  - サーバスクリプトは `server.py` 固定
+  - `Directory.GetCurrentDirectory()` フォールバックを削除
+- Llama model catalog を固定プロジェクト前提へ変更し、呼び出し側 (`MainWindow.xaml.cs`) を更新。
+- `ResourceHostFacade` の Llama deferred-config 比較から削除済みパス設定項目を除去。
+- `Dx11HookSettingsRule` / `NdlOcrSettingsRule` から削除済みパス設定の正規化処理を除去。
+
+### Files Touched
+- `Models/AppSettings.cs` — パス系設定プロパティを削除。
+- `Services/Hook/Dx11HookClientService.cs` — HookHost パス解決を固定相対 + BaseDirectory に変更。
+- `Services/PaddleGrpcHost.cs` — プロジェクト/スクリプト/解決順を固定化。
+- `Services/PaddleVlGrpcHost.cs` — プロジェクト/スクリプト/解決順を固定化。
+- `Services/NdlGrpcHost.cs` — プロジェクト/スクリプト/解決順を固定化。
+- `Services/LlamaGrpcHost.cs` — プロジェクト/スクリプト/解決順を固定化。
+- `Services/LlamaModelCatalog.cs` — 固定プロジェクト構成でモデル列挙/解決。
+- `MainWindow.xaml.cs` — LlamaModelCatalog 呼び出しを新シグネチャへ更新。
+- `Services/Application/ResourceHostFacade.cs` — LlamaHostConfig から削除済み項目を除去。
+- `Services/Settings/Rules/Dx11HookSettingsRule.cs` — HookHost パス正規化を削除。
+- `Services/Settings/Rules/NdlOcrSettingsRule.cs` — NDL パス正規化を削除。
+
+### Behavioral Impact
+- Hook/OCR/Llama の実行パスは常にアプリ配下固定構成を参照する。
+- CWD違いによる起動成功/失敗の揺れがなくなる。
+- パス変更による設定カスタマイズは不可（未リリース方針に合わせて廃止）。
+
+### Risk & Mitigation
+- Risk: 配布物に固定相対の必要ファイルが不足すると起動失敗する。
+- Mitigation: 失敗時は既存の「not found」ログで即判別可能。配布前に固定相対構成の存在チェックを実施する。
+
+### Tests / Verification
+- `dotnet build -p:UseAppHost=false` 実行成功（0 warnings / 0 errors）。
+- `rg -n "Dx11HookHostPath|PaddleGrpcProjectDir|PaddleVlGrpcProjectDir|NdlGrpcProjectDir|LlamaGrpcProjectDir" -S` でコード参照が残っていないことを確認。
