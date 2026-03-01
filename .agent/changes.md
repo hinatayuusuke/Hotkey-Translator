@@ -14788,3 +14788,31 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
 - python -m py_compile OcrService/ocr_engine.py 実行成功。
+**2026-03-02 00:52 (Asia/Taipei) — Remove legacy Paddle CLI OCR path artifacts**
+
+### Summary
+- 現行のPaddle gRPC本線に不要な旧CLI経路コードを削除した。
+
+### Context / Goal
+- Paddle OCR の正式動作経路は gRPC (PaddleGrpcOcrProvider) であり、旧CLI経路を整理したい。
+- 要件として 1) 参照確認 2) 旧Provider削除 3) 旧ブリッジ資産削除/確認 を実施する。
+
+### Changes
+- PaddleOcrProvider / paddle_ocr_bridge.py のコード参照を横断検索し、実行経路から未使用であることを確認。
+- Services/PaddleOcrProvider.cs を削除。
+- Tools/PaddleOcr/paddle_ocr_bridge.py は現ワークツリーに存在しないことを確認（削除対象なし）。
+
+### Files Touched
+- Services/PaddleOcrProvider.cs — 旧CLI実行経路のOCRプロバイダ実装を削除。
+
+### Behavioral Impact
+- Paddle OCR は引き続き PaddleGrpcOcrProvider 経路のみで動作する。
+- 旧CLI経路（uv run ... paddle_ocr_bridge.py）へ戻る余地はなくなる。
+
+### Risk & Mitigation
+- Risk: 想定外に旧Providerを直接利用していたコードがあるとコンパイル/実行不整合になる。
+- Mitigation: 参照ゼロ確認後に削除し、dotnet build で回帰を確認。
+
+### Tests / Verification
+- g -n "PaddleOcrProvider|paddle_ocr_bridge.py" Services Models ViewModels MainWindow.xaml.cs MainWindow.xaml で参照なしを確認。
+- dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
