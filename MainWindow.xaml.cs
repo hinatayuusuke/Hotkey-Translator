@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -9,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
@@ -71,6 +73,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private string _winRtInstallPrevMessage = string.Empty;
     private bool _winRtInstallPrevIsIndeterminate = true;
     private double _winRtInstallPrevPercent;
+    private CancellationTokenSource? _winRtLanguagePackPrecheckCts;
+    private int _winRtLanguagePackPrecheckVersion;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private readonly bool _hookRoiTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
@@ -137,6 +141,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ApplyPreviewBitmapSource,
             ex => _logger?.Error(ex, "Failed to update OCR preprocess preview."));
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
+        _mainWindowViewModel.Settings.PropertyChanged += OnSettingsViewModelPropertyChanged;
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _dx11HookClientService = new Dx11HookClientService(() => _logger);
         _magpieProcessService = new MagpieProcessService();
@@ -299,6 +304,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
         _drawerLayoutController.SyncForCurrentState();
+        ScheduleWinRtLanguagePackPrecheck();
     }
 
     private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
@@ -385,7 +391,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _previewFrameDispatcher.Dispose();
         _drawerLayoutController.Reset();
         _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
+        _mainWindowViewModel.Settings.PropertyChanged -= OnSettingsViewModelPropertyChanged;
         _magpieSessionController.ActiveStateChanged -= OnMirrorSessionActiveStateChanged;
+        _winRtLanguagePackPrecheckCts?.Cancel();
+        _winRtLanguagePackPrecheckCts?.Dispose();
+        _winRtLanguagePackPrecheckCts = null;
         _runCoordinator.Dispose();
         _settingsChangeScheduler.CancelPending();
         _settingsChangeScheduler.Dispose();
@@ -498,6 +508,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
         _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = 0;
         _mainWindowViewModel.RuntimeStatus.BusyMessage = $"Installing OCR language pack ({localeTag})...";
+        ShowWinRtLanguagePackStatusUi(
+            $"Installing WinRT OCR language pack ({localeTag})...",
+            Brushes.DimGray,
+            showInstallButton: false,
+            enableInstallButton: false);
     }
 
     private void UpdateWinRtLanguagePackInstallUi(CapabilityInstallProgress progress)
@@ -522,6 +537,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = false;
         _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = Math.Clamp(progress.Percent, 0, 100);
+        if (!string.IsNullOrWhiteSpace(progress.Message))
+        {
+            ShowWinRtLanguagePackStatusUi(
+                progress.Message,
+                Brushes.DimGray,
+                showInstallButton: false,
+                enableInstallButton: false);
+        }
     }
 
     private void EndWinRtLanguagePackInstallUi()
@@ -555,6 +578,181 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.RuntimeStatus.IsBusy = false;
         _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
         _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = 0;
+        ScheduleWinRtLanguagePackPrecheck();
+    }
+
+    private void OnSettingsViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(SettingsViewModel.OcrEngineTag) or
+            nameof(SettingsViewModel.SourceLanguageTag) or
+            nameof(SettingsViewModel.SourceLanguageCustom))
+        {
+            ScheduleWinRtLanguagePackPrecheck();
+        }
+    }
+
+    private void ScheduleWinRtLanguagePackPrecheck()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(ScheduleWinRtLanguagePackPrecheck);
+            return;
+        }
+
+        if (!IsLoaded || _isClosing)
+        {
+            return;
+        }
+
+        var version = Interlocked.Increment(ref _winRtLanguagePackPrecheckVersion);
+        _winRtLanguagePackPrecheckCts?.Cancel();
+        _winRtLanguagePackPrecheckCts?.Dispose();
+        _winRtLanguagePackPrecheckCts = new CancellationTokenSource();
+        var token = _winRtLanguagePackPrecheckCts.Token;
+        _ = RefreshWinRtLanguagePackPrecheckUiAsync(version, token);
+    }
+
+    private async Task RefreshWinRtLanguagePackPrecheckUiAsync(int version, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!string.Equals(_mainWindowViewModel.Settings.OcrEngineTag, "WinRt", StringComparison.OrdinalIgnoreCase))
+            {
+                HideWinRtLanguagePackStatusUi();
+                return;
+            }
+
+            ShowWinRtLanguagePackStatusUi(
+                "WinRT OCR language pack: checking...",
+                Brushes.DimGray,
+                showInstallButton: false,
+                enableInstallButton: false);
+            await Task.Yield();
+            if (cancellationToken.IsCancellationRequested || version != _winRtLanguagePackPrecheckVersion)
+            {
+                return;
+            }
+
+            var sourceLanguage = ResolveSelectedSourceLanguageForPrecheck();
+            var locale = WinRtLanguageResolver.ResolveOcrLocale(sourceLanguage);
+            if (string.IsNullOrWhiteSpace(locale))
+            {
+                ShowWinRtLanguagePackStatusUi(
+                    "WinRT OCR language pack: source language is not set.",
+                    Brushes.DarkOrange,
+                    showInstallButton: false,
+                    enableInstallButton: false);
+                return;
+            }
+
+            var supported = WinRtOcrLanguagePackCoordinator.IsLanguageSupportedForLocale(locale);
+            if (cancellationToken.IsCancellationRequested || version != _winRtLanguagePackPrecheckVersion)
+            {
+                return;
+            }
+
+            if (supported)
+            {
+                ShowWinRtLanguagePackStatusUi(
+                    $"WinRT OCR language pack: available ({locale}).",
+                    Brushes.DimGray,
+                    showInstallButton: false,
+                    enableInstallButton: false);
+                return;
+            }
+
+            ShowWinRtLanguagePackStatusUi(
+                $"WinRT OCR language pack: missing ({locale}).",
+                Brushes.DarkOrange,
+                showInstallButton: true,
+                enableInstallButton: _winRtInstallUiDepth == 0);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to evaluate WinRT language-pack precheck.");
+            ShowWinRtLanguagePackStatusUi(
+                "WinRT OCR language pack: precheck failed.",
+                Brushes.DarkOrange,
+                showInstallButton: true,
+                enableInstallButton: _winRtInstallUiDepth == 0);
+        }
+    }
+
+    private string ResolveSelectedSourceLanguageForPrecheck()
+    {
+        var selectedTag = (_mainWindowViewModel.Settings.SourceLanguageTag ?? string.Empty).Trim();
+        if (string.Equals(selectedTag, "custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return (_mainWindowViewModel.Settings.SourceLanguageCustom ?? string.Empty).Trim();
+        }
+
+        return selectedTag;
+    }
+
+    private void ShowWinRtLanguagePackStatusUi(
+        string message,
+        Brush foreground,
+        bool showInstallButton,
+        bool enableInstallButton)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowWinRtLanguagePackStatusUi(message, foreground, showInstallButton, enableInstallButton));
+            return;
+        }
+
+        WinRtLanguagePackStatusText.Text = message;
+        WinRtLanguagePackStatusText.Foreground = foreground;
+        WinRtLanguagePackStatusText.Visibility = Visibility.Visible;
+        InstallWinRtLanguagePackButton.Visibility = showInstallButton ? Visibility.Visible : Visibility.Collapsed;
+        InstallWinRtLanguagePackButton.IsEnabled = enableInstallButton;
+    }
+
+    private void HideWinRtLanguagePackStatusUi()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(HideWinRtLanguagePackStatusUi);
+            return;
+        }
+
+        WinRtLanguagePackStatusText.Visibility = Visibility.Collapsed;
+        InstallWinRtLanguagePackButton.Visibility = Visibility.Collapsed;
+        InstallWinRtLanguagePackButton.IsEnabled = false;
+    }
+
+    private async void OnInstallWinRtLanguagePackClicked(object sender, RoutedEventArgs e)
+    {
+        if (_winRtInstallUiDepth > 0)
+        {
+            return;
+        }
+
+        await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
+        var settings = _settingsService.Settings;
+        if (settings.OcrEngine != OcrEngineKind.WinRt)
+        {
+            ScheduleWinRtLanguagePackPrecheck();
+            return;
+        }
+
+        var result = await _winRtLanguagePackCoordinator
+            .EnsureLanguagePackAsync(settings, CancellationToken.None, enforceSessionPromptLimit: false)
+            .ConfigureAwait(true);
+        switch (result.Status)
+        {
+            case WinRtLanguagePackStatus.Ready:
+                AppendLog($"WinRT OCR language pack ready: {result.LocaleTag}.");
+                break;
+            case WinRtLanguagePackStatus.UserCanceled:
+                AppendLog($"WinRT OCR language pack install canceled: {result.LocaleTag}.");
+                break;
+            case WinRtLanguagePackStatus.InstallFailed:
+                AppendLog($"WinRT OCR language pack install failed: {result.LocaleTag}.");
+                break;
+        }
+
+        ScheduleWinRtLanguagePackPrecheck();
     }
 
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)
@@ -966,6 +1164,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateRoiStatus(settings);
         _isApplyingSettings = false;
         UpdateAutoTranslateBadgeVisibility(settings);
+        ScheduleWinRtLanguagePackPrecheck();
     }
 
     private void UpdateRoiStatus(AppSettings settings)
@@ -1153,6 +1352,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ApplyMirrorOverlayMapper();
         _ = _dx11HookClientService.ApplySettingsAsync(settings);
         CheckAndShowPrerequisiteDialogs(settings);
+        ScheduleWinRtLanguagePackPrecheck();
     }
 
     private void CheckAndShowPrerequisiteDialogs(AppSettings settings)
@@ -1649,4 +1849,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ModifierKeys.Control);
     }
 }
+
+
 

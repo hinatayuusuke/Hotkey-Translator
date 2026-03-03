@@ -15340,3 +15340,35 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 13:18 (Asia/Taipei) — Add WinRT precheck status and Install-now trigger on language selection**
+
+### Summary
+- WinRT言語選択時の事前チェックUI（未導入表示 + Install now）を追加し、Run前に加えて設定画面でも導入導線を出すようにした。
+
+### Context / Goal
+- 既存は Run 時のみ言語パック不足が判明し、設定中に不足状態が見えづらかった。
+- 言語選択時に即時判定して、未導入なら明示表示と手動導入ボタンを提供する。
+
+### Changes
+- OCR設定に WinRtLanguagePackStatusText と InstallWinRtLanguagePackButton を追加。
+- SettingsViewModel の OcrEngineTag/SourceLanguageTag/SourceLanguageCustom 変更を監視し、事前チェックを自動実行。
+- 事前チェックは WinRtLanguageResolver + WinRtOcrLanguagePackCoordinator.IsLanguageSupportedForLocale で判定し、UIを状態更新。
+- Install now クリックで EnsureLanguagePackAsync(..., enforceSessionPromptLimit: false) を実行し、明示操作時はセッション制限をバイパス可能に変更。
+- Coordinator の EnsureLanguagePackAsync に enforceSessionPromptLimit 引数を追加（Run経路は既定値維持）。
+
+### Files Touched
+- MainWindow.xaml — WinRT言語パック状態表示と Install now ボタンを追加。
+- MainWindow.xaml.cs — 言語変更監視、事前チェックスケジューラ、UI反映、Install now クリック処理を追加。
+- Services/WinRtOcrLanguagePackCoordinator.cs — 事前チェック用サポート判定公開と、明示導入時のセッション制限バイパスを追加。
+
+### Behavioral Impact
+- WinRT選択中に言語を変更すると、導入済み/未導入が設定画面で即時表示される。
+- 未導入時は Install now ボタンでその場で導入できる。
+- Run時の最終ゲートは引き続き有効。
+
+### Risk & Mitigation
+- Risk: 言語設定を短時間で連続変更すると古い判定結果がUIに残る可能性。
+- Mitigation: 事前チェックに CancellationToken とバージョン番号を導入し、最新リクエストのみ反映。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。

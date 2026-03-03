@@ -127,6 +127,18 @@
                                 <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
                             </ComboBox>
                         </Grid>
+                        <StackPanel Orientation="Horizontal" Margin="120,6,0,0">
+                            <TextBlock x:Name="WinRtLanguagePackStatusText"
+                                       VerticalAlignment="Center"
+                                       Foreground="DimGray"
+                                       Visibility="Collapsed" />
+                            <Button x:Name="InstallWinRtLanguagePackButton"
+                                    Content="Install now"
+                                    Margin="10,0,0,0"
+                                    Padding="10,2"
+                                    Visibility="Collapsed"
+                                    Click="OnInstallWinRtLanguagePackClicked" />
+                        </StackPanel>
                         <TextBlock Text="Use Settings &gt; OCR runtime controls to apply changes and release OCR host resources."
                                    Foreground="DimGray"
                                    TextWrapping="Wrap"

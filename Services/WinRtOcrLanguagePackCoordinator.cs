@@ -54,7 +54,10 @@ internal sealed class WinRtOcrLanguagePackCoordinator
         _endInstallUi = endInstallUi;
     }
 
-    public async Task<WinRtLanguagePackResult> EnsureLanguagePackAsync(AppSettings settings, CancellationToken cancellationToken)
+    public async Task<WinRtLanguagePackResult> EnsureLanguagePackAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken,
+        bool enforceSessionPromptLimit = true)
     {
         if (settings.OcrEngine != OcrEngineKind.WinRt)
         {
@@ -67,18 +70,22 @@ internal sealed class WinRtOcrLanguagePackCoordinator
             return new WinRtLanguagePackResult(WinRtLanguagePackStatus.Ready, string.Empty, "Language not specified; fallback will be used.");
         }
 
-        if (IsLanguageSupported(locale))
+        if (IsLanguageSupportedForLocale(locale))
         {
             return new WinRtLanguagePackResult(WinRtLanguagePackStatus.Ready, locale, "Language pack already available.");
         }
 
-        var shouldPrompt = false;
-        lock (_sync)
+        var shouldPrompt = true;
+        if (enforceSessionPromptLimit)
         {
-            if (!_promptedLocales.Contains(locale))
+            shouldPrompt = false;
+            lock (_sync)
             {
-                _promptedLocales.Add(locale);
-                shouldPrompt = true;
+                if (!_promptedLocales.Contains(locale))
+                {
+                    _promptedLocales.Add(locale);
+                    shouldPrompt = true;
+                }
             }
         }
 
@@ -120,7 +127,7 @@ internal sealed class WinRtOcrLanguagePackCoordinator
             return new WinRtLanguagePackResult(WinRtLanguagePackStatus.InstallFailed, locale, failureMessage);
         }
 
-        if (!IsLanguageSupported(locale))
+        if (!IsLanguageSupportedForLocale(locale))
         {
             const string messageTemplate =
                 "OCR language pack installation completed, but WinRT OCR still cannot use locale '{0}'. " +
@@ -136,7 +143,7 @@ internal sealed class WinRtOcrLanguagePackCoordinator
         return new WinRtLanguagePackResult(WinRtLanguagePackStatus.Ready, locale, "Language pack installed.");
     }
 
-    private static bool IsLanguageSupported(string localeTag)
+    internal static bool IsLanguageSupportedForLocale(string localeTag)
     {
         try
         {
