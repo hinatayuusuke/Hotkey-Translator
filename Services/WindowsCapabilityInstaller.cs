@@ -26,7 +26,6 @@ internal readonly record struct CapabilityInstallResult(
 internal sealed class WindowsCapabilityInstaller
 {
     private const string ElevatorExeName = "WinRtLanguagePackElevator.exe";
-    private const string ElevatorDllName = "WinRtLanguagePackElevator.dll";
     private const int ElevatorExitSuccess = 0;
     private const int ElevatorExitInvalidArgs = 2;
     private const int ElevatorExitUnsupported = 3;
@@ -63,21 +62,21 @@ internal sealed class WindowsCapabilityInstaller
                 "Unsafe capability name.");
         }
 
-        var helperLaunch = ResolveElevatorLaunchInfo();
-        if (helperLaunch is null)
+        var helperPath = ResolveElevatorPath();
+        if (!File.Exists(helperPath))
         {
             return new CapabilityInstallResult(
                 CapabilityInstallStatus.UnsupportedEnvironment,
                 -1,
-                Path.Combine(AppContext.BaseDirectory, ElevatorExeName),
+                helperPath,
                 string.Empty,
-                $"{ElevatorExeName} / {ElevatorDllName} not found.");
+                $"{ElevatorExeName} not found.");
         }
 
         // WHY: Keep the main process non-elevated and request UAC only for capability install.
         var elevatedResult = await RunElevatedHelperAsync(
-                helperLaunch.Value.command,
-                helperLaunch.Value.arguments,
+                helperPath,
+                string.Empty,
                 capabilityName,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -94,22 +93,9 @@ internal sealed class WindowsCapabilityInstaller
         return elevatedResult;
     }
 
-    private static (string command, string arguments)? ResolveElevatorLaunchInfo()
+    private static string ResolveElevatorPath()
     {
-        var baseDir = AppContext.BaseDirectory;
-        var exePath = Path.Combine(baseDir, ElevatorExeName);
-        if (File.Exists(exePath))
-        {
-            return (exePath, string.Empty);
-        }
-
-        var dllPath = Path.Combine(baseDir, ElevatorDllName);
-        if (File.Exists(dllPath))
-        {
-            return ("dotnet", $"\"{dllPath}\"");
-        }
-
-        return null;
+        return Path.Combine(AppContext.BaseDirectory, "Tools", "WinRtLanguagePackElevator", ElevatorExeName);
     }
 
     private static bool IsSafeCapabilityName(string capabilityName)

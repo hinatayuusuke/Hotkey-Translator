@@ -15277,3 +15277,30 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 11:32 (Asia/Taipei) — Fix elevated helper lookup path to Tools-only**
+
+### Summary
+- WinRT言語パック昇格ヘルパーの探索先を Tools\WinRtLanguagePackElevator 固定に変更し、フォールバックを削除。
+
+### Context / Goal
+- ポータブル配布時にヘルパー配置場所を固定化し、期待しない探索先やDLL起動フォールバックを無効化する。
+- 実行経路を単純化して運用ミスを減らす。
+
+### Changes
+- WindowsCapabilityInstaller のヘルパー解決ロジックを AppContext.BaseDirectory\Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.exe 固定に変更。
+- 直下探索・DLL探索・dotnet <dll> 起動フォールバックを削除。
+- 見つからない場合のエラーメッセージを EXEのみ対象に更新。
+
+### Files Touched
+- Services/WindowsCapabilityInstaller.cs — ヘルパー探索/起動ロジックを Tools 配下固定へ変更。
+
+### Behavioral Impact
+- 昇格ヘルパーは Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.exe に存在する場合のみ起動される。
+- それ以外の配置では UnsupportedEnvironment として失敗する。
+
+### Risk & Mitigation
+- Risk: 配布物に Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.exe を同梱し忘れると導入不可になる。
+- Mitigation: 配布手順に固定パス同梱を明記し、起動時ログでパス不一致を明示する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
