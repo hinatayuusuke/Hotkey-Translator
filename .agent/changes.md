@@ -15206,3 +15206,39 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+**2026-03-03 10:21 (Asia/Taipei) — Implement WinRT OCR language pack on-demand install flow**
+
+### Summary
+- WinRT OCR実行前に言語パック不足を検出し、同意時のみOS導入を試行する実装を追加。
+
+### Context / Goal
+- WinRT OCRで未導入言語を使うと失敗理由が見えにくいため、実行前に検出して明示的に対処できるようにする。
+- ユーザー同意でのみインストールを走らせ、失敗/キャンセル時は安全にRunを中止する。
+
+### Changes
+- WinRT言語タグ解決を共通化する WinRtLanguageResolver を追加。
+- WindowsCapabilityInstaller を追加し、Add-WindowsCapability と DISM fallback で OCR capability 導入を試行。
+- WinRtOcrLanguagePackCoordinator を追加し、未導入判定・1セッション1回の確認ダイアログ制御・導入後再判定を実装。
+- MainWindowRunCoordinator.RunOnceAsync に事前チェックを組み込み、UserCanceled/InstallFailed 時はパイプライン実行を中止。
+- MainWindow.xaml.cs に確認/失敗表示ダイアログのUIブリッジを追加し、Coordinatorを配線。
+- WinRtOcrProvider の言語正規化を WinRtLanguageResolver 利用に統一。
+
+### Files Touched
+- Services/WinRtLanguageResolver.cs — WinRT OCR locale 解決ロジックを追加。
+- Services/WindowsCapabilityInstaller.cs — Windows OCR capability 導入サービスを追加。
+- Services/WinRtOcrLanguagePackCoordinator.cs — 導入前判定と同意フロー制御を追加。
+- Services/Application/MainWindowRunCoordinator.cs — Run前チェックを追加。
+- MainWindow.xaml.cs — 確認/失敗ダイアログとCoordinator DI配線を追加。
+- Services/WinRtOcrProvider.cs — 言語解決を共通resolverへ置換。
+
+### Behavioral Impact
+- OcrEngine=WinRt かつ未導入言語時、実行前にインストール確認ダイアログが表示される。
+- 同意して導入成功し再判定OKならそのままWinRT OCR継続。キャンセル/失敗時は当該Runを中止。
+- 同一言語の確認ダイアログは同一セッション中1回に抑制。
+
+### Risk & Mitigation
+- Risk: 管理者権限や環境要因で導入に失敗しRunが中止される。
+- Mitigation: 失敗理由をユーザー向けダイアログとログに残し、誤ったOCR継続を防止。
+
+### Tests / Verification
+- dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。

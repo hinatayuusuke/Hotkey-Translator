@@ -85,7 +85,7 @@ public sealed class WinRtOcrProvider : IOcrProvider
             return _fallbackEngine;
         }
 
-        var normalized = languageTag.Trim().Replace('_', '-');
+        var normalized = WinRtLanguageResolver.ResolveOcrLocale(languageTag) ?? string.Empty;
         if (normalized.Length == 0)
         {
             _logger?.Info($"OCR language tag is empty. Using fallback '{_fallbackEngine.RecognizerLanguage.LanguageTag}'.");

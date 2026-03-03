@@ -46,6 +46,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly SettingsChangeScheduler _settingsChangeScheduler;
     private readonly MainWindowViewModel _mainWindowViewModel;
     private readonly MainWindowRunCoordinator _runCoordinator;
+    private readonly WinRtOcrLanguagePackCoordinator _winRtLanguagePackCoordinator;
     private readonly Dx11HookClientService _dx11HookClientService;
     private readonly IMagpieProcessService _magpieProcessService;
     private readonly IMagpieIpcClient _magpieIpcClient;
@@ -144,11 +145,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _magpieSessionController.ActiveStateChanged += OnMirrorSessionActiveStateChanged;
         _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
+        _winRtLanguagePackCoordinator = new WinRtOcrLanguagePackCoordinator(
+            () => _logger,
+            new WindowsCapabilityInstaller(() => _logger),
+            ConfirmWinRtLanguagePackInstall,
+            ShowWinRtLanguagePackInstallError);
         SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
             this,
             () => _pipeline,
+            _winRtLanguagePackCoordinator,
             () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false);
         _sceneChangeController = new SceneChangeController(
             Dispatcher,
@@ -418,6 +425,36 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         MessageBox.Show(this, message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+    }
+
+    private bool ConfirmWinRtLanguagePackInstall(string localeTag)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return Dispatcher.Invoke(() => ConfirmWinRtLanguagePackInstall(localeTag));
+        }
+
+        var message =
+            $"WinRT OCR language pack '{localeTag}' is not installed.{Environment.NewLine}{Environment.NewLine}" +
+            "Install it now? This may require administrator permission and network access.";
+        var result = MessageBox.Show(
+            this,
+            message,
+            "OCR language pack required",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Question);
+        return result == MessageBoxResult.OK;
+    }
+
+    private void ShowWinRtLanguagePackInstallError(string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowWinRtLanguagePackInstallError(message));
+            return;
+        }
+
+        MessageBox.Show(this, message, "OCR language pack required", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)

@@ -11,6 +11,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
     private readonly SettingsService _settingsService;
     private readonly IMainWindowViewBridge _viewBridge;
     private readonly Func<PipelineOrchestrator?> _pipelineAccessor;
+    private readonly WinRtOcrLanguagePackCoordinator _winRtLanguagePackCoordinator;
     private readonly Func<bool> _tryDrainPendingSceneAutoTranslate;
 
     private CancellationTokenSource? _runCts;
@@ -22,11 +23,13 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         SettingsService settingsService,
         IMainWindowViewBridge viewBridge,
         Func<PipelineOrchestrator?> pipelineAccessor,
+        WinRtOcrLanguagePackCoordinator winRtLanguagePackCoordinator,
         Func<bool> tryDrainPendingSceneAutoTranslate)
     {
         _settingsService = settingsService;
         _viewBridge = viewBridge;
         _pipelineAccessor = pipelineAccessor;
+        _winRtLanguagePackCoordinator = winRtLanguagePackCoordinator;
         _tryDrainPendingSceneAutoTranslate = tryDrainPendingSceneAutoTranslate;
     }
 
@@ -71,6 +74,23 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
         try
         {
+            var languagePackResult = await _winRtLanguagePackCoordinator
+                .EnsureLanguagePackAsync(settings, _runCts.Token)
+                .ConfigureAwait(true);
+            if (languagePackResult.Status == WinRtLanguagePackStatus.UserCanceled)
+            {
+                _viewBridge.AppendLog(
+                    $"WinRT OCR canceled: language pack install declined ({languagePackResult.LocaleTag}).");
+                return;
+            }
+
+            if (languagePackResult.Status == WinRtLanguagePackStatus.InstallFailed)
+            {
+                _viewBridge.AppendLog(
+                    $"WinRT OCR canceled: language pack unavailable ({languagePackResult.LocaleTag}).");
+                return;
+            }
+
             await pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
         }
         finally
