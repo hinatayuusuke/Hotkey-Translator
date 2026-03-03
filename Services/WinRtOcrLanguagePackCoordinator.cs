@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -27,6 +27,10 @@ internal sealed class WinRtOcrLanguagePackCoordinator
     private readonly WindowsCapabilityInstaller _installer;
     private readonly Func<string, bool> _confirmInstall;
     private readonly Action<string> _showInstallError;
+    private readonly Action<string> _showInstallSuccess;
+    private readonly Action<string> _beginInstallUi;
+    private readonly Action<CapabilityInstallProgress> _updateInstallUi;
+    private readonly Action _endInstallUi;
     private readonly HashSet<string> _promptedLocales = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _sync = new();
 
@@ -34,12 +38,20 @@ internal sealed class WinRtOcrLanguagePackCoordinator
         Func<AppLogger?> loggerAccessor,
         WindowsCapabilityInstaller installer,
         Func<string, bool> confirmInstall,
-        Action<string> showInstallError)
+        Action<string> showInstallError,
+        Action<string> showInstallSuccess,
+        Action<string> beginInstallUi,
+        Action<CapabilityInstallProgress> updateInstallUi,
+        Action endInstallUi)
     {
         _loggerAccessor = loggerAccessor;
         _installer = installer;
         _confirmInstall = confirmInstall;
         _showInstallError = showInstallError;
+        _showInstallSuccess = showInstallSuccess;
+        _beginInstallUi = beginInstallUi;
+        _updateInstallUi = updateInstallUi;
+        _endInstallUi = endInstallUi;
     }
 
     public async Task<WinRtLanguagePackResult> EnsureLanguagePackAsync(AppSettings settings, CancellationToken cancellationToken)
@@ -87,9 +99,20 @@ internal sealed class WinRtOcrLanguagePackCoordinator
                 "User canceled language pack installation.");
         }
 
-        var installResult = await _installer
-            .InstallOcrLanguageCapabilityAsync(locale, cancellationToken)
-            .ConfigureAwait(true);
+        _beginInstallUi(locale);
+        CapabilityInstallResult installResult;
+        try
+        {
+            var progress = new Progress<CapabilityInstallProgress>(p => _updateInstallUi(p));
+            installResult = await _installer
+                .InstallOcrLanguageCapabilityAsync(locale, cancellationToken, progress)
+                .ConfigureAwait(true);
+        }
+        finally
+        {
+            _endInstallUi();
+        }
+
         if (installResult.Status != CapabilityInstallStatus.Succeeded)
         {
             var failureMessage = BuildFailureMessage(locale, installResult);
@@ -107,6 +130,8 @@ internal sealed class WinRtOcrLanguagePackCoordinator
             return new WinRtLanguagePackResult(WinRtLanguagePackStatus.InstallFailed, locale, message);
         }
 
+        var successMessage = $"OCR language pack '{locale}' installed successfully.";
+        _showInstallSuccess(successMessage);
         _loggerAccessor()?.Info($"stage=winrt_ocr_lang_pack event=ready locale={locale}.");
         return new WinRtLanguagePackResult(WinRtLanguagePackStatus.Ready, locale, "Language pack installed.");
     }

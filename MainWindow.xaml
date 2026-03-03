@@ -1285,7 +1285,12 @@
             <Border Background="#F8FFFFFF" Padding="24" CornerRadius="6" HorizontalAlignment="Center" VerticalAlignment="Center">
                 <StackPanel>
                     <TextBlock Text="{Binding RuntimeStatus.BusyMessage}" FontWeight="SemiBold" Margin="0,0,0,8" />
-                    <ProgressBar Width="220" Height="6" IsIndeterminate="True" />
+                    <ProgressBar Width="220"
+                                 Height="6"
+                                 Minimum="0"
+                                 Maximum="100"
+                                 Value="{Binding RuntimeStatus.BusyProgressPercent}"
+                                 IsIndeterminate="{Binding RuntimeStatus.BusyProgressIsIndeterminate}" />
                 </StackPanel>
             </Border>
         </Grid>

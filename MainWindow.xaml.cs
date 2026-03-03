@@ -66,6 +66,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
+    private int _winRtInstallUiDepth;
+    private bool _winRtInstallPrevIsBusy;
+    private string _winRtInstallPrevMessage = string.Empty;
+    private bool _winRtInstallPrevIsIndeterminate = true;
+    private double _winRtInstallPrevPercent;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private readonly bool _hookRoiTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
@@ -149,7 +154,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _logger,
             new WindowsCapabilityInstaller(() => _logger),
             ConfirmWinRtLanguagePackInstall,
-            ShowWinRtLanguagePackInstallError);
+            ShowWinRtLanguagePackInstallError,
+            ShowWinRtLanguagePackInstallSuccess,
+            BeginWinRtLanguagePackInstallUi,
+            UpdateWinRtLanguagePackInstallUi,
+            EndWinRtLanguagePackInstallUi);
         SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
@@ -457,6 +466,97 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         MessageBox.Show(this, message, "OCR language pack required", MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
+    private void ShowWinRtLanguagePackInstallSuccess(string message)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => ShowWinRtLanguagePackInstallSuccess(message));
+            return;
+        }
+
+        MessageBox.Show(this, message, "OCR language pack required", MessageBoxButton.OK, MessageBoxImage.Information);
+    }
+
+    private void BeginWinRtLanguagePackInstallUi(string localeTag)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => BeginWinRtLanguagePackInstallUi(localeTag));
+            return;
+        }
+
+        if (_winRtInstallUiDepth == 0)
+        {
+            _winRtInstallPrevIsBusy = _mainWindowViewModel.RuntimeStatus.IsBusy;
+            _winRtInstallPrevMessage = _mainWindowViewModel.RuntimeStatus.BusyMessage;
+            _winRtInstallPrevIsIndeterminate = _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate;
+            _winRtInstallPrevPercent = _mainWindowViewModel.RuntimeStatus.BusyProgressPercent;
+        }
+
+        _winRtInstallUiDepth++;
+        _mainWindowViewModel.RuntimeStatus.IsBusy = true;
+        _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
+        _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = 0;
+        _mainWindowViewModel.RuntimeStatus.BusyMessage = $"Installing OCR language pack ({localeTag})...";
+    }
+
+    private void UpdateWinRtLanguagePackInstallUi(CapabilityInstallProgress progress)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(() => UpdateWinRtLanguagePackInstallUi(progress));
+            return;
+        }
+
+        _mainWindowViewModel.RuntimeStatus.IsBusy = true;
+        if (!string.IsNullOrWhiteSpace(progress.Message))
+        {
+            _mainWindowViewModel.RuntimeStatus.BusyMessage = progress.Message;
+        }
+
+        if (progress.Percent < 0)
+        {
+            _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
+            return;
+        }
+
+        _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = false;
+        _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = Math.Clamp(progress.Percent, 0, 100);
+    }
+
+    private void EndWinRtLanguagePackInstallUi()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            Dispatcher.Invoke(EndWinRtLanguagePackInstallUi);
+            return;
+        }
+
+        if (_winRtInstallUiDepth <= 0)
+        {
+            return;
+        }
+
+        _winRtInstallUiDepth--;
+        if (_winRtInstallUiDepth > 0)
+        {
+            return;
+        }
+
+        if (_winRtInstallPrevIsBusy)
+        {
+            _mainWindowViewModel.RuntimeStatus.IsBusy = true;
+            _mainWindowViewModel.RuntimeStatus.BusyMessage = _winRtInstallPrevMessage;
+            _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = _winRtInstallPrevIsIndeterminate;
+            _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = _winRtInstallPrevPercent;
+            return;
+        }
+
+        _mainWindowViewModel.RuntimeStatus.IsBusy = false;
+        _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
+        _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = 0;
+    }
+
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)
     {
         _mainWindowViewModel.Settings.LoadFrom(settings);
@@ -645,6 +745,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         _mainWindowViewModel.RuntimeStatus.IsBusy = visible;
+        if (!visible)
+        {
+            _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
+            _mainWindowViewModel.RuntimeStatus.BusyProgressPercent = 0;
+        }
+        else
+        {
+            _mainWindowViewModel.RuntimeStatus.BusyProgressIsIndeterminate = true;
+        }
+
         if (!string.IsNullOrWhiteSpace(message))
         {
             _mainWindowViewModel.RuntimeStatus.BusyMessage = message;

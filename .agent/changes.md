@@ -15304,3 +15304,39 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 11:56 (Asia/Taipei) — Add WinRT install modal UX and IPC progress reporting**
+
+### Summary
+- WinRT言語パック導入時にアプリ内モーダル進捗表示（%）を追加し、完了/失敗メッセージを明確化した。
+
+### Context / Goal
+- unas 実行では親プロセスで標準出力を直接読めないため、導入中の状態がユーザーに見えづらかった。
+- 導入中モーダルとパーセント進捗を表示し、成功/失敗の結果を明示する。
+
+### Changes
+- Busyオーバーレイを determinate/indeterminate 切替対応に拡張し、進捗値バインディングを追加。
+- WinRtOcrLanguagePackCoordinator に導入UI開始/進捗更新/終了と成功通知コールバックを追加。
+- WindowsCapabilityInstaller に Named Pipe 受信を追加し、ヘルパーからの進捗JSONを IProgress 経由でUIに通知。
+- 昇格ヘルパー WinRtLanguagePackElevator を WinExe 化し、--pipe 引数対応と DISM 出力 % パース/送信を実装。
+- MainWindow に WinRT導入専用のUI状態保存/復元ロジックを追加し、既存Busy表示との整合を維持。
+
+### Files Touched
+- MainWindow.xaml — Busyオーバーレイ進捗バーをバインディング対応へ変更。
+- ViewModels/RuntimeStatusViewModel.cs — Busy進捗状態（indeterminate/percent）を追加。
+- MainWindow.xaml.cs — 導入開始/進捗更新/終了/成功表示のUIハンドラとCoordinator配線を追加。
+- Services/WinRtOcrLanguagePackCoordinator.cs — 導入UIコールバックと進捗連携を追加。
+- Services/WindowsCapabilityInstaller.cs — Named Pipe受信と IProgress<CapabilityInstallProgress> 通知を追加。
+- Tools/WinRtLanguagePackElevator/WinRtLanguagePackElevator.csproj — OutputType を WinExe に変更。
+- Tools/WinRtLanguagePackElevator/Program.cs — --pipe 引数、DISM進捗%抽出、JSON送信を実装。
+
+### Behavioral Impact
+- WinRT言語パック導入時、アプリ側モーダルに導入メッセージと進捗%が表示される。
+- 導入成功時は情報ダイアログ、失敗/キャンセル時は警告ダイアログで明示される。
+- 黒いコンソール依存を減らすため、ヘルパーを WinExe として動作させる構成になった。
+
+### Risk & Mitigation
+- Risk: DISM出力形式やロケール差で % 抽出が不安定になる可能性。
+- Mitigation: % 抽出失敗時は indeterminate 表示を維持し、導入結果は終了コードで判定する。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
