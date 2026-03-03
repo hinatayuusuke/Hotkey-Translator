@@ -118,6 +118,45 @@ namespace
         return dir + L"\\" + leaf;
     }
 
+    const wchar_t* ResolveAgentDllLeaf(ht::hook::ipc::GraphicsApi api)
+    {
+        switch (api)
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11:
+                return L"HookAgentDx11.dll";
+            case ht::hook::ipc::GraphicsApi::Vulkan:
+                return L"HookAgentVulkan.dll";
+            default:
+                return nullptr;
+        }
+    }
+
+    const char* ResolveInstallExport(ht::hook::ipc::GraphicsApi api)
+    {
+        switch (api)
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11:
+                return "InstallDx11HookThread";
+            case ht::hook::ipc::GraphicsApi::Vulkan:
+                return "InstallVulkanHookThread";
+            default:
+                return nullptr;
+        }
+    }
+
+    const char* ResolveUninstallExport(ht::hook::ipc::GraphicsApi api)
+    {
+        switch (api)
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11:
+                return "UninstallDx11HookThread";
+            case ht::hook::ipc::GraphicsApi::Vulkan:
+                return "UninstallVulkanHookThread";
+            default:
+                return nullptr;
+        }
+    }
+
     bool ExtractU32(const std::string& json, const char* key, std::uint32_t& out)
     {
         const std::string needle = std::string("\"") + key + "\"";
@@ -334,7 +373,12 @@ namespace
         return RemoteCallNoArg(process, remoteFn, exitCode);
     }
 
-    bool InjectDx11Agent(DWORD pid, const std::wstring& dllPath, HMODULE& outRemoteModule, std::string& outReason)
+    bool InjectAgent(
+        DWORD pid,
+        ht::hook::ipc::GraphicsApi api,
+        const std::wstring& dllPath,
+        HMODULE& outRemoteModule,
+        std::string& outReason)
     {
         outRemoteModule = nullptr;
 
@@ -387,7 +431,16 @@ namespace
 
         VirtualFreeEx(process, remoteStr, 0, MEM_RELEASE);
 
-        outRemoteModule = FindRemoteModuleBase(pid, L"HookAgentDx11.dll");
+        const auto dllLeaf = ResolveAgentDllLeaf(api);
+        const auto installExport = ResolveInstallExport(api);
+        if (dllLeaf == nullptr || installExport == nullptr)
+        {
+            CloseHandle(process);
+            outReason = "api_not_implemented";
+            return false;
+        }
+
+        outRemoteModule = FindRemoteModuleBase(pid, dllLeaf);
         if (outRemoteModule == nullptr)
         {
             CloseHandle(process);
@@ -396,12 +449,12 @@ namespace
         }
 
         DWORD installExit = 0;
-        const bool okInstall = RemoteCallExportNoArg(process, dllPath, outRemoteModule, "InstallDx11HookThread", installExit);
+        const bool okInstall = RemoteCallExportNoArg(process, dllPath, outRemoteModule, installExport, installExit);
         CloseHandle(process);
 
         if (!okInstall || installExit == 0)
         {
-            outReason = "Remote_InstallDx11Hook_failed";
+            outReason = "Remote_install_hook_failed";
             return false;
         }
 
@@ -409,7 +462,7 @@ namespace
         return true;
     }
 
-    bool UninstallDx11Agent(const ProcessHookState& st, std::string& outReason)
+    bool UninstallAgent(const ProcessHookState& st, std::string& outReason)
     {
         HANDLE process = OpenProcess(
             PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -421,8 +474,16 @@ namespace
             return false;
         }
 
+        const auto uninstallExport = ResolveUninstallExport(st.api);
+        if (uninstallExport == nullptr)
+        {
+            CloseHandle(process);
+            outReason = "api_not_implemented";
+            return false;
+        }
+
         DWORD uninstallExit = 0;
-        (void)RemoteCallExportNoArg(process, st.dllPath, st.remoteModule, "UninstallDx11HookThread", uninstallExit);
+        (void)RemoteCallExportNoArg(process, st.dllPath, st.remoteModule, uninstallExport, uninstallExit);
         CloseHandle(process);
         outReason = "ok";
         return true;
@@ -433,7 +494,7 @@ namespace
         for (auto& entry : g_states)
         {
             std::string reason;
-            (void)UninstallDx11Agent(entry.second, reason);
+            (void)UninstallAgent(entry.second, reason);
             entry.second.configWriter.Reset();
         }
 
@@ -517,11 +578,18 @@ namespace
                 if (process != nullptr)
                 {
                     DWORD installExit = 0;
+                    const auto installExport = ResolveInstallExport(existing->second.api);
+                    if (installExport == nullptr)
+                    {
+                        CloseHandle(process);
+                        WriteResponse(pipe, BuildState("Failed", "attach_failed:api_not_implemented", existing->second.api, req.pid));
+                        return;
+                    }
                     const bool ok = RemoteCallExportNoArg(
                         process,
                         existing->second.dllPath,
                         existing->second.remoteModule,
-                        "InstallDx11HookThread",
+                        installExport,
                         installExit);
                     CloseHandle(process);
                     if (ok && installExit != 0)
@@ -532,21 +600,22 @@ namespace
                 }
             }
 
-            if (req.api != ht::hook::ipc::GraphicsApi::Dx11)
+            const auto dllLeaf = ResolveAgentDllLeaf(req.api);
+            if (dllLeaf == nullptr)
             {
                 WriteResponse(pipe, BuildState("Failed", "attach_failed:api_not_implemented", req.api, req.pid));
                 return;
             }
 
             const auto exeDir = GetExeDir();
-            const auto dllPath = JoinPath(exeDir, L"HookAgentDx11.dll");
+            const auto dllPath = JoinPath(exeDir, dllLeaf);
 
             std::string reason;
             HMODULE remoteModule = nullptr;
-            const bool ok = InjectDx11Agent(req.pid, dllPath, remoteModule, reason);
+            const bool ok = InjectAgent(req.pid, req.api, dllPath, remoteModule, reason);
             if (!ok)
             {
-                WriteResponse(pipe, BuildState("Failed", "attach_failed:" + reason, ht::hook::ipc::GraphicsApi::Dx11, req.pid));
+                WriteResponse(pipe, BuildState("Failed", "attach_failed:" + reason, req.api, req.pid));
                 return;
             }
 
@@ -579,7 +648,7 @@ namespace
             }
 
             std::string reason;
-            (void)UninstallDx11Agent(it->second, reason);
+            (void)UninstallAgent(it->second, reason);
 
             // WHY: With vtable patching, unloading the agent DLL would leave dangling function pointers in swapchain vtables.
             // We keep the module loaded for process lifetime in v1; detach only disables capture.

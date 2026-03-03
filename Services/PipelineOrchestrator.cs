@@ -524,6 +524,12 @@ public sealed class PipelineOrchestrator
         out string? reason)
     {
         reason = null;
+        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        {
+            reason = "Hook overlay is not available for the current graphics hook API.";
+            return false;
+        }
+
         var isRoiPreviewPhase = string.Equals(phase, "roi_preview_update", StringComparison.Ordinal);
         if (!isRoiPreviewPhase && _lastCaptureProviderKind != CaptureProviderKind.GraphicsHook)
         {
@@ -730,6 +736,11 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
+        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        {
+            return false;
+        }
+
         if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
         {
             return false;
@@ -746,6 +757,11 @@ public sealed class PipelineOrchestrator
         }
 
         if (!settings.EnableGraphicsHookPipeline || !settings.GraphicsHookOverlayEnabled)
+        {
+            return false;
+        }
+
+        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
         {
             return false;
         }
@@ -897,6 +913,11 @@ public sealed class PipelineOrchestrator
         AppSettings settings)
     {
         if (_graphicsHookClientService == null)
+        {
+            return;
+        }
+
+        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
         {
             return;
         }

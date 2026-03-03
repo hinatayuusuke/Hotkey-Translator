@@ -15457,3 +15457,50 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings / 0 errors）。
 - `cmake --build Native/build --config Debug --target HookHost` 実行成功。
+
+**2026-03-03 16:08 (Asia/Taipei) — Vulkan Hook MVP: Capture-first 導入（overlay無効）**
+
+### Summary
+- VulkanのMVPを「キャプチャ先行」で追加し、`HookAgentVulkan` を新設して `vkQueuePresentKHR` から既存SharedFrameへBGRA出力する経路を実装した。
+
+### Context / Goal
+- DX11 Hookに加え、Vulkanでも同じキャプチャパイプライン（共有メモリフレーム）を使える土台が必要だった。
+- 今段階は overlay 描画を無効化し、まず安定してフレーム取得できる実装を優先する。
+
+### Changes
+- `HookAgentVulkan` DLLを追加し、Vulkanフック本体を実装。
+- `vkGetDeviceProcAddr` / `vkGetInstanceProcAddr` と主要Vulkan関数（`vkCreateDevice`, `vkGetDeviceQueue`, `vkCreateSwapchainKHR`, `vkAcquireNextImage*`, `vkQueuePresentKHR`）をフック。
+- `vkQueuePresentKHR` 内で swapchain image を staging buffer にコピーし、BGRA payload を `SharedFrameWriter` へ書き出し。
+- `SharedHookConfig` を Vulkan API で読んで FPS 制限を適用、`SharedHookStatus` に present/capture 状態を書き込み。
+- HookHost を API別DLL/Export で解決するルーティングへ更新（DX11/Vulkan）。
+- C# 側で「Hook overlayはDX11のみ有効」に統一し、Vulkan時は overlay 更新を抑止するガードを追加。
+- `Native/CMakeLists.txt` に `HookAgentVulkan` を追加。
+- `HookAgentVulkan/CMakeLists.txt` は Vulkan SDK 未導入環境で全体ビルドを壊さないよう、SDK未検出時はターゲットをskipする構成にした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Vulkan capture-first本体（Presentフック、CPU可読コピー、BGRA共有書き込み、status publish）を新規実装。
+- `Native/HookAgentVulkan/VulkanPresentHook.h` — Hook install/uninstall宣言を追加。
+- `Native/HookAgentVulkan/dllmain.cpp` — `InstallVulkanHookThread` / `UninstallVulkanHookThread` エクスポートを追加。
+- `Native/HookAgentVulkan/CMakeLists.txt` — Vulkanターゲット定義とSDK未導入時skip条件を追加。
+- `Native/CMakeLists.txt` — `add_subdirectory(HookAgentVulkan)` を追加。
+- `Native/HookHost/main.cpp` — API別に `HookAgentDx11.dll`/`HookAgentVulkan.dll` と install/uninstall export を解決するよう更新。
+- `Services/Hook/GraphicsHookClientService.cs` — API切替時detach、overlay有効条件をDX11限定に変更、Vulkan overlay publish抑止。
+- `Services/PipelineOrchestrator.cs` — Hook overlay更新系をDX11限定に変更。
+- `MainWindow.xaml.cs` — runtime config publish時のoverlay有効判定をDX11限定に変更。
+
+### Behavioral Impact
+- `GraphicsHookApi=Vulkan` の attach で `HookAgentVulkan.dll` を注入し、フレーム共有マッピング（`HT_HOOK_FRAME_4_<pid>`）へ書き込む経路が有効化される。
+- Vulkan時はHook overlayを送らず、WPF側との二重描画を避ける制御へ寄せた（MVPではoverlay無効）。
+- Vulkan SDKが無い環境では `HookAgentVulkan` のネイティブターゲットのみskipされ、他ターゲットはビルド継続する。
+
+### Risk & Mitigation
+- Risk: Vulkanフックの実機挙動（swapchain再作成・特殊フォーマット）は未網羅で、タイトル依存の取りこぼしが起こりうる。
+- Mitigation: MVPは capture-first に限定し、status共有（presentCount/format/size）で切り分け可能にした。overlay機能は意図的に無効化して回帰面を限定。
+- Risk: Vulkan SDK未導入環境では `HookAgentVulkan` をローカルでビルド検証できない。
+- Mitigation: CMakeでターゲットskipにし、全体ビルド破壊を回避。SDK導入環境で `HookAgentVulkan` 個別ビルドを行う前提を明確化。
+
+### Tests / Verification
+- `cmake -S Native -B Native/build` 実行成功（Vulkan SDK未導入のため `HookAgentVulkan` はskip警告）。
+- `cmake --build Native/build --config Debug --target HookHost` 実行成功。
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings / 0 errors）。
+- `HookAgentVulkan` 自体のコンパイルはローカル環境に Vulkan SDK ヘッダが無く未実施。

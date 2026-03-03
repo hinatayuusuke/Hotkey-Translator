@@ -57,6 +57,14 @@ internal sealed class GraphicsHookClientService : IDisposable
 
             _lastPipeName = settings.GraphicsHookPipeName;
 
+            if (_attachedPid > 0 &&
+                _attachedPid == settings.FixedCaptureWindowProcessId &&
+                _attachedApi != settings.GraphicsHookApi)
+            {
+                // WHY: Host keeps one injected backend per PID. API switch must detach first to avoid api_mismatch_existing.
+                await DetachInternalAsync("api_changed", cancellationToken).ConfigureAwait(false);
+            }
+
             if (!CanAttach(settings, out var attachReason))
             {
                 _loggerAccessor()?.Info($"stage=graphics_hook event=attach_skip reason={attachReason}.");
@@ -92,19 +100,23 @@ internal sealed class GraphicsHookClientService : IDisposable
 
             EnsureReceiveLoop();
 
+            var effectiveOverlayEnabled =
+                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                settings.GraphicsHookOverlayEnabled;
+
             var attachRequest = new GraphicsHookAttachRequest(
                 settings.FixedCaptureWindowProcessId,
                 settings.GraphicsHookApi,
                 settings.GraphicsHookCaptureFpsLimit,
-                settings.GraphicsHookOverlayEnabled);
+                effectiveOverlayEnabled);
 
             await SendCommandAsync(new GraphicsHookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
             _attachedPid = settings.FixedCaptureWindowProcessId;
             _attachedApi = settings.GraphicsHookApi;
             // WHY: Publishing config via shared memory lets runtime/UI changes take effect even if the pipe is slow/unavailable.
-            _configWriter.TryWrite(_attachedPid, _attachedApi, settings.GraphicsHookCaptureFpsLimit, settings.GraphicsHookOverlayEnabled);
+            _configWriter.TryWrite(_attachedPid, _attachedApi, settings.GraphicsHookCaptureFpsLimit, effectiveOverlayEnabled);
             _loggerAccessor()?.Info(
-                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={settings.GraphicsHookOverlayEnabled}.");
+                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
         }
         catch (OperationCanceledException)
         {
@@ -155,6 +167,12 @@ internal sealed class GraphicsHookClientService : IDisposable
         if (pid <= 0 || pid != _attachedPid)
         {
             failureReason = $"pid_mismatch(attached={_attachedPid}, requested={pid})";
+            return false;
+        }
+
+        if (_attachedApi != GraphicsHookApiKind.Dx11)
+        {
+            failureReason = $"overlay_not_supported(api={_attachedApi})";
             return false;
         }
 
@@ -211,7 +229,8 @@ internal sealed class GraphicsHookClientService : IDisposable
 
         try
         {
-            var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, overlayEnabled);
+            var effectiveOverlayEnabled = _attachedApi == GraphicsHookApiKind.Dx11 && overlayEnabled;
+            var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, effectiveOverlayEnabled);
             if (!wrote)
             {
                 failureReason = "writer_failed";

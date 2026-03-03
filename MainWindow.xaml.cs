@@ -525,7 +525,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var settings = _settingsService.Settings;
         if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
-            var effectiveHookOverlayEnabled = settings.GraphicsHookOverlayEnabled && _overlayEnabled;
+            var effectiveHookOverlayEnabled =
+                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                settings.GraphicsHookOverlayEnabled &&
+                _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
                 settings.FixedCaptureWindowProcessId,
                 settings.GraphicsHookCaptureFpsLimit,
@@ -558,7 +561,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
-            var effectiveHookOverlayEnabled = settings.GraphicsHookOverlayEnabled && _overlayEnabled;
+            var effectiveHookOverlayEnabled =
+                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                settings.GraphicsHookOverlayEnabled &&
+                _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
                 settings.FixedCaptureWindowProcessId,
                 settings.GraphicsHookCaptureFpsLimit,
@@ -578,7 +584,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void TryClearHookOverlayForReshow(AppSettings settings, string source)
     {
-        if (!settings.EnableGraphicsHookPipeline || !settings.GraphicsHookOverlayEnabled)
+        if (!settings.EnableGraphicsHookPipeline ||
+            settings.GraphicsHookApi != GraphicsHookApiKind.Dx11 ||
+            !settings.GraphicsHookOverlayEnabled)
         {
             return;
         }
