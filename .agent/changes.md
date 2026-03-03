@@ -15372,3 +15372,38 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 13:46 (Asia/Taipei) — Refactor MainWindow WinRT language-pack flow into dedicated controllers**
+
+### Summary
+- MainWindow から WinRT言語パックUI/事前チェック、BusyOverlay進捗、設定変更監視を分離し、配線中心に整理した。
+
+### Context / Goal
+- MainWindow.xaml.cs に UI・進捗・設定監視ロジックが集中しており、変更時の回帰リスクが高かった。
+- 責務を専用クラスへ移し、MainWindow 側は DI/イベント配線に寄せる。
+
+### Changes
+- BusyOverlayController を追加し、Busy表示と進捗バー状態管理（復元含む）を移管。
+- WinRtLanguagePackUiController を追加し、以下を MainWindow から移管。
+  - WinRT言語パック事前チェックUI
+  - Install now 実行
+  - 確認/成功/失敗ダイアログ
+  - 導入中のステータス表示更新
+- SettingsChangeHandler を追加し、SettingsViewModel の対象プロパティ監視を専用化。
+- MainWindow.xaml.cs の WinRT関連 private メソッド群を削除し、コントローラ呼び出しへ置換。
+
+### Files Touched
+- Services/Application/BusyOverlayController.cs — Busy/進捗表示の専用コントローラを追加。
+- Services/Application/WinRtLanguagePackUiController.cs — WinRT言語パックUI/事前チェック/Install導線を追加。
+- Services/Application/SettingsChangeHandler.cs — 設定変更監視の専用ハンドラを追加。
+- MainWindow.xaml.cs — 旧ロジック削除、各コントローラの配線に変更。
+
+### Behavioral Impact
+- 機能挙動は維持しつつ、WinRT言語パック関連は専用クラス経由で同等動作。
+- MainWindow 側は配線中心となり、保守性が向上。
+
+### Risk & Mitigation
+- Risk: 初期化順（Coordinatorアクセサ）で null 参照が起きる可能性。
+- Mitigation: Coordinatorはアクセサ経由で遅延参照し、起動後イベントでのみ使用する構成に固定。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
