@@ -15504,3 +15504,28 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookHost` 実行成功。
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings / 0 errors）。
 - `HookAgentVulkan` 自体のコンパイルはローカル環境に Vulkan SDK ヘッダが無く未実施。
+**2026-03-04 04:57 (Asia/Taipei) — Add topmost toolbar + countdown lock implementation plan doc**
+
+### Summary
+- 最上位半透明ツールバーと3秒カウントダウン固定の実装案を Doc/ に追加した。
+
+### Context / Goal
+- ホットキーが一部アプリで通らない状況に対し、UI操作の代替経路を設計する。
+- MainWindow とは別ウィンドウのツールバーで最低限の操作と対象固定を実現する。
+
+### Changes
+- 新規ドキュメントを作成。
+- ゴール/非ゴール、アーキテクチャ、手順、リスク、DoDを整理。
+
+### Files Touched
+- Doc/TopmostToolbar_CountdownLock_Implementation_Plan.md — ツールバー+カウントダウン固定の実装案を記載。
+
+### Behavioral Impact
+- 実行コードの変更なし（設計ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: ドキュメントと実装が将来ずれる可能性。
+- Mitigation: 影響範囲とDoDを明示し、実装時に差分レビュー可能な構成にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
