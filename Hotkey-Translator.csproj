@@ -51,6 +51,10 @@
     <Protobuf Include="Protos\\TranslationGrpc.proto" GrpcServices="Client" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
 <PropertyGroup>
   <DefaultItemExcludes>$(DefaultItemExcludes);Doc\**</DefaultItemExcludes>
 </PropertyGroup>

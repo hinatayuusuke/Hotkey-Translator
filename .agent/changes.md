@@ -15242,3 +15242,38 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 10:36 (Asia/Taipei) — Add elevated helper flow for WinRT OCR language-pack install**
+
+### Summary
+- WinRT OCR言語パック導入を unas 昇格ヘルパー経由に切り替え、非管理者本体のまま導入できるようにした。
+
+### Context / Goal
+- 非管理者での Add-WindowsCapability 実行が権限不足で失敗するため、必要時のみUAC昇格する経路に変更する。
+- 本体アプリを常時管理者で動かさず、最小権限を維持する。
+
+### Changes
+- 昇格専用ヘルパープロジェクト WinRtLanguagePackElevator を新規追加。
+- ヘルパーは --capability 引数のみ受け付け、Language.OCR~~~<locale>~0.0.1.0 形式以外を拒否。
+- ヘルパー内で PowerShell Add-WindowsCapability を実行し、失敗時は DISM へフォールバック。
+- WindowsCapabilityInstaller を更新し、unas でヘルパーを起動（exe優先、無い場合は dotnet <dll> で起動）。
+- Hotkey-Translator.csproj にヘルパープロジェクト参照を追加し、通常ビルドで同時ビルドされるようにした。
+- Hotkey-Translator.sln にヘルパープロジェクトを追加。
+
+### Files Touched
+- Tools/WinRtLanguagePackElevator/WinRtLanguagePackElevator.csproj — 昇格ヘルパーの新規プロジェクト定義を追加。
+- Tools/WinRtLanguagePackElevator/Program.cs — capability検証と導入実行ロジックを追加。
+- Services/WindowsCapabilityInstaller.cs — 非昇格実行を廃止し、unas ヘルパー起動へ変更。
+- Hotkey-Translator.csproj — ヘルパープロジェクト参照を追加。
+- Hotkey-Translator.sln — ヘルパープロジェクトを追加。
+
+### Behavioral Impact
+- WinRT OCR言語パック導入時、UAC確認が表示される。
+- 同意時は昇格ヘルパーで導入を試行し、拒否/失敗時は既存の失敗扱いに戻る。
+- 本体アプリの実行権限は非管理者のまま維持される。
+
+### Risk & Mitigation
+- Risk: dotnet コマンド未解決環境で DLL 起動経路が失敗する可能性。
+- Mitigation: exe優先で探索し、見つからない場合は UnsupportedEnvironment として明確に失敗を返す。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
