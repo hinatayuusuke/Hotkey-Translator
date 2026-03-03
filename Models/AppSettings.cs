@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 
 namespace Hotkey_Translator.Models;
 
@@ -12,6 +12,14 @@ public enum CaptureProviderMode
 {
     Auto,
     Fixed
+}
+
+public enum GraphicsHookApiKind : uint
+{
+    Dx11 = 1,
+    Dx12 = 2,
+    OpenGl = 3,
+    Vulkan = 4
 }
 
 public enum VerticalModeOverride
@@ -78,11 +86,12 @@ public sealed class AppSettings
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeAutoTranslate { get; set; } = false;
     public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
-    public bool EnableDx11HookPipeline { get; set; } = false;
-    public int Dx11HookCaptureFpsLimit { get; set; } = 15;
-    public bool Dx11HookOverlayEnabled { get; set; } = true;
-    public bool Dx11HookFallbackOnError { get; set; } = true;
-    public string Dx11HookPipeName { get; set; } = "hotkey_translator_hook";
+    public bool EnableGraphicsHookPipeline { get; set; } = false;
+    public GraphicsHookApiKind GraphicsHookApi { get; set; } = GraphicsHookApiKind.Dx11;
+    public int GraphicsHookCaptureFpsLimit { get; set; } = 15;
+    public bool GraphicsHookOverlayEnabled { get; set; } = true;
+    public bool GraphicsHookFallbackOnError { get; set; } = true;
+    public string GraphicsHookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
@@ -253,3 +262,4 @@ public sealed class AppSettings
 
     public string? DeepLApiKeyProtected { get; set; }
 }
+

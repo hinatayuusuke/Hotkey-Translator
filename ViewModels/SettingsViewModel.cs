@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -74,17 +74,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
-    [ObservableProperty] private bool _enableDx11HookPipeline;
+    [ObservableProperty] private bool _enableGraphicsHookPipeline;
     [ObservableProperty] private bool _enableMirrorFullscreenMode;
-    [ObservableProperty] private bool _dx11HookOverlayEnabled;
-    [ObservableProperty] private bool _dx11HookFallbackOnError;
+    [ObservableProperty] private bool _graphicsHookOverlayEnabled;
+    [ObservableProperty] private bool _graphicsHookFallbackOnError;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
     [ObservableProperty] private string _iouThresholdText = string.Empty;
     [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
     [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
-    [ObservableProperty] private string _dx11HookCaptureFpsLimitText = string.Empty;
+    [ObservableProperty] private string _graphicsHookCaptureFpsLimitText = string.Empty;
     [ObservableProperty] private string _magpieProfileIndexText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
@@ -196,17 +196,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
-            EnableDx11HookPipeline = settings.EnableDx11HookPipeline;
+            EnableGraphicsHookPipeline = settings.EnableGraphicsHookPipeline;
             EnableMirrorFullscreenMode = settings.EnableMirrorFullscreenMode;
-            Dx11HookOverlayEnabled = settings.Dx11HookOverlayEnabled;
-            Dx11HookFallbackOnError = settings.Dx11HookFallbackOnError;
+            GraphicsHookOverlayEnabled = settings.GraphicsHookOverlayEnabled;
+            GraphicsHookFallbackOnError = settings.GraphicsHookFallbackOnError;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
             IouThresholdText = settings.OcrIouThreshold.ToString("0.00");
             OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
             SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
-            Dx11HookCaptureFpsLimitText = settings.Dx11HookCaptureFpsLimit.ToString();
+            GraphicsHookCaptureFpsLimitText = settings.GraphicsHookCaptureFpsLimit.ToString();
             MagpieProfileIndexText = settings.MagpieProfileIndex.ToString();
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
@@ -306,10 +306,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
-        settings.EnableDx11HookPipeline = EnableDx11HookPipeline;
+        settings.EnableGraphicsHookPipeline = EnableGraphicsHookPipeline;
         settings.EnableMirrorFullscreenMode = EnableMirrorFullscreenMode;
-        settings.Dx11HookOverlayEnabled = Dx11HookOverlayEnabled;
-        settings.Dx11HookFallbackOnError = Dx11HookFallbackOnError;
+        settings.GraphicsHookOverlayEnabled = GraphicsHookOverlayEnabled;
+        settings.GraphicsHookFallbackOnError = GraphicsHookFallbackOnError;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
         if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
@@ -321,13 +321,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
             settings.SceneChangeQuietWindowMs = quietWindowMs;
         }
 
-        if (string.IsNullOrWhiteSpace(Dx11HookCaptureFpsLimitText))
+        if (string.IsNullOrWhiteSpace(GraphicsHookCaptureFpsLimitText))
         {
-            settings.Dx11HookCaptureFpsLimit = 15;
+            settings.GraphicsHookCaptureFpsLimit = 15;
         }
-        else if (int.TryParse(Dx11HookCaptureFpsLimitText.Trim(), out var hookCaptureFpsLimit))
+        else if (int.TryParse(GraphicsHookCaptureFpsLimitText.Trim(), out var hookCaptureFpsLimit))
         {
-            settings.Dx11HookCaptureFpsLimit = hookCaptureFpsLimit;
+            settings.GraphicsHookCaptureFpsLimit = hookCaptureFpsLimit;
         }
 
         if (string.IsNullOrWhiteSpace(MagpieProfileIndexText))
@@ -603,7 +603,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyToggleMirrorFullscreenAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnEnableDx11HookPipelineChanged(bool value)
+    partial void OnEnableGraphicsHookPipelineChanged(bool value)
     {
         if (_suspendMirrorModeSync)
         {
@@ -635,12 +635,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        if (value && EnableDx11HookPipeline)
+        if (value && EnableGraphicsHookPipeline)
         {
             _suspendMirrorModeSync = true;
             try
             {
-                EnableDx11HookPipeline = false;
+                EnableGraphicsHookPipeline = false;
             }
             finally
             {
@@ -650,9 +650,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
         RequestSaveOnValueChange();
     }
-    partial void OnDx11HookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnDx11HookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnDx11HookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnGraphicsHookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnGraphicsHookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
@@ -926,3 +926,5 @@ internal sealed partial class SettingsViewModel : ObservableObject
         return (selectedTag ?? string.Empty).Trim();
     }
 }
+
+

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Hotkey_Translator.Models;
 
@@ -15,7 +15,7 @@ internal sealed class CaptureProviderSelector
 
     public IReadOnlyList<ICaptureProvider> BuildProviderOrder(AppSettings settings)
     {
-        if (settings.EnableDx11HookPipeline)
+        if (settings.EnableGraphicsHookPipeline)
         {
             var hook = _providers.FirstOrDefault(provider => provider.Kind == CaptureProviderKind.GraphicsHook);
             if (hook != null)
@@ -43,3 +43,4 @@ internal sealed class CaptureProviderSelector
         return ordered;
     }
 }
+

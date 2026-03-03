@@ -15407,3 +15407,53 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
+**2026-03-03 15:14 (Asia/Taipei) — GraphicsHook Step1: 制御面API化（DX11固定解除）**
+
+### Summary
+- Hook制御面を `GraphicsHook` 命名へ統一し、attach payload に `api` を追加して Host 側でAPI分岐できる基盤へ移行した。
+
+### Context / Goal
+- Vulkan対応に向け、DX11固定の設定名・C# Hook制御・Host attach解析がボトルネックになっていた。
+- 未リリース前提のため旧 `Dx11*` 設定キー互換は持たず、現行名を `GraphicsHook*` に刷新する。
+
+### Changes
+- 設定名を `Dx11*` から `GraphicsHook*` へ置換（Model/ViewModel/XAML/制御ロジック）。
+- `AppSettings` に `GraphicsHookApi`（enum）を追加し、attach時に `api` を送信。
+- Hook IPCクラスを `GraphicsHook*` へ改名し、overlay/config/status の共有メモリアクセスを API 指定型へ変更。
+- `GraphicsHookCaptureProvider` を API汎用化し、frame/status の DX11/Vulkan フォールバック探索を追加。
+- `Native/HookHost/main.cpp` で attach `api` を必須解析、現時点は `Dx11` 実装・その他APIは `attach_failed:api_not_implemented` を返す分岐を追加。
+
+### Files Touched
+- `Models/AppSettings.cs` — `GraphicsHook*` 設定へ改名、`GraphicsHookApiKind`/`GraphicsHookApi` を追加。
+- `ViewModels/SettingsViewModel.cs` — `GraphicsHook*` プロパティへ改名し、保存/同期参照を更新。
+- `MainWindow.xaml` — Hook設定バインディング名を `GraphicsHook*` へ更新。
+- `MainWindow.xaml.cs` — Hook client参照と runtime config publish を `GraphicsHook*` へ更新。
+- `Services/Capture/CaptureProviderSelector.cs` — Hook有効判定を `EnableGraphicsHookPipeline` に更新。
+- `Services/GraphicsHookCaptureProvider.cs` — frame map/status読取の API汎用化（DX11/Vulkan探索）を追加。
+- `Services/PipelineOrchestrator.cs` — Hook client参照名更新、status読取を `TryReadAny` に変更。
+- `Services/Settings/AppSettingsValidator.cs` — `GraphicsHookSettingsRule` を参照するよう更新。
+- `Services/Settings/Rules/MirrorModeSettingsRule.cs` — Mirror排他条件を `EnableGraphicsHookPipeline` に更新。
+- `Services/Settings/Rules/GraphicsHookSettingsRule.cs` — 新命名で正規化 + `GraphicsHookApi` 妥当性チェックを追加。
+- `Services/Hook/GraphicsHookClientService.cs` — attach payload `api` 送信、writerへAPI引き回し、attach失敗時のローカル状態リセットを追加。
+- `Services/Hook/GraphicsHookConfigWriter.cs` — API指定で `HT_HOOK_CFG_{api}_{pid}` に書き込み。
+- `Services/Hook/GraphicsHookOverlayV2CommandWriter.cs` — API指定で `HT_HOOK_OVL_{api}_{pid}` に書き込み。
+- `Services/Hook/GraphicsHookStatusReader.cs` — API指定読取 + `TryReadAny` を追加。
+- `Services/Hook/Contracts/GraphicsHookMessages.cs` — attach request に `Api` を追加。
+- `Native/HookHost/main.cpp` — attach `api` 解析、API名付きstate応答、未実装APIの失敗応答を追加。
+- `Native/README.md` — 設定キー名を `EnableGraphicsHookPipeline` に更新。
+
+### Behavioral Impact
+- 設定キーは `GraphicsHook*` 系へ切替（旧 `Dx11*` 互換なし）。
+- C#→HookHost attach は `api` を必須送信する。
+- Host は現時点で `Dx11` のみ attach 可能、`Vulkan` 指定時は明示的に失敗応答する。
+- Hook frame/status 読取は API 固定前提を外し、DX11/Vulkan 名称を探索可能になった。
+
+### Risk & Mitigation
+- Risk: 旧設定ファイル（`Dx11*` キー）をそのまま使うと Hook 設定が反映されない可能性。
+- Mitigation: 互換フォールバックは意図的に入れていないため、`settings.json` は `GraphicsHook*` キーへ移行する前提で運用する。
+- Risk: `GraphicsHookApi=Vulkan` で起動すると attach失敗により Hook捕捉できない。
+- Mitigation: Host が `attach_failed:api_not_implemented` を返し、クライアント側で attach状態を即時リセットする。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings / 0 errors）。
+- `cmake --build Native/build --config Debug --target HookHost` 実行成功。

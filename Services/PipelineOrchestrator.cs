@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -39,7 +39,7 @@ public readonly record struct ForceRunOptions(
 public sealed class PipelineOrchestrator
 {
     private readonly CaptureManager _captureManager;
-    private readonly Dx11HookClientService? _dx11HookClientService;
+    private readonly GraphicsHookClientService? _graphicsHookClientService;
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly OcrAndGroupStage _ocrAndGroupStage;
@@ -94,7 +94,7 @@ public sealed class PipelineOrchestrator
 
     internal PipelineOrchestrator(
         CaptureManager captureManager,
-        Dx11HookClientService? dx11HookClientService,
+        GraphicsHookClientService? graphicsHookClientService,
         OcrEngine ocrEngine,
         OcrDiffService ocrDiffService,
         PhashService phashService,
@@ -109,7 +109,7 @@ public sealed class PipelineOrchestrator
         AppLogger logger)
     {
         _captureManager = captureManager;
-        _dx11HookClientService = dx11HookClientService;
+        _graphicsHookClientService = graphicsHookClientService;
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _logger = logger;
@@ -345,7 +345,7 @@ public sealed class PipelineOrchestrator
                 var overlayStopwatch = perfProbe.BeginStep();
                 UpdateWpfOverlayRouting(overlayItems, overlayClipScreen, suppressWpfOverlay);
                 // WHY: V1 rectangle command publishing is paused during phased removal. Keep HookAgent reader for compatibility.
-                TryUpdateDx11HookOverlayV2(frame, overlayItems, settings);
+                TryUpdateGraphicsHookOverlayV2(frame, overlayItems, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
                 perfProbe.RecordOverlay(overlayStopwatch);
             }
@@ -431,7 +431,7 @@ public sealed class PipelineOrchestrator
             UpdateWpfOverlayRouting(overlayItems, _lastOverlayClipScreen, suppressWpfOverlay);
             if (suppressWpfOverlay)
             {
-                if (!TryRepublishDx11HookOverlayForTextToggle(overlayItems, _settingsService.Settings, out reason))
+                if (!TryRepublishGraphicsHookOverlayForTextToggle(overlayItems, _settingsService.Settings, out reason))
                 {
                     return false;
                 }
@@ -485,7 +485,7 @@ public sealed class PipelineOrchestrator
                 _logger.Info(
                     $"stage=hook_roi_preview event=republish_attempt hasRect={(hasRect ? 1 : 0)} overlayItems={overlayItems.Count}.");
             }
-            _ = TryRepublishDx11HookOverlayFromCachedFrame(overlayItems, settings, "roi_preview_update", out _);
+            _ = TryRepublishGraphicsHookOverlayFromCachedFrame(overlayItems, settings, "roi_preview_update", out _);
         }
         finally
         {
@@ -509,15 +509,15 @@ public sealed class PipelineOrchestrator
         _logger.Info($"stage=hook_roi_preview event=skip reason={reason}.");
     }
 
-    private bool TryRepublishDx11HookOverlayForTextToggle(
+    private bool TryRepublishGraphicsHookOverlayForTextToggle(
         IReadOnlyList<OverlayItem> overlayItems,
         AppSettings settings,
         out string? reason)
     {
-        return TryRepublishDx11HookOverlayFromCachedFrame(overlayItems, settings, "f11_toggle", out reason);
+        return TryRepublishGraphicsHookOverlayFromCachedFrame(overlayItems, settings, "f11_toggle", out reason);
     }
 
-    private bool TryRepublishDx11HookOverlayFromCachedFrame(
+    private bool TryRepublishGraphicsHookOverlayFromCachedFrame(
         IReadOnlyList<OverlayItem> overlayItems,
         AppSettings settings,
         string phase,
@@ -576,7 +576,7 @@ public sealed class PipelineOrchestrator
             frameBounds,
             CaptureProviderKind.GraphicsHook,
             DateTimeOffset.UtcNow);
-        TryUpdateDx11HookOverlayV2(dummyFrame, overlayItems, settings);
+        TryUpdateGraphicsHookOverlayV2(dummyFrame, overlayItems, settings);
         return true;
     }
 
@@ -720,12 +720,12 @@ public sealed class PipelineOrchestrator
 
     private bool ShouldSuppressWpfOverlay(AppSettings settings, CaptureProviderKind providerKind)
     {
-        if (_dx11HookClientService == null)
+        if (_graphicsHookClientService == null)
         {
             return false;
         }
 
-        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        if (!settings.EnableGraphicsHookPipeline || !settings.GraphicsHookOverlayEnabled)
         {
             return false;
         }
@@ -740,12 +740,12 @@ public sealed class PipelineOrchestrator
 
     private bool ShouldAllowHookRoiPreview(AppSettings settings)
     {
-        if (_dx11HookClientService == null)
+        if (_graphicsHookClientService == null)
         {
             return false;
         }
 
-        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        if (!settings.EnableGraphicsHookPipeline || !settings.GraphicsHookOverlayEnabled)
         {
             return false;
         }
@@ -854,7 +854,7 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        if (settings.EnableDx11HookPipeline &&
+        if (settings.EnableGraphicsHookPipeline &&
             settings.CaptureMode == CaptureMode.ActiveWindow &&
             settings.EnableFixedCaptureWindow)
         {
@@ -891,12 +891,12 @@ public sealed class PipelineOrchestrator
         _lastRoiSnapshot = snapshot;
     }
 
-    private void TryUpdateDx11HookOverlayV2(
+    private void TryUpdateGraphicsHookOverlayV2(
         CaptureFrame frame,
         IReadOnlyList<OverlayItem> overlayItems,
         AppSettings settings)
     {
-        if (_dx11HookClientService == null)
+        if (_graphicsHookClientService == null)
         {
             return;
         }
@@ -923,14 +923,14 @@ public sealed class PipelineOrchestrator
 
         var traceEnabled = _overlayV2TraceEnabled || _overlayV2WriteDebugEnabled;
 
-        if (!settings.Dx11HookOverlayEnabled || (overlayItems.Count == 0 && !hasRoiPreview))
+        if (!settings.GraphicsHookOverlayEnabled || (overlayItems.Count == 0 && !hasRoiPreview))
         {
             var attemptSeq = NextOverlayV2WriteAttempt();
-            var wrote = _dx11HookClientService.TryWriteOverlayV2(
+            var wrote = _graphicsHookClientService.TryWriteOverlayV2(
                 pid,
                 canvasW,
                 canvasH,
-                ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+                ReadOnlySpan<GraphicsHookOverlayV2CommandWriter.TextBlockV2>.Empty,
                 Array.Empty<byte>(),
                 0,
                 out var failureReason);
@@ -968,7 +968,7 @@ public sealed class PipelineOrchestrator
 
         var reserveRoiSlot = hasRoiPreview ? 1 : 0;
         var maxTextBlocks = Math.Max(0, maxBlocks - reserveRoiSlot);
-        var blocks = new List<Dx11HookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count + reserveRoiSlot, maxBlocks));
+        var blocks = new List<GraphicsHookOverlayV2CommandWriter.TextBlockV2>(Math.Min(overlayItems.Count + reserveRoiSlot, maxBlocks));
         var textBlob = new List<byte>(Math.Min(maxTextBytes, 4096));
         var skippedWhitespace = 0;
         var skippedMap = 0;
@@ -1039,7 +1039,7 @@ public sealed class PipelineOrchestrator
                 mapSampled++;
             }
 
-            blocks.Add(new Dx11HookOverlayV2CommandWriter.TextBlockV2
+            blocks.Add(new GraphicsHookOverlayV2CommandWriter.TextBlockV2
             {
                 X = x,
                 Y = y,
@@ -1078,7 +1078,7 @@ public sealed class PipelineOrchestrator
                     out var h,
                     out _))
             {
-                blocks.Add(new Dx11HookOverlayV2CommandWriter.TextBlockV2
+                blocks.Add(new GraphicsHookOverlayV2CommandWriter.TextBlockV2
                 {
                     X = x,
                     Y = y,
@@ -1105,11 +1105,11 @@ public sealed class PipelineOrchestrator
         if (blocks.Count == 0)
         {
             var attemptSeq = NextOverlayV2WriteAttempt();
-            var wrote = _dx11HookClientService.TryWriteOverlayV2(
+            var wrote = _graphicsHookClientService.TryWriteOverlayV2(
                 pid,
                 canvasW,
                 canvasH,
-                ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+                ReadOnlySpan<GraphicsHookOverlayV2CommandWriter.TextBlockV2>.Empty,
                 Array.Empty<byte>(),
                 0,
                 out var failureReason);
@@ -1129,7 +1129,7 @@ public sealed class PipelineOrchestrator
 
         var publishAttempt = NextOverlayV2WriteAttempt();
         var blobArray = textBlob.ToArray();
-        var publishOk = _dx11HookClientService.TryWriteOverlayV2(
+        var publishOk = _graphicsHookClientService.TryWriteOverlayV2(
             pid,
             canvasW,
             canvasH,
@@ -1281,7 +1281,7 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        if (Dx11HookStatusReader.TryRead(pid, out var status))
+        if (GraphicsHookStatusReader.TryReadAny(pid, out var status, out var statusApi))
         {
             var mismatch =
                 status.BackBufferWidth > 0 &&
@@ -1290,7 +1290,7 @@ public sealed class PipelineOrchestrator
                  Math.Abs((int)status.BackBufferHeight - (int)canvasH) > 2);
             _logger.Info(
                 $"stage=hook_v2_status event=read seq={seq} phase={phase} pid={pid} presentCount={status.PresentCount} " +
-                $"presentKind={status.LastPresentKind} bb={status.BackBufferWidth}x{status.BackBufferHeight} " +
+                $"api={statusApi} presentKind={status.LastPresentKind} bb={status.BackBufferWidth}x{status.BackBufferHeight} " +
                 $"canvas={canvasW}x{canvasH} mismatch={(mismatch ? "yes" : "no")} " +
                 $"cmdQpc={status.LastCmdQpc} cmdCount={status.LastCmdCount} r0={status.Reserved0} r1={status.Reserved1}.");
             return;
@@ -1305,3 +1305,5 @@ public sealed class PipelineOrchestrator
     }
 
 }
+
+

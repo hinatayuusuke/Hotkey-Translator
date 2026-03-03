@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
@@ -11,7 +11,7 @@ using Hotkey_Translator.Services.Hook.Contracts;
 
 namespace Hotkey_Translator.Services.Hook;
 
-internal sealed class Dx11HookClientService : IDisposable
+internal sealed class GraphicsHookClientService : IDisposable
 {
     private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -21,19 +21,20 @@ internal sealed class Dx11HookClientService : IDisposable
 
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly SemaphoreSlim _sync = new(1, 1);
-    private readonly Dx11HookOverlayV2CommandWriter _overlayV2Writer = new();
-    private readonly Dx11HookConfigWriter _configWriter = new();
+    private readonly GraphicsHookOverlayV2CommandWriter _overlayV2Writer = new();
+    private readonly GraphicsHookConfigWriter _configWriter = new();
     private NamedPipeClientStream? _pipe;
     private StreamReader? _reader;
     private StreamWriter? _writer;
     private Process? _hostProcess;
     private string _lastPipeName = "hotkey_translator_hook";
     private int _attachedPid;
+    private GraphicsHookApiKind _attachedApi = GraphicsHookApiKind.Dx11;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private bool _disposed;
 
-    public Dx11HookClientService(Func<AppLogger?> loggerAccessor)
+    public GraphicsHookClientService(Func<AppLogger?> loggerAccessor)
     {
         _loggerAccessor = loggerAccessor;
     }
@@ -48,18 +49,18 @@ internal sealed class Dx11HookClientService : IDisposable
                 return;
             }
 
-            if (!settings.EnableDx11HookPipeline)
+            if (!settings.EnableGraphicsHookPipeline)
             {
                 await DetachInternalAsync("disabled", cancellationToken).ConfigureAwait(false);
                 return;
             }
 
-            _lastPipeName = settings.Dx11HookPipeName;
+            _lastPipeName = settings.GraphicsHookPipeName;
 
             if (!CanAttach(settings, out var attachReason))
             {
-                _loggerAccessor()?.Info($"stage=dx11_hook event=attach_skip reason={attachReason}.");
-                if (settings.Dx11HookFallbackOnError)
+                _loggerAccessor()?.Info($"stage=graphics_hook event=attach_skip reason={attachReason}.");
+                if (settings.GraphicsHookFallbackOnError)
                 {
                     await DetachInternalAsync($"attach_skip:{attachReason}", cancellationToken).ConfigureAwait(false);
                 }
@@ -69,8 +70,8 @@ internal sealed class Dx11HookClientService : IDisposable
 
             if (!EnsureHostProcess(settings))
             {
-                _loggerAccessor()?.Error("stage=dx11_hook event=host_start_failed.");
-                if (settings.Dx11HookFallbackOnError)
+                _loggerAccessor()?.Error("stage=graphics_hook event=host_start_failed.");
+                if (settings.GraphicsHookFallbackOnError)
                 {
                     await DetachInternalAsync("host_start_failed", cancellationToken).ConfigureAwait(false);
                 }
@@ -80,8 +81,8 @@ internal sealed class Dx11HookClientService : IDisposable
 
             if (!await EnsurePipeConnectedAsync(settings, cancellationToken).ConfigureAwait(false))
             {
-                _loggerAccessor()?.Error("stage=dx11_hook event=pipe_connect_failed.");
-                if (settings.Dx11HookFallbackOnError)
+                _loggerAccessor()?.Error("stage=graphics_hook event=pipe_connect_failed.");
+                if (settings.GraphicsHookFallbackOnError)
                 {
                     await DetachInternalAsync("pipe_connect_failed", cancellationToken).ConfigureAwait(false);
                 }
@@ -91,17 +92,19 @@ internal sealed class Dx11HookClientService : IDisposable
 
             EnsureReceiveLoop();
 
-            var attachRequest = new Dx11HookAttachRequest(
+            var attachRequest = new GraphicsHookAttachRequest(
                 settings.FixedCaptureWindowProcessId,
-                settings.Dx11HookCaptureFpsLimit,
-                settings.Dx11HookOverlayEnabled);
+                settings.GraphicsHookApi,
+                settings.GraphicsHookCaptureFpsLimit,
+                settings.GraphicsHookOverlayEnabled);
 
-            await SendCommandAsync(new Dx11HookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
+            await SendCommandAsync(new GraphicsHookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
             _attachedPid = settings.FixedCaptureWindowProcessId;
+            _attachedApi = settings.GraphicsHookApi;
             // WHY: Publishing config via shared memory lets runtime/UI changes take effect even if the pipe is slow/unavailable.
-            _configWriter.TryWrite(_attachedPid, settings.Dx11HookCaptureFpsLimit, settings.Dx11HookOverlayEnabled);
+            _configWriter.TryWrite(_attachedPid, _attachedApi, settings.GraphicsHookCaptureFpsLimit, settings.GraphicsHookOverlayEnabled);
             _loggerAccessor()?.Info(
-                $"stage=dx11_hook event=attach_requested pid={_attachedPid} fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={settings.Dx11HookOverlayEnabled}.");
+                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={settings.GraphicsHookOverlayEnabled}.");
         }
         catch (OperationCanceledException)
         {
@@ -109,7 +112,7 @@ internal sealed class Dx11HookClientService : IDisposable
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, "DX11 hook apply failed.");
+            _loggerAccessor()?.Error(ex, "Graphics hook apply failed.");
         }
         finally
         {
@@ -136,7 +139,7 @@ internal sealed class Dx11HookClientService : IDisposable
         int pid,
         uint canvasW,
         uint canvasH,
-        ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2> blocks,
+        ReadOnlySpan<GraphicsHookOverlayV2CommandWriter.TextBlockV2> blocks,
         byte[] textBlob,
         int textBytes,
         out string? failureReason,
@@ -164,7 +167,7 @@ internal sealed class Dx11HookClientService : IDisposable
 
         try
         {
-            var wrote = _overlayV2Writer.TryWrite(pid, canvasW, canvasH, blocks, textBlob, textBytes, flags);
+            var wrote = _overlayV2Writer.TryWrite(pid, _attachedApi, canvasW, canvasH, blocks, textBlob, textBytes, flags);
             if (!wrote)
             {
                 failureReason = "writer_failed";
@@ -208,7 +211,7 @@ internal sealed class Dx11HookClientService : IDisposable
 
         try
         {
-            var wrote = _configWriter.TryWrite(pid, captureFpsLimit, overlayEnabled);
+            var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, overlayEnabled);
             if (!wrote)
             {
                 failureReason = "writer_failed";
@@ -250,7 +253,7 @@ internal sealed class Dx11HookClientService : IDisposable
         var hostPath = ResolveHostPath();
         if (!File.Exists(hostPath))
         {
-            _loggerAccessor()?.Error($"DX11 HookHost executable not found: {hostPath}");
+            _loggerAccessor()?.Error($"Graphics HookHost executable not found: {hostPath}");
             return false;
         }
 
@@ -267,16 +270,16 @@ internal sealed class Dx11HookClientService : IDisposable
             _hostProcess = Process.Start(startInfo);
             if (_hostProcess == null)
             {
-                _loggerAccessor()?.Error("Failed to start DX11 HookHost process.");
+                _loggerAccessor()?.Error("Failed to start Graphics HookHost process.");
                 return false;
             }
 
-            _loggerAccessor()?.Info($"stage=dx11_hook event=host_started path=\"{hostPath}\" pid={_hostProcess.Id}.");
+            _loggerAccessor()?.Info($"stage=graphics_hook event=host_started path=\"{hostPath}\" pid={_hostProcess.Id}.");
             return true;
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, $"Failed to start DX11 HookHost: {hostPath}");
+            _loggerAccessor()?.Error(ex, $"Failed to start Graphics HookHost: {hostPath}");
             return false;
         }
     }
@@ -294,7 +297,7 @@ internal sealed class Dx11HookClientService : IDisposable
         {
             _pipe = new NamedPipeClientStream(
                 ".",
-                settings.Dx11HookPipeName,
+                settings.GraphicsHookPipeName,
                 PipeDirection.InOut,
                 PipeOptions.Asynchronous);
 
@@ -305,12 +308,12 @@ internal sealed class Dx11HookClientService : IDisposable
 
             _reader = new StreamReader(_pipe, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 4096, leaveOpen: true);
             _writer = new StreamWriter(_pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
-            _loggerAccessor()?.Info($"stage=dx11_hook event=pipe_connected name={settings.Dx11HookPipeName}.");
+            _loggerAccessor()?.Info($"stage=graphics_hook event=pipe_connected name={settings.GraphicsHookPipeName}.");
             return true;
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, $"Failed to connect DX11 hook pipe: {settings.Dx11HookPipeName}");
+            _loggerAccessor()?.Error(ex, $"Failed to connect Graphics hook pipe: {settings.GraphicsHookPipeName}");
             DisposePipe();
             return false;
         }
@@ -352,7 +355,7 @@ internal sealed class Dx11HookClientService : IDisposable
             }
             catch (Exception ex)
             {
-                _loggerAccessor()?.Error(ex, "stage=dx11_hook event=receive_failed.");
+                _loggerAccessor()?.Error(ex, "stage=graphics_hook event=receive_failed.");
                 return;
             }
         }
@@ -393,7 +396,7 @@ internal sealed class Dx11HookClientService : IDisposable
                 : _attachedPid;
 
             _loggerAccessor()?.Info(
-                $"stage=dx11_hook event=hook_state pid={pid} state={state ?? "unknown"} reason={reason ?? "unknown"} frameMap=\"{frameMap ?? string.Empty}\".");
+                $"stage=graphics_hook event=hook_state pid={pid} state={state ?? "unknown"} reason={reason ?? "unknown"} frameMap=\"{frameMap ?? string.Empty}\".");
 
             if (!string.IsNullOrWhiteSpace(frameMap) && pid > 0)
             {
@@ -404,14 +407,30 @@ internal sealed class Dx11HookClientService : IDisposable
             {
                 HookFrameMapRegistry.Clear(pid);
             }
+
+            if (pid > 0 &&
+                string.Equals(state, "Failed", StringComparison.OrdinalIgnoreCase) &&
+                reason != null &&
+                reason.StartsWith("attach_failed", StringComparison.OrdinalIgnoreCase))
+            {
+                HookFrameMapRegistry.Clear(pid);
+                if (pid == _attachedPid)
+                {
+                    // WHY: Host rejected attach (e.g., api_not_implemented). Reset local attachment to avoid writing stale mappings.
+                    _attachedPid = 0;
+                    _attachedApi = GraphicsHookApiKind.Dx11;
+                    _overlayV2Writer.Reset();
+                    _configWriter.Reset();
+                }
+            }
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, $"stage=dx11_hook event=host_json_parse_failed line=\"{line}\".");
+            _loggerAccessor()?.Error(ex, $"stage=graphics_hook event=host_json_parse_failed line=\"{line}\".");
         }
     }
 
-    private async Task SendCommandAsync(Dx11HookCommandEnvelope command, CancellationToken cancellationToken)
+    private async Task SendCommandAsync(GraphicsHookCommandEnvelope command, CancellationToken cancellationToken)
     {
         if (_writer == null)
         {
@@ -422,7 +441,7 @@ internal sealed class Dx11HookClientService : IDisposable
         await _writer.WriteLineAsync(json.AsMemory(), cancellationToken).ConfigureAwait(false);
     }
 
-    private void SendCommandSync(Dx11HookCommandEnvelope command)
+    private void SendCommandSync(GraphicsHookCommandEnvelope command)
     {
         if (_writer == null)
         {
@@ -440,19 +459,20 @@ internal sealed class Dx11HookClientService : IDisposable
             try
             {
                 await SendCommandAsync(
-                        new Dx11HookCommandEnvelope("detach", new Dx11HookDetachRequest(_attachedPid)),
+                        new GraphicsHookCommandEnvelope("detach", new GraphicsHookDetachRequest(_attachedPid)),
                         cancellationToken)
                     .ConfigureAwait(false);
-                _loggerAccessor()?.Info($"stage=dx11_hook event=detach_requested pid={_attachedPid} reason={reason}.");
+                _loggerAccessor()?.Info($"stage=graphics_hook event=detach_requested pid={_attachedPid} reason={reason}.");
             }
             catch (Exception ex)
             {
-                _loggerAccessor()?.Error(ex, "Failed to send DX11 detach command.");
+                _loggerAccessor()?.Error(ex, "Failed to send Graphics hook detach command.");
             }
         }
 
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
+        _attachedApi = GraphicsHookApiKind.Dx11;
         _overlayV2Writer.Reset();
         _configWriter.Reset();
     }
@@ -481,7 +501,7 @@ internal sealed class Dx11HookClientService : IDisposable
         var sent = await TrySendShutdownCommandAsync().ConfigureAwait(false);
         if (!sent)
         {
-            _loggerAccessor()?.Info("stage=dx11_hook event=host_shutdown_send_skipped.");
+            _loggerAccessor()?.Info("stage=graphics_hook event=host_shutdown_send_skipped.");
         }
 
         await WaitOrKillHostProcessAsync().ConfigureAwait(false);
@@ -489,19 +509,19 @@ internal sealed class Dx11HookClientService : IDisposable
 
     private async Task<bool> TrySendShutdownCommandAsync()
     {
-        var command = new Dx11HookCommandEnvelope("shutdown", new Dx11HookShutdownRequest());
+        var command = new GraphicsHookCommandEnvelope("shutdown", new GraphicsHookShutdownRequest());
         try
         {
             if (_writer != null)
             {
                 await SendCommandAsync(command, CancellationToken.None).ConfigureAwait(false);
-                _loggerAccessor()?.Info("stage=dx11_hook event=host_shutdown_requested via=existing_pipe.");
+                _loggerAccessor()?.Info("stage=graphics_hook event=host_shutdown_requested via=existing_pipe.");
                 return true;
             }
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_shutdown_request_failed via=existing_pipe.");
+            _loggerAccessor()?.Error(ex, "stage=graphics_hook event=host_shutdown_request_failed via=existing_pipe.");
         }
 
         if (string.IsNullOrWhiteSpace(_lastPipeName))
@@ -517,12 +537,12 @@ internal sealed class Dx11HookClientService : IDisposable
             using var writer = new StreamWriter(pipe, new UTF8Encoding(false), leaveOpen: true) { AutoFlush = true };
             var json = JsonSerializer.Serialize(command, JsonOptions);
             await writer.WriteLineAsync(json).ConfigureAwait(false);
-            _loggerAccessor()?.Info($"stage=dx11_hook event=host_shutdown_requested via=probe_pipe name={_lastPipeName}.");
+            _loggerAccessor()?.Info($"stage=graphics_hook event=host_shutdown_requested via=probe_pipe name={_lastPipeName}.");
             return true;
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, $"stage=dx11_hook event=host_shutdown_request_failed via=probe_pipe name={_lastPipeName}.");
+            _loggerAccessor()?.Error(ex, $"stage=graphics_hook event=host_shutdown_request_failed via=probe_pipe name={_lastPipeName}.");
             return false;
         }
     }
@@ -562,7 +582,7 @@ internal sealed class Dx11HookClientService : IDisposable
         }
         catch (Exception ex)
         {
-            _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_wait_exit_failed.");
+            _loggerAccessor()?.Error(ex, "stage=graphics_hook event=host_wait_exit_failed.");
             exited = false;
         }
 
@@ -574,12 +594,12 @@ internal sealed class Dx11HookClientService : IDisposable
                 {
                     _hostProcess.Kill(entireProcessTree: true);
                     _hostProcess.WaitForExit(1000);
-                    _loggerAccessor()?.Info("stage=dx11_hook event=host_killed reason=shutdown_timeout.");
+                    _loggerAccessor()?.Info("stage=graphics_hook event=host_killed reason=shutdown_timeout.");
                 }
             }
             catch (Exception ex)
             {
-                _loggerAccessor()?.Error(ex, "stage=dx11_hook event=host_kill_failed.");
+                _loggerAccessor()?.Error(ex, "stage=graphics_hook event=host_kill_failed.");
             }
         }
 
@@ -641,6 +661,7 @@ internal sealed class Dx11HookClientService : IDisposable
 
         _disposed = true;
         _attachedPid = 0;
+        _attachedApi = GraphicsHookApiKind.Dx11;
         TryForceTerminateHostProcessOnDispose();
         DisposePipe();
         _overlayV2Writer.Dispose();
@@ -690,3 +711,5 @@ internal sealed class Dx11HookClientService : IDisposable
         }
     }
 }
+
+

@@ -1,24 +1,25 @@
-using System;
+﻿using System;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services.Hook;
 
-internal sealed class Dx11HookOverlayV2CommandWriter : IDisposable
+internal sealed class GraphicsHookOverlayV2CommandWriter : IDisposable
 {
     private const int MappingBytes = 256 * 1024;
 
     // "HOV2" little-endian.
     private const uint OverlayV2Magic = 0x32564F48;
     private const uint OverlayV2Version = 2;
-    private const uint GraphicsApiDx11 = 1;
     private const int MaxTextBlocks = 64;
 
     private static readonly int HeaderBytes = Marshal.SizeOf<OverlayV2Header>();
     private static readonly int BlockBytes = Marshal.SizeOf<TextBlockV2>();
 
     private int _pid;
+    private GraphicsHookApiKind _api = GraphicsHookApiKind.Dx11;
     private MemoryMappedFile? _mmf;
     private MemoryMappedViewAccessor? _accessor;
     private ulong _nextSeq;
@@ -59,6 +60,7 @@ internal sealed class Dx11HookOverlayV2CommandWriter : IDisposable
 
     public bool TryWrite(
         int pid,
+        GraphicsHookApiKind api,
         uint canvasW,
         uint canvasH,
         ReadOnlySpan<TextBlockV2> blocks,
@@ -71,7 +73,7 @@ internal sealed class Dx11HookOverlayV2CommandWriter : IDisposable
             return false;
         }
 
-        if (!Ensure(pid))
+        if (!Ensure(pid, api))
         {
             return false;
         }
@@ -112,7 +114,7 @@ internal sealed class Dx11HookOverlayV2CommandWriter : IDisposable
             {
                 Magic = OverlayV2Magic,
                 Version = OverlayV2Version,
-                Api = GraphicsApiDx11,
+                Api = unchecked((uint)api),
                 TargetPid = unchecked((uint)pid),
                 UpdatedSeq = ++_nextSeq,
                 CanvasW = canvasW,
@@ -139,20 +141,22 @@ internal sealed class Dx11HookOverlayV2CommandWriter : IDisposable
         _mmf?.Dispose();
         _mmf = null;
         _pid = 0;
+        _api = GraphicsHookApiKind.Dx11;
         _nextSeq = 0;
     }
 
-    private bool Ensure(int pid)
+    private bool Ensure(int pid, GraphicsHookApiKind api)
     {
-        if (_pid == pid && _mmf != null && _accessor != null)
+        if (_pid == pid && _api == api && _mmf != null && _accessor != null)
         {
             return true;
         }
 
         Reset();
         _pid = pid;
+        _api = api;
 
-        var name = $@"Local\HT_HOOK_OVL_{GraphicsApiDx11}_{pid}";
+        var name = $@"Local\HT_HOOK_OVL_{unchecked((uint)api)}_{pid}";
         try
         {
             _mmf = MemoryMappedFile.CreateOrOpen(name, MappingBytes, MemoryMappedFileAccess.ReadWrite);

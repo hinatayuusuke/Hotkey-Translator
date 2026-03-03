@@ -1,4 +1,4 @@
-<Window x:Class="Hotkey_Translator.MainWindow"
+﻿<Window x:Class="Hotkey_Translator.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -860,26 +860,26 @@
                               <StackPanel x:Name="SettingsPanelHook"
                                           Margin="0,12,0,0"
                                           Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=3}">
-                                  <TextBlock Text="DX11 Hook (Experimental)" FontWeight="SemiBold" />
-                                  <CheckBox x:Name="EnableDx11HookPipelineCheck"
-                                            Content="Enable DX11 hook pipeline"
+                                  <TextBlock Text="Graphics Hook (Experimental)" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableGraphicsHookPipelineCheck"
+                                            Content="Enable Graphics hook pipeline"
                                             Margin="0,6,0,0"
-                                            IsChecked="{Binding Settings.EnableDx11HookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <CheckBox x:Name="Dx11HookOverlayEnabledCheck"
+                                            IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="GraphicsHookOverlayEnabledCheck"
                                             Content="Enable hook overlay rendering"
                                             Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                            IsChecked="{Binding Settings.Dx11HookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <CheckBox x:Name="Dx11HookFallbackOnErrorCheck"
+                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                            IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="GraphicsHookFallbackOnErrorCheck"
                                             Content="Fallback to legacy capture on hook error"
                                             Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                            IsChecked="{Binding Settings.Dx11HookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                            IsChecked="{Binding Settings.GraphicsHookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="Dx11HookCaptureFpsLimitBox" Width="80"
-                                               IsEnabled="{Binding Settings.EnableDx11HookPipeline}"
-                                               Text="{Binding Settings.Dx11HookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBox x:Name="GraphicsHookCaptureFpsLimitBox" Width="80"
+                                               IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                               Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <Separator Margin="0,8,0,6" />
                                   <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
@@ -1308,3 +1308,4 @@
         </Grid>
     </Grid>
 </Window>
+

@@ -1,4 +1,4 @@
-# Native Hook Scaffolding
+﻿# Native Hook Scaffolding
 
 This directory contains the first-stage DX11 hook scaffolding described in
 `Doc/GraphicsHook_DX11_Detailed_Implementation_Plan.md`.
@@ -18,5 +18,6 @@ cmake --build Native/build --config Release
 
 ## Notes
 
-- The C# app keeps `EnableDx11HookPipeline=false` by default.
+- The C# app keeps `EnableGraphicsHookPipeline=false` by default.
 - If HookHost binary is missing, the app logs and stays on legacy capture.
+

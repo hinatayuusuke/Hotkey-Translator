@@ -1,18 +1,19 @@
-using System;
+﻿using System;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services.Hook;
 
-internal sealed class Dx11HookConfigWriter : IDisposable
+internal sealed class GraphicsHookConfigWriter : IDisposable
 {
     private const int MappingBytes = 4096;
     private const uint ConfigMagic = 0x48435446; // "HCTF"
     private const uint ConfigVersion = 1;
-    private const uint GraphicsApiDx11 = 1;
 
     private int _pid;
+    private GraphicsHookApiKind _api = GraphicsHookApiKind.Dx11;
     private MemoryMappedFile? _mmf;
     private MemoryMappedViewAccessor? _accessor;
 
@@ -30,14 +31,14 @@ internal sealed class Dx11HookConfigWriter : IDisposable
         public ulong UpdatedQpc;
     }
 
-    public bool TryWrite(int pid, int captureFpsLimit, bool overlayEnabled)
+    public bool TryWrite(int pid, GraphicsHookApiKind api, int captureFpsLimit, bool overlayEnabled)
     {
         if (pid <= 0)
         {
             return false;
         }
 
-        if (!Ensure(pid))
+        if (!Ensure(pid, api))
         {
             return false;
         }
@@ -48,7 +49,7 @@ internal sealed class Dx11HookConfigWriter : IDisposable
             {
                 Magic = ConfigMagic,
                 Version = ConfigVersion,
-                Api = GraphicsApiDx11,
+                Api = unchecked((uint)api),
                 TargetPid = unchecked((uint)pid),
                 CaptureFpsLimit = unchecked((uint)Math.Max(1, captureFpsLimit)),
                 OverlayEnabled = overlayEnabled ? 1u : 0u,
@@ -71,19 +72,21 @@ internal sealed class Dx11HookConfigWriter : IDisposable
         _mmf?.Dispose();
         _mmf = null;
         _pid = 0;
+        _api = GraphicsHookApiKind.Dx11;
     }
 
-    private bool Ensure(int pid)
+    private bool Ensure(int pid, GraphicsHookApiKind api)
     {
-        if (_pid == pid && _mmf != null && _accessor != null)
+        if (_pid == pid && _api == api && _mmf != null && _accessor != null)
         {
             return true;
         }
 
         Reset();
         _pid = pid;
+        _api = api;
 
-        var name = $@"Local\HT_HOOK_CFG_{GraphicsApiDx11}_{pid}";
+        var name = $@"Local\HT_HOOK_CFG_{unchecked((uint)api)}_{pid}";
         try
         {
             _mmf = MemoryMappedFile.CreateOrOpen(name, MappingBytes, MemoryMappedFileAccess.ReadWrite);
@@ -115,4 +118,3 @@ internal sealed class Dx11HookConfigWriter : IDisposable
         return unchecked((ulong)qpc);
     }
 }
-

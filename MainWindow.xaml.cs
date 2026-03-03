@@ -49,7 +49,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly WinRtOcrLanguagePackCoordinator _winRtLanguagePackCoordinator;
     private readonly BusyOverlayController _busyOverlayController;
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
-    private readonly Dx11HookClientService _dx11HookClientService;
+    private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly IMagpieProcessService _magpieProcessService;
     private readonly IMagpieIpcClient _magpieIpcClient;
     private readonly MagpieSessionController _magpieSessionController;
@@ -136,7 +136,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _busyOverlayController = new BusyOverlayController(Dispatcher, _mainWindowViewModel.RuntimeStatus);
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
-        _dx11HookClientService = new Dx11HookClientService(() => _logger);
+        _graphicsHookClientService = new GraphicsHookClientService(() => _logger);
         _magpieProcessService = new MagpieProcessService();
         _magpieIpcClient = new MagpieIpcClient();
         _magpieSessionController = new MagpieSessionController(
@@ -289,7 +289,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         _pipeline = new PipelineOrchestrator(
             _captureManager,
-            _dx11HookClientService,
+            _graphicsHookClientService,
             _ocrEngine,
             ocrDiff,
             _phashService,
@@ -308,7 +308,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
-        await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+        await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
         _drawerLayoutController.SyncForCurrentState();
         _winRtLanguagePackUiController.Start();
@@ -408,14 +408,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _translationOverlayCts?.Dispose();
         try
         {
-            _dx11HookClientService.StopAsync().GetAwaiter().GetResult();
+            _graphicsHookClientService.StopAsync().GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
             // WHY: Shutdown path should continue even if hook host pipe is unavailable.
-            _logger?.Error(ex, "Failed to stop DX11 hook client.");
+            _logger?.Error(ex, "Failed to stop Graphics hook client.");
         }
-        _dx11HookClientService.Dispose();
+        _graphicsHookClientService.Dispose();
         _magpieSessionController.Dispose();
         _magpieProcessService.Dispose();
         _hotkeyController.Dispose();
@@ -496,7 +496,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdatePinnedThumbnailFromLockResult(spec);
         // WHY: Lock/unlock hotkeys persist settings without going through the UI save path,
         // so we must explicitly apply hook settings here to ensure injection/attach happens.
-        await _dx11HookClientService.ApplySettingsAsync(_settingsService.Settings).ConfigureAwait(true);
+        await _graphicsHookClientService.ApplySettingsAsync(_settingsService.Settings).ConfigureAwait(true);
     }
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
@@ -504,7 +504,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleUnlockCaptureWindowHotkeyAsync().ConfigureAwait(true);
         ClearPinnedCaptureThumbnail("No fixed target");
         // WHY: Explicitly stop (detach) the hook when the fixed target is cleared, regardless of fallback settings.
-        await _dx11HookClientService.StopAsync().ConfigureAwait(true);
+        await _graphicsHookClientService.StopAsync().ConfigureAwait(true);
     }
 
     private async void OnToggleMirrorFullscreenHotkeyPressed(object? sender, EventArgs e)
@@ -523,22 +523,22 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         // WHY: WPF overlay and hook overlay should stay in sync by default to reduce confusion.
         // This does not persist settings; it only updates the hook runtime config mapping.
         var settings = _settingsService.Settings;
-        if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
-            var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
-            var published = _dx11HookClientService.TryPublishRuntimeConfig(
+            var effectiveHookOverlayEnabled = settings.GraphicsHookOverlayEnabled && _overlayEnabled;
+            var published = _graphicsHookClientService.TryPublishRuntimeConfig(
                 settings.FixedCaptureWindowProcessId,
-                settings.Dx11HookCaptureFpsLimit,
+                settings.GraphicsHookCaptureFpsLimit,
                 effectiveHookOverlayEnabled,
                 out var failureReason);
             _logger?.Info(
-                $"stage=dx11_hook event=runtime_config_publish pid={settings.FixedCaptureWindowProcessId} " +
-                $"fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
+                $"stage=graphics_hook event=runtime_config_publish pid={settings.FixedCaptureWindowProcessId} " +
+                $"fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
                 $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
             if (!published)
             {
                 // WHY: F9 toggle should self-heal even when runtime publish misses; re-apply reattaches and rewrites config.
-                await _dx11HookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+                await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
             }
         }
     }
@@ -556,29 +556,29 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayPresenter.SetEnabled(true, showLast: false);
         AppendLog("Overlay shown.");
 
-        if (settings.EnableDx11HookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
-            var effectiveHookOverlayEnabled = settings.Dx11HookOverlayEnabled && _overlayEnabled;
-            var published = _dx11HookClientService.TryPublishRuntimeConfig(
+            var effectiveHookOverlayEnabled = settings.GraphicsHookOverlayEnabled && _overlayEnabled;
+            var published = _graphicsHookClientService.TryPublishRuntimeConfig(
                 settings.FixedCaptureWindowProcessId,
-                settings.Dx11HookCaptureFpsLimit,
+                settings.GraphicsHookCaptureFpsLimit,
                 effectiveHookOverlayEnabled,
                 out var failureReason);
             _logger?.Info(
-                $"stage=dx11_hook event=runtime_config_publish source=enable_overlay pid={settings.FixedCaptureWindowProcessId} " +
-                $"fps_limit={settings.Dx11HookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
+                $"stage=graphics_hook event=runtime_config_publish source=enable_overlay pid={settings.FixedCaptureWindowProcessId} " +
+                $"fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
                 $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
             if (!published)
             {
                 // WHY: F8/F10 run should restore hook overlay visibility after F9 hide, even when best-effort publish misses.
-                _ = _dx11HookClientService.ApplySettingsAsync(settings);
+                _ = _graphicsHookClientService.ApplySettingsAsync(settings);
             }
         }
     }
 
     private void TryClearHookOverlayForReshow(AppSettings settings, string source)
     {
-        if (!settings.EnableDx11HookPipeline || !settings.Dx11HookOverlayEnabled)
+        if (!settings.EnableGraphicsHookPipeline || !settings.GraphicsHookOverlayEnabled)
         {
             return;
         }
@@ -592,22 +592,22 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
         {
             _logger?.Info(
-                $"stage=dx11_hook event=overlay_reshow_clear source={source} result=skip reason=invalid_bounds.");
+                $"stage=graphics_hook event=overlay_reshow_clear source={source} result=skip reason=invalid_bounds.");
             return;
         }
 
         var canvasW = (uint)Math.Max(1, Math.Round(bounds.Width));
         var canvasH = (uint)Math.Max(1, Math.Round(bounds.Height));
-        var cleared = _dx11HookClientService.TryWriteOverlayV2(
+        var cleared = _graphicsHookClientService.TryWriteOverlayV2(
             settings.FixedCaptureWindowProcessId,
             canvasW,
             canvasH,
-            ReadOnlySpan<Dx11HookOverlayV2CommandWriter.TextBlockV2>.Empty,
+            ReadOnlySpan<GraphicsHookOverlayV2CommandWriter.TextBlockV2>.Empty,
             Array.Empty<byte>(),
             0,
             out var failureReason);
         _logger?.Info(
-            $"stage=dx11_hook event=overlay_reshow_clear source={source} pid={settings.FixedCaptureWindowProcessId} " +
+            $"stage=graphics_hook event=overlay_reshow_clear source={source} pid={settings.FixedCaptureWindowProcessId} " +
             $"canvas={canvasW}x{canvasH} result={(cleared ? "ok" : "failed")} " +
             $"reason={(cleared ? "none" : failureReason ?? "unknown")}.");
     }
@@ -1031,7 +1031,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateTranslationStatus(settings);
         _magpieSessionController.ApplySettings(settings);
         ApplyMirrorOverlayMapper();
-        _ = _dx11HookClientService.ApplySettingsAsync(settings);
+        _ = _graphicsHookClientService.ApplySettingsAsync(settings);
         CheckAndShowPrerequisiteDialogs(settings);
         _winRtLanguagePackUiController.SchedulePrecheck();
     }
@@ -1057,9 +1057,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ShowMissingBinaryDialogIfNeeded("bin_uv_missing", FixedUvRelativePath, "OCR/Llama gRPC");
         }
 
-        if (settings.EnableDx11HookPipeline)
+        if (settings.EnableGraphicsHookPipeline)
         {
-            ShowMissingBinaryDialogIfNeeded("bin_hookhost_missing", FixedHookHostRelativePath, "DX11 hook");
+            ShowMissingBinaryDialogIfNeeded("bin_hookhost_missing", FixedHookHostRelativePath, "Graphics hook");
         }
 
         if (settings.EnableMirrorFullscreenMode)
@@ -1530,6 +1530,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ModifierKeys.Control);
     }
 }
+
+
 
 
 

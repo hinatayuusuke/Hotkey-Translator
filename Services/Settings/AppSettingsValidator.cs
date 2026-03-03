@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Settings.Rules;
 
@@ -19,7 +19,7 @@ internal sealed class AppSettingsValidator
             new PaddleOcrSettingsRule(),
             new NdlOcrSettingsRule(),
             new LlamaHostSettingsRule(),
-            new Dx11HookSettingsRule(),
+            new GraphicsHookSettingsRule(),
             new MirrorModeSettingsRule()
         };
     }
@@ -35,3 +35,4 @@ internal sealed class AppSettingsValidator
         return report;
     }
 }
+

@@ -20,6 +20,7 @@ namespace
     struct AttachRequest
     {
         DWORD pid = 0;
+        ht::hook::ipc::GraphicsApi api = ht::hook::ipc::GraphicsApi::Dx11;
         bool enableOverlay = true;
         std::uint32_t captureFpsLimit = 15;
     };
@@ -72,8 +73,18 @@ namespace
             mapName.resize(static_cast<std::size_t>(bytes - 1));
             WideCharToMultiByte(CP_UTF8, 0, mapNameW.c_str(), -1, mapName.data(), bytes, nullptr, nullptr);
         }
+        const char* apiName = "Unknown";
+        switch (api)
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11: apiName = "DX11"; break;
+            case ht::hook::ipc::GraphicsApi::Dx12: apiName = "DX12"; break;
+            case ht::hook::ipc::GraphicsApi::OpenGl: apiName = "OpenGL"; break;
+            case ht::hook::ipc::GraphicsApi::Vulkan: apiName = "Vulkan"; break;
+            default: break;
+        }
+
         return "{\"type\":\"hookState\",\"payload\":{\"pid\":" + std::to_string(pid) + ",\"state\":\"" + JsonEscape(state) +
-               "\",\"reason\":\"" + JsonEscape(reason) + "\",\"api\":\"DX11\",\"frameMap\":\"" + JsonEscape(mapName) + "\"}}\n";
+               "\",\"reason\":\"" + JsonEscape(reason) + "\",\"api\":\"" + JsonEscape(apiName) + "\",\"frameMap\":\"" + JsonEscape(mapName) + "\"}}\n";
     }
 
     std::wstring GetExeDir()
@@ -182,6 +193,25 @@ namespace
         }
 
         outReq.pid = static_cast<DWORD>(pid);
+
+        std::uint32_t apiRaw = 0;
+        if (!ExtractU32(json, "api", apiRaw))
+        {
+            return false;
+        }
+
+        switch (static_cast<ht::hook::ipc::GraphicsApi>(apiRaw))
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11:
+            case ht::hook::ipc::GraphicsApi::Dx12:
+            case ht::hook::ipc::GraphicsApi::OpenGl:
+            case ht::hook::ipc::GraphicsApi::Vulkan:
+                outReq.api = static_cast<ht::hook::ipc::GraphicsApi>(apiRaw);
+                break;
+            default:
+                return false;
+        }
+
         (void)ExtractBool(json, "enableOverlay", outReq.enableOverlay);
 
         std::uint32_t fps = 15;
@@ -472,6 +502,12 @@ namespace
             const auto existing = g_states.find(req.pid);
             if (existing != g_states.end() && existing->second.remoteModule != nullptr)
             {
+                if (existing->second.api != req.api)
+                {
+                    WriteResponse(pipe, BuildState("Failed", "attach_failed:api_mismatch_existing", req.api, req.pid));
+                    return;
+                }
+
                 (void)existing->second.configWriter.Write(req.pid, existing->second.api, req.captureFpsLimit, req.enableOverlay);
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
@@ -496,6 +532,12 @@ namespace
                 }
             }
 
+            if (req.api != ht::hook::ipc::GraphicsApi::Dx11)
+            {
+                WriteResponse(pipe, BuildState("Failed", "attach_failed:api_not_implemented", req.api, req.pid));
+                return;
+            }
+
             const auto exeDir = GetExeDir();
             const auto dllPath = JoinPath(exeDir, L"HookAgentDx11.dll");
 
@@ -512,11 +554,11 @@ namespace
             st.pid = req.pid;
             st.remoteModule = remoteModule;
             st.dllPath = dllPath;
-            st.api = ht::hook::ipc::GraphicsApi::Dx11;
+            st.api = req.api;
             (void)st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay);
             g_states[req.pid] = std::move(st);
 
-            WriteResponse(pipe, BuildState("Attached", "ok", ht::hook::ipc::GraphicsApi::Dx11, req.pid));
+            WriteResponse(pipe, BuildState("Attached", "ok", req.api, req.pid));
             return;
         }
 

@@ -1,4 +1,4 @@
-using Hotkey_Translator.Models;
+﻿using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services.Settings.Rules;
 
@@ -13,10 +13,10 @@ internal sealed class MirrorModeSettingsRule : ISettingsRule
         changed |= SettingsRuleHelpers.ClampSetting(settings.MagpieProfileIndex, 0, 99, 0, out var profileIndex);
         settings.MagpieProfileIndex = profileIndex;
 
-        if (settings.EnableMirrorFullscreenMode && settings.EnableDx11HookPipeline)
+        if (settings.EnableMirrorFullscreenMode && settings.EnableGraphicsHookPipeline)
         {
             // WHY: Mirror mode is explicit priority to avoid ambiguous dual-output behavior.
-            settings.EnableDx11HookPipeline = false;
+            settings.EnableGraphicsHookPipeline = false;
             changed = true;
         }
 
@@ -30,3 +30,4 @@ internal sealed class MirrorModeSettingsRule : ISettingsRule
         return changed;
     }
 }
+

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -16,7 +16,6 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private const uint FrameHeaderMagic = 0x48465452; // "HFTR"
     private const uint FrameHeaderVersion = 1;
     private const uint PixelFormatBgra8 = 1;
-    private const uint GraphicsApiDx11 = 1;
     private const int MaxReadAttempts = 5;
 
     public GraphicsHookCaptureProvider(AppLogger logger)
@@ -28,8 +27,8 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
 
     public bool IsEnabled(AppSettings settings)
     {
-        // WHY: Hook capture is currently DX11-only and requires active-window + fixed binding (PID is derived from hwnd).
-        return settings.EnableDx11HookPipeline && settings.CaptureMode == CaptureMode.ActiveWindow && settings.EnableFixedCaptureWindow;
+        // WHY: Hook capture requires active-window + fixed binding (PID is derived from hwnd).
+        return settings.EnableGraphicsHookPipeline && settings.CaptureMode == CaptureMode.ActiveWindow && settings.EnableFixedCaptureWindow;
     }
 
     public bool TryGetBounds(CaptureRequest request, out Rect bounds)
@@ -84,8 +83,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             return false;
         }
 
-        var mappingName = HookFrameMapRegistry.TryGet(pid, out var dynamicMap) ? dynamicMap : BuildFrameMappingName(pid);
-        if (!TryReadBitmap(pid, mappingName, out var header, out var bitmap, out var readError))
+        if (!TryResolveFrameMappingName(pid, out var mappingName, out var header, out var bitmap, out var readError))
         {
             error = readError ?? "Hook shared frame read failed.";
             return false;
@@ -130,10 +128,51 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         public ulong TimestampQpc;
     }
 
-    private static string BuildFrameMappingName(int pid)
+    private static string BuildFrameMappingName(int pid, GraphicsHookApiKind api)
     {
         // NOTE: Must match Native/HookCommon/HookIpcProtocol.h naming.
-        return $@"Local\HT_HOOK_FRAME_{GraphicsApiDx11}_{pid}";
+        return $@"Local\HT_HOOK_FRAME_{unchecked((uint)api)}_{pid}";
+    }
+
+    private bool TryResolveFrameMappingName(
+        int pid,
+        out string mappingName,
+        out SharedFrameHeader header,
+        out Bitmap bitmap,
+        out string? error)
+    {
+        header = default;
+        bitmap = null!;
+        error = null;
+
+        if (HookFrameMapRegistry.TryGet(pid, out var dynamicMap) &&
+            !string.IsNullOrWhiteSpace(dynamicMap) &&
+            TryReadBitmap(pid, dynamicMap, out header, out bitmap, out error))
+        {
+            mappingName = dynamicMap;
+            return true;
+        }
+
+        var fallbacks = new[]
+        {
+            GraphicsHookApiKind.Dx11,
+            GraphicsHookApiKind.Vulkan
+        };
+        foreach (var api in fallbacks)
+        {
+            var candidate = BuildFrameMappingName(pid, api);
+            if (!TryReadBitmap(pid, candidate, out header, out bitmap, out error))
+            {
+                continue;
+            }
+
+            mappingName = candidate;
+            HookFrameMapRegistry.Set(pid, candidate);
+            return true;
+        }
+
+        mappingName = string.Empty;
+        return false;
     }
 
     private bool TryReadBitmap(
@@ -229,10 +268,11 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
         catch (FileNotFoundException)
         {
-            if (Dx11HookStatusReader.TryRead(pid, out var status))
+            if (GraphicsHookStatusReader.TryReadAny(pid, out var status, out var statusApi))
             {
                 error =
                     $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}. " +
+                    $"status.api={statusApi} " +
                     $"status.presentCount={status.PresentCount} kind={status.LastPresentKind} " +
                     $"bb={status.BackBufferWidth}x{status.BackBufferHeight} dxgi={status.BackBufferDxgiFormat} " +
                     $"cmdCount={status.LastCmdCount}.";
@@ -296,7 +336,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
             return false;
         }
 
-        if (header.Api != GraphicsApiDx11)
+        if (!Enum.IsDefined(typeof(GraphicsHookApiKind), header.Api) || header.Api == 0)
         {
             error = $"Unexpected hook api: {header.Api}.";
             return false;
@@ -565,3 +605,4 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
     }
 }
+
