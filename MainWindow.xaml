@@ -865,6 +865,17 @@
                                             Content="Enable Graphics hook pipeline"
                                             Margin="0,6,0,0"
                                             IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Hook API" Width="150" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="GraphicsHookApiBox"
+                                                Width="180"
+                                                IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="DX11" Tag="Dx11" />
+                                          <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+                                      </ComboBox>
+                                  </StackPanel>
                                   <CheckBox x:Name="GraphicsHookOverlayEnabledCheck"
                                             Content="Enable hook overlay rendering"
                                             Margin="0,4,0,0"

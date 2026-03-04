@@ -75,6 +75,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
     [ObservableProperty] private bool _enableGraphicsHookPipeline;
+    [ObservableProperty] private string _graphicsHookApiTag = "Dx11";
     [ObservableProperty] private bool _enableMirrorFullscreenMode;
     [ObservableProperty] private bool _graphicsHookOverlayEnabled;
     [ObservableProperty] private bool _graphicsHookFallbackOnError;
@@ -202,6 +203,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
             EnableGraphicsHookPipeline = settings.EnableGraphicsHookPipeline;
+            GraphicsHookApiTag = settings.GraphicsHookApi switch
+            {
+                GraphicsHookApiKind.Vulkan => "Vulkan",
+                _ => "Dx11"
+            };
             EnableMirrorFullscreenMode = settings.EnableMirrorFullscreenMode;
             GraphicsHookOverlayEnabled = settings.GraphicsHookOverlayEnabled;
             GraphicsHookFallbackOnError = settings.GraphicsHookFallbackOnError;
@@ -317,6 +323,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
         settings.EnableGraphicsHookPipeline = EnableGraphicsHookPipeline;
+        settings.GraphicsHookApi = GraphicsHookApiTag switch
+        {
+            "Vulkan" => GraphicsHookApiKind.Vulkan,
+            _ => GraphicsHookApiKind.Dx11
+        };
         settings.EnableMirrorFullscreenMode = EnableMirrorFullscreenMode;
         settings.GraphicsHookOverlayEnabled = GraphicsHookOverlayEnabled;
         settings.GraphicsHookFallbackOnError = GraphicsHookFallbackOnError;
@@ -641,6 +652,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
         RequestSaveOnValueChange();
     }
+
+    partial void OnGraphicsHookApiTagChanged(string value) => RequestSaveOnValueChange();
 
     partial void OnEnableMirrorFullscreenModeChanged(bool value)
     {

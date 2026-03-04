@@ -16060,3 +16060,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 18:45 (Asia/Taipei) — Graphics Hook API選択UIを追加（DX11/Vulkan）**
+
+### Summary
+- Hook設定画面で Graphics Hook API（DX11 / Vulkan）を選択できるUIを追加し、settings.json の GraphicsHookApi に保存されるようにした。
+
+### Context / Goal
+- Auto判定を後続実装に回す前提で、手動でAPIを固定して切り分け・運用できるようにする必要があった。
+- Launcher経路を含め、既存の GraphicsHookApi 利用ロジックへそのまま接続することが目的。
+
+### Changes
+- Hook設定パネルに Hook API コンボボックスを追加（選択肢: DX11 / Vulkan）。
+- SettingsViewModel に GraphicsHookApiTag を追加し、
+  - LoadFrom: AppSettings.GraphicsHookApi -> UIタグへ変換
+  - ApplyTo: UIタグ -> AppSettings.GraphicsHookApi へ変換
+- GraphicsHookApiTag 変更時に自動保存トリガーを追加。
+
+### Files Touched
+- MainWindow.xaml — Graphics Hook API選択コンボを追加。
+- ViewModels/SettingsViewModel.cs — GraphicsHookApiTag の保持・保存変換・変更監視を追加。
+
+### Behavioral Impact
+- ユーザーがUIからDX11/Vulkanを切替できる。
+- 保存後、既存のHook attach処理は settings.GraphicsHookApi を使うため、選択値がそのまま反映される。
+
+### Risk & Mitigation
+- Risk: 既存設定が UI選択肢外（Dx12/OpenGl）だった場合、UI表示はDX11へ正規化される。
+- Mitigation: 現在運用対象をDX11/Vulkanに限定した設計であり、意図した fail-fast 動作。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
