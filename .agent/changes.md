@@ -15645,3 +15645,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
+
+**2026-03-04 14:04 (Asia/Taipei) — Vulkan Hook 入口切り分けログ強化（API別hook成否 + 初回ヒット）**
+
+### Summary
+- Vulkan Hook の初期化と入口到達を確実に切り分けるため、Install時のAPI別hook成否ログと ProcAddr/Create 系ヒットログを追加した。
+
+### Context / Goal
+- 既存ログで `agent_loaded` / `install_hook_result=ok` は出る一方、`queue_present_enter` が出ず、どこで止まっているか判別が不足していた。
+- 「hookがどのAPIに刺さったか」「ProcAddr/Create系に到達しているか」を明示し、次の再現1回で停止層を確定することが目的。
+
+### Changes
+- `InstallPresentHook` で各APIごとに `event=install_hook_api api=<name> result=ok|fail` を出力。
+- `Hook_vkGetDeviceProcAddr` にヒットログを追加（name/resolved を記録）。
+- `Hook_vkGetInstanceProcAddr` にヒットログを追加（name/resolved を記録）。
+- `Hook_vkCreateDevice` に初回ヒットログを追加（`event=first_hit_vkCreateDevice`）。
+- `Hook_vkCreateSwapchainKHR` に初回ヒットログを追加（`event=first_hit_vkCreateSwapchainKHR`、format/extent含む）。
+- 再インストール時にも初回ヒットが再取得できるよう、runtime reset時に初回ヒットフラグを初期化。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Install時API別成否ログ、ProcAddrヒットログ、Create初回ヒットログ、初回フラグリセットを追加。
+
+### Behavioral Impact
+- `%TEMP%\HotkeyTranslator\hook_vulkan_<pid>.log` に、install段階と入口段階のログがより詳細に出る。
+- 本体機能（capture/overlay）の仕様変更はなし。
+
+### Risk & Mitigation
+- Risk: ProcAddrヒットログでログ量が増える可能性。
+- Mitigation: 目的は短期切り分けであり、必要十分なメタ情報のみ（name/resolved）を出力。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。

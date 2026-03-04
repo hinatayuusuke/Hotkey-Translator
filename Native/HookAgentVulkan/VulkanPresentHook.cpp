@@ -192,6 +192,8 @@ namespace ht::hook::vulkan
         HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
         DWORD g_diagFilePid = 0;
         std::wstring g_diagFilePath;
+        std::atomic_bool g_loggedFirstCreateDeviceHit{false};
+        std::atomic_bool g_loggedFirstCreateSwapchainHit{false};
 
         std::uint64_t NowQpc()
         {
@@ -715,6 +717,8 @@ namespace ht::hook::vulkan
             rt.lastWriteFrameOkQpc = 0;
             rt.lastWriteFrameFailQpc = 0;
             rt.lastQueuePresentEnterLogQpc = 0;
+            g_loggedFirstCreateDeviceHit.store(false);
+            g_loggedFirstCreateSwapchainHit.store(false);
 
             rt.instance = VK_NULL_HANDLE;
             rt.apiVersion = VK_API_VERSION_1_0;
@@ -1986,6 +1990,12 @@ namespace ht::hook::vulkan
                 resolved = rt.originalGetDeviceProcAddr(device, functionName);
             }
 
+            DebugLog(
+                "stage=hook_vulkan event=hit_vkGetDeviceProcAddr device=%p name=%s resolved=%p.",
+                device,
+                functionName != nullptr ? functionName : "(null)",
+                reinterpret_cast<void*>(resolved));
+
             if (functionName == nullptr)
             {
                 return resolved;
@@ -2043,6 +2053,12 @@ namespace ht::hook::vulkan
             {
                 resolved = rt.originalGetInstanceProcAddr(instance, functionName);
             }
+
+            DebugLog(
+                "stage=hook_vulkan event=hit_vkGetInstanceProcAddr instance=%p name=%s resolved=%p.",
+                instance,
+                functionName != nullptr ? functionName : "(null)",
+                reinterpret_cast<void*>(resolved));
 
             if (instance != VK_NULL_HANDLE)
             {
@@ -2126,6 +2142,14 @@ namespace ht::hook::vulkan
             const VkAllocationCallbacks* allocator,
             VkDevice* device)
         {
+            if (!g_loggedFirstCreateDeviceHit.exchange(true))
+            {
+                DebugLog(
+                    "stage=hook_vulkan event=first_hit_vkCreateDevice physicalDevice=%p createInfo=%p.",
+                    physicalDevice,
+                    createInfo);
+            }
+
             auto& rt = g_rt;
             const auto original = rt.originalCreateDevice;
             if (original == nullptr)
@@ -2204,6 +2228,22 @@ namespace ht::hook::vulkan
             const VkAllocationCallbacks* allocator,
             VkSwapchainKHR* swapchain)
         {
+            if (!g_loggedFirstCreateSwapchainHit.exchange(true))
+            {
+                const std::uint32_t width = (createInfo != nullptr) ? createInfo->imageExtent.width : 0u;
+                const std::uint32_t height = (createInfo != nullptr) ? createInfo->imageExtent.height : 0u;
+                const std::uint32_t format = (createInfo != nullptr)
+                    ? static_cast<std::uint32_t>(createInfo->imageFormat)
+                    : 0u;
+                DebugLog(
+                    "stage=hook_vulkan event=first_hit_vkCreateSwapchainKHR device=%p format=%u extent=%ux%u createInfo=%p.",
+                    device,
+                    format,
+                    width,
+                    height,
+                    createInfo);
+            }
+
             auto& rt = g_rt;
             const auto original = rt.originalCreateSwapchainKHR;
             if (original == nullptr)
@@ -2378,69 +2418,66 @@ namespace ht::hook::vulkan
             return false;
         }
 
+        auto hookAndLog = [&](const char* apiName, void* detour, void** original) -> bool
+        {
+            const bool ok = HookExport(vulkanModule, apiName, detour, original);
+            DebugLog(
+                "stage=hook_vulkan event=install_hook_api api=%s result=%s.",
+                apiName != nullptr ? apiName : "(null)",
+                ok ? "ok" : "fail");
+            return ok;
+        };
+
         bool hookedAny = false;
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkGetDeviceProcAddr",
             reinterpret_cast<void*>(&Hook_vkGetDeviceProcAddr),
             reinterpret_cast<void**>(&rt.originalGetDeviceProcAddr));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkGetInstanceProcAddr",
             reinterpret_cast<void*>(&Hook_vkGetInstanceProcAddr),
             reinterpret_cast<void**>(&rt.originalGetInstanceProcAddr));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkCreateInstance",
             reinterpret_cast<void*>(&Hook_vkCreateInstance),
             reinterpret_cast<void**>(&rt.originalCreateInstance));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkDestroyInstance",
             reinterpret_cast<void*>(&Hook_vkDestroyInstance),
             reinterpret_cast<void**>(&rt.originalDestroyInstance));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkCreateDevice",
             reinterpret_cast<void*>(&Hook_vkCreateDevice),
             reinterpret_cast<void**>(&rt.originalCreateDevice));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkDestroyDevice",
             reinterpret_cast<void*>(&Hook_vkDestroyDevice),
             reinterpret_cast<void**>(&rt.originalDestroyDevice));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkGetDeviceQueue",
             reinterpret_cast<void*>(&Hook_vkGetDeviceQueue),
             reinterpret_cast<void**>(&rt.originalGetDeviceQueue));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkGetDeviceQueue2",
             reinterpret_cast<void*>(&Hook_vkGetDeviceQueue2),
             reinterpret_cast<void**>(&rt.originalGetDeviceQueue2));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkCreateSwapchainKHR",
             reinterpret_cast<void*>(&Hook_vkCreateSwapchainKHR),
             reinterpret_cast<void**>(&rt.originalCreateSwapchainKHR));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkDestroySwapchainKHR",
             reinterpret_cast<void*>(&Hook_vkDestroySwapchainKHR),
             reinterpret_cast<void**>(&rt.originalDestroySwapchainKHR));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkAcquireNextImageKHR",
             reinterpret_cast<void*>(&Hook_vkAcquireNextImageKHR),
             reinterpret_cast<void**>(&rt.originalAcquireNextImageKHR));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkAcquireNextImage2KHR",
             reinterpret_cast<void*>(&Hook_vkAcquireNextImage2KHR),
             reinterpret_cast<void**>(&rt.originalAcquireNextImage2KHR));
-        hookedAny |= HookExport(
-            vulkanModule,
+        hookedAny |= hookAndLog(
             "vkQueuePresentKHR",
             reinterpret_cast<void*>(&Hook_vkQueuePresentKHR),
             reinterpret_cast<void**>(&rt.originalQueuePresentKHR));
