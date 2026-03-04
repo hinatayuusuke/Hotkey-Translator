@@ -15823,3 +15823,35 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
+
+**2026-03-04 16:24 (Asia/Taipei) — Vulkan readback最適化(診断拡張 + HOST_CACHED優先 + 永続マップ)**
+
+### Summary
+- `HookAgentVulkan` の readback経路を調整し、`mapMs/cpuCopyMs` 分離計測、`HOST_CACHED` 優先メモリ選択、staging永続マップを実装した。
+
+### Context / Goal
+- `present_perf` で `mapCopyMs` が支配（約600ms）だったため、mapとCPUコピーを分離して原因を確定し、readback経路の基本最適化を入れる必要があった。
+- 目的は DuckStation Vulkan の極端な低FPSの原因を、より直接的に特定/緩和すること。
+
+### Changes
+- `QueueGpuState` に `stagingMapped` と `stagingHostCached` を追加。
+- stagingメモリ選択ロジックを変更し、`HOST_VISIBLE|HOST_COHERENT|HOST_CACHED` を優先、無ければ `HOST_VISIBLE|HOST_COHERENT` へフォールバック。
+- stagingメモリを作成時に `vkMapMemory` して永続マップ化（毎フレームの map/unmap を廃止）。
+- 破棄時に永続マップを `vkUnmapMemory` してから解放するよう変更。
+- `present_perf` ログを更新し、`mapCopyMs` を `mapMs` と `cpuCopyMs` に分離。
+- stagingメモリ選択結果の診断ログを追加: `event=staging_memory_selected`。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — メモリタイプ選択改善、永続マップ化、段階計測ログ分離、破棄処理更新。
+
+### Behavioral Impact
+- 毎フレームの `vkMapMemory/vkUnmapMemory` 呼び出しがなくなる。
+- ログ上は `present_perf` が `mapMs` / `cpuCopyMs` を出すようになる。
+- ドライバが `HOST_CACHED` を提供する環境では readback CPUコピーが改善する可能性がある。
+
+### Risk & Mitigation
+- Risk: 一部ドライバで永続マップ運用が想定外の挙動を起こす可能性。
+- Mitigation: 失敗時は `ensure_queue_gpu_state fail reason=map_staging_memory_failed` を明示し、既存のskip/診断ログで即切り分け可能。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。

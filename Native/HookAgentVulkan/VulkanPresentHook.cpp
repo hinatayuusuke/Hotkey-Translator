@@ -94,6 +94,8 @@ namespace ht::hook::vulkan
 
             VkBuffer stagingBuffer = VK_NULL_HANDLE;
             VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+            void* stagingMapped = nullptr;
+            bool stagingHostCached = false;
             VkDeviceSize stagingBytes = 0;
             std::uint32_t width = 0;
             std::uint32_t height = 0;
@@ -525,6 +527,12 @@ namespace ht::hook::vulkan
                 return;
             }
 
+            if (st.stagingMapped != nullptr && st.stagingMemory != VK_NULL_HANDLE)
+            {
+                vkUnmapMemory(st.device, st.stagingMemory);
+                st.stagingMapped = nullptr;
+            }
+
             if (st.fence != VK_NULL_HANDLE)
             {
                 vkDestroyFence(st.device, st.fence, nullptr);
@@ -751,10 +759,34 @@ namespace ht::hook::vulkan
             rt.originalQueuePresentKHR = nullptr;
         }
 
-        std::uint32_t FindHostVisibleCoherentMemoryType(VkPhysicalDevice physicalDevice, std::uint32_t typeBits)
+        bool FindHostVisibleCoherentMemoryType(
+            VkPhysicalDevice physicalDevice,
+            std::uint32_t typeBits,
+            std::uint32_t& selectedType,
+            bool& selectedHostCached)
         {
+            selectedType = std::numeric_limits<std::uint32_t>::max();
+            selectedHostCached = false;
+
             VkPhysicalDeviceMemoryProperties memProps{};
             vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProps);
+
+            // WHY: Host-cached + coherent is significantly faster for CPU readback on some drivers.
+            for (std::uint32_t i = 0; i < memProps.memoryTypeCount; ++i)
+            {
+                const bool typeMatches = (typeBits & (1u << i)) != 0;
+                const auto flags = memProps.memoryTypes[i].propertyFlags;
+                const bool hostVisible = (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+                const bool hostCoherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
+                const bool hostCached = (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) != 0;
+                if (typeMatches && hostVisible && hostCoherent && hostCached)
+                {
+                    selectedType = i;
+                    selectedHostCached = true;
+                    return true;
+                }
+            }
+
             for (std::uint32_t i = 0; i < memProps.memoryTypeCount; ++i)
             {
                 const bool typeMatches = (typeBits & (1u << i)) != 0;
@@ -763,11 +795,13 @@ namespace ht::hook::vulkan
                 const bool hostCoherent = (flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) != 0;
                 if (typeMatches && hostVisible && hostCoherent)
                 {
-                    return i;
+                    selectedType = i;
+                    selectedHostCached = false;
+                    return true;
                 }
             }
 
-            return std::numeric_limits<std::uint32_t>::max();
+            return false;
         }
 
         bool IsCaptureFormatSupported(VkFormat format, bool& rgbaNeedsSwap)
@@ -1011,6 +1045,7 @@ namespace ht::hook::vulkan
                 state.commandBuffer == VK_NULL_HANDLE ||
                 state.stagingBuffer == VK_NULL_HANDLE ||
                 state.stagingMemory == VK_NULL_HANDLE ||
+                state.stagingMapped == nullptr ||
                 state.fence == VK_NULL_HANDLE;
 
             if (!mustRecreate)
@@ -1106,8 +1141,9 @@ namespace ht::hook::vulkan
 
             VkMemoryRequirements memReq{};
             vkGetBufferMemoryRequirements(device, state.stagingBuffer, &memReq);
-            const auto memoryType = FindHostVisibleCoherentMemoryType(deviceInfo.physicalDevice, memReq.memoryTypeBits);
-            if (memoryType == std::numeric_limits<std::uint32_t>::max())
+            std::uint32_t memoryType = std::numeric_limits<std::uint32_t>::max();
+            bool hostCached = false;
+            if (!FindHostVisibleCoherentMemoryType(deviceInfo.physicalDevice, memReq.memoryTypeBits, memoryType, hostCached))
             {
                 const auto now = NowQpc();
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
@@ -1120,6 +1156,8 @@ namespace ht::hook::vulkan
                 DestroyQueueGpuState(state);
                 return false;
             }
+
+            state.stagingHostCached = hostCached;
 
             VkMemoryAllocateInfo allocInfo{};
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -1155,6 +1193,32 @@ namespace ht::hook::vulkan
                 DestroyQueueGpuState(state);
                 return false;
             }
+
+            void* mapped = nullptr;
+            const auto mapResult = vkMapMemory(device, state.stagingMemory, 0, state.stagingBytes, 0, &mapped);
+            if (mapResult != VK_SUCCESS || mapped == nullptr)
+            {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=map_staging_memory_failed vk=%d mapped=%d bytes=%llu queue=%p.",
+                        static_cast<int>(mapResult),
+                        mapped != nullptr ? 1 : 0,
+                        static_cast<unsigned long long>(state.stagingBytes),
+                        queue);
+                }
+                DestroyQueueGpuState(state);
+                return false;
+            }
+            state.stagingMapped = mapped;
+
+            DebugLog(
+                "stage=hook_vulkan event=staging_memory_selected queue=%p typeIndex=%u hostCached=%d bytes=%llu.",
+                queue,
+                memoryType,
+                state.stagingHostCached ? 1 : 0,
+                static_cast<unsigned long long>(state.stagingBytes));
 
             state.scratch.assign(static_cast<std::size_t>(requiredBytes), 0);
             return true;
@@ -1511,7 +1575,8 @@ namespace ht::hook::vulkan
             std::uint64_t perfAfterCommandRecordQpc = perfBeginQpc;
             std::uint64_t perfSubmitDurationQpc = 0;
             std::uint64_t perfWaitDurationQpc = 0;
-            std::uint64_t perfMapCopyDurationQpc = 0;
+            std::uint64_t perfMapDurationQpc = 0;
+            std::uint64_t perfCpuCopyDurationQpc = 0;
             std::uint64_t perfWriteDurationQpc = 0;
             std::uint64_t perfCopyCommandDurationQpc = 0;
             std::uint64_t perfOverlayCommandDurationQpc = 0;
@@ -1602,7 +1667,7 @@ namespace ht::hook::vulkan
                 }
 
                 DebugLog(
-                    "stage=hook_vulkan event=present_perf pid=%lu presentCount=%llu outcome=%s shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d size=%ux%u prepMs=%.2f cmdRecordMs=%.2f copyCmdMs=%.2f overlayCmdMs=%.2f submitMs=%.2f waitMs=%.2f mapCopyMs=%.2f writeMs=%.2f totalMs=%.2f.",
+                    "stage=hook_vulkan event=present_perf pid=%lu presentCount=%llu outcome=%s shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d size=%ux%u prepMs=%.2f cmdRecordMs=%.2f copyCmdMs=%.2f overlayCmdMs=%.2f submitMs=%.2f waitMs=%.2f mapMs=%.2f cpuCopyMs=%.2f writeMs=%.2f totalMs=%.2f.",
                     static_cast<unsigned long>(GetCurrentProcessId()),
                     static_cast<unsigned long long>(rt.presentCount),
                     outcome != nullptr ? outcome : "unknown",
@@ -1617,7 +1682,8 @@ namespace ht::hook::vulkan
                     QpcDeltaToMs(perfOverlayCommandDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfSubmitDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfWaitDurationQpc, rt.qpcFreq),
-                    QpcDeltaToMs(perfMapCopyDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfMapDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfCpuCopyDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfWriteDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfNowQpc - perfBeginQpc, rt.qpcFreq));
             };
@@ -1850,27 +1916,26 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            const auto mapCopyBeginQpc = NowQpc();
-            void* mapped = nullptr;
-            const auto mapResult = vkMapMemory(gpu.device, gpu.stagingMemory, 0, gpu.stagingBytes, 0, &mapped);
-            if (mapResult != VK_SUCCESS || mapped == nullptr)
+            const auto mapBeginQpc = NowQpc();
+            const auto* mapped = static_cast<const std::uint8_t*>(gpu.stagingMapped);
+            perfMapDurationQpc = NowQpc() - mapBeginQpc;
+            if (mapped == nullptr)
             {
                 char detail[128]{};
                 (void)_snprintf_s(
                     detail,
                     sizeof(detail),
                     _TRUNCATE,
-                    "vk=%d mapped=%d bytes=%llu",
-                    static_cast<int>(mapResult),
-                    mapped != nullptr ? 1 : 0,
+                    "persistent_mapped=%d bytes=%llu",
+                    gpu.stagingMapped != nullptr ? 1 : 0,
                     static_cast<unsigned long long>(gpu.stagingBytes));
                 LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
-                perfMapCopyDurationQpc = NowQpc() - mapCopyBeginQpc;
                 emitPresentPerfLog("map_failed");
                 return false;
             }
 
-            const auto* src = static_cast<const std::uint8_t*>(mapped);
+            const auto copyBeginQpc = NowQpc();
+            const auto* src = mapped;
             const auto bytes = static_cast<std::size_t>(gpu.stagingBytes);
             if (gpu.scratch.size() < bytes)
             {
@@ -1891,9 +1956,7 @@ namespace ht::hook::vulkan
                     gpu.scratch[i + 3] = src[i + 3];
                 }
             }
-
-            vkUnmapMemory(gpu.device, gpu.stagingMemory);
-            perfMapCopyDurationQpc = NowQpc() - mapCopyBeginQpc;
+            perfCpuCopyDurationQpc = NowQpc() - copyBeginQpc;
 
             const auto pid = GetCurrentProcessId();
             const auto ts = NowQpc();
