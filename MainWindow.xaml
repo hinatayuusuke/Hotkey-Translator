@@ -891,36 +891,36 @@
                                                IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                                                Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
-                                  <CheckBox x:Name="EnableVulkanEarlyInjectionLauncherCheck"
-                                            Content="Enable Vulkan early-injection launcher"
+                                  <CheckBox x:Name="EnableGraphicsHookLauncherCheck"
+                                            Content="Enable Graphics Hook launcher"
                                             Margin="0,8,0,0"
                                             IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.EnableVulkanEarlyInjectionLauncher, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            IsChecked="{Binding Settings.EnableGraphicsHookLauncher, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Launcher EXE" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="VulkanLauncherExePathBox" Width="380"
-                                               IsEnabled="{Binding Settings.EnableVulkanEarlyInjectionLauncher}"
-                                               Text="{Binding Settings.VulkanLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <Button x:Name="BrowseVulkanLauncherExeButton"
+                                      <TextBox x:Name="GraphicsHookLauncherExePathBox" Width="380"
+                                               IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                                               Text="{Binding Settings.GraphicsHookLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <Button x:Name="BrowseGraphicsHookLauncherExeButton"
                                               Content="Browse..."
                                               Width="80"
                                               Margin="8,0,0,0"
-                                              IsEnabled="{Binding Settings.EnableVulkanEarlyInjectionLauncher}"
-                                              Click="OnBrowseVulkanLauncherExeClicked" />
+                                              IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                                              Click="OnBrowseGraphicsHookLauncherExeClicked" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Launcher args" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="VulkanLauncherArgsBox" Width="380"
-                                               IsEnabled="{Binding Settings.EnableVulkanEarlyInjectionLauncher}"
-                                               Text="{Binding Settings.VulkanLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <Button x:Name="LaunchVulkanAndHookButton"
-                                              Content="Launch + Hook"
+                                      <TextBox x:Name="GraphicsHookLauncherArgsBox" Width="380"
+                                               IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                                               Text="{Binding Settings.GraphicsHookLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <Button x:Name="LaunchGraphicsHookLauncherButton"
+                                              Content="Hook Launch"
                                               Width="100"
                                               Margin="8,0,0,0"
-                                              IsEnabled="{Binding Settings.EnableVulkanEarlyInjectionLauncher}"
-                                              Click="OnLaunchVulkanAndHookClicked" />
+                                              IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                                              Click="OnLaunchGraphicsHookLauncherClicked" />
                                   </StackPanel>
-                                  <TextBlock Text="NOTE: In this mode, locking an already-running foreground window (F7) is disabled."
+                                  <TextBlock Text="NOTE: In this mode, lock/unlock fixed target hotkeys (F7 / Shift+F7) are disabled."
                                              Margin="0,4,0,0"
                                              Foreground="DimGray"
                                              TextWrapping="Wrap" />
@@ -1351,4 +1351,5 @@
         </Grid>
     </Grid>
 </Window>
+
 

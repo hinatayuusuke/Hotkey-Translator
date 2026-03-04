@@ -15901,3 +15901,44 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。
 - `cmake --build Native/build --config Debug --target HookHost HookAgentVulkan` 実行成功。
+
+**2026-03-04 17:03 (Asia/Taipei) — Graphics Hook Launcher API非依存化 + F7固定無効化統一**
+
+### Summary
+- LauncherをVulkan専用からGraphics Hook共通モードへ寄せ、ランチャーモード中のF7/Shift+F7固定操作をAPI問わず無効化した。
+
+### Context / Goal
+- 要件として、Launcherは `Settings.GraphicsHookApi` に従ってattachし、Vulkan限定の制約を外す必要があった。
+- ランチャーモード中は「ランチャーで起動したPIDに固定」を崩さないため、手動ロック/解除を抑止することが目的。
+
+### Changes
+- 設定キーを一般化:
+- `EnableVulkanEarlyInjectionLauncher` -> `EnableGraphicsHookLauncher`
+- `VulkanLauncherExePath` -> `GraphicsHookLauncherExePath`
+- `VulkanLauncherArgs` -> `GraphicsHookLauncherArgs`
+- Settings UI文言を一般化し、`Enable Graphics Hook launcher` に変更。
+- ランチャーUIイベント名を一般化（Browse/Launch）。
+- `OnLaunch...` のスキップ条件から Vulkan API 固定条件を撤去。
+- `IsGraphicsHookLauncherModeEnabled` を `EnableGraphicsHookPipeline && EnableGraphicsHookLauncher` のみで判定。
+- ランチャー起動時に固定PIDを設定した直後、`event=launcher_bound` ログを追加。
+- MainWindow側で F7/Shift+F7 をランチャーモード時にブロック。
+- HotkeyCommandController側でも lock/unlock の両方をブロック（コマンド経路でも保護）。
+- UI注記を `F7 / Shift+F7` 無効化へ更新。
+
+### Files Touched
+- `Models/AppSettings.cs` — Launcher設定名をGraphics Hook共通名へ変更。
+- `ViewModels/SettingsViewModel.cs` — 追加設定のフィールド/Load/Apply/Saveトリガー名を更新。
+- `MainWindow.xaml` — Launcher UIのバインド/イベント/注記を一般化。
+- `MainWindow.xaml.cs` — Launcher処理・モード判定・lock/unlockガード・`launcher_bound`ログを更新。
+- `Services/Application/HotkeyCommandController.cs` — lock/unlock hotkey のランチャーモードガードを追加/更新。
+
+### Behavioral Impact
+- Launcherモード時はAPIに関係なく `Launch + Hook` で起動したPIDに固定される。
+- ランチャーモード中の F7/Shift+F7 は常に拒否され、固定先の意図しない切替を防ぐ。
+
+### Risk & Mitigation
+- Risk: 設定キー名変更により既存 `settings.json` の旧キーが自動移行されない。
+- Mitigation: 今回は互換キー維持要件が未指定のため、fail-fastで新キーへ統一。必要時は後続で明示マイグレーションを追加可能。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。

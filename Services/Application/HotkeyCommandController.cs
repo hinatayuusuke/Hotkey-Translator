@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
@@ -151,9 +151,9 @@ internal sealed class HotkeyCommandController
     public async Task<FixedCaptureWindowSpec?> HandleLockCaptureWindowHotkeyAsync()
     {
         var settings = _settingsAccessor();
-        if (IsVulkanEarlyInjectionModeEnabled(settings))
+        if (IsGraphicsHookLauncherModeEnabled(settings))
         {
-            _appendLog("Capture window lock blocked: Vulkan early-injection launcher mode is enabled.");
+            _appendLog("Capture window lock blocked: Graphics Hook launcher mode is enabled.");
             return null;
         }
 
@@ -172,6 +172,12 @@ internal sealed class HotkeyCommandController
     public async Task HandleUnlockCaptureWindowHotkeyAsync()
     {
         var settings = _settingsAccessor();
+        if (IsGraphicsHookLauncherModeEnabled(settings))
+        {
+            _appendLog("Capture window unlock blocked: Graphics Hook launcher mode is enabled.");
+            return;
+        }
+
         if (!settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowHandle == 0)
         {
             _appendLog("Capture window lock already cleared.");
@@ -221,10 +227,10 @@ internal sealed class HotkeyCommandController
         }
     }
 
-    private static bool IsVulkanEarlyInjectionModeEnabled(AppSettings settings)
+    private static bool IsGraphicsHookLauncherModeEnabled(AppSettings settings)
     {
         return settings.EnableGraphicsHookPipeline &&
-               settings.EnableVulkanEarlyInjectionLauncher &&
-               settings.GraphicsHookApi == GraphicsHookApiKind.Vulkan;
+               settings.EnableGraphicsHookLauncher;
     }
 }
+

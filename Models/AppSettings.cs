@@ -93,9 +93,9 @@ public sealed class AppSettings
     public bool GraphicsHookFallbackOnError { get; set; } = true;
     public bool EnableGraphicsHookPerfDiagLog { get; set; } = false;
     public bool EnableGraphicsHookDiagFileSink { get; set; } = false;
-    public bool EnableVulkanEarlyInjectionLauncher { get; set; } = false;
-    public string VulkanLauncherExePath { get; set; } = string.Empty;
-    public string VulkanLauncherArgs { get; set; } = string.Empty;
+    public bool EnableGraphicsHookLauncher { get; set; } = false;
+    public string GraphicsHookLauncherExePath { get; set; } = string.Empty;
+    public string GraphicsHookLauncherArgs { get; set; } = string.Empty;
     public string GraphicsHookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;
@@ -267,4 +267,5 @@ public sealed class AppSettings
 
     public string? DeepLApiKeyProtected { get; set; }
 }
+
 

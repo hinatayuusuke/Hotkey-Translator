@@ -459,17 +459,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _winRtLanguagePackUiController.InstallNowAsync().ConfigureAwait(true);
     }
 
-    private async void OnBrowseVulkanLauncherExeClicked(object sender, RoutedEventArgs e)
+    private async void OnBrowseGraphicsHookLauncherExeClicked(object sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
             Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*",
             CheckFileExists = true,
             Multiselect = false,
-            Title = "Select Vulkan target executable"
+            Title = "Select Graphics Hook target executable"
         };
 
-        var current = (_mainWindowViewModel.Settings.VulkanLauncherExePath ?? string.Empty).Trim();
+        var current = (_mainWindowViewModel.Settings.GraphicsHookLauncherExePath ?? string.Empty).Trim();
         if (!string.IsNullOrWhiteSpace(current))
         {
             try
@@ -488,31 +488,31 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        _mainWindowViewModel.Settings.VulkanLauncherExePath = dialog.FileName;
+        _mainWindowViewModel.Settings.GraphicsHookLauncherExePath = dialog.FileName;
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
         AppendLog($"stage=graphics_hook event=launcher_path_selected path=\"{dialog.FileName}\".");
     }
 
-    private async void OnLaunchVulkanAndHookClicked(object sender, RoutedEventArgs e)
+    private async void OnLaunchGraphicsHookLauncherClicked(object sender, RoutedEventArgs e)
     {
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
-        if (!IsVulkanEarlyInjectionModeEnabled(settings))
+        if (!IsGraphicsHookLauncherModeEnabled(settings))
         {
-            AppendLog("Vulkan launcher start skipped: enable Graphics hook + Vulkan API + Vulkan early-injection launcher.");
+            AppendLog("Graphics Hook launcher start skipped: enable Graphics hook pipeline + Graphics Hook launcher.");
             return;
         }
 
-        var exePath = (settings.VulkanLauncherExePath ?? string.Empty).Trim();
+        var exePath = (settings.GraphicsHookLauncherExePath ?? string.Empty).Trim();
         if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
         {
-            AppendLog($"Vulkan launcher start failed: executable not found. path=\"{exePath}\".");
+            AppendLog($"Graphics Hook launcher start failed: executable not found. path=\"{exePath}\".");
             return;
         }
 
         if (!_graphicsHookLauncherService.TryLaunchSuspended(
                 exePath,
-                settings.VulkanLauncherArgs,
+                settings.GraphicsHookLauncherArgs,
                 out var launched,
                 out var launchFailureReason) ||
             launched == null)
@@ -524,7 +524,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         using (launched)
         {
             AppendLog(
-                $"stage=graphics_hook event=launcher_start pid={launched.ProcessId} exe=\"{exePath}\" args=\"{settings.VulkanLauncherArgs}\".");
+                $"stage=graphics_hook event=launcher_start pid={launched.ProcessId} exe=\"{exePath}\" args=\"{settings.GraphicsHookLauncherArgs}\".");
 
             settings.EnableFixedCaptureWindow = true;
             settings.FixedCaptureWindowHandle = 0;
@@ -532,6 +532,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settings.FixedCaptureWindowProcessName = Path.GetFileNameWithoutExtension(exePath) ?? string.Empty;
             settings.FixedCaptureWindowClassName = string.Empty;
             settings.FixedCaptureWindowTitle = string.Empty;
+            AppendLog($"stage=graphics_hook event=launcher_bound pid={launched.ProcessId} api={settings.GraphicsHookApi}.");
             _mainWindowViewModel.Settings.LoadFrom(settings);
 
             await _settingsService.SaveAsync().ConfigureAwait(true);
@@ -595,9 +596,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
         var settings = _settingsService.Settings;
-        if (IsVulkanEarlyInjectionModeEnabled(settings))
+        if (IsGraphicsHookLauncherModeEnabled(settings))
         {
-            AppendLog("Capture window lock blocked: Vulkan early-injection launcher mode is enabled.");
+            AppendLog("Capture window lock blocked: Graphics Hook launcher mode is enabled.");
             return;
         }
 
@@ -610,6 +611,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
+        var settings = _settingsService.Settings;
+        if (IsGraphicsHookLauncherModeEnabled(settings))
+        {
+            AppendLog("Capture window unlock blocked: Graphics Hook launcher mode is enabled.");
+            return;
+        }
+
         await _hotkeyCommandController.HandleUnlockCaptureWindowHotkeyAsync().ConfigureAwait(true);
         ClearPinnedCaptureThumbnail("No fixed target");
         // WHY: Explicitly stop (detach) the hook when the fixed target is cleared, regardless of fallback settings.
@@ -734,11 +742,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
-    private static bool IsVulkanEarlyInjectionModeEnabled(AppSettings settings)
+    private static bool IsGraphicsHookLauncherModeEnabled(AppSettings settings)
     {
         return settings.EnableGraphicsHookPipeline &&
-               settings.EnableVulkanEarlyInjectionLauncher &&
-               settings.GraphicsHookApi == GraphicsHookApiKind.Vulkan;
+               settings.EnableGraphicsHookLauncher;
     }
 
     private async Task RunOnceAsync()
@@ -1659,6 +1666,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ModifierKeys.Control);
     }
 }
+
 
 
 
