@@ -184,9 +184,14 @@ namespace ht::hook::vulkan
             std::uint64_t lastGpuStateFailQpc = 0;
             std::uint64_t lastWriteFrameOkQpc = 0;
             std::uint64_t lastWriteFrameFailQpc = 0;
+            std::uint64_t lastQueuePresentEnterLogQpc = 0;
         };
 
         VulkanRuntime g_rt;
+        std::mutex g_diagFileMutex;
+        HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
+        DWORD g_diagFilePid = 0;
+        std::wstring g_diagFilePath;
 
         std::uint64_t NowQpc()
         {
@@ -235,6 +240,139 @@ namespace ht::hook::vulkan
             }
         }
 
+        std::string WideToUtf8(const std::wstring& value)
+        {
+            if (value.empty())
+            {
+                return {};
+            }
+
+            const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (bytes <= 1)
+            {
+                return {};
+            }
+
+            std::string out(static_cast<std::size_t>(bytes - 1), '\0');
+            (void)WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, out.data(), bytes, nullptr, nullptr);
+            return out;
+        }
+
+        bool EnsureDiagFileUnlocked()
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE && g_diagFilePid == pid)
+            {
+                return true;
+            }
+
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+                g_diagFilePath.clear();
+            }
+
+            wchar_t tempPath[MAX_PATH]{};
+            const DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen == 0 || tempLen >= std::size(tempPath))
+            {
+                return false;
+            }
+
+            std::wstring dir = tempPath;
+            if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+            {
+                dir += L'\\';
+            }
+            dir += L"HotkeyTranslator";
+            (void)CreateDirectoryW(dir.c_str(), nullptr);
+
+            wchar_t fileName[128]{};
+            (void)swprintf_s(fileName, L"hook_vulkan_%lu.log", static_cast<unsigned long>(pid));
+            std::wstring filePath = dir;
+            filePath += L'\\';
+            filePath += fileName;
+
+            const HANDLE file = CreateFileW(
+                filePath.c_str(),
+                FILE_APPEND_DATA,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                nullptr,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (file == INVALID_HANDLE_VALUE)
+            {
+                return false;
+            }
+
+            g_diagFileHandle = file;
+            g_diagFilePid = pid;
+            g_diagFilePath = std::move(filePath);
+
+            const auto pathUtf8 = WideToUtf8(g_diagFilePath);
+            if (!pathUtf8.empty())
+            {
+                char msg[512]{};
+                (void)_snprintf_s(
+                    msg,
+                    sizeof(msg),
+                    _TRUNCATE,
+                    "stage=hook_vulkan event=file_log_open pid=%lu path=\"%s\".",
+                    static_cast<unsigned long>(pid),
+                    pathUtf8.c_str());
+                OutputDebugStringA(msg);
+                OutputDebugStringA("\n");
+            }
+            return true;
+        }
+
+        void AppendDiagFileLine(const char* line)
+        {
+            if (line == nullptr || line[0] == '\0')
+            {
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (!EnsureDiagFileUnlocked())
+            {
+                return;
+            }
+
+            SYSTEMTIME st{};
+            GetLocalTime(&st);
+            char prefix[64]{};
+            (void)_snprintf_s(
+                prefix,
+                sizeof(prefix),
+                _TRUNCATE,
+                "%02u:%02u:%02u.%03u ",
+                static_cast<unsigned int>(st.wHour),
+                static_cast<unsigned int>(st.wMinute),
+                static_cast<unsigned int>(st.wSecond),
+                static_cast<unsigned int>(st.wMilliseconds));
+
+            DWORD written = 0;
+            (void)WriteFile(g_diagFileHandle, prefix, static_cast<DWORD>(std::strlen(prefix)), &written, nullptr);
+            (void)WriteFile(g_diagFileHandle, line, static_cast<DWORD>(std::strlen(line)), &written, nullptr);
+            static constexpr char kNewLine[] = "\r\n";
+            (void)WriteFile(g_diagFileHandle, kNewLine, static_cast<DWORD>(sizeof(kNewLine) - 1), &written, nullptr);
+        }
+
+        void CloseDiagFile()
+        {
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+            }
+            g_diagFilePid = 0;
+            g_diagFilePath.clear();
+        }
+
         void DebugLog(const char* fmt, ...)
         {
             if (fmt == nullptr)
@@ -249,6 +387,7 @@ namespace ht::hook::vulkan
             va_end(args);
             OutputDebugStringA(buffer);
             OutputDebugStringA("\n");
+            AppendDiagFileLine(buffer);
         }
 
         bool ShouldEmitDiagLog(std::uint64_t nowQpc, std::uint64_t qpcFreq, std::uint64_t& lastQpc, std::uint64_t intervalMs)
@@ -575,6 +714,7 @@ namespace ht::hook::vulkan
             rt.lastGpuStateFailQpc = 0;
             rt.lastWriteFrameOkQpc = 0;
             rt.lastWriteFrameFailQpc = 0;
+            rt.lastQueuePresentEnterLogQpc = 0;
 
             rt.instance = VK_NULL_HANDLE;
             rt.apiVersion = VK_API_VERSION_1_0;
@@ -2157,6 +2297,20 @@ namespace ht::hook::vulkan
                 rt.presentCount++;
                 rt.lastPresentQpc = NowQpc();
                 rt.lastPresentKind = 1;
+                if (ShouldEmitDiagLog(
+                        rt.lastPresentQpc,
+                        rt.qpcFreq,
+                        rt.lastQueuePresentEnterLogQpc,
+                        kDiagSummaryIntervalMs))
+                {
+                    const auto swapchainCount = (presentInfo != nullptr) ? presentInfo->swapchainCount : 0u;
+                    DebugLog(
+                        "stage=hook_vulkan event=queue_present_enter pid=%lu presentCount=%llu swapchainCount=%u queue=%p.",
+                        static_cast<unsigned long>(GetCurrentProcessId()),
+                        static_cast<unsigned long long>(rt.presentCount),
+                        swapchainCount,
+                        queue);
+                }
 
                 (void)EnsureConfigRefreshedLocked(rt);
 
@@ -2189,14 +2343,24 @@ namespace ht::hook::vulkan
     {
         auto& rt = g_rt;
         std::lock_guard<std::mutex> lock(rt.mutex);
+        DebugLog(
+            "stage=hook_vulkan event=agent_loaded pid=%lu.",
+            static_cast<unsigned long>(GetCurrentProcessId()));
         if (rt.installed.load())
         {
+            DebugLog(
+                "stage=hook_vulkan event=install_hook_result result=already_installed pid=%lu.",
+                static_cast<unsigned long>(GetCurrentProcessId()));
             return true;
         }
 
         const auto initStatus = MH_Initialize();
         if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
         {
+            DebugLog(
+                "stage=hook_vulkan event=install_hook_result result=fail reason=mh_initialize_failed status=%d pid=%lu.",
+                static_cast<int>(initStatus),
+                static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
         }
 
@@ -2208,6 +2372,9 @@ namespace ht::hook::vulkan
         if (vulkanModule == nullptr)
         {
             (void)MH_Uninitialize();
+            DebugLog(
+                "stage=hook_vulkan event=install_hook_result result=fail reason=vulkan_module_not_found pid=%lu.",
+                static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
         }
 
@@ -2282,6 +2449,9 @@ namespace ht::hook::vulkan
         {
             (void)MH_DisableHook(MH_ALL_HOOKS);
             (void)MH_Uninitialize();
+            DebugLog(
+                "stage=hook_vulkan event=install_hook_result result=fail reason=no_exports_hooked pid=%lu.",
+                static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
         }
 
@@ -2290,6 +2460,10 @@ namespace ht::hook::vulkan
         rt.configuredFpsLimit = kDefaultCaptureFps;
         rt.overlayEnabled = false;
         rt.installed.store(true);
+        DebugLog(
+            "stage=hook_vulkan event=install_hook_result result=ok pid=%lu qpcFreq=%llu.",
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long long>(rt.qpcFreq));
         return true;
     }
 
@@ -2306,5 +2480,9 @@ namespace ht::hook::vulkan
         (void)MH_Uninitialize();
         ResetRuntimeLocked(rt);
         rt.installed.store(false);
+        DebugLog(
+            "stage=hook_vulkan event=uninstall_hook result=ok pid=%lu.",
+            static_cast<unsigned long>(GetCurrentProcessId()));
+        CloseDiagFile();
     }
 }

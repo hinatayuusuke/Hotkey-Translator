@@ -15609,3 +15609,39 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
+
+**2026-03-04 13:35 (Asia/Taipei) — HookAgentVulkan 診断ログをファイル出力へ拡張**
+
+### Summary
+- DebugView 依存を外すため、HookAgentVulkan の診断ログを `%TEMP%\HotkeyTranslator\hook_vulkan_<pid>.log` へ常設出力する実装を追加した。
+
+### Context / Goal
+- DebugView で `stage=hook_vulkan` を捕捉できない環境があり、分岐失敗点（queue/swapchain/gpu state/submit/write）を確定できなかった。
+- Vulkan 側だけで再現時の停止分岐を必ず回収できるようにすることが目的。
+
+### Changes
+- `OutputDebugStringA` に加えてファイルへ追記する診断ロガーを追加。
+- ログファイル自動生成: `%TEMP%\HotkeyTranslator\hook_vulkan_<pid>.log`。
+- `event=file_log_open` を追加（実際にどのファイルへ出力したか明示）。
+- 入口確認ログを追加:
+  - `event=agent_loaded`
+  - `event=install_hook_result result=ok|fail|already_installed`
+  - `event=queue_present_enter`
+- 既存の `capture_skip / present_summary / ensure_* fail / write_frame` ログはそのままファイルにも出力されるようにした。
+- Uninstall 時にファイルハンドルを閉じる処理を追加。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — ファイルロガー実装、install/queue-present入口ログ追加、アンインストール時クリーンアップを追加。
+
+### Behavioral Impact
+- Vulkan Hook 実行時、DebugViewが取得できない環境でもファイルログで原因切り分け可能。
+- 既存挙動（capture/overlay）には仕様変更なし。ログI/O分の軽微なオーバーヘッドのみ追加。
+
+### Risk & Mitigation
+- Risk: ファイルI/Oで Present 経路に追加負荷。
+- Mitigation: 既存のスロットリング（理由別1秒、summary間引き）を維持し、毎フレームの過剰出力を抑制。
+- Risk: TEMP配下の作成失敗時にログが欠落する可能性。
+- Mitigation: 失敗しても処理本体は継続し、OutputDebugString 経路は維持。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
