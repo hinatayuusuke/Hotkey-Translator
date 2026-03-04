@@ -16003,3 +16003,60 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 errors, 0 warnings）。
+
+**2026-03-04 18:34 (Asia/Taipei) — Steam Launch OptionsコピーUI追加**
+
+### Summary
+- Hook設定画面にSteam Launch Options文字列をクリップボードへコピーするUIを追加した。
+
+### Context / Goal
+- Steam連携の手入力ミスを減らし、初心者でもLaunch Options設定をすぐ使える導線が必要だった。
+- 設定ファイル自動改変は行わず、安全な半自動方式（コピー支援）を提供する。
+
+### Changes
+- Hook設定セクションに Steam Launch Options 行を追加し、Copy ボタンを実装。
+- クリック時に現在実行中の Hotkey-Translator.exe パスを解決し、"<exe>" --hook-launch -- %command% を生成してクリップボードへコピー。
+- コピー成功/失敗を stage=graphics_hook ログに出力。
+- 非Steamショートカットでは %command% 展開が不安定な注意文をUIに追加。
+
+### Files Touched
+- MainWindow.xaml — Steam Launch OptionsコピーUI（ボタン/説明文）を追加。
+- MainWindow.xaml.cs — クリップボードコピー処理と文字列生成ヘルパーを追加。
+
+### Behavioral Impact
+- ユーザーは設定画面の Copy ボタン1回で、Steamの起動オプションに貼り付ける文字列を取得できる。
+- クリップボード書き込み不可時は失敗ログを出し、アプリは継続動作する。
+
+### Risk & Mitigation
+- Risk: Environment.ProcessPath が取得できない環境でコピー文字列を生成できない可能性。
+- Mitigation: Process.GetCurrentProcess().MainModule?.FileName へフォールバックし、解決不能時は失敗理由をログ化。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 18:41 (Asia/Taipei) — Steam Launch Options Copyボタンの見た目調整**
+
+### Summary
+- Steam Launch Options 行の余白を広げ、Copyボタン内テキストを中央表示に調整した。
+
+### Context / Goal
+- Steam Launch Options ラベルと Copy ボタンの間隔が狭く、ボタン内テキスト位置も見づらかった。
+- 初見でも視認しやすい配置へ調整することが目的。
+
+### Changes
+- Copyボタンの幅を 60 -> 80 に変更。
+- Copyボタン左マージンを 12 追加してラベルとの間隔を確保。
+- HorizontalContentAlignment="Center" と VerticalContentAlignment="Center" を追加。
+
+### Files Touched
+- MainWindow.xaml — Steam Launch OptionsのCopyボタンのサイズ/余白/コンテンツ配置を調整。
+
+### Behavioral Impact
+- 見た目のみ変更。機能・ロジックの挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 既存レイアウト幅が狭い環境でわずかな折返しリスク。
+- Mitigation: 変更は小さく、単一行内の幅増加に留めている。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

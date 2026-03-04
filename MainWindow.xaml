@@ -924,6 +924,25 @@
                                              Margin="0,4,0,0"
                                              Foreground="DimGray"
                                              TextWrapping="Wrap" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Steam Launch Options" Width="150" VerticalAlignment="Center" />
+                                      <Button x:Name="CopySteamLaunchOptionsButton"
+                                              Content="Copy"
+                                              Width="80"
+                                              Margin="12,0,0,0"
+                                              HorizontalContentAlignment="Center"
+                                              VerticalContentAlignment="Center"
+                                              IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                              Click="OnCopySteamLaunchOptionsClicked" />
+                                  </StackPanel>
+                                  <TextBlock Text="Format: &quot;&lt;Hotkey-Translator.exe&gt;&quot; --hook-launch -- %command%"
+                                             Margin="0,4,0,0"
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap" />
+                                  <TextBlock Text="NOTE: For non-Steam shortcuts, %command% may not be expanded as expected."
+                                             Margin="0,2,0,0"
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap" />
                                   <Separator Margin="0,8,0,6" />
                                   <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
                                   <CheckBox x:Name="EnableMirrorFullscreenModeCheck"

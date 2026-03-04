@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -498,6 +499,43 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private async void OnLaunchGraphicsHookLauncherClicked(object sender, RoutedEventArgs e)
     {
         await LaunchConfiguredGraphicsHookTargetAsync().ConfigureAwait(true);
+    }
+
+    private void OnCopySteamLaunchOptionsClicked(object sender, RoutedEventArgs e)
+    {
+        var launchOptions = BuildSteamLaunchOptions();
+        if (string.IsNullOrWhiteSpace(launchOptions))
+        {
+            AppendLog("stage=graphics_hook event=steam_launch_options_copy_failed reason=process_path_unresolved.");
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(launchOptions);
+            AppendLog($"stage=graphics_hook event=steam_launch_options_copied value=\"{launchOptions}\".");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to copy Steam launch options to clipboard.");
+            AppendLog("stage=graphics_hook event=steam_launch_options_copy_failed reason=clipboard_set_failed.");
+        }
+    }
+
+    private static string BuildSteamLaunchOptions()
+    {
+        var processPath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            processPath = Process.GetCurrentProcess().MainModule?.FileName;
+        }
+
+        if (string.IsNullOrWhiteSpace(processPath))
+        {
+            return string.Empty;
+        }
+
+        return $"\"{processPath}\" --hook-launch -- %command%";
     }
 
     private async Task LaunchConfiguredGraphicsHookTargetAsync()
@@ -1794,10 +1832,4 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ModifierKeys.Control);
     }
 }
-
-
-
-
-
-
 
