@@ -10,6 +10,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using Microsoft.Win32;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
@@ -50,6 +51,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly BusyOverlayController _busyOverlayController;
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
     private readonly GraphicsHookClientService _graphicsHookClientService;
+    private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
     private readonly IMagpieProcessService _magpieProcessService;
     private readonly IMagpieIpcClient _magpieIpcClient;
     private readonly MagpieSessionController _magpieSessionController;
@@ -137,6 +139,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _busyOverlayController = new BusyOverlayController(Dispatcher, _mainWindowViewModel.RuntimeStatus);
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _graphicsHookClientService = new GraphicsHookClientService(() => _logger);
+        _graphicsHookLauncherService = new GraphicsHookLauncherService();
         _magpieProcessService = new MagpieProcessService();
         _magpieIpcClient = new MagpieIpcClient();
         _magpieSessionController = new MagpieSessionController(
@@ -456,6 +459,105 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _winRtLanguagePackUiController.InstallNowAsync().ConfigureAwait(true);
     }
 
+    private async void OnBrowseVulkanLauncherExeClicked(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            Filter = "Executable files (*.exe)|*.exe|All files (*.*)|*.*",
+            CheckFileExists = true,
+            Multiselect = false,
+            Title = "Select Vulkan target executable"
+        };
+
+        var current = (_mainWindowViewModel.Settings.VulkanLauncherExePath ?? string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(current))
+        {
+            try
+            {
+                dialog.InitialDirectory = Path.GetDirectoryName(current);
+                dialog.FileName = Path.GetFileName(current);
+            }
+            catch
+            {
+                // NOTE: Invalid path input should not break file dialog interaction.
+            }
+        }
+
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        _mainWindowViewModel.Settings.VulkanLauncherExePath = dialog.FileName;
+        await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
+        AppendLog($"stage=graphics_hook event=launcher_path_selected path=\"{dialog.FileName}\".");
+    }
+
+    private async void OnLaunchVulkanAndHookClicked(object sender, RoutedEventArgs e)
+    {
+        await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
+        var settings = _settingsService.Settings;
+        if (!IsVulkanEarlyInjectionModeEnabled(settings))
+        {
+            AppendLog("Vulkan launcher start skipped: enable Graphics hook + Vulkan API + Vulkan early-injection launcher.");
+            return;
+        }
+
+        var exePath = (settings.VulkanLauncherExePath ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+        {
+            AppendLog($"Vulkan launcher start failed: executable not found. path=\"{exePath}\".");
+            return;
+        }
+
+        if (!_graphicsHookLauncherService.TryLaunchSuspended(
+                exePath,
+                settings.VulkanLauncherArgs,
+                out var launched,
+                out var launchFailureReason) ||
+            launched == null)
+        {
+            AppendLog($"stage=graphics_hook event=launcher_fail reason={launchFailureReason ?? "launch_failed"}.");
+            return;
+        }
+
+        using (launched)
+        {
+            AppendLog(
+                $"stage=graphics_hook event=launcher_start pid={launched.ProcessId} exe=\"{exePath}\" args=\"{settings.VulkanLauncherArgs}\".");
+
+            settings.EnableFixedCaptureWindow = true;
+            settings.FixedCaptureWindowHandle = 0;
+            settings.FixedCaptureWindowProcessId = launched.ProcessId;
+            settings.FixedCaptureWindowProcessName = Path.GetFileNameWithoutExtension(exePath) ?? string.Empty;
+            settings.FixedCaptureWindowClassName = string.Empty;
+            settings.FixedCaptureWindowTitle = string.Empty;
+            _mainWindowViewModel.Settings.LoadFrom(settings);
+
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+            await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+            AppendLog($"stage=graphics_hook event=launcher_attach_ok pid={launched.ProcessId}.");
+
+            if (!launched.Resume(out var resumeFailureReason))
+            {
+                AppendLog($"stage=graphics_hook event=launcher_fail pid={launched.ProcessId} reason={resumeFailureReason ?? "resume_failed"}.");
+                if (launched.TryTerminate(1, out var terminateReason))
+                {
+                    AppendLog($"stage=graphics_hook event=launcher_cleanup pid={launched.ProcessId} action=terminate result=ok.");
+                }
+                else
+                {
+                    AppendLog(
+                        $"stage=graphics_hook event=launcher_cleanup pid={launched.ProcessId} action=terminate result=failed reason={terminateReason ?? "unknown"}.");
+                }
+
+                return;
+            }
+
+            AppendLog($"stage=graphics_hook event=launcher_resume pid={launched.ProcessId}.");
+        }
+    }
+
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)
     {
         _mainWindowViewModel.Settings.LoadFrom(settings);
@@ -492,11 +594,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnLockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
     {
+        var settings = _settingsService.Settings;
+        if (IsVulkanEarlyInjectionModeEnabled(settings))
+        {
+            AppendLog("Capture window lock blocked: Vulkan early-injection launcher mode is enabled.");
+            return;
+        }
+
         var spec = await _hotkeyCommandController.HandleLockCaptureWindowHotkeyAsync().ConfigureAwait(true);
         UpdatePinnedThumbnailFromLockResult(spec);
         // WHY: Lock/unlock hotkeys persist settings without going through the UI save path,
         // so we must explicitly apply hook settings here to ensure injection/attach happens.
-        await _graphicsHookClientService.ApplySettingsAsync(_settingsService.Settings).ConfigureAwait(true);
+        await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
     }
 
     private async void OnUnlockCaptureWindowHotkeyPressed(object? sender, EventArgs e)
@@ -623,6 +732,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
         return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+    }
+
+    private static bool IsVulkanEarlyInjectionModeEnabled(AppSettings settings)
+    {
+        return settings.EnableGraphicsHookPipeline &&
+               settings.EnableVulkanEarlyInjectionLauncher &&
+               settings.GraphicsHookApi == GraphicsHookApiKind.Vulkan;
     }
 
     private async Task RunOnceAsync()

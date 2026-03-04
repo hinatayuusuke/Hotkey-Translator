@@ -15676,3 +15676,117 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
+
+**2026-03-04 14:33 (Asia/Taipei) — Vulkan早期注入Launcher最小案ドキュメント追加**
+
+### Summary
+- Vulkan早期注入Launcherの最小実装案と誤操作防止（起動済みプロセス選択無効化）を `Doc\` に追加した。
+
+### Context / Goal
+- 後追いHook前提では Vulkan で取りこぼしが発生するため、起動前介入のUI/操作案が必要だった。
+- まずは最小機能と誤操作防止にスコープを絞った計画書を提示することが目的。
+
+### Changes
+- 新規ドキュメントを追加。
+- 最小UI（EXE参照、引数、起動してHook）と `CREATE_SUSPENDED -> inject -> resume` の流れを定義。
+- Vulkan早期注入モード中に「起動済みプロセス選択」を無効化するガード仕様を明記。
+
+### Files Touched
+- `Doc/GraphicsHook_Vulkan_EarlyInjection_Launcher_Plan.md` — 最小実装、UI案、誤操作防止、段階実装手順、DoD を記載。
+
+### Behavioral Impact
+- 実装コードへの影響はなし（ドキュメント追加のみ）。
+
+### Risk & Mitigation
+- Risk: 文書化のみで実機能は未実装。
+- Mitigation: ステップ分割と影響範囲を明確化し、次タスクで順次実装しやすい形に整理。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+
+**2026-03-04 14:50 (Asia/Taipei) — Vulkan早期注入Launcher実装**
+
+### Summary
+- `Doc/GraphicsHook_Vulkan_EarlyInjection_Launcher_Plan.md` に沿って、Vulkan早期注入Launcherの最小実装を追加した。
+
+### Context / Goal
+- Vulkan後追いHookの取りこぼしを減らすため、`CREATE_SUSPENDED -> attach -> resume` 経路を実装する必要があった。
+- 併せて、早期注入モード中の誤操作（起動済みウィンドウ固定/F7）を防ぐことが目的。
+
+### Changes
+- 設定項目を追加: `EnableVulkanEarlyInjectionLauncher`, `VulkanLauncherExePath`, `VulkanLauncherArgs`。
+- Graphics Hook設定UIへ、Launcher有効化・EXE参照・引数入力・`Launch + Hook` 操作を追加。
+- `GraphicsHookLauncherService` を新規実装し、`CreateProcessW(CREATE_SUSPENDED)` / `ResumeThread` / 失敗時`TerminateProcess`を追加。
+- `MainWindow` に起動処理を追加し、起動PIDを固定対象へ設定後にHook適用してからresumeする流れを実装。
+- Vulkan早期注入モード中は F7 固定をブロックし、誤操作防止ログを追加。
+
+### Files Touched
+- `Models/AppSettings.cs` — Vulkan早期注入Launcher設定3項目を追加。
+- `ViewModels/SettingsViewModel.cs` — 追加設定のロード/保存/即時保存トリガーを追加。
+- `MainWindow.xaml` — Launcher設定UIと操作ボタン、注意文を追加。
+- `MainWindow.xaml.cs` — EXE参照、`Launch + Hook` フロー、F7ブロックガードを追加。
+- `Services/Hook/GraphicsHookLauncherService.cs` — suspended起動/再開/終了のWin32実装を新規追加。
+- `Doc/GraphicsHook_Vulkan_EarlyInjection_Launcher_Plan.md` — 実装対象プラン（既存）に基づき実装。
+
+### Behavioral Impact
+- Vulkan早期注入モードON時は、ユーザー選択EXEをサスペンド起動してHook適用後に再開できる。
+- 同モード中は起動済みウィンドウへのF7固定が無効化される。
+
+### Risk & Mitigation
+- Risk: `ApplySettingsAsync` は内部失敗を例外として返さないため、attach失敗が即時判定しづらい。
+- Mitigation: Launcher段階ログ（start/fail/resume/cleanup）を出し、既存 `stage=graphics_hook event=hook_state` ログで成否を追跡できるようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 14:51 (Asia/Taipei) — Vulkan早期注入モードのロジックガード強化**
+
+### Summary
+- F7ロック無効化をUI層だけでなくコマンド層にも追加し、呼び出し経路に依存しないガードにした。
+
+### Context / Goal
+- 早期注入モード中の「起動済みプロセス選択」禁止を、UIイベントハンドラ依存にしないことが必要だった。
+- 将来別経路からロックコマンドが呼ばれても同じ制約を維持するのが目的。
+
+### Changes
+- `HotkeyCommandController.HandleLockCaptureWindowHotkeyAsync` に Vulkan早期注入モード判定を追加。
+- 該当モード時はロックを即時拒否し、理由ログを出すようにした。
+- 判定ロジックを同クラス内ヘルパーへ追加。
+
+### Files Touched
+- `Services/Application/HotkeyCommandController.cs` — Vulkan早期注入モード時のロック拒否ガードと判定ヘルパーを追加。
+
+### Behavioral Impact
+- Vulkan早期注入モード中は、F7ロックが常に拒否される（UI経由・将来の別呼び出し経路を含む）。
+
+### Risk & Mitigation
+- Risk: 期待せずロック操作が無効になる。
+- Mitigation: 既存の注意文と言語化ログで理由を明示し、モードOFFで従来動作へ戻せる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 14:52 (Asia/Taipei) — Launcherログ整合の補完**
+
+### Summary
+- 早期注入Launcherの段階ログに `launcher_attach_ok` を追加して、計画書のログイベント定義と揃えた。
+
+### Context / Goal
+- Launcherログは start/fail/resume が先行していたが、attach完了段階の明示ログが不足していた。
+- 切り分け時に「attach適用済みか」をログ1行で判断できるようにするのが目的。
+
+### Changes
+- `OnLaunchVulkanAndHookClicked` 内で `ApplySettingsAsync` 後に `stage=graphics_hook event=launcher_attach_ok` を出力するよう変更。
+
+### Files Touched
+- `MainWindow.xaml.cs` — Launcher attach段階ログを追加。
+
+### Behavioral Impact
+- 早期注入フローのログが `launcher_start -> launcher_attach_ok -> launcher_resume` の順で追跡可能になった。
+
+### Risk & Mitigation
+- Risk: `launcher_attach_ok` は「設定適用完了」を示し、対象アプリの描画開始保証ではない。
+- Mitigation: 実際のフック状態は既存 `stage=graphics_hook event=hook_state` ログと併読する前提を維持。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。

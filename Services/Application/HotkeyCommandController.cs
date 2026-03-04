@@ -151,6 +151,12 @@ internal sealed class HotkeyCommandController
     public async Task<FixedCaptureWindowSpec?> HandleLockCaptureWindowHotkeyAsync()
     {
         var settings = _settingsAccessor();
+        if (IsVulkanEarlyInjectionModeEnabled(settings))
+        {
+            _appendLog("Capture window lock blocked: Vulkan early-injection launcher mode is enabled.");
+            return null;
+        }
+
         if (_windowBindingService.TryBindForegroundWindow(settings, out var spec, out var reason))
         {
             _appendLog(
@@ -213,5 +219,12 @@ internal sealed class HotkeyCommandController
         {
             _setOverlayTextMode(OverlayTextMode.Translated);
         }
+    }
+
+    private static bool IsVulkanEarlyInjectionModeEnabled(AppSettings settings)
+    {
+        return settings.EnableGraphicsHookPipeline &&
+               settings.EnableVulkanEarlyInjectionLauncher &&
+               settings.GraphicsHookApi == GraphicsHookApiKind.Vulkan;
     }
 }

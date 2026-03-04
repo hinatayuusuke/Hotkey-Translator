@@ -91,6 +91,9 @@ public sealed class AppSettings
     public int GraphicsHookCaptureFpsLimit { get; set; } = 15;
     public bool GraphicsHookOverlayEnabled { get; set; } = true;
     public bool GraphicsHookFallbackOnError { get; set; } = true;
+    public bool EnableVulkanEarlyInjectionLauncher { get; set; } = false;
+    public string VulkanLauncherExePath { get; set; } = string.Empty;
+    public string VulkanLauncherArgs { get; set; } = string.Empty;
     public string GraphicsHookPipeName { get; set; } = "hotkey_translator_hook";
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;

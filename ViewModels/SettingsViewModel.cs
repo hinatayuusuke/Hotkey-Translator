@@ -78,6 +78,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableMirrorFullscreenMode;
     [ObservableProperty] private bool _graphicsHookOverlayEnabled;
     [ObservableProperty] private bool _graphicsHookFallbackOnError;
+    [ObservableProperty] private bool _enableVulkanEarlyInjectionLauncher;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
@@ -85,6 +86,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _ocrPerfLogThresholdText = string.Empty;
     [ObservableProperty] private string _sceneChangeQuietWindowMsText = string.Empty;
     [ObservableProperty] private string _graphicsHookCaptureFpsLimitText = string.Empty;
+    [ObservableProperty] private string _vulkanLauncherExePath = string.Empty;
+    [ObservableProperty] private string _vulkanLauncherArgs = string.Empty;
     [ObservableProperty] private string _magpieProfileIndexText = string.Empty;
     [ObservableProperty] private string _paddleTextDetThreshText = string.Empty;
     [ObservableProperty] private string _paddleTextDetBoxThreshText = string.Empty;
@@ -200,6 +203,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableMirrorFullscreenMode = settings.EnableMirrorFullscreenMode;
             GraphicsHookOverlayEnabled = settings.GraphicsHookOverlayEnabled;
             GraphicsHookFallbackOnError = settings.GraphicsHookFallbackOnError;
+            EnableVulkanEarlyInjectionLauncher = settings.EnableVulkanEarlyInjectionLauncher;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
@@ -207,6 +211,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             OcrPerfLogThresholdText = settings.OcrPerfLogThresholdMs.ToString();
             SceneChangeQuietWindowMsText = settings.SceneChangeQuietWindowMs.ToString();
             GraphicsHookCaptureFpsLimitText = settings.GraphicsHookCaptureFpsLimit.ToString();
+            VulkanLauncherExePath = settings.VulkanLauncherExePath;
+            VulkanLauncherArgs = settings.VulkanLauncherArgs;
             MagpieProfileIndexText = settings.MagpieProfileIndex.ToString();
             PaddleTextDetThreshText = settings.PaddleTextDetThresh.ToString("0.###");
             PaddleTextDetBoxThreshText = settings.PaddleTextDetBoxThresh.ToString("0.###");
@@ -310,6 +316,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableMirrorFullscreenMode = EnableMirrorFullscreenMode;
         settings.GraphicsHookOverlayEnabled = GraphicsHookOverlayEnabled;
         settings.GraphicsHookFallbackOnError = GraphicsHookFallbackOnError;
+        settings.EnableVulkanEarlyInjectionLauncher = EnableVulkanEarlyInjectionLauncher;
+        settings.VulkanLauncherExePath = (VulkanLauncherExePath ?? string.Empty).Trim();
+        settings.VulkanLauncherArgs = VulkanLauncherArgs ?? string.Empty;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
         if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
@@ -653,6 +662,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnGraphicsHookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableVulkanEarlyInjectionLauncherChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnVulkanLauncherExePathChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVulkanLauncherArgsChanged(string value) => RequestSaveOnValueChange();
     partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
