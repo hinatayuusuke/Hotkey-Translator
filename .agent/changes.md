@@ -15790,3 +15790,36 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 16:15 (Asia/Taipei) — Vulkan Hook Present性能診断ログ追加**
+
+### Summary
+- `HookAgentVulkan` に Present経路の段階別時間計測ログを追加し、FPS低下の支配要因を切り分けられるようにした。
+
+### Context / Goal
+- DuckStation(Vulkan)でFPS低下が発生し、`wait/map/overlay/write` のどこが支配かをまず特定する必要があった。
+- 推測ではなく実測で次の最適化方針を決めることが目的。
+
+### Changes
+- `VulkanRuntime` に `lastPresentPerfLogQpc` を追加し、性能ログの間引き状態を管理。
+- QPC差分をmsへ変換する `QpcDeltaToMs` ヘルパーを追加。
+- `SubmitPresentWorkLocked` に段階計測を追加。
+- 新規ログ `stage=hook_vulkan event=present_perf` を追加し、以下を出力。
+- `prepMs`, `cmdRecordMs`, `copyCmdMs`, `overlayCmdMs`, `submitMs`, `waitMs`, `mapCopyMs`, `writeMs`, `totalMs`
+- `outcome`（`overlay_only` / `capture_ok` / `map_failed` / `write_failed`）
+- `shouldCapture`, `overlayEnabled`, `hasOverlayBlocks`, `size`, `presentCount`
+- `ResetRuntimeLocked` で `lastPresentPerfLogQpc` を初期化。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Present性能診断ログ、QPC->ms変換ヘルパー、runtime状態リセットを追加。
+
+### Behavioral Impact
+- Hook機能自体の挙動変更はなし（診断ログ追加のみ）。
+- `%TEMP%\HotkeyTranslator\hook_vulkan_<pid>.log` に `event=present_perf` が約2秒間隔で出力される。
+
+### Risk & Mitigation
+- Risk: 計測用の `NowQpc()` 呼び出し増加でわずかなCPUオーバーヘッドが増える。
+- Mitigation: ログ出力は既存間引き(`kDiagSummaryIntervalMs`)を利用し、重い文字列出力は高頻度化しない。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。

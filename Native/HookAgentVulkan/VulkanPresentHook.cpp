@@ -180,6 +180,7 @@ namespace ht::hook::vulkan
             std::array<std::uint64_t, static_cast<std::size_t>(CaptureSkipReason::Count)> captureSkipLastLogQpc{};
             std::array<std::uint32_t, static_cast<std::size_t>(CaptureSkipReason::Count)> captureSkipPendingCount{};
             std::uint64_t lastPresentSummaryLogQpc = 0;
+            std::uint64_t lastPresentPerfLogQpc = 0;
             std::uint64_t lastSwapchainEnsureFailQpc = 0;
             std::uint64_t lastGpuStateFailQpc = 0;
             std::uint64_t lastWriteFrameOkQpc = 0;
@@ -408,6 +409,16 @@ namespace ht::hook::vulkan
 
             lastQpc = nowQpc;
             return true;
+        }
+
+        double QpcDeltaToMs(std::uint64_t deltaQpc, std::uint64_t qpcFreq)
+        {
+            if (qpcFreq == 0)
+            {
+                return 0.0;
+            }
+
+            return (static_cast<double>(deltaQpc) * 1000.0) / static_cast<double>(qpcFreq);
         }
 
         void LogCaptureSkipLocked(VulkanRuntime& rt, CaptureSkipReason reason, const char* detail = nullptr)
@@ -712,6 +723,7 @@ namespace ht::hook::vulkan
             rt.captureSkipLastLogQpc.fill(0);
             rt.captureSkipPendingCount.fill(0);
             rt.lastPresentSummaryLogQpc = 0;
+            rt.lastPresentPerfLogQpc = 0;
             rt.lastSwapchainEnsureFailQpc = 0;
             rt.lastGpuStateFailQpc = 0;
             rt.lastWriteFrameOkQpc = 0;
@@ -1494,6 +1506,16 @@ namespace ht::hook::vulkan
             VkSwapchainKHR swapchain,
             std::uint32_t imageIndex)
         {
+            const auto perfBeginQpc = NowQpc();
+            std::uint64_t perfAfterPrepQpc = perfBeginQpc;
+            std::uint64_t perfAfterCommandRecordQpc = perfBeginQpc;
+            std::uint64_t perfSubmitDurationQpc = 0;
+            std::uint64_t perfWaitDurationQpc = 0;
+            std::uint64_t perfMapCopyDurationQpc = 0;
+            std::uint64_t perfWriteDurationQpc = 0;
+            std::uint64_t perfCopyCommandDurationQpc = 0;
+            std::uint64_t perfOverlayCommandDurationQpc = 0;
+
             const auto queueIt = rt.queues.find(queue);
             if (queueIt == rt.queues.end() || !queueIt->second.valid)
             {
@@ -1569,6 +1591,36 @@ namespace ht::hook::vulkan
                 return false;
             }
             auto& gpu = queueStateIt->second;
+            perfAfterPrepQpc = NowQpc();
+
+            const auto emitPresentPerfLog = [&](const char* outcome)
+            {
+                const auto perfNowQpc = NowQpc();
+                if (!ShouldEmitDiagLog(perfNowQpc, rt.qpcFreq, rt.lastPresentPerfLogQpc, kDiagSummaryIntervalMs))
+                {
+                    return;
+                }
+
+                DebugLog(
+                    "stage=hook_vulkan event=present_perf pid=%lu presentCount=%llu outcome=%s shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d size=%ux%u prepMs=%.2f cmdRecordMs=%.2f copyCmdMs=%.2f overlayCmdMs=%.2f submitMs=%.2f waitMs=%.2f mapCopyMs=%.2f writeMs=%.2f totalMs=%.2f.",
+                    static_cast<unsigned long>(GetCurrentProcessId()),
+                    static_cast<unsigned long long>(rt.presentCount),
+                    outcome != nullptr ? outcome : "unknown",
+                    shouldCapture ? 1 : 0,
+                    rt.overlayEnabled ? 1 : 0,
+                    hasOverlayBlocks ? 1 : 0,
+                    gpu.width,
+                    gpu.height,
+                    QpcDeltaToMs(perfAfterPrepQpc - perfBeginQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfAfterCommandRecordQpc - perfAfterPrepQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfCopyCommandDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfOverlayCommandDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfSubmitDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfWaitDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfMapCopyDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfWriteDurationQpc, rt.qpcFreq),
+                    QpcDeltaToMs(perfNowQpc - perfBeginQpc, rt.qpcFreq));
+            };
 
             OverlaySwapchainState* ovl = nullptr;
             if (hasOverlayBlocks)
@@ -1647,6 +1699,7 @@ namespace ht::hook::vulkan
             bool inTransferLayout = false;
             if (shouldCapture)
             {
+                const auto copyCmdBeginQpc = NowQpc();
                 CmdTransitionImageLayout(
                     gpu.commandBuffer,
                     targetImage,
@@ -1675,10 +1728,12 @@ namespace ht::hook::vulkan
                     gpu.stagingBuffer,
                     1,
                     &region);
+                perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
             }
 
             if (hasOverlayBlocks && ovl != nullptr)
             {
+                const auto overlayCmdBeginQpc = NowQpc();
                 if (inTransferLayout)
                 {
                     CmdTransitionImageLayout(
@@ -1725,6 +1780,7 @@ namespace ht::hook::vulkan
                     VK_ACCESS_MEMORY_READ_BIT,
                     VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+                perfOverlayCommandDurationQpc += (NowQpc() - overlayCmdBeginQpc);
             }
             else if (inTransferLayout)
             {
@@ -1747,12 +1803,15 @@ namespace ht::hook::vulkan
                 LogCaptureSkipLocked(rt, CaptureSkipReason::VkEndCommandBufferFailed, detail);
                 return false;
             }
+            perfAfterCommandRecordQpc = NowQpc();
 
             VkSubmitInfo submitInfo{};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &gpu.commandBuffer;
+            const auto submitBeginQpc = NowQpc();
             const auto submitResult = vkQueueSubmit(queue, 1, &submitInfo, gpu.fence);
+            perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
             if (submitResult != VK_SUCCESS)
             {
                 char detail[96]{};
@@ -1761,7 +1820,9 @@ namespace ht::hook::vulkan
                 return false;
             }
 
+            const auto waitBeginQpc = NowQpc();
             const auto waitResult = vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull);
+            perfWaitDurationQpc = NowQpc() - waitBeginQpc;
             if (waitResult != VK_SUCCESS)
             {
                 char detail[96]{};
@@ -1776,6 +1837,7 @@ namespace ht::hook::vulkan
 
             if (!shouldCapture)
             {
+                emitPresentPerfLog("overlay_only");
                 return true;
             }
 
@@ -1788,6 +1850,7 @@ namespace ht::hook::vulkan
                 return false;
             }
 
+            const auto mapCopyBeginQpc = NowQpc();
             void* mapped = nullptr;
             const auto mapResult = vkMapMemory(gpu.device, gpu.stagingMemory, 0, gpu.stagingBytes, 0, &mapped);
             if (mapResult != VK_SUCCESS || mapped == nullptr)
@@ -1802,6 +1865,8 @@ namespace ht::hook::vulkan
                     mapped != nullptr ? 1 : 0,
                     static_cast<unsigned long long>(gpu.stagingBytes));
                 LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
+                perfMapCopyDurationQpc = NowQpc() - mapCopyBeginQpc;
+                emitPresentPerfLog("map_failed");
                 return false;
             }
 
@@ -1828,10 +1893,12 @@ namespace ht::hook::vulkan
             }
 
             vkUnmapMemory(gpu.device, gpu.stagingMemory);
+            perfMapCopyDurationQpc = NowQpc() - mapCopyBeginQpc;
 
             const auto pid = GetCurrentProcessId();
             const auto ts = NowQpc();
             const std::uint32_t stride = gpu.width * 4u;
+            const auto writeBeginQpc = NowQpc();
             const bool wrote = rt.frameWriter.WriteFrame(
                 pid,
                 ipc::GraphicsApi::Vulkan,
@@ -1842,6 +1909,7 @@ namespace ht::hook::vulkan
                 ts,
                 gpu.scratch.data(),
                 bytes);
+            perfWriteDurationQpc = NowQpc() - writeBeginQpc;
             if (!wrote)
             {
                 const auto now = NowQpc();
@@ -1857,6 +1925,7 @@ namespace ht::hook::vulkan
                         static_cast<unsigned long>(pid));
                 }
                 LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "shared_frame_write_failed");
+                emitPresentPerfLog("write_failed");
                 return false;
             }
 
@@ -1874,6 +1943,7 @@ namespace ht::hook::vulkan
 
             rt.lastCaptureQpc = ts;
             rt.lastFrameWriteQpc = ts;
+            emitPresentPerfLog("capture_ok");
             return true;
         }
 
