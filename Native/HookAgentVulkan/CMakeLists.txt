@@ -10,12 +10,20 @@ add_library(HookAgentVulkan SHARED
     ../HookCommon/SharedFrameWriter.cpp
     ../HookCommon/SharedHookConfig.cpp
     ../HookCommon/SharedHookStatus.cpp
+    ../HookCommon/SharedOverlayV2.cpp
+    ../ThirdParty/imgui/imgui.cpp
+    ../ThirdParty/imgui/imgui_draw.cpp
+    ../ThirdParty/imgui/imgui_tables.cpp
+    ../ThirdParty/imgui/imgui_widgets.cpp
+    ../ThirdParty/imgui/backends/imgui_impl_vulkan.cpp
 )
 
 target_include_directories(HookAgentVulkan PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../HookCommon
     ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/MinHook/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/imgui
+    ${CMAKE_CURRENT_SOURCE_DIR}/../ThirdParty/imgui/backends
     ${Vulkan_INCLUDE_DIRS}
 )
 

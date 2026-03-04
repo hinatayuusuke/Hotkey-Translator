@@ -524,7 +524,7 @@ public sealed class PipelineOrchestrator
         out string? reason)
     {
         reason = null;
-        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        if (!IsHookOverlaySupportedApi(settings.GraphicsHookApi))
         {
             reason = "Hook overlay is not available for the current graphics hook API.";
             return false;
@@ -736,7 +736,7 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
-        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        if (!IsHookOverlaySupportedApi(settings.GraphicsHookApi))
         {
             return false;
         }
@@ -761,7 +761,7 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
-        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        if (!IsHookOverlaySupportedApi(settings.GraphicsHookApi))
         {
             return false;
         }
@@ -917,7 +917,7 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        if (settings.GraphicsHookApi != GraphicsHookApiKind.Dx11)
+        if (!IsHookOverlaySupportedApi(settings.GraphicsHookApi))
         {
             return;
         }
@@ -1318,6 +1318,11 @@ public sealed class PipelineOrchestrator
         }
 
         _logger.Info($"stage=hook_v2_status event=missing seq={seq} phase={phase} pid={pid}.");
+    }
+
+    private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
+    {
+        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private static string FormatRect(Rect rect)

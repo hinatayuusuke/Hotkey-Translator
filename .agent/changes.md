@@ -15529,3 +15529,52 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-03-04 11:26 (Asia/Taipei) — Vulkan Hook overlay (OverlayV2 + ImGui/Vulkan) 実装開始**
+
+### Summary
+- Vulkan Hook に OverlayV2 描画経路を追加し、capture-first から「capture + hook overlay」へ拡張した。
+
+### Context / Goal
+- 先行実装の Vulkan MVP はフレーム共有（capture）のみで、overlay は DX11 限定だった。
+- 要件として Vulkan 側でも OverlayV2 共有メモリを再利用し、swapchain 再作成に追従する描画を有効化する必要があった。
+
+### Changes
+- `HookAgentVulkan` に `imgui_impl_vulkan` を導入し、OverlayV2 を読んで swapchain 画像へ描画する経路を実装。
+- `vkQueuePresentKHR` フック内で、同一コマンドバッファで以下を実施:
+  - 必要時に capture copy（`vkCmdCopyImageToBuffer`）
+  - Overlay有効時に render pass 描画（ImGui）
+  - レイアウト遷移（present/transfer/color/present）
+- Overlay 描画のために render pass / image view / framebuffer を swapchain 単位で保持し、サイズ・フォーマット・画像数変更時に再生成。
+- OverlayV2 共有メモリ reader（`SharedOverlayV2Reader`）を Vulkan agent に追加し、`updatedSeq` で差分反映。
+- Hook status に overlay command 状態（`lastCmdQpc`/`lastCmdCount`）を反映。
+- C# 側の overlay API 判定を DX11 限定から `DX11 or Vulkan` に拡張。
+  - runtime config publish
+  - hook overlay write
+  - WPF suppress/hook overlay routing
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — OverlayV2 reader + ImGui/Vulkan 描画 + swapchain追従 + capture併用の present パスを実装。
+- `Native/HookAgentVulkan/CMakeLists.txt` — ImGui core / `imgui_impl_vulkan.cpp` / `SharedOverlayV2.cpp` を追加。
+- `Native/ThirdParty/imgui/backends/imgui_impl_vulkan.cpp` — Vulkan renderer backend を追加。
+- `Native/ThirdParty/imgui/backends/imgui_impl_vulkan.h` — Vulkan renderer backend ヘッダを追加。
+- `Services/Hook/GraphicsHookClientService.cs` — overlay サポートAPI判定を `Dx11 or Vulkan` に変更。
+- `Services/PipelineOrchestrator.cs` — hook overlay route 判定を `Dx11 or Vulkan` に変更。
+- `MainWindow.xaml.cs` — F9/runtime config publish/overlay reshow clear の API判定を `Dx11 or Vulkan` に変更。
+
+### Behavioral Impact
+- `GraphicsHookApi=Vulkan` でも Hook 側 overlay を有効化可能になった。
+- Hook pipeline 利用時、Vulkanでも WPF overlay 抑止（hook overlay優先）ルートへ入る。
+- OverlayV2 データは DX11 と同じ共有メモリフォーマットを再利用するため、上位 C# の送信経路は共通運用できる。
+
+### Risk & Mitigation
+- Risk: Vulkan タイトルごとに image layout / present path の差異があり、特定タイトルで描画不具合が出る可能性。
+- Mitigation: swapchain 情報と status を継続 publish し、overlay有効時でも capture path を維持。問題時は `GraphicsHookOverlayEnabled` で即切替可能。
+- Risk: ImGui Vulkan backend 導入により native 依存・再生成パスが増え、swapchain再作成時の不整合が起こりうる。
+- Mitigation: swapchain 単位で render pass / image view / framebuffer を明示再生成し、destroy パスで解放を集中管理。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings / 0 errors）。
+- `cmake -S Native -B Native/build` 実行成功。
+- `cmake --build Native/build --config Debug --target HookHost` 実行成功。
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功（`HookAgentVulkan.dll` 出力確認）。

@@ -526,7 +526,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
             var effectiveHookOverlayEnabled =
-                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled &&
                 _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
@@ -562,7 +562,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
         {
             var effectiveHookOverlayEnabled =
-                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled &&
                 _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
@@ -585,7 +585,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void TryClearHookOverlayForReshow(AppSettings settings, string source)
     {
         if (!settings.EnableGraphicsHookPipeline ||
-            settings.GraphicsHookApi != GraphicsHookApiKind.Dx11 ||
+            !IsHookOverlaySupportedApi(settings.GraphicsHookApi) ||
             !settings.GraphicsHookOverlayEnabled)
         {
             return;
@@ -618,6 +618,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             $"stage=graphics_hook event=overlay_reshow_clear source={source} pid={settings.FixedCaptureWindowProcessId} " +
             $"canvas={canvasW}x{canvasH} result={(cleared ? "ok" : "failed")} " +
             $"reason={(cleared ? "none" : failureReason ?? "unknown")}.");
+    }
+
+    private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
+    {
+        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private async Task RunOnceAsync()

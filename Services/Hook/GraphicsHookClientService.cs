@@ -101,7 +101,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             EnsureReceiveLoop();
 
             var effectiveOverlayEnabled =
-                settings.GraphicsHookApi == GraphicsHookApiKind.Dx11 &&
+                IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled;
 
             var attachRequest = new GraphicsHookAttachRequest(
@@ -170,7 +170,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             return false;
         }
 
-        if (_attachedApi != GraphicsHookApiKind.Dx11)
+        if (!IsHookOverlaySupportedApi(_attachedApi))
         {
             failureReason = $"overlay_not_supported(api={_attachedApi})";
             return false;
@@ -229,7 +229,7 @@ internal sealed class GraphicsHookClientService : IDisposable
 
         try
         {
-            var effectiveOverlayEnabled = _attachedApi == GraphicsHookApiKind.Dx11 && overlayEnabled;
+            var effectiveOverlayEnabled = IsHookOverlaySupportedApi(_attachedApi) && overlayEnabled;
             var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, effectiveOverlayEnabled);
             if (!wrote)
             {
@@ -260,6 +260,11 @@ internal sealed class GraphicsHookClientService : IDisposable
 
         reason = "ok";
         return true;
+    }
+
+    private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
+    {
+        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private bool EnsureHostProcess(AppSettings settings)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <limits>
@@ -16,9 +17,13 @@
 
 #include <MinHook.h>
 
+#include <imgui.h>
+#include <imgui_impl_vulkan.h>
+
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
 #include "../HookCommon/SharedHookStatus.h"
+#include "../HookCommon/SharedOverlayV2.h"
 
 namespace ht::hook::vulkan
 {
@@ -27,6 +32,8 @@ namespace ht::hook::vulkan
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
         constexpr std::uint32_t kMinCaptureFps = 1u;
         constexpr std::uint32_t kMaxCaptureFps = 240u;
+        constexpr std::uint32_t kOverlayFontBasePx = 32u;
+        constexpr std::uint32_t kOverlayMaxBlocks = 64u;
 
         struct DeviceInfo
         {
@@ -48,13 +55,14 @@ namespace ht::hook::vulkan
             std::vector<VkImage> images;
         };
 
-        struct QueueCaptureState
+        struct QueueGpuState
         {
             VkDevice device = VK_NULL_HANDLE;
             std::uint32_t queueFamily = std::numeric_limits<std::uint32_t>::max();
             VkCommandPool commandPool = VK_NULL_HANDLE;
             VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
             VkFence fence = VK_NULL_HANDLE;
+
             VkBuffer stagingBuffer = VK_NULL_HANDLE;
             VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
             VkDeviceSize stagingBytes = 0;
@@ -62,6 +70,17 @@ namespace ht::hook::vulkan
             std::uint32_t height = 0;
             VkFormat format = VK_FORMAT_UNDEFINED;
             std::vector<std::uint8_t> scratch;
+        };
+
+        struct OverlaySwapchainState
+        {
+            VkRenderPass renderPass = VK_NULL_HANDLE;
+            std::vector<VkImageView> imageViews;
+            std::vector<VkFramebuffer> framebuffers;
+            VkFormat format = VK_FORMAT_UNDEFINED;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            std::uint32_t imageCount = 0;
         };
 
         struct VulkanRuntime
@@ -72,9 +91,12 @@ namespace ht::hook::vulkan
             ipc::SharedFrameWriter frameWriter;
             ipc::SharedHookConfigReader configReader;
             ipc::SharedHookStatusWriter statusWriter;
+            ipc::SharedOverlayV2Reader overlayV2Reader;
 
             PFN_vkGetDeviceProcAddr originalGetDeviceProcAddr = nullptr;
             PFN_vkGetInstanceProcAddr originalGetInstanceProcAddr = nullptr;
+            PFN_vkCreateInstance originalCreateInstance = nullptr;
+            PFN_vkDestroyInstance originalDestroyInstance = nullptr;
             PFN_vkCreateDevice originalCreateDevice = nullptr;
             PFN_vkDestroyDevice originalDestroyDevice = nullptr;
             PFN_vkGetDeviceQueue originalGetDeviceQueue = nullptr;
@@ -86,10 +108,14 @@ namespace ht::hook::vulkan
             PFN_vkGetSwapchainImagesKHR originalGetSwapchainImagesKHR = nullptr;
             PFN_vkQueuePresentKHR originalQueuePresentKHR = nullptr;
 
+            VkInstance instance = VK_NULL_HANDLE;
+            std::uint32_t apiVersion = VK_API_VERSION_1_0;
+
             std::unordered_map<VkDevice, DeviceInfo> devices;
             std::unordered_map<VkQueue, QueueInfo> queues;
             std::unordered_map<VkSwapchainKHR, SwapchainInfo> swapchains;
-            std::unordered_map<VkQueue, QueueCaptureState> captures;
+            std::unordered_map<VkQueue, QueueGpuState> queueGpuStates;
+            std::unordered_map<VkSwapchainKHR, OverlaySwapchainState> overlaySwapchains;
 
             std::uint64_t qpcFreq = 0;
             std::uint64_t frameId = 0;
@@ -99,6 +125,21 @@ namespace ht::hook::vulkan
             std::uint64_t lastFrameWriteQpc = 0;
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
             bool overlayEnabled = false;
+
+            std::uint64_t lastOverlayV2Seq = 0;
+            std::uint64_t lastOverlayV2Qpc = 0;
+            ipc::OverlayV2Header overlayV2Header{};
+            std::vector<ipc::OverlayTextBlockV2> overlayV2Blocks;
+            std::vector<std::uint8_t> overlayV2TextBlob;
+
+            bool imguiInitialized = false;
+            ImGuiContext* imguiContext = nullptr;
+            ImFont* overlayFont = nullptr;
+            VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
+            VkDevice imguiDevice = VK_NULL_HANDLE;
+            VkSwapchainKHR imguiBoundSwapchain = VK_NULL_HANDLE;
+            std::uint32_t imguiImageCount = 0;
+            std::uint64_t lastImGuiQpc = 0;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -129,11 +170,58 @@ namespace ht::hook::vulkan
             return std::clamp(fps, kMinCaptureFps, kMaxCaptureFps);
         }
 
-        void DestroyCaptureState(QueueCaptureState& st)
+        ImU32 ArgbToImU32(std::uint32_t argb)
+        {
+            const std::uint32_t a = (argb >> 24) & 0xFFu;
+            const std::uint32_t r = (argb >> 16) & 0xFFu;
+            const std::uint32_t g = (argb >> 8) & 0xFFu;
+            const std::uint32_t b = argb & 0xFFu;
+            return IM_COL32(r, g, b, a);
+        }
+
+        void CmdTransitionImageLayout(
+            VkCommandBuffer cmd,
+            VkImage image,
+            VkImageLayout oldLayout,
+            VkImageLayout newLayout,
+            VkAccessFlags srcAccess,
+            VkAccessFlags dstAccess,
+            VkPipelineStageFlags srcStage,
+            VkPipelineStageFlags dstStage)
+        {
+            VkImageMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+            barrier.oldLayout = oldLayout;
+            barrier.newLayout = newLayout;
+            barrier.srcAccessMask = srcAccess;
+            barrier.dstAccessMask = dstAccess;
+            barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+            barrier.image = image;
+            barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+            barrier.subresourceRange.baseMipLevel = 0;
+            barrier.subresourceRange.levelCount = 1;
+            barrier.subresourceRange.baseArrayLayer = 0;
+            barrier.subresourceRange.layerCount = 1;
+
+            vkCmdPipelineBarrier(
+                cmd,
+                srcStage,
+                dstStage,
+                0,
+                0,
+                nullptr,
+                0,
+                nullptr,
+                1,
+                &barrier);
+        }
+
+        void DestroyQueueGpuState(QueueGpuState& st)
         {
             if (st.device == VK_NULL_HANDLE)
             {
-                st = QueueCaptureState{};
+                st = QueueGpuState{};
                 return;
             }
 
@@ -162,17 +250,89 @@ namespace ht::hook::vulkan
                 st.commandBuffer = VK_NULL_HANDLE;
             }
 
-            st = QueueCaptureState{};
+            st = QueueGpuState{};
+        }
+
+        void DestroyOverlaySwapchainState(VkDevice device, OverlaySwapchainState& st)
+        {
+            if (device == VK_NULL_HANDLE)
+            {
+                st = OverlaySwapchainState{};
+                return;
+            }
+
+            for (auto framebuffer : st.framebuffers)
+            {
+                if (framebuffer != VK_NULL_HANDLE)
+                {
+                    vkDestroyFramebuffer(device, framebuffer, nullptr);
+                }
+            }
+            st.framebuffers.clear();
+
+            for (auto imageView : st.imageViews)
+            {
+                if (imageView != VK_NULL_HANDLE)
+                {
+                    vkDestroyImageView(device, imageView, nullptr);
+                }
+            }
+            st.imageViews.clear();
+
+            if (st.renderPass != VK_NULL_HANDLE)
+            {
+                vkDestroyRenderPass(device, st.renderPass, nullptr);
+                st.renderPass = VK_NULL_HANDLE;
+            }
+
+            st.format = VK_FORMAT_UNDEFINED;
+            st.width = 0;
+            st.height = 0;
+            st.imageCount = 0;
+        }
+        void ShutdownImGuiLocked(VulkanRuntime& rt)
+        {
+            if (rt.imguiContext == nullptr)
+            {
+                rt.imguiInitialized = false;
+                rt.overlayFont = nullptr;
+                return;
+            }
+
+            ImGui::SetCurrentContext(rt.imguiContext);
+            if (rt.imguiInitialized)
+            {
+                ImGui_ImplVulkan_Shutdown();
+            }
+            ImGui::DestroyContext(rt.imguiContext);
+
+            rt.imguiContext = nullptr;
+            rt.imguiInitialized = false;
+            rt.overlayFont = nullptr;
+            rt.imguiBoundSwapchain = VK_NULL_HANDLE;
+            rt.imguiImageCount = 0;
+            rt.lastImGuiQpc = 0;
+
+            if (rt.imguiDescriptorPool != VK_NULL_HANDLE)
+            {
+                // WHY: Descriptor pool lifetime is tied to ImGui backend lifetime.
+                if (rt.imguiDevice != VK_NULL_HANDLE)
+                {
+                    vkDestroyDescriptorPool(rt.imguiDevice, rt.imguiDescriptorPool, nullptr);
+                }
+                rt.imguiDescriptorPool = VK_NULL_HANDLE;
+            }
+            rt.imguiDevice = VK_NULL_HANDLE;
         }
 
         void RemoveDeviceStateLocked(VulkanRuntime& rt, VkDevice device)
         {
-            for (auto it = rt.captures.begin(); it != rt.captures.end();)
+            for (auto it = rt.queueGpuStates.begin(); it != rt.queueGpuStates.end();)
             {
                 if (it->second.device == device)
                 {
-                    DestroyCaptureState(it->second);
-                    it = rt.captures.erase(it);
+                    DestroyQueueGpuState(it->second);
+                    it = rt.queueGpuStates.erase(it);
                     continue;
                 }
                 ++it;
@@ -183,6 +343,18 @@ namespace ht::hook::vulkan
                 if (it->second.device == device)
                 {
                     it = rt.queues.erase(it);
+                    continue;
+                }
+                ++it;
+            }
+
+            for (auto it = rt.overlaySwapchains.begin(); it != rt.overlaySwapchains.end();)
+            {
+                auto scIt = rt.swapchains.find(it->first);
+                if (scIt != rt.swapchains.end() && scIt->second.device == device)
+                {
+                    DestroyOverlaySwapchainState(device, it->second);
+                    it = rt.overlaySwapchains.erase(it);
                     continue;
                 }
                 ++it;
@@ -203,18 +375,31 @@ namespace ht::hook::vulkan
 
         void ResetRuntimeLocked(VulkanRuntime& rt)
         {
-            for (auto& entry : rt.captures)
+            ShutdownImGuiLocked(rt);
+
+            for (auto& entry : rt.overlaySwapchains)
             {
-                DestroyCaptureState(entry.second);
+                auto scIt = rt.swapchains.find(entry.first);
+                const auto device = (scIt != rt.swapchains.end()) ? scIt->second.device : VK_NULL_HANDLE;
+                DestroyOverlaySwapchainState(device, entry.second);
             }
 
-            rt.captures.clear();
+            for (auto& entry : rt.queueGpuStates)
+            {
+                DestroyQueueGpuState(entry.second);
+            }
+
+            rt.overlaySwapchains.clear();
+            rt.queueGpuStates.clear();
             rt.queues.clear();
             rt.swapchains.clear();
             rt.devices.clear();
+
             rt.frameWriter.Reset();
             rt.configReader.Reset();
             rt.statusWriter.Reset();
+            rt.overlayV2Reader.Reset();
+
             rt.frameId = 0;
             rt.lastCaptureQpc = 0;
             rt.lastConfigQpc = 0;
@@ -222,6 +407,13 @@ namespace ht::hook::vulkan
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.overlayEnabled = false;
+
+            rt.lastOverlayV2Seq = 0;
+            rt.lastOverlayV2Qpc = 0;
+            rt.overlayV2Header = {};
+            rt.overlayV2Blocks.clear();
+            rt.overlayV2TextBlob.clear();
+
             rt.presentCount = 0;
             rt.lastPresentQpc = 0;
             rt.lastPresentKind = 1;
@@ -229,8 +421,13 @@ namespace ht::hook::vulkan
             rt.lastWidth = 0;
             rt.lastHeight = 0;
 
+            rt.instance = VK_NULL_HANDLE;
+            rt.apiVersion = VK_API_VERSION_1_0;
+
             rt.originalGetDeviceProcAddr = nullptr;
             rt.originalGetInstanceProcAddr = nullptr;
+            rt.originalCreateInstance = nullptr;
+            rt.originalDestroyInstance = nullptr;
             rt.originalCreateDevice = nullptr;
             rt.originalDestroyDevice = nullptr;
             rt.originalGetDeviceQueue = nullptr;
@@ -242,6 +439,7 @@ namespace ht::hook::vulkan
             rt.originalGetSwapchainImagesKHR = nullptr;
             rt.originalQueuePresentKHR = nullptr;
         }
+
         std::uint32_t FindHostVisibleCoherentMemoryType(VkPhysicalDevice physicalDevice, std::uint32_t typeBits)
         {
             VkPhysicalDeviceMemoryProperties memProps{};
@@ -261,7 +459,7 @@ namespace ht::hook::vulkan
             return std::numeric_limits<std::uint32_t>::max();
         }
 
-        bool IsSupportedCaptureFormat(VkFormat format, bool& rgbaNeedsSwap)
+        bool IsCaptureFormatSupported(VkFormat format, bool& rgbaNeedsSwap)
         {
             rgbaNeedsSwap = false;
             switch (format)
@@ -319,12 +517,7 @@ namespace ht::hook::vulkan
 
         bool ShouldCaptureNowLocked(const VulkanRuntime& rt, std::uint64_t nowQpc)
         {
-            if (rt.captureIntervalQpc == 0)
-            {
-                return true;
-            }
-
-            if (rt.lastCaptureQpc == 0)
+            if (rt.captureIntervalQpc == 0 || rt.lastCaptureQpc == 0)
             {
                 return true;
             }
@@ -346,10 +539,7 @@ namespace ht::hook::vulkan
                 if (fn != nullptr)
                 {
                     getImages = reinterpret_cast<PFN_vkGetSwapchainImagesKHR>(fn);
-                    if (rt.originalGetSwapchainImagesKHR == nullptr)
-                    {
-                        rt.originalGetSwapchainImagesKHR = getImages;
-                    }
+                    rt.originalGetSwapchainImagesKHR = getImages;
                 }
             }
 
@@ -408,7 +598,7 @@ namespace ht::hook::vulkan
 
             (void)EnsureSwapchainImagesLocked(rt, info, swapchain);
         }
-        bool EnsureCaptureResourcesLocked(
+        bool EnsureQueueGpuStateLocked(
             VulkanRuntime& rt,
             VkQueue queue,
             const QueueInfo& queueInfo,
@@ -421,7 +611,7 @@ namespace ht::hook::vulkan
             }
 
             bool rgbaNeedsSwap = false;
-            if (!IsSupportedCaptureFormat(swapInfo.format, rgbaNeedsSwap))
+            if (!IsCaptureFormatSupported(swapInfo.format, rgbaNeedsSwap))
             {
                 (void)rgbaNeedsSwap;
                 return false;
@@ -433,64 +623,63 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            auto& cap = rt.captures[queue];
+            auto& state = rt.queueGpuStates[queue];
             const VkDeviceSize requiredBytes =
                 static_cast<VkDeviceSize>(swapInfo.extent.width) *
                 static_cast<VkDeviceSize>(swapInfo.extent.height) * 4ull;
 
             const bool mustRecreate =
-                cap.device != device ||
-                cap.queueFamily != queueInfo.familyIndex ||
-                cap.width != swapInfo.extent.width ||
-                cap.height != swapInfo.extent.height ||
-                cap.format != swapInfo.format ||
-                cap.stagingBytes != requiredBytes ||
-                cap.commandPool == VK_NULL_HANDLE ||
-                cap.commandBuffer == VK_NULL_HANDLE ||
-                cap.stagingBuffer == VK_NULL_HANDLE ||
-                cap.stagingMemory == VK_NULL_HANDLE ||
-                cap.fence == VK_NULL_HANDLE;
+                state.device != device ||
+                state.queueFamily != queueInfo.familyIndex ||
+                state.width != swapInfo.extent.width ||
+                state.height != swapInfo.extent.height ||
+                state.format != swapInfo.format ||
+                state.stagingBytes != requiredBytes ||
+                state.commandPool == VK_NULL_HANDLE ||
+                state.commandBuffer == VK_NULL_HANDLE ||
+                state.stagingBuffer == VK_NULL_HANDLE ||
+                state.stagingMemory == VK_NULL_HANDLE ||
+                state.fence == VK_NULL_HANDLE;
 
             if (!mustRecreate)
             {
                 return true;
             }
 
-            DestroyCaptureState(cap);
-
-            cap.device = device;
-            cap.queueFamily = queueInfo.familyIndex;
-            cap.width = swapInfo.extent.width;
-            cap.height = swapInfo.extent.height;
-            cap.format = swapInfo.format;
-            cap.stagingBytes = requiredBytes;
+            DestroyQueueGpuState(state);
+            state.device = device;
+            state.queueFamily = queueInfo.familyIndex;
+            state.width = swapInfo.extent.width;
+            state.height = swapInfo.extent.height;
+            state.format = swapInfo.format;
+            state.stagingBytes = requiredBytes;
 
             VkCommandPoolCreateInfo poolInfo{};
             poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             poolInfo.queueFamilyIndex = queueInfo.familyIndex;
-            if (vkCreateCommandPool(device, &poolInfo, nullptr, &cap.commandPool) != VK_SUCCESS)
+            if (vkCreateCommandPool(device, &poolInfo, nullptr, &state.commandPool) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
             VkCommandBufferAllocateInfo cmdAlloc{};
             cmdAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            cmdAlloc.commandPool = cap.commandPool;
+            cmdAlloc.commandPool = state.commandPool;
             cmdAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             cmdAlloc.commandBufferCount = 1;
-            if (vkAllocateCommandBuffers(device, &cmdAlloc, &cap.commandBuffer) != VK_SUCCESS)
+            if (vkAllocateCommandBuffers(device, &cmdAlloc, &state.commandBuffer) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
             VkFenceCreateInfo fenceInfo{};
             fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            if (vkCreateFence(device, &fenceInfo, nullptr, &cap.fence) != VK_SUCCESS)
+            if (vkCreateFence(device, &fenceInfo, nullptr, &state.fence) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
@@ -499,18 +688,18 @@ namespace ht::hook::vulkan
             bufferInfo.size = requiredBytes;
             bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateBuffer(device, &bufferInfo, nullptr, &cap.stagingBuffer) != VK_SUCCESS)
+            if (vkCreateBuffer(device, &bufferInfo, nullptr, &state.stagingBuffer) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
             VkMemoryRequirements memReq{};
-            vkGetBufferMemoryRequirements(device, cap.stagingBuffer, &memReq);
+            vkGetBufferMemoryRequirements(device, state.stagingBuffer, &memReq);
             const auto memoryType = FindHostVisibleCoherentMemoryType(deviceInfo.physicalDevice, memReq.memoryTypeBits);
             if (memoryType == std::numeric_limits<std::uint32_t>::max())
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
@@ -518,24 +707,363 @@ namespace ht::hook::vulkan
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memReq.size;
             allocInfo.memoryTypeIndex = memoryType;
-            if (vkAllocateMemory(device, &allocInfo, nullptr, &cap.stagingMemory) != VK_SUCCESS)
+            if (vkAllocateMemory(device, &allocInfo, nullptr, &state.stagingMemory) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
-            if (vkBindBufferMemory(device, cap.stagingBuffer, cap.stagingMemory, 0) != VK_SUCCESS)
+            if (vkBindBufferMemory(device, state.stagingBuffer, state.stagingMemory, 0) != VK_SUCCESS)
             {
-                DestroyCaptureState(cap);
+                DestroyQueueGpuState(state);
                 return false;
             }
 
-            cap.scratch.clear();
-            cap.scratch.resize(static_cast<std::size_t>(requiredBytes));
+            state.scratch.assign(static_cast<std::size_t>(requiredBytes), 0);
             return true;
         }
 
-        bool CaptureSwapchainImageLocked(
+        bool EnsureOverlaySwapchainStateLocked(
+            VulkanRuntime& rt,
+            VkSwapchainKHR swapchain,
+            const SwapchainInfo& swapInfo)
+        {
+            if (swapInfo.device == VK_NULL_HANDLE || swapInfo.images.empty())
+            {
+                return false;
+            }
+
+            auto& ovl = rt.overlaySwapchains[swapchain];
+            const bool mustRecreate =
+                ovl.renderPass == VK_NULL_HANDLE ||
+                ovl.format != swapInfo.format ||
+                ovl.width != swapInfo.extent.width ||
+                ovl.height != swapInfo.extent.height ||
+                ovl.imageCount != static_cast<std::uint32_t>(swapInfo.images.size()) ||
+                ovl.framebuffers.size() != swapInfo.images.size() ||
+                ovl.imageViews.size() != swapInfo.images.size();
+
+            if (!mustRecreate)
+            {
+                return true;
+            }
+
+            DestroyOverlaySwapchainState(swapInfo.device, ovl);
+
+            VkAttachmentDescription attachment{};
+            attachment.format = swapInfo.format;
+            attachment.samples = VK_SAMPLE_COUNT_1_BIT;
+            attachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+            attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+            attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+            attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+            attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkAttachmentReference colorRef{};
+            colorRef.attachment = 0;
+            colorRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+            VkSubpassDescription subpass{};
+            subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            subpass.colorAttachmentCount = 1;
+            subpass.pColorAttachments = &colorRef;
+
+            VkSubpassDependency dep{};
+            dep.srcSubpass = VK_SUBPASS_EXTERNAL;
+            dep.dstSubpass = 0;
+            dep.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dep.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            dep.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            dep.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+            VkRenderPassCreateInfo rpInfo{};
+            rpInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+            rpInfo.attachmentCount = 1;
+            rpInfo.pAttachments = &attachment;
+            rpInfo.subpassCount = 1;
+            rpInfo.pSubpasses = &subpass;
+            rpInfo.dependencyCount = 1;
+            rpInfo.pDependencies = &dep;
+            if (vkCreateRenderPass(swapInfo.device, &rpInfo, nullptr, &ovl.renderPass) != VK_SUCCESS)
+            {
+                DestroyOverlaySwapchainState(swapInfo.device, ovl);
+                return false;
+            }
+
+            ovl.imageViews.resize(swapInfo.images.size(), VK_NULL_HANDLE);
+            ovl.framebuffers.resize(swapInfo.images.size(), VK_NULL_HANDLE);
+
+            for (std::size_t i = 0; i < swapInfo.images.size(); ++i)
+            {
+                VkImageViewCreateInfo viewInfo{};
+                viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+                viewInfo.image = swapInfo.images[i];
+                viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+                viewInfo.format = swapInfo.format;
+                viewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                viewInfo.subresourceRange.baseMipLevel = 0;
+                viewInfo.subresourceRange.levelCount = 1;
+                viewInfo.subresourceRange.baseArrayLayer = 0;
+                viewInfo.subresourceRange.layerCount = 1;
+                if (vkCreateImageView(swapInfo.device, &viewInfo, nullptr, &ovl.imageViews[i]) != VK_SUCCESS)
+                {
+                    DestroyOverlaySwapchainState(swapInfo.device, ovl);
+                    return false;
+                }
+
+                VkFramebufferCreateInfo fbInfo{};
+                fbInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+                fbInfo.renderPass = ovl.renderPass;
+                fbInfo.attachmentCount = 1;
+                fbInfo.pAttachments = &ovl.imageViews[i];
+                fbInfo.width = swapInfo.extent.width;
+                fbInfo.height = swapInfo.extent.height;
+                fbInfo.layers = 1;
+                if (vkCreateFramebuffer(swapInfo.device, &fbInfo, nullptr, &ovl.framebuffers[i]) != VK_SUCCESS)
+                {
+                    DestroyOverlaySwapchainState(swapInfo.device, ovl);
+                    return false;
+                }
+            }
+
+            ovl.format = swapInfo.format;
+            ovl.width = swapInfo.extent.width;
+            ovl.height = swapInfo.extent.height;
+            ovl.imageCount = static_cast<std::uint32_t>(swapInfo.images.size());
+            return true;
+        }
+
+        bool RefreshOverlayV2Locked(VulkanRuntime& rt)
+        {
+            const auto pid = GetCurrentProcessId();
+            if (!rt.overlayV2Reader.Ensure(pid, ipc::GraphicsApi::Vulkan))
+            {
+                return false;
+            }
+
+            ipc::OverlayV2Header header{};
+            std::vector<ipc::OverlayTextBlockV2> blocks;
+            std::vector<std::uint8_t> textBlob;
+            if (!rt.overlayV2Reader.TryRead(header, blocks, textBlob))
+            {
+                return false;
+            }
+
+            if (header.updatedSeq == 0 || header.updatedSeq == rt.lastOverlayV2Seq)
+            {
+                return false;
+            }
+
+            rt.overlayV2Header = header;
+            rt.overlayV2Blocks = std::move(blocks);
+            rt.overlayV2TextBlob = std::move(textBlob);
+            rt.lastOverlayV2Seq = header.updatedSeq;
+            rt.lastOverlayV2Qpc = NowQpc();
+            return true;
+        }
+        bool EnsureImGuiLocked(
+            VulkanRuntime& rt,
+            VkQueue queue,
+            VkSwapchainKHR swapchain,
+            const QueueInfo& queueInfo,
+            const DeviceInfo& deviceInfo,
+            const OverlaySwapchainState& ovl)
+        {
+            if (rt.instance == VK_NULL_HANDLE)
+            {
+                return false;
+            }
+
+            if (rt.imguiContext == nullptr)
+            {
+                rt.imguiContext = ImGui::CreateContext();
+                ImGui::SetCurrentContext(rt.imguiContext);
+                ImGuiIO& io = ImGui::GetIO();
+                io.IniFilename = nullptr;
+                io.LogFilename = nullptr;
+
+                constexpr char kMeiryoPath[] = "C:/Windows/Fonts/meiryo.ttc";
+                ImFontConfig cfg{};
+                cfg.OversampleH = 2;
+                cfg.OversampleV = 2;
+                rt.overlayFont = io.Fonts->AddFontFromFileTTF(
+                    kMeiryoPath,
+                    static_cast<float>(kOverlayFontBasePx),
+                    &cfg,
+                    io.Fonts->GetGlyphRangesJapanese());
+                if (rt.overlayFont == nullptr)
+                {
+                    rt.overlayFont = io.Fonts->AddFontDefault();
+                }
+            }
+            else
+            {
+                ImGui::SetCurrentContext(rt.imguiContext);
+            }
+
+            if (rt.imguiDescriptorPool == VK_NULL_HANDLE)
+            {
+                const std::array<VkDescriptorPoolSize, 11> poolSizes =
+                {
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLER, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2048},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 512},
+                    VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 512},
+                };
+
+                VkDescriptorPoolCreateInfo poolInfo{};
+                poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+                poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+                poolInfo.maxSets = 4096;
+                poolInfo.poolSizeCount = static_cast<std::uint32_t>(poolSizes.size());
+                poolInfo.pPoolSizes = poolSizes.data();
+                if (vkCreateDescriptorPool(queueInfo.device, &poolInfo, nullptr, &rt.imguiDescriptorPool) != VK_SUCCESS)
+                {
+                    return false;
+                }
+                rt.imguiDevice = queueInfo.device;
+            }
+
+            const auto imageCount = static_cast<std::uint32_t>(ovl.framebuffers.size());
+            if (imageCount == 0)
+            {
+                return false;
+            }
+
+            if (!rt.imguiInitialized)
+            {
+                ImGui_ImplVulkan_InitInfo initInfo{};
+                initInfo.ApiVersion = rt.apiVersion;
+                initInfo.Instance = rt.instance;
+                initInfo.PhysicalDevice = deviceInfo.physicalDevice;
+                initInfo.Device = queueInfo.device;
+                initInfo.QueueFamily = queueInfo.familyIndex;
+                initInfo.Queue = queue;
+                initInfo.DescriptorPool = rt.imguiDescriptorPool;
+                initInfo.MinImageCount = imageCount;
+                initInfo.ImageCount = imageCount;
+                initInfo.PipelineInfoMain.RenderPass = ovl.renderPass;
+                initInfo.PipelineInfoMain.Subpass = 0;
+                initInfo.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+                initInfo.UseDynamicRendering = false;
+
+                if (!ImGui_ImplVulkan_Init(&initInfo))
+                {
+                    return false;
+                }
+
+                rt.imguiInitialized = true;
+                rt.imguiBoundSwapchain = swapchain;
+                rt.imguiImageCount = imageCount;
+            }
+            else if (rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount)
+            {
+                // WHY: swapchain image count change requires backend queued-frame count refresh.
+                ImGui_ImplVulkan_SetMinImageCount(imageCount);
+                rt.imguiBoundSwapchain = swapchain;
+                rt.imguiImageCount = imageCount;
+            }
+
+            return true;
+        }
+
+        void BuildImGuiOverlayDrawDataLocked(VulkanRuntime& rt, std::uint32_t targetW, std::uint32_t targetH)
+        {
+            if (!rt.imguiInitialized || rt.imguiContext == nullptr)
+            {
+                return;
+            }
+
+            ImGui::SetCurrentContext(rt.imguiContext);
+            const auto now = NowQpc();
+            ImGuiIO& io = ImGui::GetIO();
+            io.DisplaySize = ImVec2(static_cast<float>(targetW), static_cast<float>(targetH));
+            if (rt.lastImGuiQpc != 0 && rt.qpcFreq > 0)
+            {
+                const double delta = static_cast<double>(now - rt.lastImGuiQpc) / static_cast<double>(rt.qpcFreq);
+                io.DeltaTime = static_cast<float>(std::max(1.0 / 240.0, delta));
+            }
+            else
+            {
+                io.DeltaTime = 1.0f / static_cast<float>(std::max(1u, rt.configuredFpsLimit));
+            }
+            rt.lastImGuiQpc = now;
+
+            ImGui_ImplVulkan_NewFrame();
+            ImGui::NewFrame();
+
+            const auto canvasW = std::max(1u, rt.overlayV2Header.canvasW);
+            const auto canvasH = std::max(1u, rt.overlayV2Header.canvasH);
+            const float scaleX = static_cast<float>(targetW) / static_cast<float>(canvasW);
+            const float scaleY = static_cast<float>(targetH) / static_cast<float>(canvasH);
+
+            ImDrawList* bg = ImGui::GetBackgroundDrawList();
+            ImDrawList* fg = ImGui::GetForegroundDrawList();
+
+            const auto blockCount = std::min<std::size_t>(rt.overlayV2Blocks.size(), kOverlayMaxBlocks);
+            for (std::size_t i = 0; i < blockCount; ++i)
+            {
+                const auto& b = rt.overlayV2Blocks[i];
+                if (b.w <= 0.0f || b.h <= 0.0f)
+                {
+                    continue;
+                }
+
+                const float x = b.x * scaleX;
+                const float y = b.y * scaleY;
+                const float w = b.w * scaleX;
+                const float h = b.h * scaleY;
+                const float pad = std::max(0.0f, b.paddingPx * std::min(scaleX, scaleY));
+                const float rounding = std::max(0.0f, b.roundingPx * std::min(scaleX, scaleY));
+
+                const ImVec2 p0(x, y);
+                const ImVec2 p1(x + w, y + h);
+                if (b.wrap == 2u)
+                {
+                    fg->AddRect(p0, p1, ArgbToImU32(b.fgArgb), 0.0f, 0, 2.0f);
+                    continue;
+                }
+
+                if (((b.bgArgb >> 24) & 0xFFu) != 0)
+                {
+                    bg->AddRectFilled(p0, p1, ArgbToImU32(b.bgArgb), rounding);
+                }
+
+                const std::size_t textOffset = static_cast<std::size_t>(b.textOffset);
+                const std::size_t textLen = static_cast<std::size_t>(b.textLen);
+                if (textLen == 0 || textOffset >= rt.overlayV2TextBlob.size())
+                {
+                    continue;
+                }
+
+                const std::size_t textEndOffset = std::min(rt.overlayV2TextBlob.size(), textOffset + textLen);
+                if (textEndOffset <= textOffset)
+                {
+                    continue;
+                }
+
+                const char* textBegin = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + textOffset);
+                const char* textEnd = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + textEndOffset);
+                const float textX = x + pad;
+                const float textY = y + pad;
+                const float wrapWidth = (b.wrap != 0u) ? std::max(0.0f, w - (pad * 2.0f)) : 0.0f;
+                const float fontPx = std::max(10.0f, b.fontPx * std::min(scaleX, scaleY));
+                ImFont* font = (rt.overlayFont != nullptr) ? rt.overlayFont : ImGui::GetFont();
+
+                fg->AddText(font, fontPx, ImVec2(textX, textY), ArgbToImU32(b.fgArgb), textBegin, textEnd, wrapWidth);
+            }
+
+            ImGui::Render();
+        }
+        bool SubmitPresentWorkLocked(
             VulkanRuntime& rt,
             VkQueue queue,
             VkSwapchainKHR swapchain,
@@ -547,23 +1075,17 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            const auto swapIt = rt.swapchains.find(swapchain);
+            auto swapIt = rt.swapchains.find(swapchain);
             if (swapIt == rt.swapchains.end())
             {
                 return false;
             }
 
             auto& swapInfo = swapIt->second;
-            if (swapInfo.device == VK_NULL_HANDLE)
-            {
-                return false;
-            }
-
             if (swapInfo.images.empty())
             {
                 (void)EnsureSwapchainImagesLocked(rt, swapInfo, swapchain);
             }
-
             if (swapInfo.images.empty() || imageIndex >= swapInfo.images.size())
             {
                 return false;
@@ -575,30 +1097,60 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            bool rgbaNeedsSwap = false;
-            if (!IsSupportedCaptureFormat(swapInfo.format, rgbaNeedsSwap))
+            const bool shouldCapture = ShouldCaptureNowLocked(rt, rt.lastPresentQpc);
+            if (rt.overlayEnabled)
+            {
+                (void)RefreshOverlayV2Locked(rt);
+            }
+
+            const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
+            if (!shouldCapture && !hasOverlayBlocks)
+            {
+                return true;
+            }
+
+            if (!EnsureQueueGpuStateLocked(rt, queue, queueIt->second, deviceIt->second, swapInfo))
             {
                 return false;
             }
 
-            if (!EnsureCaptureResourcesLocked(rt, queue, queueIt->second, deviceIt->second, swapInfo))
+            auto queueStateIt = rt.queueGpuStates.find(queue);
+            if (queueStateIt == rt.queueGpuStates.end())
             {
                 return false;
+            }
+            auto& gpu = queueStateIt->second;
+
+            OverlaySwapchainState* ovl = nullptr;
+            if (hasOverlayBlocks)
+            {
+                if (!EnsureOverlaySwapchainStateLocked(rt, swapchain, swapInfo))
+                {
+                    return false;
+                }
+
+                auto ovlIt = rt.overlaySwapchains.find(swapchain);
+                if (ovlIt == rt.overlaySwapchains.end())
+                {
+                    return false;
+                }
+                ovl = &ovlIt->second;
+                if (ovl->framebuffers.empty() || imageIndex >= ovl->framebuffers.size())
+                {
+                    return false;
+                }
+
+                if (!EnsureImGuiLocked(rt, queue, swapchain, queueIt->second, deviceIt->second, *ovl))
+                {
+                    return false;
+                }
             }
 
-            auto capIt = rt.captures.find(queue);
-            if (capIt == rt.captures.end())
+            if (vkResetCommandPool(gpu.device, gpu.commandPool, 0) != VK_SUCCESS)
             {
                 return false;
             }
-            auto& cap = capIt->second;
-
-            const VkImage image = swapInfo.images[imageIndex];
-            if (image == VK_NULL_HANDLE)
-            {
-                return false;
-            }
-            if (vkResetCommandPool(cap.device, cap.commandPool, 0) != VK_SUCCESS)
+            if (vkResetFences(gpu.device, 1, &gpu.fence) != VK_SUCCESS)
             {
                 return false;
             }
@@ -606,83 +1158,114 @@ namespace ht::hook::vulkan
             VkCommandBufferBeginInfo beginInfo{};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (vkBeginCommandBuffer(cap.commandBuffer, &beginInfo) != VK_SUCCESS)
+            if (vkBeginCommandBuffer(gpu.commandBuffer, &beginInfo) != VK_SUCCESS)
             {
                 return false;
             }
 
-            VkImageMemoryBarrier toTransfer{};
-            toTransfer.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toTransfer.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toTransfer.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toTransfer.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toTransfer.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toTransfer.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toTransfer.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toTransfer.image = image;
-            toTransfer.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            toTransfer.subresourceRange.baseMipLevel = 0;
-            toTransfer.subresourceRange.levelCount = 1;
-            toTransfer.subresourceRange.baseArrayLayer = 0;
-            toTransfer.subresourceRange.layerCount = 1;
-            vkCmdPipelineBarrier(
-                cap.commandBuffer,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &toTransfer);
-
-            VkBufferImageCopy region{};
-            region.bufferOffset = 0;
-            region.bufferRowLength = 0;
-            region.bufferImageHeight = 0;
-            region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            region.imageSubresource.mipLevel = 0;
-            region.imageSubresource.baseArrayLayer = 0;
-            region.imageSubresource.layerCount = 1;
-            region.imageOffset = {0, 0, 0};
-            region.imageExtent = {cap.width, cap.height, 1};
-            vkCmdCopyImageToBuffer(
-                cap.commandBuffer,
-                image,
-                VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                cap.stagingBuffer,
-                1,
-                &region);
-
-            VkImageMemoryBarrier toPresent{};
-            toPresent.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-            toPresent.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            toPresent.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT;
-            toPresent.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-            toPresent.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-            toPresent.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toPresent.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-            toPresent.image = image;
-            toPresent.subresourceRange = toTransfer.subresourceRange;
-            vkCmdPipelineBarrier(
-                cap.commandBuffer,
-                VK_PIPELINE_STAGE_TRANSFER_BIT,
-                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                0,
-                0,
-                nullptr,
-                0,
-                nullptr,
-                1,
-                &toPresent);
-
-            if (vkEndCommandBuffer(cap.commandBuffer) != VK_SUCCESS)
+            const VkImage targetImage = swapInfo.images[imageIndex];
+            if (targetImage == VK_NULL_HANDLE)
             {
+                (void)vkEndCommandBuffer(gpu.commandBuffer);
                 return false;
             }
 
-            if (vkResetFences(cap.device, 1, &cap.fence) != VK_SUCCESS)
+            bool inTransferLayout = false;
+            if (shouldCapture)
+            {
+                CmdTransitionImageLayout(
+                    gpu.commandBuffer,
+                    targetImage,
+                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_ACCESS_MEMORY_READ_BIT,
+                    VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT);
+                inTransferLayout = true;
+
+                VkBufferImageCopy region{};
+                region.bufferOffset = 0;
+                region.bufferRowLength = 0;
+                region.bufferImageHeight = 0;
+                region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                region.imageSubresource.mipLevel = 0;
+                region.imageSubresource.baseArrayLayer = 0;
+                region.imageSubresource.layerCount = 1;
+                region.imageOffset = {0, 0, 0};
+                region.imageExtent = {gpu.width, gpu.height, 1};
+                vkCmdCopyImageToBuffer(
+                    gpu.commandBuffer,
+                    targetImage,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    gpu.stagingBuffer,
+                    1,
+                    &region);
+            }
+
+            if (hasOverlayBlocks && ovl != nullptr)
+            {
+                if (inTransferLayout)
+                {
+                    CmdTransitionImageLayout(
+                        gpu.commandBuffer,
+                        targetImage,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+                }
+                else
+                {
+                    CmdTransitionImageLayout(
+                        gpu.commandBuffer,
+                        targetImage,
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                        VK_ACCESS_MEMORY_READ_BIT,
+                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+                }
+
+                BuildImGuiOverlayDrawDataLocked(rt, gpu.width, gpu.height);
+
+                VkRenderPassBeginInfo rpBegin{};
+                rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                rpBegin.renderPass = ovl->renderPass;
+                rpBegin.framebuffer = ovl->framebuffers[imageIndex];
+                rpBegin.renderArea.offset = {0, 0};
+                rpBegin.renderArea.extent = {gpu.width, gpu.height};
+                vkCmdBeginRenderPass(gpu.commandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), gpu.commandBuffer);
+                vkCmdEndRenderPass(gpu.commandBuffer);
+
+                CmdTransitionImageLayout(
+                    gpu.commandBuffer,
+                    targetImage,
+                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                    VK_ACCESS_MEMORY_READ_BIT,
+                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+            }
+            else if (inTransferLayout)
+            {
+                CmdTransitionImageLayout(
+                    gpu.commandBuffer,
+                    targetImage,
+                    VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                    VK_ACCESS_TRANSFER_READ_BIT,
+                    VK_ACCESS_MEMORY_READ_BIT,
+                    VK_PIPELINE_STAGE_TRANSFER_BIT,
+                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+            }
+
+            if (vkEndCommandBuffer(gpu.commandBuffer) != VK_SUCCESS)
             {
                 return false;
             }
@@ -690,70 +1273,82 @@ namespace ht::hook::vulkan
             VkSubmitInfo submitInfo{};
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &cap.commandBuffer;
-            if (vkQueueSubmit(queue, 1, &submitInfo, cap.fence) != VK_SUCCESS)
+            submitInfo.pCommandBuffers = &gpu.commandBuffer;
+            if (vkQueueSubmit(queue, 1, &submitInfo, gpu.fence) != VK_SUCCESS)
             {
                 return false;
             }
 
-            if (vkWaitForFences(cap.device, 1, &cap.fence, VK_TRUE, 1'000'000'000ull) != VK_SUCCESS)
+            if (vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull) != VK_SUCCESS)
+            {
+                return false;
+            }
+
+            rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
+            rt.lastWidth = gpu.width;
+            rt.lastHeight = gpu.height;
+
+            if (!shouldCapture)
+            {
+                return true;
+            }
+
+            bool rgbaNeedsSwap = false;
+            if (!IsCaptureFormatSupported(gpu.format, rgbaNeedsSwap))
             {
                 return false;
             }
 
             void* mapped = nullptr;
-            if (vkMapMemory(cap.device, cap.stagingMemory, 0, cap.stagingBytes, 0, &mapped) != VK_SUCCESS || mapped == nullptr)
+            if (vkMapMemory(gpu.device, gpu.stagingMemory, 0, gpu.stagingBytes, 0, &mapped) != VK_SUCCESS || mapped == nullptr)
             {
                 return false;
             }
 
-            const auto* srcBytes = static_cast<const std::uint8_t*>(mapped);
-            const std::size_t payloadBytes = static_cast<std::size_t>(cap.stagingBytes);
-            if (cap.scratch.size() < payloadBytes)
+            const auto* src = static_cast<const std::uint8_t*>(mapped);
+            const auto bytes = static_cast<std::size_t>(gpu.stagingBytes);
+            if (gpu.scratch.size() < bytes)
             {
-                cap.scratch.resize(payloadBytes);
+                gpu.scratch.resize(bytes);
             }
 
             if (!rgbaNeedsSwap)
             {
-                std::memcpy(cap.scratch.data(), srcBytes, payloadBytes);
+                std::memcpy(gpu.scratch.data(), src, bytes);
             }
             else
             {
-                for (std::size_t i = 0; i + 3 < payloadBytes; i += 4)
+                for (std::size_t i = 0; i + 3 < bytes; i += 4)
                 {
-                    cap.scratch[i + 0] = srcBytes[i + 2];
-                    cap.scratch[i + 1] = srcBytes[i + 1];
-                    cap.scratch[i + 2] = srcBytes[i + 0];
-                    cap.scratch[i + 3] = srcBytes[i + 3];
+                    gpu.scratch[i + 0] = src[i + 2];
+                    gpu.scratch[i + 1] = src[i + 1];
+                    gpu.scratch[i + 2] = src[i + 0];
+                    gpu.scratch[i + 3] = src[i + 3];
                 }
             }
 
-            vkUnmapMemory(cap.device, cap.stagingMemory);
+            vkUnmapMemory(gpu.device, gpu.stagingMemory);
 
             const auto pid = GetCurrentProcessId();
-            const auto timestamp = NowQpc();
-            const std::uint32_t stride = cap.width * 4u;
+            const auto ts = NowQpc();
+            const std::uint32_t stride = gpu.width * 4u;
             const bool wrote = rt.frameWriter.WriteFrame(
                 pid,
                 ipc::GraphicsApi::Vulkan,
                 ++rt.frameId,
-                cap.width,
-                cap.height,
+                gpu.width,
+                gpu.height,
                 stride,
-                timestamp,
-                cap.scratch.data(),
-                payloadBytes);
+                ts,
+                gpu.scratch.data(),
+                bytes);
             if (!wrote)
             {
                 return false;
             }
 
-            rt.lastCaptureQpc = timestamp;
-            rt.lastFrameWriteQpc = timestamp;
-            rt.lastFormat = static_cast<std::uint32_t>(cap.format);
-            rt.lastWidth = cap.width;
-            rt.lastHeight = cap.height;
+            rt.lastCaptureQpc = ts;
+            rt.lastFrameWriteQpc = ts;
             return true;
         }
 
@@ -777,8 +1372,8 @@ namespace ht::hook::vulkan
             status.stagingDxgiFormat = rt.lastFormat;
             status.lastFrameIdWritten = rt.frameId;
             status.lastFrameWriteQpc = rt.lastFrameWriteQpc;
-            status.lastCmdQpc = 0;
-            status.lastCmdCount = 0;
+            status.lastCmdQpc = rt.lastOverlayV2Qpc;
+            status.lastCmdCount = rt.overlayV2Header.textBlockCount;
             (void)rt.statusWriter.Write(status);
         }
 
@@ -819,12 +1414,17 @@ namespace ht::hook::vulkan
             return enableStatus == MH_OK || enableStatus == MH_ERROR_ENABLED;
         }
 
+        VKAPI_ATTR VkResult VKAPI_CALL Hook_vkCreateInstance(
+            const VkInstanceCreateInfo* createInfo,
+            const VkAllocationCallbacks* allocator,
+            VkInstance* instance);
+
+        VKAPI_ATTR void VKAPI_CALL Hook_vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator);
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkCreateDevice(
             VkPhysicalDevice physicalDevice,
             const VkDeviceCreateInfo* createInfo,
             const VkAllocationCallbacks* allocator,
             VkDevice* device);
-
         VKAPI_ATTR void VKAPI_CALL Hook_vkDestroyDevice(VkDevice device, const VkAllocationCallbacks* allocator);
         VKAPI_ATTR void VKAPI_CALL Hook_vkGetDeviceQueue(
             VkDevice device,
@@ -875,43 +1475,36 @@ namespace ht::hook::vulkan
                 StoreOriginalIfUnset(rt.originalGetDeviceQueue, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkGetDeviceQueue);
             }
-
             if (std::strcmp(functionName, "vkGetDeviceQueue2") == 0)
             {
                 StoreOriginalIfUnset(rt.originalGetDeviceQueue2, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkGetDeviceQueue2);
             }
-
             if (std::strcmp(functionName, "vkCreateSwapchainKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalCreateSwapchainKHR, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkCreateSwapchainKHR);
             }
-
             if (std::strcmp(functionName, "vkDestroySwapchainKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalDestroySwapchainKHR, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkDestroySwapchainKHR);
             }
-
             if (std::strcmp(functionName, "vkAcquireNextImageKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalAcquireNextImageKHR, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkAcquireNextImageKHR);
             }
-
             if (std::strcmp(functionName, "vkAcquireNextImage2KHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalAcquireNextImage2KHR, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkAcquireNextImage2KHR);
             }
-
             if (std::strcmp(functionName, "vkGetSwapchainImagesKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalGetSwapchainImagesKHR, resolved);
                 return resolved;
             }
-
             if (std::strcmp(functionName, "vkQueuePresentKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalQueuePresentKHR, resolved);
@@ -930,11 +1523,26 @@ namespace ht::hook::vulkan
                 resolved = rt.originalGetInstanceProcAddr(instance, functionName);
             }
 
+            if (instance != VK_NULL_HANDLE)
+            {
+                rt.instance = instance;
+            }
+
             if (functionName == nullptr)
             {
                 return resolved;
             }
 
+            if (std::strcmp(functionName, "vkCreateInstance") == 0)
+            {
+                StoreOriginalIfUnset(rt.originalCreateInstance, resolved);
+                return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkCreateInstance);
+            }
+            if (std::strcmp(functionName, "vkDestroyInstance") == 0)
+            {
+                StoreOriginalIfUnset(rt.originalDestroyInstance, resolved);
+                return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkDestroyInstance);
+            }
             if (std::strcmp(functionName, "vkCreateDevice") == 0)
             {
                 StoreOriginalIfUnset(rt.originalCreateDevice, resolved);
@@ -942,6 +1550,53 @@ namespace ht::hook::vulkan
             }
 
             return resolved;
+        }
+
+        VKAPI_ATTR VkResult VKAPI_CALL Hook_vkCreateInstance(
+            const VkInstanceCreateInfo* createInfo,
+            const VkAllocationCallbacks* allocator,
+            VkInstance* instance)
+        {
+            auto& rt = g_rt;
+            const auto original = rt.originalCreateInstance;
+            if (original == nullptr)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+
+            const auto result = original(createInfo, allocator, instance);
+            if (result == VK_SUCCESS && instance != nullptr && *instance != VK_NULL_HANDLE)
+            {
+                std::lock_guard<std::mutex> lock(rt.mutex);
+                rt.instance = *instance;
+                if (createInfo != nullptr && createInfo->pApplicationInfo != nullptr)
+                {
+                    const auto requested = createInfo->pApplicationInfo->apiVersion;
+                    if (requested != 0)
+                    {
+                        rt.apiVersion = requested;
+                    }
+                }
+            }
+            return result;
+        }
+
+        VKAPI_ATTR void VKAPI_CALL Hook_vkDestroyInstance(VkInstance instance, const VkAllocationCallbacks* allocator)
+        {
+            auto& rt = g_rt;
+            const auto original = rt.originalDestroyInstance;
+            {
+                std::lock_guard<std::mutex> lock(rt.mutex);
+                if (rt.instance == instance)
+                {
+                    rt.instance = VK_NULL_HANDLE;
+                }
+            }
+
+            if (original != nullptr)
+            {
+                original(instance, allocator);
+            }
         }
 
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkCreateDevice(
@@ -963,7 +1618,6 @@ namespace ht::hook::vulkan
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 rt.devices[*device] = DeviceInfo{physicalDevice};
             }
-
             return result;
         }
 
@@ -1042,9 +1696,9 @@ namespace ht::hook::vulkan
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 UpsertSwapchainFromCreateLocked(rt, device, *swapchain, createInfo);
             }
-
             return result;
         }
+
         VKAPI_ATTR void VKAPI_CALL Hook_vkDestroySwapchainKHR(
             VkDevice device,
             VkSwapchainKHR swapchain,
@@ -1053,6 +1707,12 @@ namespace ht::hook::vulkan
             auto& rt = g_rt;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
+                auto ovlIt = rt.overlaySwapchains.find(swapchain);
+                if (ovlIt != rt.overlaySwapchains.end())
+                {
+                    DestroyOverlaySwapchainState(device, ovlIt->second);
+                    rt.overlaySwapchains.erase(ovlIt);
+                }
                 rt.swapchains.erase(swapchain);
             }
 
@@ -1062,7 +1722,6 @@ namespace ht::hook::vulkan
                 original(device, swapchain, allocator);
             }
         }
-
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkAcquireNextImageKHR(
             VkDevice device,
             VkSwapchainKHR swapchain,
@@ -1084,7 +1743,6 @@ namespace ht::hook::vulkan
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 UpsertSwapchainFromAcquireLocked(rt, device, swapchain);
             }
-
             return result;
         }
 
@@ -1106,13 +1764,13 @@ namespace ht::hook::vulkan
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 UpsertSwapchainFromAcquireLocked(rt, device, acquireInfo->swapchain);
             }
-
             return result;
         }
 
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* presentInfo)
         {
             auto& rt = g_rt;
+            PFN_vkQueuePresentKHR original = nullptr;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 rt.presentCount++;
@@ -1120,8 +1778,8 @@ namespace ht::hook::vulkan
                 rt.lastPresentKind = 1;
 
                 (void)EnsureConfigRefreshedLocked(rt);
-                if (ShouldCaptureNowLocked(rt, rt.lastPresentQpc) &&
-                    presentInfo != nullptr &&
+
+                if (presentInfo != nullptr &&
                     presentInfo->swapchainCount > 0 &&
                     presentInfo->pSwapchains != nullptr)
                 {
@@ -1130,13 +1788,13 @@ namespace ht::hook::vulkan
                             ? presentInfo->pImageIndices[0]
                             : 0u;
                     const VkSwapchainKHR swapchain = presentInfo->pSwapchains[0];
-                    (void)CaptureSwapchainImageLocked(rt, queue, swapchain, imageIndex);
+                    (void)SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex);
                 }
 
                 PublishStatusLocked(rt);
+                original = rt.originalQueuePresentKHR;
             }
 
-            const auto original = rt.originalQueuePresentKHR;
             if (original == nullptr)
             {
                 return VK_ERROR_INITIALIZATION_FAILED;
@@ -1183,6 +1841,16 @@ namespace ht::hook::vulkan
             "vkGetInstanceProcAddr",
             reinterpret_cast<void*>(&Hook_vkGetInstanceProcAddr),
             reinterpret_cast<void**>(&rt.originalGetInstanceProcAddr));
+        hookedAny |= HookExport(
+            vulkanModule,
+            "vkCreateInstance",
+            reinterpret_cast<void*>(&Hook_vkCreateInstance),
+            reinterpret_cast<void**>(&rt.originalCreateInstance));
+        hookedAny |= HookExport(
+            vulkanModule,
+            "vkDestroyInstance",
+            reinterpret_cast<void*>(&Hook_vkDestroyInstance),
+            reinterpret_cast<void**>(&rt.originalDestroyInstance));
         hookedAny |= HookExport(
             vulkanModule,
             "vkCreateDevice",
