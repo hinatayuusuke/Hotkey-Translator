@@ -15972,3 +15972,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - cmake --build Native/build --config Debug --target HookAgentVulkan 実行成功。
+
+**2026-03-04 17:40 (Asia/Taipei) — Steam Launch Options連携モード（CLI hook-launch）実装**
+
+### Summary
+- --hook-launch/--hook -- %command% で起動された際に、起動時自動で CREATE_SUSPENDED -> attach -> resume を実行する経路を追加した。
+
+### Context / Goal
+- Steam Overlay 文脈を維持したまま、Vulkanでも早期注入できる起動モードを実装する必要があった。
+- 既存のUIボタンランチャー経路と同等の安全な attach/resume 手順をCLI経路でも再利用することが目的。
+
+### Changes
+- GraphicsHookLauncherService に、%command% 展開後のトークン列を直接起動するAPIを追加。
+- 引数再構成時に Windows コマンドライン規則でクォートする QuoteArgument を追加。
+- MainWindow 起動時に --hook-launch / --hook と -- 区切りを検出し、対象コマンドを自動起動する処理を追加。
+- UIランチャー経路とCLI経路の共通化として AttachAndResumeLaunchedProcessAsync を導入。
+- ログに source=settings_ui|launch_options を付与し、経路識別を可能化。
+
+### Files Touched
+- MainWindow.xaml.cs — 起動時CLI検出、共通attach/resume処理、UIランチャー処理の共通化を実装。
+- Services/Hook/GraphicsHookLauncherService.cs — コマンドトークン起動APIとWindows向け引数クォート処理を追加。
+
+### Behavioral Impact
+- Hotkey-Translator.exe --hook-launch -- <target_exe> <args...> で起動すると、アプリ起動後に自動で対象プロセスをsuspend起動し、Hook attach後にresumeする。
+- 設定UIの「Launch + Hook」ボタン挙動は維持しつつ、同一のattach/resume処理を使う。
+
+### Risk & Mitigation
+- Risk: -- 区切りやターゲットコマンドが不正な場合、起動時にフック実行できない。
+- Mitigation: 明示ログ（separator_missing / target_command_empty / target_exe_not_found）で失敗理由を可視化。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 errors, 0 warnings）。

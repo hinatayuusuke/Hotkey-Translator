@@ -70,6 +70,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
+    private bool _startupHookLaunchHandled;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private readonly bool _hookRoiTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
@@ -313,6 +314,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeAutoHideWatcher(settings);
         await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
         AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
+        await TryHandleStartupHookLaunchAsync(settings).ConfigureAwait(true);
         _drawerLayoutController.SyncForCurrentState();
         _winRtLanguagePackUiController.Start();
         _winRtLanguagePackUiController.SchedulePrecheck();
@@ -495,6 +497,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private async void OnLaunchGraphicsHookLauncherClicked(object sender, RoutedEventArgs e)
     {
+        await LaunchConfiguredGraphicsHookTargetAsync().ConfigureAwait(true);
+    }
+
+    private async Task LaunchConfiguredGraphicsHookTargetAsync()
+    {
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
         var settings = _settingsService.Settings;
         if (!IsGraphicsHookLauncherModeEnabled(settings))
@@ -521,42 +528,163 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
+        await AttachAndResumeLaunchedProcessAsync(
+                launched,
+                exePath,
+                settings.GraphicsHookLauncherArgs ?? string.Empty,
+                "settings_ui")
+            .ConfigureAwait(true);
+    }
+
+    private async Task TryHandleStartupHookLaunchAsync(AppSettings settings)
+    {
+        if (_startupHookLaunchHandled)
+        {
+            return;
+        }
+
+        _startupHookLaunchHandled = true;
+        var startupArgs = Environment.GetCommandLineArgs();
+        if (!TryParseHookLaunchTargetTokens(startupArgs, out var targetCommandTokens, out var parseFailureReason))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(parseFailureReason))
+        {
+            AppendLog($"stage=graphics_hook event=launcher_fail source=launch_options reason={parseFailureReason}.");
+            return;
+        }
+
+        if (!settings.EnableGraphicsHookPipeline)
+        {
+            AppendLog("stage=graphics_hook event=launcher_skip source=launch_options reason=graphics_hook_pipeline_disabled.");
+            return;
+        }
+
+        if (!_graphicsHookLauncherService.TryLaunchSuspendedFromCommandTokens(
+                targetCommandTokens,
+                out var launched,
+                out var resolvedExePath,
+                out var resolvedArgs,
+                out var launchFailureReason) ||
+            launched == null ||
+            string.IsNullOrWhiteSpace(resolvedExePath))
+        {
+            AppendLog($"stage=graphics_hook event=launcher_fail source=launch_options reason={launchFailureReason ?? "launch_failed"}.");
+            return;
+        }
+
+        AppendLog($"stage=graphics_hook event=launcher_cli_detected source=launch_options api={settings.GraphicsHookApi}.");
+        await AttachAndResumeLaunchedProcessAsync(
+                launched,
+                resolvedExePath,
+                resolvedArgs ?? string.Empty,
+                "launch_options")
+            .ConfigureAwait(true);
+    }
+
+    private async Task AttachAndResumeLaunchedProcessAsync(
+        GraphicsHookLauncherService.SuspendedProcess launched,
+        string targetExePath,
+        string targetArgsForLog,
+        string source)
+    {
         using (launched)
         {
+            var settings = _settingsService.Settings;
             AppendLog(
-                $"stage=graphics_hook event=launcher_start pid={launched.ProcessId} exe=\"{exePath}\" args=\"{settings.GraphicsHookLauncherArgs}\".");
+                $"stage=graphics_hook event=launcher_start source={source} pid={launched.ProcessId} exe=\"{targetExePath}\" args=\"{targetArgsForLog}\".");
 
             settings.EnableFixedCaptureWindow = true;
             settings.FixedCaptureWindowHandle = 0;
             settings.FixedCaptureWindowProcessId = launched.ProcessId;
-            settings.FixedCaptureWindowProcessName = Path.GetFileNameWithoutExtension(exePath) ?? string.Empty;
+            settings.FixedCaptureWindowProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
             settings.FixedCaptureWindowClassName = string.Empty;
             settings.FixedCaptureWindowTitle = string.Empty;
-            AppendLog($"stage=graphics_hook event=launcher_bound pid={launched.ProcessId} api={settings.GraphicsHookApi}.");
+            AppendLog(
+                $"stage=graphics_hook event=launcher_bound source={source} pid={launched.ProcessId} api={settings.GraphicsHookApi}.");
             _mainWindowViewModel.Settings.LoadFrom(settings);
 
             await _settingsService.SaveAsync().ConfigureAwait(true);
             await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-            AppendLog($"stage=graphics_hook event=launcher_attach_ok pid={launched.ProcessId}.");
+            AppendLog($"stage=graphics_hook event=launcher_attach_ok source={source} pid={launched.ProcessId}.");
 
             if (!launched.Resume(out var resumeFailureReason))
             {
-                AppendLog($"stage=graphics_hook event=launcher_fail pid={launched.ProcessId} reason={resumeFailureReason ?? "resume_failed"}.");
+                AppendLog(
+                    $"stage=graphics_hook event=launcher_fail source={source} pid={launched.ProcessId} reason={resumeFailureReason ?? "resume_failed"}.");
                 if (launched.TryTerminate(1, out var terminateReason))
                 {
-                    AppendLog($"stage=graphics_hook event=launcher_cleanup pid={launched.ProcessId} action=terminate result=ok.");
+                    AppendLog(
+                        $"stage=graphics_hook event=launcher_cleanup source={source} pid={launched.ProcessId} action=terminate result=ok.");
                 }
                 else
                 {
                     AppendLog(
-                        $"stage=graphics_hook event=launcher_cleanup pid={launched.ProcessId} action=terminate result=failed reason={terminateReason ?? "unknown"}.");
+                        $"stage=graphics_hook event=launcher_cleanup source={source} pid={launched.ProcessId} action=terminate result=failed reason={terminateReason ?? "unknown"}.");
                 }
 
                 return;
             }
 
-            AppendLog($"stage=graphics_hook event=launcher_resume pid={launched.ProcessId}.");
+            AppendLog($"stage=graphics_hook event=launcher_resume source={source} pid={launched.ProcessId}.");
         }
+    }
+
+    private static bool TryParseHookLaunchTargetTokens(
+        IReadOnlyList<string> startupArgs,
+        out IReadOnlyList<string> targetCommandTokens,
+        out string? failureReason)
+    {
+        targetCommandTokens = Array.Empty<string>();
+        failureReason = null;
+        if (startupArgs == null || startupArgs.Count <= 1)
+        {
+            return false;
+        }
+
+        var hasHookFlag = false;
+        for (var i = 1; i < startupArgs.Count; i++)
+        {
+            var arg = startupArgs[i];
+            if (string.Equals(arg, "--hook-launch", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(arg, "--hook", StringComparison.OrdinalIgnoreCase))
+            {
+                hasHookFlag = true;
+                break;
+            }
+        }
+
+        if (!hasHookFlag)
+        {
+            return false;
+        }
+
+        var separatorIndex = -1;
+        for (var i = 1; i < startupArgs.Count; i++)
+        {
+            if (string.Equals(startupArgs[i], "--", StringComparison.Ordinal))
+            {
+                separatorIndex = i;
+                break;
+            }
+        }
+
+        if (separatorIndex < 0)
+        {
+            failureReason = "launch_options_separator_missing";
+            return true;
+        }
+
+        if (separatorIndex + 1 >= startupArgs.Count)
+        {
+            failureReason = "launch_options_target_command_empty";
+            return true;
+        }
+
+        targetCommandTokens = startupArgs.Skip(separatorIndex + 1).ToArray();
+        return true;
     }
 
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)

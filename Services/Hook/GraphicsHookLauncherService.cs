@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -65,6 +67,75 @@ internal sealed class GraphicsHookLauncherService
         return true;
     }
 
+    public bool TryLaunchSuspendedFromCommandTokens(
+        IReadOnlyList<string> commandTokens,
+        out SuspendedProcess? process,
+        out string? resolvedExePath,
+        out string? resolvedArgs,
+        out string? failureReason)
+    {
+        process = null;
+        resolvedExePath = null;
+        resolvedArgs = null;
+        failureReason = null;
+
+        if (commandTokens == null || commandTokens.Count == 0)
+        {
+            failureReason = "target_command_empty";
+            return false;
+        }
+
+        var exePath = (commandTokens[0] ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(exePath))
+        {
+            failureReason = "target_exe_empty";
+            return false;
+        }
+
+        if (!File.Exists(exePath))
+        {
+            failureReason = $"target_exe_not_found: {exePath}";
+            return false;
+        }
+
+        var workingDirectory = Path.GetDirectoryName(exePath);
+        if (string.IsNullOrWhiteSpace(workingDirectory))
+        {
+            failureReason = $"target_working_directory_not_resolved: {exePath}";
+            return false;
+        }
+
+        var normalizedArgs = commandTokens.Count > 1
+            ? string.Join(" ", commandTokens.Skip(1).Select(QuoteArgument))
+            : string.Empty;
+        var commandLine = new StringBuilder(BuildCommandLine(exePath, normalizedArgs));
+        var startupInfo = new StartupInfoW
+        {
+            cb = (uint)Marshal.SizeOf<StartupInfoW>()
+        };
+
+        if (!CreateProcessW(
+                exePath,
+                commandLine,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                false,
+                CreateSuspended,
+                IntPtr.Zero,
+                workingDirectory,
+                ref startupInfo,
+                out var processInfo))
+        {
+            failureReason = BuildWin32FailureReason("create_process_failed");
+            return false;
+        }
+
+        process = SuspendedProcess.Create(processInfo);
+        resolvedExePath = exePath;
+        resolvedArgs = normalizedArgs;
+        return true;
+    }
+
     private static string BuildCommandLine(string exePath, string? args)
     {
         var trimmedArgs = (args ?? string.Empty).Trim();
@@ -91,6 +162,56 @@ internal sealed class GraphicsHookLauncherService
 
         var escaped = value.Replace("\"", "\\\"");
         return $"\"{escaped}\"";
+    }
+
+    private static string QuoteArgument(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return "\"\"";
+        }
+
+        var needsQuotes = value.Any(char.IsWhiteSpace) || value.Contains('"');
+        if (!needsQuotes)
+        {
+            return value;
+        }
+
+        var builder = new StringBuilder(value.Length + 8);
+        builder.Append('"');
+        var backslashRun = 0;
+        foreach (var ch in value)
+        {
+            if (ch == '\\')
+            {
+                backslashRun++;
+                continue;
+            }
+
+            if (ch == '"')
+            {
+                builder.Append('\\', (backslashRun * 2) + 1);
+                builder.Append('"');
+                backslashRun = 0;
+                continue;
+            }
+
+            if (backslashRun > 0)
+            {
+                builder.Append('\\', backslashRun);
+                backslashRun = 0;
+            }
+
+            builder.Append(ch);
+        }
+
+        if (backslashRun > 0)
+        {
+            builder.Append('\\', backslashRun * 2);
+        }
+
+        builder.Append('"');
+        return builder.ToString();
     }
 
     private static string BuildWin32FailureReason(string prefix)
