@@ -30,6 +30,7 @@ internal sealed class GraphicsHookClientService : IDisposable
     private string _lastPipeName = "hotkey_translator_hook";
     private int _attachedPid;
     private GraphicsHookApiKind _attachedApi = GraphicsHookApiKind.Dx11;
+    private uint _runtimeConfigFlags;
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private bool _disposed;
@@ -103,18 +104,26 @@ internal sealed class GraphicsHookClientService : IDisposable
             var effectiveOverlayEnabled =
                 IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled;
+            var configFlags = BuildConfigFlags(settings);
 
             var attachRequest = new GraphicsHookAttachRequest(
                 settings.FixedCaptureWindowProcessId,
                 settings.GraphicsHookApi,
                 settings.GraphicsHookCaptureFpsLimit,
-                effectiveOverlayEnabled);
+                effectiveOverlayEnabled,
+                configFlags);
 
             await SendCommandAsync(new GraphicsHookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
             _attachedPid = settings.FixedCaptureWindowProcessId;
             _attachedApi = settings.GraphicsHookApi;
+            _runtimeConfigFlags = configFlags;
             // WHY: Publishing config via shared memory lets runtime/UI changes take effect even if the pipe is slow/unavailable.
-            _configWriter.TryWrite(_attachedPid, _attachedApi, settings.GraphicsHookCaptureFpsLimit, effectiveOverlayEnabled);
+            _configWriter.TryWrite(
+                _attachedPid,
+                _attachedApi,
+                settings.GraphicsHookCaptureFpsLimit,
+                effectiveOverlayEnabled,
+                _runtimeConfigFlags);
             _loggerAccessor()?.Info(
                 $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
         }
@@ -230,7 +239,7 @@ internal sealed class GraphicsHookClientService : IDisposable
         try
         {
             var effectiveOverlayEnabled = IsHookOverlaySupportedApi(_attachedApi) && overlayEnabled;
-            var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, effectiveOverlayEnabled);
+            var wrote = _configWriter.TryWrite(pid, _attachedApi, captureFpsLimit, effectiveOverlayEnabled, _runtimeConfigFlags);
             if (!wrote)
             {
                 failureReason = "writer_failed";
@@ -497,8 +506,25 @@ internal sealed class GraphicsHookClientService : IDisposable
         HookFrameMapRegistry.Clear(_attachedPid);
         _attachedPid = 0;
         _attachedApi = GraphicsHookApiKind.Dx11;
+        _runtimeConfigFlags = 0;
         _overlayV2Writer.Reset();
         _configWriter.Reset();
+    }
+
+    private static uint BuildConfigFlags(AppSettings settings)
+    {
+        var flags = 0u;
+        if (settings.EnableGraphicsHookPerfDiagLog)
+        {
+            flags |= GraphicsHookConfigWriter.ConfigFlagEnablePerfDiagLog;
+        }
+
+        if (settings.EnableGraphicsHookDiagFileSink)
+        {
+            flags |= GraphicsHookConfigWriter.ConfigFlagEnableDiagFileSink;
+        }
+
+        return flags;
     }
 
     private async Task ShutdownHostProcessAsync()
@@ -686,6 +712,7 @@ internal sealed class GraphicsHookClientService : IDisposable
         _disposed = true;
         _attachedPid = 0;
         _attachedApi = GraphicsHookApiKind.Dx11;
+        _runtimeConfigFlags = 0;
         TryForceTerminateHostProcessOnDispose();
         DisposePipe();
         _overlayV2Writer.Dispose();

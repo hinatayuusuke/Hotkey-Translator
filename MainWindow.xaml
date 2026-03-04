@@ -875,6 +875,16 @@
                                             Margin="0,4,0,0"
                                             IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                                             IsChecked="{Binding Settings.GraphicsHookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="GraphicsHookPerfDiagLogCheck"
+                                            Content="Enable hook perf diagnostic log (Vulkan)"
+                                            Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                            IsChecked="{Binding Settings.EnableGraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="GraphicsHookDiagFileSinkCheck"
+                                            Content="Enable hook diagnostic file sink"
+                                            Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                            IsChecked="{Binding Settings.EnableGraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
                                       <TextBox x:Name="GraphicsHookCaptureFpsLimitBox" Width="80"

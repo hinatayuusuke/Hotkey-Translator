@@ -6,7 +6,8 @@ internal sealed record GraphicsHookAttachRequest(
     int Pid,
     GraphicsHookApiKind Api,
     int CaptureFpsLimit,
-    bool EnableOverlay);
+    bool EnableOverlay,
+    uint ConfigFlags);
 
 internal sealed record GraphicsHookDetachRequest(
     int Pid);

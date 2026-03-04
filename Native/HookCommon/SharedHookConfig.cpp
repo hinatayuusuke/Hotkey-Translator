@@ -90,7 +90,12 @@ namespace ht::hook::ipc
         return true;
     }
 
-    bool SharedHookConfigWriter::Write(DWORD pid, GraphicsApi api, std::uint32_t captureFpsLimit, bool overlayEnabled)
+    bool SharedHookConfigWriter::Write(
+        DWORD pid,
+        GraphicsApi api,
+        std::uint32_t captureFpsLimit,
+        bool overlayEnabled,
+        std::uint32_t configFlags)
     {
         if (!Ensure(pid, api) || mapped_ == nullptr)
         {
@@ -104,6 +109,7 @@ namespace ht::hook::ipc
         hdr.targetPid = pid;
         hdr.captureFpsLimit = ClampFps(captureFpsLimit);
         hdr.overlayEnabled = overlayEnabled ? 1u : 0u;
+        hdr.reserved0 = configFlags;
         hdr.updatedQpc = NowQpc();
 
         *mapped_ = hdr;

@@ -156,6 +156,7 @@ namespace ht::hook::vulkan
             std::uint64_t lastFrameWriteQpc = 0;
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
             bool overlayEnabled = false;
+            bool perfDiagLogEnabled = false;
 
             std::uint64_t lastOverlayV2Seq = 0;
             std::uint64_t lastOverlayV2Qpc = 0;
@@ -195,6 +196,7 @@ namespace ht::hook::vulkan
         HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
         DWORD g_diagFilePid = 0;
         std::wstring g_diagFilePath;
+        std::atomic_bool g_diagFileSinkEnabled{false};
         std::atomic_bool g_loggedFirstCreateDeviceHit{false};
         std::atomic_bool g_loggedFirstCreateSwapchainHit{false};
 
@@ -392,7 +394,10 @@ namespace ht::hook::vulkan
             va_end(args);
             OutputDebugStringA(buffer);
             OutputDebugStringA("\n");
-            AppendDiagFileLine(buffer);
+            if (g_diagFileSinkEnabled.load(std::memory_order_relaxed))
+            {
+                AppendDiagFileLine(buffer);
+            }
         }
 
         bool ShouldEmitDiagLog(std::uint64_t nowQpc, std::uint64_t qpcFreq, std::uint64_t& lastQpc, std::uint64_t intervalMs)
@@ -715,6 +720,8 @@ namespace ht::hook::vulkan
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.overlayEnabled = false;
+            rt.perfDiagLogEnabled = false;
+            g_diagFileSinkEnabled.store(false, std::memory_order_relaxed);
 
             rt.lastOverlayV2Seq = 0;
             rt.lastOverlayV2Qpc = 0;
@@ -857,6 +864,14 @@ namespace ht::hook::vulkan
                 ? (rt.qpcFreq / rt.configuredFpsLimit)
                 : 0;
             rt.overlayEnabled = cfg.overlayEnabled != 0;
+            rt.perfDiagLogEnabled = (cfg.reserved0 & ipc::kConfigFlagEnablePerfDiagLog) != 0;
+            const bool diagFileSinkEnabled = (cfg.reserved0 & ipc::kConfigFlagEnableDiagFileSink) != 0;
+            const bool previousDiagFileSinkEnabled =
+                g_diagFileSinkEnabled.exchange(diagFileSinkEnabled, std::memory_order_relaxed);
+            if (previousDiagFileSinkEnabled && !diagFileSinkEnabled)
+            {
+                CloseDiagFile();
+            }
             return true;
         }
 
@@ -1660,6 +1675,11 @@ namespace ht::hook::vulkan
 
             const auto emitPresentPerfLog = [&](const char* outcome)
             {
+                if (!rt.perfDiagLogEnabled)
+                {
+                    return;
+                }
+
                 const auto perfNowQpc = NowQpc();
                 if (!ShouldEmitDiagLog(perfNowQpc, rt.qpcFreq, rt.lastPresentPerfLogQpc, kDiagSummaryIntervalMs))
                 {

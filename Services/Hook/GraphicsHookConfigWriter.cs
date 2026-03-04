@@ -11,6 +11,8 @@ internal sealed class GraphicsHookConfigWriter : IDisposable
     private const int MappingBytes = 4096;
     private const uint ConfigMagic = 0x48435446; // "HCTF"
     private const uint ConfigVersion = 1;
+    public const uint ConfigFlagEnablePerfDiagLog = 1u << 0;
+    public const uint ConfigFlagEnableDiagFileSink = 1u << 1;
 
     private int _pid;
     private GraphicsHookApiKind _api = GraphicsHookApiKind.Dx11;
@@ -31,7 +33,7 @@ internal sealed class GraphicsHookConfigWriter : IDisposable
         public ulong UpdatedQpc;
     }
 
-    public bool TryWrite(int pid, GraphicsHookApiKind api, int captureFpsLimit, bool overlayEnabled)
+    public bool TryWrite(int pid, GraphicsHookApiKind api, int captureFpsLimit, bool overlayEnabled, uint configFlags = 0)
     {
         if (pid <= 0)
         {
@@ -53,6 +55,7 @@ internal sealed class GraphicsHookConfigWriter : IDisposable
                 TargetPid = unchecked((uint)pid),
                 CaptureFpsLimit = unchecked((uint)Math.Max(1, captureFpsLimit)),
                 OverlayEnabled = overlayEnabled ? 1u : 0u,
+                Reserved0 = configFlags,
                 UpdatedQpc = NowQpc()
             };
             _accessor!.Write(0, ref header);

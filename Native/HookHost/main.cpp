@@ -23,6 +23,7 @@ namespace
         ht::hook::ipc::GraphicsApi api = ht::hook::ipc::GraphicsApi::Dx11;
         bool enableOverlay = true;
         std::uint32_t captureFpsLimit = 15;
+        std::uint32_t configFlags = 0;
     };
 
     struct ProcessHookState
@@ -257,6 +258,12 @@ namespace
         if (ExtractU32(json, "captureFpsLimit", fps))
         {
             outReq.captureFpsLimit = fps;
+        }
+
+        std::uint32_t flags = 0;
+        if (ExtractU32(json, "configFlags", flags))
+        {
+            outReq.configFlags = flags;
         }
 
         return true;
@@ -569,7 +576,12 @@ namespace
                     return;
                 }
 
-                (void)existing->second.configWriter.Write(req.pid, existing->second.api, req.captureFpsLimit, req.enableOverlay);
+                (void)existing->second.configWriter.Write(
+                    req.pid,
+                    existing->second.api,
+                    req.captureFpsLimit,
+                    req.enableOverlay,
+                    req.configFlags);
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
                     PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -624,7 +636,12 @@ namespace
             st.remoteModule = remoteModule;
             st.dllPath = dllPath;
             st.api = req.api;
-            (void)st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay);
+            (void)st.configWriter.Write(
+                req.pid,
+                st.api,
+                req.captureFpsLimit,
+                req.enableOverlay,
+                req.configFlags);
             g_states[req.pid] = std::move(st);
 
             WriteResponse(pipe, BuildState("Attached", "ok", req.api, req.pid));

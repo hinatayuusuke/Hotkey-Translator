@@ -21,7 +21,12 @@ namespace ht::hook::ipc
         SharedHookConfigWriter& operator=(SharedHookConfigWriter&& other) noexcept;
 
         bool Ensure(DWORD pid, GraphicsApi api);
-        bool Write(DWORD pid, GraphicsApi api, std::uint32_t captureFpsLimit, bool overlayEnabled);
+        bool Write(
+            DWORD pid,
+            GraphicsApi api,
+            std::uint32_t captureFpsLimit,
+            bool overlayEnabled,
+            std::uint32_t configFlags = 0u);
         void Reset();
 
     private:

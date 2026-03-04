@@ -13,6 +13,8 @@ namespace ht::hook::ipc
 
     constexpr std::uint32_t kConfigHeaderMagic = 0x48435446; // "HCTF"
     constexpr std::uint32_t kConfigHeaderVersion = 1;
+    constexpr std::uint32_t kConfigFlagEnablePerfDiagLog = 1u << 0;
+    constexpr std::uint32_t kConfigFlagEnableDiagFileSink = 1u << 1;
 
     // Overlay v2 (ImGui translation overlay): text blocks + UTF-8 blob.
     constexpr std::uint32_t kOverlayV2Magic = 0x32564F48; // "HOV2"

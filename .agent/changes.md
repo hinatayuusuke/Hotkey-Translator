@@ -15855,3 +15855,49 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。
+
+**2026-03-04 16:40 (Asia/Taipei) — Vulkan Hook診断ログのスイッチ化（perf/file sink）**
+
+### Summary
+- Vulkan Hookの診断ログを設定でON/OFFできるようにし、`present_perf` とファイル出力を個別制御可能にした。
+
+### Context / Goal
+- 常時詳細ログはI/Oノイズと運用負荷が高いため、通常時は抑制し、調査時のみ有効化したい要件があった。
+- 既存IPC互換を維持しつつ、RuntimeConfig経由でHook側へフラグを伝達することが目的。
+
+### Changes
+- 設定追加: `EnableGraphicsHookPerfDiagLog`, `EnableGraphicsHookDiagFileSink`。
+- Settings UI（Graphics Hook）に2つのチェックボックスを追加。
+- C# Hook runtime config writerに `configFlags`（reserved0）書き込みを追加。
+- HookClientで設定から `configFlags` を生成し、attach payload と共有メモリ書き込みへ反映。
+- HookHost attach payloadに `configFlags` を受け取り、初回config書き込みへ反映。
+- Hook IPC protocolに config flag 定数を追加。
+- Vulkan Agentで `configFlags` を読み取り:
+- `EnablePerfDiagLog` がONのときのみ `event=present_perf` を出力。
+- `EnableDiagFileSink` がONのときのみ `hook_vulkan_*.log` へ追記。
+- file sink OFF遷移時は診断ファイルハンドルを閉じる。
+
+### Files Touched
+- `Models/AppSettings.cs` — 設定2項目を追加。
+- `ViewModels/SettingsViewModel.cs` — 追加設定のLoad/Apply/Saveトリガーを追加。
+- `MainWindow.xaml` — Graphics Hook設定UIに2チェックボックス追加。
+- `Services/Hook/GraphicsHookConfigWriter.cs` — `configFlags` 書き込みとflag定数追加。
+- `Services/Hook/GraphicsHookClientService.cs` — 設定→configFlags生成、attach/runtime publishに反映。
+- `Services/Hook/Contracts/GraphicsHookMessages.cs` — attach payloadに `ConfigFlags` を追加。
+- `Native/HookCommon/HookIpcProtocol.h` — config flag定数追加。
+- `Native/HookCommon/SharedHookConfig.h` — writer APIに `configFlags` 引数追加。
+- `Native/HookCommon/SharedHookConfig.cpp` — `reserved0=configFlags` 書き込み実装。
+- `Native/HookHost/main.cpp` — attach payloadの `configFlags` 解析とwriter反映。
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — perfログ/diag file sinkのフラグ制御実装。
+
+### Behavioral Impact
+- 既定（両方OFF）では `present_perf` ログは抑制され、`hook_vulkan_*.log` への出力も抑制される。
+- 調査時はSettingsでONにするだけで即時反映できる（runtime config更新経由）。
+
+### Risk & Mitigation
+- Risk: file sink OFF時は初期診断ログがファイルに残らず、初期化失敗の追跡が難しくなる可能性。
+- Mitigation: `OutputDebugString` は継続し、必要時は file sink をONにして再現可能。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。
+- `cmake --build Native/build --config Debug --target HookHost HookAgentVulkan` 実行成功。

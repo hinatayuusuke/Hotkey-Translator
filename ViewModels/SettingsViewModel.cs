@@ -78,6 +78,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableMirrorFullscreenMode;
     [ObservableProperty] private bool _graphicsHookOverlayEnabled;
     [ObservableProperty] private bool _graphicsHookFallbackOnError;
+    [ObservableProperty] private bool _enableGraphicsHookPerfDiagLog;
+    [ObservableProperty] private bool _enableGraphicsHookDiagFileSink;
     [ObservableProperty] private bool _enableVulkanEarlyInjectionLauncher;
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
@@ -203,6 +205,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableMirrorFullscreenMode = settings.EnableMirrorFullscreenMode;
             GraphicsHookOverlayEnabled = settings.GraphicsHookOverlayEnabled;
             GraphicsHookFallbackOnError = settings.GraphicsHookFallbackOnError;
+            EnableGraphicsHookPerfDiagLog = settings.EnableGraphicsHookPerfDiagLog;
+            EnableGraphicsHookDiagFileSink = settings.EnableGraphicsHookDiagFileSink;
             EnableVulkanEarlyInjectionLauncher = settings.EnableVulkanEarlyInjectionLauncher;
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
@@ -316,6 +320,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableMirrorFullscreenMode = EnableMirrorFullscreenMode;
         settings.GraphicsHookOverlayEnabled = GraphicsHookOverlayEnabled;
         settings.GraphicsHookFallbackOnError = GraphicsHookFallbackOnError;
+        settings.EnableGraphicsHookPerfDiagLog = EnableGraphicsHookPerfDiagLog;
+        settings.EnableGraphicsHookDiagFileSink = EnableGraphicsHookDiagFileSink;
         settings.EnableVulkanEarlyInjectionLauncher = EnableVulkanEarlyInjectionLauncher;
         settings.VulkanLauncherExePath = (VulkanLauncherExePath ?? string.Empty).Trim();
         settings.VulkanLauncherArgs = VulkanLauncherArgs ?? string.Empty;
@@ -661,6 +667,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     }
     partial void OnGraphicsHookOverlayEnabledChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookFallbackOnErrorChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableGraphicsHookPerfDiagLogChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableGraphicsHookDiagFileSinkChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableVulkanEarlyInjectionLauncherChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVulkanLauncherExePathChanged(string value) => RequestSaveOnValueChange();

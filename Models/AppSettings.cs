@@ -91,6 +91,8 @@ public sealed class AppSettings
     public int GraphicsHookCaptureFpsLimit { get; set; } = 15;
     public bool GraphicsHookOverlayEnabled { get; set; } = true;
     public bool GraphicsHookFallbackOnError { get; set; } = true;
+    public bool EnableGraphicsHookPerfDiagLog { get; set; } = false;
+    public bool EnableGraphicsHookDiagFileSink { get; set; } = false;
     public bool EnableVulkanEarlyInjectionLauncher { get; set; } = false;
     public string VulkanLauncherExePath { get; set; } = string.Empty;
     public string VulkanLauncherArgs { get; set; } = string.Empty;
