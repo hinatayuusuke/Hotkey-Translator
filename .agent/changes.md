@@ -15578,3 +15578,34 @@ dl_ocr_engine.py.
 - `cmake -S Native -B Native/build` 実行成功。
 - `cmake --build Native/build --config Debug --target HookHost` 実行成功。
 - `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功（`HookAgentVulkan.dll` 出力確認）。
+
+**2026-03-04 12:51 (Asia/Taipei) — Vulkan Hook 調査ログ追加（frame mapping未生成切り分け）**
+
+### Summary
+- HookAgentVulkan に常設の診断ログを追加し、Attach成功後に frame mapping が生成されない原因を分岐単位で追跡できるようにした。
+
+### Context / Goal
+- `state=Attached` の後に `Hook shared frame mapping not found` が発生し、Vulkan経路でどの段階で失敗しているか判別できなかった。
+- 1回の再現ログで失敗分岐（queue/swapchain/gpu state/submit/write）を確定できるようにすることが目的。
+
+### Changes
+- `OutputDebugStringA` ベースの軽量診断ロガーを追加。
+- `SubmitPresentWorkLocked` の早期失敗分岐ごとに `event=capture_skip` ログを追加。
+- `EnsureSwapchainImagesLocked` に取得失敗理由（device null / vk result / image count）ログを追加。
+- `EnsureQueueGpuStateLocked` にリソース作成失敗（command pool/buffer/fence/staging memory など）の `VkResult` ログを追加。
+- `event=present_summary`（2秒/120present間隔）と `event=write_frame result=ok|fail`（間引きあり）を追加。
+- 失敗ログは理由別に 1 秒間隔でスロットリングし、pending回数を集約する方式を導入。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 診断ログ基盤、失敗理由ログ、present summary、write_frame 成否ログ、スロットリング状態管理を追加。
+
+### Behavioral Impact
+- Vulkan Hook 実行時に DebugView へ `stage=hook_vulkan` ログが出力される。
+- 通常動作（capture/overlay）の機能仕様は変更しないが、デバッグ時のログ量は増える（スロットリング済み）。
+
+### Risk & Mitigation
+- Risk: ログ追加で Present パスのオーバーヘッドが増える可能性。
+- Mitigation: 失敗ログは理由別に 1 秒間隔、summary は 2 秒または 120 present 毎に限定してノイズ/負荷を抑制。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentVulkan` 実行成功。

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <atomic>
 #include <array>
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <mutex>
@@ -34,6 +36,33 @@ namespace ht::hook::vulkan
         constexpr std::uint32_t kMaxCaptureFps = 240u;
         constexpr std::uint32_t kOverlayFontBasePx = 32u;
         constexpr std::uint32_t kOverlayMaxBlocks = 64u;
+        constexpr std::uint64_t kDiagLogMinIntervalMs = 1000u;
+        constexpr std::uint64_t kDiagSummaryIntervalMs = 2000u;
+
+        enum class CaptureSkipReason : std::size_t
+        {
+            QueueNotFound = 0,
+            SwapchainNotFound,
+            SwapchainImagesMissing,
+            DeviceNotFound,
+            EnsureQueueGpuStateFailed,
+            QueueStateNotFound,
+            OverlaySwapchainStateFailed,
+            OverlayStateMissing,
+            OverlayFramebufferMissing,
+            EnsureImGuiFailed,
+            VkResetCommandPoolFailed,
+            VkResetFencesFailed,
+            VkBeginCommandBufferFailed,
+            TargetImageNull,
+            VkEndCommandBufferFailed,
+            VkQueueSubmitFailed,
+            VkWaitForFencesFailed,
+            CaptureFormatUnsupported,
+            VkMapMemoryFailed,
+            WriteFrameFailed,
+            Count
+        };
 
         struct DeviceInfo
         {
@@ -147,6 +176,14 @@ namespace ht::hook::vulkan
             std::uint32_t lastFormat = 0;
             std::uint32_t lastWidth = 0;
             std::uint32_t lastHeight = 0;
+
+            std::array<std::uint64_t, static_cast<std::size_t>(CaptureSkipReason::Count)> captureSkipLastLogQpc{};
+            std::array<std::uint32_t, static_cast<std::size_t>(CaptureSkipReason::Count)> captureSkipPendingCount{};
+            std::uint64_t lastPresentSummaryLogQpc = 0;
+            std::uint64_t lastSwapchainEnsureFailQpc = 0;
+            std::uint64_t lastGpuStateFailQpc = 0;
+            std::uint64_t lastWriteFrameOkQpc = 0;
+            std::uint64_t lastWriteFrameFailQpc = 0;
         };
 
         VulkanRuntime g_rt;
@@ -168,6 +205,117 @@ namespace ht::hook::vulkan
         std::uint32_t ClampFps(std::uint32_t fps)
         {
             return std::clamp(fps, kMinCaptureFps, kMaxCaptureFps);
+        }
+
+        const char* CaptureSkipReasonToString(CaptureSkipReason reason)
+        {
+            switch (reason)
+            {
+                case CaptureSkipReason::QueueNotFound: return "queue_not_found";
+                case CaptureSkipReason::SwapchainNotFound: return "swapchain_not_found";
+                case CaptureSkipReason::SwapchainImagesMissing: return "swapchain_images_missing";
+                case CaptureSkipReason::DeviceNotFound: return "device_not_found";
+                case CaptureSkipReason::EnsureQueueGpuStateFailed: return "ensure_queue_gpu_state_failed";
+                case CaptureSkipReason::QueueStateNotFound: return "queue_state_not_found";
+                case CaptureSkipReason::OverlaySwapchainStateFailed: return "overlay_swapchain_state_failed";
+                case CaptureSkipReason::OverlayStateMissing: return "overlay_state_missing";
+                case CaptureSkipReason::OverlayFramebufferMissing: return "overlay_framebuffer_missing";
+                case CaptureSkipReason::EnsureImGuiFailed: return "ensure_imgui_failed";
+                case CaptureSkipReason::VkResetCommandPoolFailed: return "vk_reset_command_pool_failed";
+                case CaptureSkipReason::VkResetFencesFailed: return "vk_reset_fences_failed";
+                case CaptureSkipReason::VkBeginCommandBufferFailed: return "vk_begin_command_buffer_failed";
+                case CaptureSkipReason::TargetImageNull: return "target_image_null";
+                case CaptureSkipReason::VkEndCommandBufferFailed: return "vk_end_command_buffer_failed";
+                case CaptureSkipReason::VkQueueSubmitFailed: return "vk_queue_submit_failed";
+                case CaptureSkipReason::VkWaitForFencesFailed: return "vk_wait_for_fences_failed";
+                case CaptureSkipReason::CaptureFormatUnsupported: return "capture_format_unsupported";
+                case CaptureSkipReason::VkMapMemoryFailed: return "vk_map_memory_failed";
+                case CaptureSkipReason::WriteFrameFailed: return "write_frame_failed";
+                default: return "unknown";
+            }
+        }
+
+        void DebugLog(const char* fmt, ...)
+        {
+            if (fmt == nullptr)
+            {
+                return;
+            }
+
+            char buffer[768]{};
+            va_list args;
+            va_start(args, fmt);
+            (void)_vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, fmt, args);
+            va_end(args);
+            OutputDebugStringA(buffer);
+            OutputDebugStringA("\n");
+        }
+
+        bool ShouldEmitDiagLog(std::uint64_t nowQpc, std::uint64_t qpcFreq, std::uint64_t& lastQpc, std::uint64_t intervalMs)
+        {
+            if (qpcFreq == 0)
+            {
+                lastQpc = nowQpc;
+                return true;
+            }
+
+            const auto minDelta = (qpcFreq * intervalMs) / 1000u;
+            if (lastQpc != 0 && nowQpc > lastQpc && (nowQpc - lastQpc) < minDelta)
+            {
+                return false;
+            }
+
+            lastQpc = nowQpc;
+            return true;
+        }
+
+        void LogCaptureSkipLocked(VulkanRuntime& rt, CaptureSkipReason reason, const char* detail = nullptr)
+        {
+            const auto idx = static_cast<std::size_t>(reason);
+            if (idx >= rt.captureSkipLastLogQpc.size())
+            {
+                return;
+            }
+
+            rt.captureSkipPendingCount[idx]++;
+            const auto now = NowQpc();
+            if (!ShouldEmitDiagLog(now, rt.qpcFreq, rt.captureSkipLastLogQpc[idx], kDiagLogMinIntervalMs))
+            {
+                return;
+            }
+
+            const auto pending = rt.captureSkipPendingCount[idx];
+            rt.captureSkipPendingCount[idx] = 0;
+            DebugLog(
+                "stage=hook_vulkan event=capture_skip reason=%s pending=%u detail=%s.",
+                CaptureSkipReasonToString(reason),
+                pending,
+                detail != nullptr ? detail : "none");
+        }
+
+        void LogPresentSummaryLocked(
+            VulkanRuntime& rt,
+            bool shouldCapture,
+            bool hasOverlayBlocks,
+            std::size_t swapchainCount)
+        {
+            const auto now = rt.lastPresentQpc;
+            const bool byFrame = (rt.presentCount % 120ull) == 0ull;
+            if (!byFrame &&
+                !ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastPresentSummaryLogQpc, kDiagSummaryIntervalMs))
+            {
+                return;
+            }
+
+            DebugLog(
+                "stage=hook_vulkan event=present_summary pid=%lu presentCount=%llu shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d queues=%zu swapchains=%zu.",
+                static_cast<unsigned long>(GetCurrentProcessId()),
+                static_cast<unsigned long long>(rt.presentCount),
+                shouldCapture ? 1 : 0,
+                rt.overlayEnabled ? 1 : 0,
+                hasOverlayBlocks ? 1 : 0,
+                rt.queues.size(),
+                swapchainCount);
         }
 
         ImU32 ArgbToImU32(std::uint32_t argb)
@@ -420,6 +568,13 @@ namespace ht::hook::vulkan
             rt.lastFormat = 0;
             rt.lastWidth = 0;
             rt.lastHeight = 0;
+            rt.captureSkipLastLogQpc.fill(0);
+            rt.captureSkipPendingCount.fill(0);
+            rt.lastPresentSummaryLogQpc = 0;
+            rt.lastSwapchainEnsureFailQpc = 0;
+            rt.lastGpuStateFailQpc = 0;
+            rt.lastWriteFrameOkQpc = 0;
+            rt.lastWriteFrameFailQpc = 0;
 
             rt.instance = VK_NULL_HANDLE;
             rt.apiVersion = VK_API_VERSION_1_0;
@@ -529,6 +684,11 @@ namespace ht::hook::vulkan
         {
             if (info.device == VK_NULL_HANDLE)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog("stage=hook_vulkan event=ensure_swapchain_images fail reason=device_null swapchain=%p.", swapchain);
+                }
                 return false;
             }
 
@@ -545,18 +705,48 @@ namespace ht::hook::vulkan
 
             if (getImages == nullptr)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=get_swapchain_images_missing device=%p swapchain=%p.",
+                        info.device,
+                        swapchain);
+                }
                 return false;
             }
 
             std::uint32_t imageCount = 0;
-            if (getImages(info.device, swapchain, &imageCount, nullptr) != VK_SUCCESS || imageCount == 0)
+            const auto countResult = getImages(info.device, swapchain, &imageCount, nullptr);
+            if (countResult != VK_SUCCESS || imageCount == 0)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=query_count_failed vk=%d count=%u device=%p swapchain=%p.",
+                        static_cast<int>(countResult),
+                        imageCount,
+                        info.device,
+                        swapchain);
+                }
                 return false;
             }
 
             std::vector<VkImage> images(imageCount);
-            if (getImages(info.device, swapchain, &imageCount, images.data()) != VK_SUCCESS || imageCount == 0)
+            const auto fillResult = getImages(info.device, swapchain, &imageCount, images.data());
+            if (fillResult != VK_SUCCESS || imageCount == 0)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=fetch_images_failed vk=%d count=%u device=%p swapchain=%p.",
+                        static_cast<int>(fillResult),
+                        imageCount,
+                        info.device,
+                        swapchain);
+                }
                 return false;
             }
 
@@ -607,19 +797,45 @@ namespace ht::hook::vulkan
         {
             if (swapInfo.extent.width == 0 || swapInfo.extent.height == 0)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=invalid_extent queue=%p width=%u height=%u.",
+                        queue,
+                        swapInfo.extent.width,
+                        swapInfo.extent.height);
+                }
                 return false;
             }
 
             bool rgbaNeedsSwap = false;
             if (!IsCaptureFormatSupported(swapInfo.format, rgbaNeedsSwap))
             {
-                (void)rgbaNeedsSwap;
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=unsupported_format queue=%p format=%u.",
+                        queue,
+                        static_cast<std::uint32_t>(swapInfo.format));
+                }
                 return false;
             }
 
             const VkDevice device = queueInfo.device;
             if (device == VK_NULL_HANDLE || deviceInfo.physicalDevice == VK_NULL_HANDLE || !queueInfo.valid)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=device_info_invalid queue=%p device=%p physical=%p queueValid=%d.",
+                        queue,
+                        device,
+                        deviceInfo.physicalDevice,
+                        queueInfo.valid ? 1 : 0);
+                }
                 return false;
             }
 
@@ -658,8 +874,18 @@ namespace ht::hook::vulkan
             poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
             poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
             poolInfo.queueFamilyIndex = queueInfo.familyIndex;
-            if (vkCreateCommandPool(device, &poolInfo, nullptr, &state.commandPool) != VK_SUCCESS)
+            const auto poolResult = vkCreateCommandPool(device, &poolInfo, nullptr, &state.commandPool);
+            if (poolResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_command_pool_failed vk=%d queue=%p family=%u.",
+                        static_cast<int>(poolResult),
+                        queue,
+                        queueInfo.familyIndex);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
@@ -669,16 +895,34 @@ namespace ht::hook::vulkan
             cmdAlloc.commandPool = state.commandPool;
             cmdAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
             cmdAlloc.commandBufferCount = 1;
-            if (vkAllocateCommandBuffers(device, &cmdAlloc, &state.commandBuffer) != VK_SUCCESS)
+            const auto cmdAllocResult = vkAllocateCommandBuffers(device, &cmdAlloc, &state.commandBuffer);
+            if (cmdAllocResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=allocate_command_buffer_failed vk=%d queue=%p.",
+                        static_cast<int>(cmdAllocResult),
+                        queue);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
 
             VkFenceCreateInfo fenceInfo{};
             fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            if (vkCreateFence(device, &fenceInfo, nullptr, &state.fence) != VK_SUCCESS)
+            const auto fenceResult = vkCreateFence(device, &fenceInfo, nullptr, &state.fence);
+            if (fenceResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_fence_failed vk=%d queue=%p.",
+                        static_cast<int>(fenceResult),
+                        queue);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
@@ -688,8 +932,18 @@ namespace ht::hook::vulkan
             bufferInfo.size = requiredBytes;
             bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
             bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            if (vkCreateBuffer(device, &bufferInfo, nullptr, &state.stagingBuffer) != VK_SUCCESS)
+            const auto bufferResult = vkCreateBuffer(device, &bufferInfo, nullptr, &state.stagingBuffer);
+            if (bufferResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_staging_buffer_failed vk=%d bytes=%llu queue=%p.",
+                        static_cast<int>(bufferResult),
+                        static_cast<unsigned long long>(requiredBytes),
+                        queue);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
@@ -699,6 +953,14 @@ namespace ht::hook::vulkan
             const auto memoryType = FindHostVisibleCoherentMemoryType(deviceInfo.physicalDevice, memReq.memoryTypeBits);
             if (memoryType == std::numeric_limits<std::uint32_t>::max())
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=host_visible_coherent_memory_not_found queue=%p typeBits=%u.",
+                        queue,
+                        memReq.memoryTypeBits);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
@@ -707,14 +969,33 @@ namespace ht::hook::vulkan
             allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
             allocInfo.allocationSize = memReq.size;
             allocInfo.memoryTypeIndex = memoryType;
-            if (vkAllocateMemory(device, &allocInfo, nullptr, &state.stagingMemory) != VK_SUCCESS)
+            const auto allocResult = vkAllocateMemory(device, &allocInfo, nullptr, &state.stagingMemory);
+            if (allocResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=allocate_staging_memory_failed vk=%d bytes=%llu queue=%p.",
+                        static_cast<int>(allocResult),
+                        static_cast<unsigned long long>(memReq.size),
+                        queue);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
 
-            if (vkBindBufferMemory(device, state.stagingBuffer, state.stagingMemory, 0) != VK_SUCCESS)
+            const auto bindResult = vkBindBufferMemory(device, state.stagingBuffer, state.stagingMemory, 0);
+            if (bindResult != VK_SUCCESS)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=bind_staging_buffer_memory_failed vk=%d queue=%p.",
+                        static_cast<int>(bindResult),
+                        queue);
+                }
                 DestroyQueueGpuState(state);
                 return false;
             }
@@ -1072,12 +1353,18 @@ namespace ht::hook::vulkan
             const auto queueIt = rt.queues.find(queue);
             if (queueIt == rt.queues.end() || !queueIt->second.valid)
             {
+                char detail[128]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "queue=%p queueCount=%zu", queue, rt.queues.size());
+                LogCaptureSkipLocked(rt, CaptureSkipReason::QueueNotFound, detail);
                 return false;
             }
 
             auto swapIt = rt.swapchains.find(swapchain);
             if (swapIt == rt.swapchains.end())
             {
+                char detail[128]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "swapchain=%p swapchainCount=%zu", swapchain, rt.swapchains.size());
+                LogCaptureSkipLocked(rt, CaptureSkipReason::SwapchainNotFound, detail);
                 return false;
             }
 
@@ -1088,12 +1375,25 @@ namespace ht::hook::vulkan
             }
             if (swapInfo.images.empty() || imageIndex >= swapInfo.images.size())
             {
+                char detail[160]{};
+                (void)_snprintf_s(
+                    detail,
+                    sizeof(detail),
+                    _TRUNCATE,
+                    "swapchain=%p imageIndex=%u imageCount=%zu",
+                    swapchain,
+                    imageIndex,
+                    swapInfo.images.size());
+                LogCaptureSkipLocked(rt, CaptureSkipReason::SwapchainImagesMissing, detail);
                 return false;
             }
 
             const auto deviceIt = rt.devices.find(queueIt->second.device);
             if (deviceIt == rt.devices.end())
             {
+                char detail[128]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "device=%p deviceCount=%zu", queueIt->second.device, rt.devices.size());
+                LogCaptureSkipLocked(rt, CaptureSkipReason::DeviceNotFound, detail);
                 return false;
             }
 
@@ -1104,6 +1404,7 @@ namespace ht::hook::vulkan
             }
 
             const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
+            LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
             if (!shouldCapture && !hasOverlayBlocks)
             {
                 return true;
@@ -1111,12 +1412,16 @@ namespace ht::hook::vulkan
 
             if (!EnsureQueueGpuStateLocked(rt, queue, queueIt->second, deviceIt->second, swapInfo))
             {
+                LogCaptureSkipLocked(rt, CaptureSkipReason::EnsureQueueGpuStateFailed, "ensure_queue_gpu_state_failed");
                 return false;
             }
 
             auto queueStateIt = rt.queueGpuStates.find(queue);
             if (queueStateIt == rt.queueGpuStates.end())
             {
+                char detail[128]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "queue=%p gpuStateCount=%zu", queue, rt.queueGpuStates.size());
+                LogCaptureSkipLocked(rt, CaptureSkipReason::QueueStateNotFound, detail);
                 return false;
             }
             auto& gpu = queueStateIt->second;
@@ -1126,40 +1431,64 @@ namespace ht::hook::vulkan
             {
                 if (!EnsureOverlaySwapchainStateLocked(rt, swapchain, swapInfo))
                 {
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlaySwapchainStateFailed, "ensure_overlay_swapchain_state_failed");
                     return false;
                 }
 
                 auto ovlIt = rt.overlaySwapchains.find(swapchain);
                 if (ovlIt == rt.overlaySwapchains.end())
                 {
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlayStateMissing, "overlay_swapchain_state_missing");
                     return false;
                 }
                 ovl = &ovlIt->second;
                 if (ovl->framebuffers.empty() || imageIndex >= ovl->framebuffers.size())
                 {
+                    char detail[160]{};
+                    (void)_snprintf_s(
+                        detail,
+                        sizeof(detail),
+                        _TRUNCATE,
+                        "imageIndex=%u framebufferCount=%zu",
+                        imageIndex,
+                        ovl->framebuffers.size());
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlayFramebufferMissing, detail);
                     return false;
                 }
 
                 if (!EnsureImGuiLocked(rt, queue, swapchain, queueIt->second, deviceIt->second, *ovl))
                 {
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::EnsureImGuiFailed, "ensure_imgui_failed");
                     return false;
                 }
             }
 
-            if (vkResetCommandPool(gpu.device, gpu.commandPool, 0) != VK_SUCCESS)
+            const auto resetPoolResult = vkResetCommandPool(gpu.device, gpu.commandPool, 0);
+            if (resetPoolResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(resetPoolResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkResetCommandPoolFailed, detail);
                 return false;
             }
-            if (vkResetFences(gpu.device, 1, &gpu.fence) != VK_SUCCESS)
+            const auto resetFenceResult = vkResetFences(gpu.device, 1, &gpu.fence);
+            if (resetFenceResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(resetFenceResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkResetFencesFailed, detail);
                 return false;
             }
 
             VkCommandBufferBeginInfo beginInfo{};
             beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
             beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-            if (vkBeginCommandBuffer(gpu.commandBuffer, &beginInfo) != VK_SUCCESS)
+            const auto beginResult = vkBeginCommandBuffer(gpu.commandBuffer, &beginInfo);
+            if (beginResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(beginResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkBeginCommandBufferFailed, detail);
                 return false;
             }
 
@@ -1167,6 +1496,7 @@ namespace ht::hook::vulkan
             if (targetImage == VK_NULL_HANDLE)
             {
                 (void)vkEndCommandBuffer(gpu.commandBuffer);
+                LogCaptureSkipLocked(rt, CaptureSkipReason::TargetImageNull, "target_image_null");
                 return false;
             }
 
@@ -1265,8 +1595,12 @@ namespace ht::hook::vulkan
                     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
             }
 
-            if (vkEndCommandBuffer(gpu.commandBuffer) != VK_SUCCESS)
+            const auto endResult = vkEndCommandBuffer(gpu.commandBuffer);
+            if (endResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(endResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkEndCommandBufferFailed, detail);
                 return false;
             }
 
@@ -1274,13 +1608,21 @@ namespace ht::hook::vulkan
             submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
             submitInfo.commandBufferCount = 1;
             submitInfo.pCommandBuffers = &gpu.commandBuffer;
-            if (vkQueueSubmit(queue, 1, &submitInfo, gpu.fence) != VK_SUCCESS)
+            const auto submitResult = vkQueueSubmit(queue, 1, &submitInfo, gpu.fence);
+            if (submitResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(submitResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkQueueSubmitFailed, detail);
                 return false;
             }
 
-            if (vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull) != VK_SUCCESS)
+            const auto waitResult = vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull);
+            if (waitResult != VK_SUCCESS)
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(waitResult));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, detail);
                 return false;
             }
 
@@ -1296,12 +1638,26 @@ namespace ht::hook::vulkan
             bool rgbaNeedsSwap = false;
             if (!IsCaptureFormatSupported(gpu.format, rgbaNeedsSwap))
             {
+                char detail[96]{};
+                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "format=%u", static_cast<std::uint32_t>(gpu.format));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::CaptureFormatUnsupported, detail);
                 return false;
             }
 
             void* mapped = nullptr;
-            if (vkMapMemory(gpu.device, gpu.stagingMemory, 0, gpu.stagingBytes, 0, &mapped) != VK_SUCCESS || mapped == nullptr)
+            const auto mapResult = vkMapMemory(gpu.device, gpu.stagingMemory, 0, gpu.stagingBytes, 0, &mapped);
+            if (mapResult != VK_SUCCESS || mapped == nullptr)
             {
+                char detail[128]{};
+                (void)_snprintf_s(
+                    detail,
+                    sizeof(detail),
+                    _TRUNCATE,
+                    "vk=%d mapped=%d bytes=%llu",
+                    static_cast<int>(mapResult),
+                    mapped != nullptr ? 1 : 0,
+                    static_cast<unsigned long long>(gpu.stagingBytes));
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
                 return false;
             }
 
@@ -1344,7 +1700,32 @@ namespace ht::hook::vulkan
                 bytes);
             if (!wrote)
             {
+                const auto now = NowQpc();
+                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastWriteFrameFailQpc, kDiagLogMinIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                        static_cast<unsigned long>(pid),
+                        static_cast<unsigned long long>(rt.frameId),
+                        gpu.width,
+                        gpu.height,
+                        bytes,
+                        static_cast<unsigned long>(pid));
+                }
+                LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "shared_frame_write_failed");
                 return false;
+            }
+
+            if (ShouldEmitDiagLog(ts, rt.qpcFreq, rt.lastWriteFrameOkQpc, kDiagSummaryIntervalMs))
+            {
+                DebugLog(
+                    "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                    static_cast<unsigned long>(pid),
+                    static_cast<unsigned long long>(rt.frameId),
+                    gpu.width,
+                    gpu.height,
+                    bytes,
+                    static_cast<unsigned long>(pid));
             }
 
             rt.lastCaptureQpc = ts;

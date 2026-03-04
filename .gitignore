@@ -65,7 +65,7 @@ OcrServiceNDL/reference/
 Code-Reference/
 Tools/Magpie/effects/
 Tools/Magpie/cache/
-
+log/
 # User-specific files
 *.rsuser
 *.suo
