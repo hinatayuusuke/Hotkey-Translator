@@ -15942,3 +15942,33 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-04 17:17 (Asia/Taipei) — Vulkan Hook成功アイコン描画を追加**
+
+### Summary
+- Vulkan Hookで、テキスト未配信時に左上へ短時間の成功アイコンを描画するようにした。
+
+### Context / Goal
+- DX11ではHook成功時に短時間アイコン表示があり、Vulkanにも同等挙動が必要だった。
+- 永続パネルではなく短時間表示にして、ゲーム表示の遮蔽を最小化する。
+
+### Changes
+- Vulkan runtimeに成功アイコン状態（armed/done/startQpc）を追加。
+- install/uninstall/resetで状態を初期化・解除。
+- OverlayV2の新規テキスト受信時に成功アイコンを停止。
+- ImGui描画で lockCount==0 の場合にフェードイン/アウト付き成功アイコンを描画。
+- Vulkan側のoverlay実行条件を拡張し、テキスト未配信でも成功アイコンだけ描画できるよう変更。
+
+### Files Touched
+- Native/HookAgentVulkan/VulkanPresentHook.cpp — 成功アイコンの状態管理、描画処理、overlay実行条件を追加。
+
+### Behavioral Impact
+- Vulkan Hook成功直後、左上に約1.5秒の成功アイコンが表示される。
+- OverlayV2テキストが届いた時点でアイコンは即終了し、通常テキスト描画に移行する。
+
+### Risk & Mitigation
+- Risk: アイコン表示期間中はoverlay passが走るため、極端に低スペック環境で僅かな負荷増加の可能性。
+- Mitigation: 表示時間は短時間固定で、受信テキストが来た時点で即停止する。
+
+### Tests / Verification
+- cmake --build Native/build --config Debug --target HookAgentVulkan 実行成功。

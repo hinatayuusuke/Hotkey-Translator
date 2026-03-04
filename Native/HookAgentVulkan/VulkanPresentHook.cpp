@@ -38,6 +38,9 @@ namespace ht::hook::vulkan
         constexpr std::uint32_t kOverlayMaxBlocks = 64u;
         constexpr std::uint64_t kDiagLogMinIntervalMs = 1000u;
         constexpr std::uint64_t kDiagSummaryIntervalMs = 2000u;
+        constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500u;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200u;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300u;
 
         enum class CaptureSkipReason : std::size_t
         {
@@ -163,6 +166,9 @@ namespace ht::hook::vulkan
             ipc::OverlayV2Header overlayV2Header{};
             std::vector<ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
+            bool hookSuccessIndicatorArmed = false;
+            bool hookSuccessIndicatorDone = false;
+            std::uint64_t hookSuccessIndicatorStartQpc = 0;
 
             bool imguiInitialized = false;
             ImGuiContext* imguiContext = nullptr;
@@ -728,6 +734,9 @@ namespace ht::hook::vulkan
             rt.overlayV2Header = {};
             rt.overlayV2Blocks.clear();
             rt.overlayV2TextBlob.clear();
+            rt.hookSuccessIndicatorArmed = false;
+            rt.hookSuccessIndicatorDone = false;
+            rt.hookSuccessIndicatorStartQpc = 0;
 
             rt.presentCount = 0;
             rt.lastPresentQpc = 0;
@@ -1376,6 +1385,10 @@ namespace ht::hook::vulkan
             rt.overlayV2TextBlob = std::move(textBlob);
             rt.lastOverlayV2Seq = header.updatedSeq;
             rt.lastOverlayV2Qpc = NowQpc();
+            // WHY: Stop the transient attach-success icon once real overlay text arrives.
+            rt.hookSuccessIndicatorArmed = false;
+            rt.hookSuccessIndicatorDone = true;
+            rt.hookSuccessIndicatorStartQpc = 0;
             return true;
         }
         bool EnsureImGuiLocked(
@@ -1577,6 +1590,60 @@ namespace ht::hook::vulkan
                 fg->AddText(font, fontPx, ImVec2(textX, textY), ArgbToImU32(b.fgArgb), textBegin, textEnd, wrapWidth);
             }
 
+            if (blockCount == 0 && !rt.hookSuccessIndicatorDone)
+            {
+                if (rt.hookSuccessIndicatorArmed && rt.hookSuccessIndicatorStartQpc == 0)
+                {
+                    rt.hookSuccessIndicatorStartQpc = now;
+                    rt.hookSuccessIndicatorArmed = false;
+                }
+
+                if (rt.hookSuccessIndicatorStartQpc != 0 && rt.qpcFreq != 0)
+                {
+                    const auto elapsedQpc = now - rt.hookSuccessIndicatorStartQpc;
+                    const auto elapsedMs = static_cast<std::uint64_t>(
+                        (elapsedQpc * 1000ull) / std::max<std::uint64_t>(1ull, rt.qpcFreq));
+                    if (elapsedMs >= kHookSuccessIndicatorDurationMs)
+                    {
+                        rt.hookSuccessIndicatorDone = true;
+                    }
+                    else
+                    {
+                        float alpha = 1.0f;
+                        if (elapsedMs < kHookSuccessIndicatorFadeInMs)
+                        {
+                            alpha = static_cast<float>(elapsedMs) /
+                                static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeInMs));
+                        }
+                        else if (elapsedMs > (kHookSuccessIndicatorDurationMs - kHookSuccessIndicatorFadeOutMs))
+                        {
+                            const auto tailMs = kHookSuccessIndicatorDurationMs - elapsedMs;
+                            alpha = static_cast<float>(tailMs) /
+                                static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeOutMs));
+                        }
+                        alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+                        const int plateA = static_cast<int>(170.0f * alpha + 0.5f);
+                        const int ringA = static_cast<int>(235.0f * alpha + 0.5f);
+                        const int tickA = static_cast<int>(245.0f * alpha + 0.5f);
+
+                        const ImVec2 c(34.0f, 34.0f);
+                        fg->AddCircleFilled(c, 16.0f, IM_COL32(16, 16, 16, plateA), 24);
+                        fg->AddCircle(c, 15.0f, IM_COL32(83, 214, 108, ringA), 24, 2.0f);
+                        fg->AddLine(
+                            ImVec2(c.x - 6.0f, c.y + 0.5f),
+                            ImVec2(c.x - 1.5f, c.y + 5.5f),
+                            IM_COL32(255, 255, 255, tickA),
+                            2.4f);
+                        fg->AddLine(
+                            ImVec2(c.x - 1.5f, c.y + 5.5f),
+                            ImVec2(c.x + 8.0f, c.y - 5.0f),
+                            IM_COL32(255, 255, 255, tickA),
+                            2.4f);
+                    }
+                }
+            }
+
             ImGui::Render();
         }
         bool SubmitPresentWorkLocked(
@@ -1650,8 +1717,10 @@ namespace ht::hook::vulkan
             }
 
             const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
+            const bool shouldDrawHookSuccessIndicator = rt.overlayEnabled && !rt.hookSuccessIndicatorDone;
+            const bool shouldRenderOverlay = hasOverlayBlocks || shouldDrawHookSuccessIndicator;
             LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
-            if (!shouldCapture && !hasOverlayBlocks)
+            if (!shouldCapture && !shouldRenderOverlay)
             {
                 return true;
             }
@@ -1709,7 +1778,7 @@ namespace ht::hook::vulkan
             };
 
             OverlaySwapchainState* ovl = nullptr;
-            if (hasOverlayBlocks)
+            if (shouldRenderOverlay)
             {
                 if (!EnsureOverlaySwapchainStateLocked(rt, swapchain, swapInfo))
                 {
@@ -1817,7 +1886,7 @@ namespace ht::hook::vulkan
                 perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
             }
 
-            if (hasOverlayBlocks && ovl != nullptr)
+            if (shouldRenderOverlay && ovl != nullptr)
             {
                 const auto overlayCmdBeginQpc = NowQpc();
                 if (inTransferLayout)
@@ -2649,6 +2718,9 @@ namespace ht::hook::vulkan
         rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
         rt.configuredFpsLimit = kDefaultCaptureFps;
         rt.overlayEnabled = false;
+        rt.hookSuccessIndicatorArmed = true;
+        rt.hookSuccessIndicatorDone = false;
+        rt.hookSuccessIndicatorStartQpc = 0;
         rt.installed.store(true);
         DebugLog(
             "stage=hook_vulkan event=install_hook_result result=ok pid=%lu qpcFreq=%llu.",
@@ -2668,6 +2740,9 @@ namespace ht::hook::vulkan
 
         (void)MH_DisableHook(MH_ALL_HOOKS);
         (void)MH_Uninitialize();
+        rt.hookSuccessIndicatorArmed = false;
+        rt.hookSuccessIndicatorDone = false;
+        rt.hookSuccessIndicatorStartQpc = 0;
         ResetRuntimeLocked(rt);
         rt.installed.store(false);
         DebugLog(
