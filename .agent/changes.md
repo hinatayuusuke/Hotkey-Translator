@@ -16128,3 +16128,29 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-05 11:59 (Asia/Taipei) — DX9 Hook方針（x86必須）ドキュメント化**
+
+### Summary
+- DX9追加の方向性を、x86対応必須前提へ修正した方針文書として Doc に新規作成した。
+
+### Context / Goal
+- DX9は32bitタイトル比率が高く、x64限定方針では実運用を満たせない。
+- 既存DX11/Vulkanの設計を踏まえつつ、DX9導入順序を明確化することが目的。
+
+### Changes
+- Doc/GraphicsHook_DX9_Integration_Direction.md を新規追加。
+- API拡張、x86/x64デュアル構成、capture先行、overlay後段化、受け入れ条件を整理。
+
+### Files Touched
+- Doc/GraphicsHook_DX9_Integration_Direction.md — x86必須前提のDX9統合方針を記載。
+
+### Behavioral Impact
+- 実装コードの挙動変更はなし（方針文書のみ）。
+
+### Risk & Mitigation
+- Risk: 文書のみのため、実装と乖離する可能性。
+- Mitigation: 実装着手時に本方針をStep分割へ落とし込み、差分を逐次更新する。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
