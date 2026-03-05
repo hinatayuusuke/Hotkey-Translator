@@ -1051,22 +1051,60 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var roiEnabledAtStart = settings.EnableRoi;
             var bounds = _captureManager.GetCaptureBounds(settings);
             var selector = new RoiSelectorWindow(bounds);
-            if (_hookRoiTraceEnabled)
+            RawInputMouseSession? rawInputMouseSession = null;
+            bool previewHookSubscribed = false;
+            bool? result = null;
+            Action<Rect?> onPreviewRectChanged = previewRect => _pipeline?.UpdateHookRoiPreview(previewRect);
+            try
             {
-                _logger?.Info(
-                    $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
+                if (settings.EnableRawInputHotkeys)
+                {
+                    rawInputMouseSession = new RawInputMouseSession(
+                        selector,
+                        selector.BeginExternalDragFromScreen,
+                        selector.UpdateExternalDragFromScreen,
+                        selector.EndExternalDragFromScreen);
+                    if (rawInputMouseSession.TryStart(out var failureReason))
+                    {
+                        // WHY: During F6 ROI in RawInput mode, consume pointer updates from WM_INPUT only.
+                        // This avoids missing drag updates in focus-sensitive game windows.
+                        selector.SetExternalPointerInputEnabled(true);
+                        _logger?.Info("stage=rawinput_mouse event=start source=f6_roi result=ok.");
+                    }
+                    else
+                    {
+                        rawInputMouseSession.Dispose();
+                        rawInputMouseSession = null;
+                        _logger?.Info(
+                            $"stage=rawinput_mouse event=start source=f6_roi result=failed reason={failureReason ?? "unknown"}.");
+                    }
+                }
+
+                if (_hookRoiTraceEnabled)
+                {
+                    _logger?.Info(
+                        $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
+                }
+                // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
+                // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
+                selector.PreviewRectChanged += onPreviewRectChanged;
+                previewHookSubscribed = true;
+                _pipeline?.UpdateHookRoiPreview(null);
+                result = selector.ShowDialog();
+                selector.PreviewRectChanged -= onPreviewRectChanged;
+                previewHookSubscribed = false;
             }
-            // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
-            // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
-            void OnPreviewRectChanged(Rect? previewRect)
+            finally
             {
-                _pipeline?.UpdateHookRoiPreview(previewRect);
+                if (previewHookSubscribed)
+                {
+                    selector.PreviewRectChanged -= onPreviewRectChanged;
+                }
+
+                selector.SetExternalPointerInputEnabled(false);
+                rawInputMouseSession?.Dispose();
             }
 
-            selector.PreviewRectChanged += OnPreviewRectChanged;
-            _pipeline?.UpdateHookRoiPreview(null);
-            var result = selector.ShowDialog();
-            selector.PreviewRectChanged -= OnPreviewRectChanged;
             if (_hookRoiTraceEnabled)
             {
                 _logger?.Info(

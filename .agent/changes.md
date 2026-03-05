@@ -16154,3 +16154,35 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
+
+**2026-03-05 20:05 (Asia/Taipei) — F6 ROI中のみRawInputマウス入力を有効化**
+
+### Summary
+- RawInputホットキーモード有効時に限り、F6 ROI選択セッション中だけRawInputマウス入力を有効化した。
+
+### Context / Goal
+- 独占フルスクリーン等でWPFマウスイベントが不安定な場面でも、F6 ROIドラッグを継続可能にする。
+- 常時入力フックは避け、ROI選択中だけ限定して副作用を最小化する。
+
+### Changes
+- `RawInputMouseSession` を新規追加し、WM_INPUT(Mouse) から左ボタンドラッグを取得する処理を実装。
+- `RoiSelectorWindow` に外部ポインター入力API（開始/更新/終了）を追加し、RawInput経路で同じROI描画ロジックを再利用。
+- `MainWindow.SelectRoiAsync` で、`EnableRawInputHotkeys=true` の場合のみセッション開始し、ROI終了時に必ず破棄するよう変更。
+- RawInput外部入力有効時は、`RoiSelectorWindow` の通常WPFマウスイベントを抑止して二重更新を防止。
+
+### Files Touched
+- `Services/RawInputMouseSession.cs` — F6セッション専用のRawInputマウス取得クラスを新規追加。
+- `UI/RoiSelectorWindow.xaml.cs` — 外部入力API追加、既存WPF入力との排他制御、選択処理の共通化を実施。
+- `MainWindow.xaml.cs` — F6 ROI開始/終了にRawInputマウスセッションを接続し、開始結果ログを追加。
+
+### Behavioral Impact
+- `Use RawInput hotkey backend` がONのとき、F6 ROI選択中はRawInputマウス経路が有効になる。
+- ROI確定/キャンセル/Esc後はセッションが破棄され、通常状態へ戻る。
+- RawInputモードOFF時のROI挙動は従来どおり。
+
+### Risk & Mitigation
+- Risk: 環境によってはRawInputのマウスパケット頻度差でドラッグ感度が変わる可能性。
+- Mitigation: RawInputはF6中のみ限定、失敗時は自動で従来WPF経路へフォールバックする。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
