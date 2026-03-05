@@ -12,6 +12,7 @@ internal sealed class HotkeyController : IDisposable
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly Func<Key, ModifierKeys, string> _formatHotkey;
     private readonly Dictionary<int, HotkeyManager> _slots = new();
+    private RawInputHotkeyManager? _rawInputManager;
 
     public HotkeyController(
         Window ownerWindow,
@@ -23,16 +24,19 @@ internal sealed class HotkeyController : IDisposable
         _formatHotkey = formatHotkey;
     }
 
-    public bool TryRegisterBindings(IReadOnlyList<HotkeyBindingRegistration> bindings)
+    public bool TryRegisterBindings(IReadOnlyList<HotkeyBindingRegistration> bindings, bool useRawInputBackend)
     {
-        var allSucceeded = true;
-        var seen = new HashSet<(Key Key, ModifierKeys Modifiers)>();
-        foreach (var binding in bindings)
+        if (!TryValidateBindings(bindings))
         {
-            allSucceeded &= TryApplyHotkeyBinding(binding, seen);
+            return false;
         }
 
-        return allSucceeded;
+        if (useRawInputBackend)
+        {
+            return TryRegisterBindingsRawInput(bindings);
+        }
+
+        return TryRegisterBindingsWin32(bindings);
     }
 
     public void Dispose()
@@ -43,95 +47,86 @@ internal sealed class HotkeyController : IDisposable
         }
 
         _slots.Clear();
+        _rawInputManager?.Dispose();
+        _rawInputManager = null;
     }
 
-    private bool TryApplyHotkeyBinding(
-        HotkeyBindingRegistration binding,
-        ISet<(Key Key, ModifierKeys Modifiers)> seen)
+    private bool TryRegisterBindingsRawInput(IReadOnlyList<HotkeyBindingRegistration> bindings)
     {
-        var tuple = (binding.Key, binding.Modifiers);
-        if (!seen.Add(tuple))
+        var candidate = new RawInputHotkeyManager(_ownerWindow);
+        if (!candidate.TryRegisterBindings(bindings, out var reason))
         {
             _loggerAccessor()?.Error(
-                $"Failed to register hotkey ({binding.Name}: {_formatHotkey(binding.Key, binding.Modifiers)}). Duplicate binding in settings.");
+                $"Failed to register RawInput hotkeys. {reason ?? "unknown"}");
+            candidate.Dispose();
             return false;
         }
 
-        if (_slots.TryGetValue(binding.Id, out var existing) &&
-            existing.Key == binding.Key &&
-            existing.Modifiers == binding.Modifiers)
+        foreach (var manager in _slots.Values)
         {
-            return true;
+            manager.Dispose();
         }
 
-        HotkeyManager? previous = existing;
-        if (existing != null)
-        {
-            _slots.Remove(binding.Id);
-            existing.Dispose();
-        }
-
-        if (TryCreateHotkeyManager(binding.Key, binding.Modifiers, binding.Id, binding.Handler, out var manager, out var registerError))
-        {
-            if (manager == null)
-            {
-                return false;
-            }
-
-            _slots[binding.Id] = manager;
-            return true;
-        }
-
-        _loggerAccessor()?.Error(
-            $"Failed to register hotkey ({binding.Name}: {_formatHotkey(binding.Key, binding.Modifiers)}). {registerError?.Message}");
-        if (previous == null)
-        {
-            return false;
-        }
-
-        // WHY: Failed updates should not disable unrelated operations; rollback keeps prior binding active.
-        if (TryCreateHotkeyManager(previous.Key, previous.Modifiers, binding.Id, binding.Handler, out var restored, out var rollbackError))
-        {
-            if (restored == null)
-            {
-                return false;
-            }
-
-            _slots[binding.Id] = restored;
-            _loggerAccessor()?.Info(
-                $"Hotkey rollback applied for {binding.Name}: {_formatHotkey(previous.Key, previous.Modifiers)}.");
-            return false;
-        }
-
-        _loggerAccessor()?.Error($"Failed to restore previous hotkey ({binding.Name}). {rollbackError?.Message}");
-        return false;
+        _slots.Clear();
+        _rawInputManager?.Dispose();
+        _rawInputManager = candidate;
+        return true;
     }
 
-    private bool TryCreateHotkeyManager(
-        Key key,
-        ModifierKeys modifiers,
-        int id,
-        EventHandler handler,
-        out HotkeyManager? manager,
-        out Exception? error)
+    private bool TryRegisterBindingsWin32(IReadOnlyList<HotkeyBindingRegistration> bindings)
     {
-        manager = null;
-        error = null;
+        var newSlots = new Dictionary<int, HotkeyManager>();
         try
         {
-            var created = new HotkeyManager(_ownerWindow, key, modifiers, id);
-            created.HotkeyPressed += handler;
-            created.Register();
-            manager = created;
-            return true;
+            foreach (var binding in bindings)
+            {
+                var manager = new HotkeyManager(_ownerWindow, binding.Key, binding.Modifiers, binding.Id);
+                manager.HotkeyPressed += binding.Handler;
+                manager.Register();
+                newSlots.Add(binding.Id, manager);
+            }
         }
         catch (Exception ex)
         {
-            manager?.Dispose();
-            manager = null;
-            error = ex;
+            foreach (var created in newSlots.Values)
+            {
+                created.Dispose();
+            }
+
+            _loggerAccessor()?.Error($"Failed to register Win32 hotkeys. {ex.Message}");
             return false;
         }
+
+        _rawInputManager?.Dispose();
+        _rawInputManager = null;
+        foreach (var manager in _slots.Values)
+        {
+            manager.Dispose();
+        }
+
+        _slots.Clear();
+        foreach (var pair in newSlots)
+        {
+            _slots.Add(pair.Key, pair.Value);
+        }
+
+        return true;
+    }
+
+    private bool TryValidateBindings(IReadOnlyList<HotkeyBindingRegistration> bindings)
+    {
+        var seen = new HashSet<(Key Key, ModifierKeys Modifiers)>();
+        foreach (var binding in bindings)
+        {
+            if (!seen.Add((binding.Key, binding.Modifiers)))
+            {
+                _loggerAccessor()?.Error(
+                    $"Failed to register hotkey ({binding.Name}: {_formatHotkey(binding.Key, binding.Modifiers)}). Duplicate binding in settings.");
+                return false;
+            }
+        }
+
+        return true;
     }
 }
 

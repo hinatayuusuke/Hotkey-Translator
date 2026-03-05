@@ -154,6 +154,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl = true;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenAlt;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift;
+    [ObservableProperty] private bool _enableRawInputHotkeys;
 
     public void LoadFrom(AppSettings settings)
     {
@@ -259,6 +260,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             SceneChangeWatchIntervalMs = settings.SceneChangeWatchIntervalMs;
             SceneChangeWatchPhashThreshold = settings.SceneChangeWatchPhashThreshold;
             AssignHotkeySettings(settings);
+            EnableRawInputHotkeys = settings.EnableRawInputHotkeys;
             AssignLanguageSettings(settings);
         }
         finally
@@ -336,6 +338,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableGraphicsHookLauncher = EnableGraphicsHookLauncher;
         settings.GraphicsHookLauncherExePath = (GraphicsHookLauncherExePath ?? string.Empty).Trim();
         settings.GraphicsHookLauncherArgs = GraphicsHookLauncherArgs ?? string.Empty;
+        settings.EnableRawInputHotkeys = EnableRawInputHotkeys;
         settings.EnableSceneChangeTextWeighted = EnableSceneChangeTextWeighted;
         settings.EnableSceneChangeQuietWindow = EnableSceneChangeQuietWindow;
         if (string.IsNullOrWhiteSpace(SceneChangeQuietWindowMsText))
@@ -628,6 +631,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyToggleMirrorFullscreenCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleMirrorFullscreenAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableRawInputHotkeysChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookPipelineChanged(bool value)
     {

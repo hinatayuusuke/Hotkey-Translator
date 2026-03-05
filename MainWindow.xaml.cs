@@ -62,6 +62,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private bool _overlayEnabled = true;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
     private HotkeyConfig? _currentHotkeyConfig;
+    private bool _currentHotkeyRawInput;
     private bool _isApplyingSettings;
     private bool _isSelectingRoi;
     private readonly DrawerLayoutController _drawerLayoutController;
@@ -1463,27 +1464,35 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void InitializeHotkeys(AppSettings settings)
     {
         var config = BuildHotkeyConfigFromSettings(settings);
-        if (TryRegisterHotkeys(config))
+        var useRawInput = settings.EnableRawInputHotkeys;
+        if (TryRegisterHotkeys(config, useRawInput))
         {
             _currentHotkeyConfig = config;
+            _currentHotkeyRawInput = useRawInput;
             return;
         }
 
         _currentHotkeyConfig = null;
+        _currentHotkeyRawInput = false;
         AppendLog("Some hotkeys failed to register. Available hotkeys remain active.");
     }
 
     private void TryUpdateHotkeys(AppSettings settings)
     {
         var config = BuildHotkeyConfigFromSettings(settings);
-        if (_currentHotkeyConfig.HasValue && _currentHotkeyConfig.Value.Equals(config))
+        var useRawInput = settings.EnableRawInputHotkeys;
+        if (_currentHotkeyConfig.HasValue &&
+            _currentHotkeyConfig.Value.Equals(config) &&
+            _currentHotkeyRawInput == useRawInput)
         {
             return;
         }
 
-        if (TryRegisterHotkeys(config))
+        if (TryRegisterHotkeys(config, useRawInput))
         {
             _currentHotkeyConfig = config;
+            _currentHotkeyRawInput = useRawInput;
+            var backend = useRawInput ? "RawInput" : "RegisterHotKey";
             AppendLog($"Hotkey updated: RunOnce={FormatHotkey(config.RunOnceKey, config.RunOnceModifiers)}, " +
                       $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
@@ -1493,7 +1502,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
                       $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}, " +
-                      $"Mirror={FormatHotkey(config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers)}.");
+                      $"Mirror={FormatHotkey(config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers)}, " +
+                      $"Backend={backend}.");
         }
         else
         {
@@ -1501,9 +1511,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private bool TryRegisterHotkeys(HotkeyConfig config)
+    private bool TryRegisterHotkeys(HotkeyConfig config, bool useRawInputBackend)
     {
-        return _hotkeyController.TryRegisterBindings(BuildHotkeyRegistrations(config));
+        return _hotkeyController.TryRegisterBindings(BuildHotkeyRegistrations(config), useRawInputBackend);
     }
 
     private IReadOnlyList<HotkeyBindingRegistration> BuildHotkeyRegistrations(HotkeyConfig config)

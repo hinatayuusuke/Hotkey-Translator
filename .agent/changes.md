@@ -16091,3 +16091,40 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-05 09:49 (Asia/Taipei) — RawInputホットキーバックエンドを追加**
+
+### Summary
+- 一部アプリで RegisterHotKey が効かないケース向けに、設定で切替可能な RawInput ホットキーバックエンドを実装した。
+
+### Context / Goal
+- 特定タイトルでWin32グローバルホットキーが取りこぼされるため、代替入力経路が必要だった。
+- 既存のユーザー定義ホットキー（キー/修飾）を維持しつつ、運用時にバックエンドを切替できるようにする。
+
+### Changes
+- RawInputHotkeyManager を新規追加し、WM_INPUT からキーボード入力を受けてホットキー判定する処理を実装。
+- HotkeyController を拡張し、RegisterHotKey / RawInput の2バックエンド切替をサポート。
+- AppSettings に EnableRawInputHotkeys を追加（既定: false）。
+- SettingsViewModel に EnableRawInputHotkeys を追加し、Load/Apply/保存トリガーへ接続。
+- Hotkey設定UIに Use RawInput hotkey backend (experimental) チェックを追加。
+- MainWindow のホットキー再登録判定にバックエンド差分を追加し、更新ログに Backend= を表示。
+
+### Files Touched
+- Services/RawInputHotkeyManager.cs — RawInput登録、WM_INPUT処理、修飾キー判定、リピート抑制を実装。
+- Services/Application/HotkeyController.cs — バックエンド切替対応、重複検証、再登録フローを更新。
+- Models/AppSettings.cs — EnableRawInputHotkeys 設定項目を追加。
+- ViewModels/SettingsViewModel.cs — EnableRawInputHotkeys のVM連携を追加。
+- MainWindow.xaml — RawInput切替チェックボックスと注記を追加。
+- MainWindow.xaml.cs — バックエンド付きホットキー再登録ロジックへ変更。
+
+### Behavioral Impact
+- 設定でRawInputバックエンドをONにすると、同じユーザー定義ホットキーをRawInput経由で受け付ける。
+- OFF時は従来どおり RegisterHotKey を使用。
+- ホットキー設定が同一でもバックエンド変更時は再登録が走る。
+
+### Risk & Mitigation
+- Risk: RawInputの入力環境依存で、特定キーボード/アプリ組み合わせで挙動差が出る可能性。
+- Mitigation: 既定値は従来バックエンド（OFF）を維持し、設定で即切替可能にしている。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

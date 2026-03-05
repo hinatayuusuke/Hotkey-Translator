@@ -1082,6 +1082,14 @@
                                         Margin="0,12,0,0"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
                                 <TextBlock Text="Hotkey" FontWeight="SemiBold" />
+                                <CheckBox x:Name="EnableRawInputHotkeysCheck"
+                                          Content="Use RawInput hotkey backend (experimental)"
+                                          Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableRawInputHotkeys, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="NOTE: Use this when some apps ignore standard RegisterHotKey."
+                                           Foreground="DimGray"
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap" />
                                 <Grid Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="170" />

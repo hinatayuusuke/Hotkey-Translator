@@ -222,6 +222,7 @@ public sealed class AppSettings
     public string HotkeyUnlockCaptureWindowModifiers { get; set; } = "Shift";
     public string HotkeyToggleMirrorFullscreenKey { get; set; } = "F7";
     public string HotkeyToggleMirrorFullscreenModifiers { get; set; } = "Control";
+    public bool EnableRawInputHotkeys { get; set; } = false;
     public string SourceLanguage { get; set; } = "en";
     public string TargetLanguage { get; set; } = "ja";
     public string StyleId { get; set; } = "default";
