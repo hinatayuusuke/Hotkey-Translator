@@ -16304,3 +16304,35 @@ dl_ocr_engine.py.
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` 実行成功。
 - 生成物確認: `Native/HookHost/bin/x86/HookHost.exe`, `Native/HookHost/bin/x86/HookAgentDx9.dll`。
+
+**2026-03-06 10:30 (Asia/Taipei) — DX9統合 Step4（device lost / reset追従の安定化）実装**
+
+### Summary
+- HookAgentDx9 のキャプチャ面を常駐管理に変更し、reset 後の再バインドを明示ログで追えるようにした。
+
+### Context / Goal
+- Doc/GraphicsHook_DX9_Integration_Direction.md の Step4 を実装する。
+- Alt+Tab / 解像度変更 / フルスクリーン切替でサーフェス再作成を保証し、reset 後の参照切れを検出可能にする。
+
+### Changes
+- DX9 capture 用の `stagingSurface` / `resolvedSurface` を runtime に保持し、backbuffer条件変化時に再作成する経路を追加。
+- `reset` 開始時に capture サーフェスを必ず解放し、`reset` 成功後に `pendingPostResetRebind` を立てて次回 Present で再バインドするように変更。
+- サーフェス再作成・解放・capture失敗・post-reset再バインド成功/失敗を `OutputDebugString` で明示ログ化。
+- capture失敗ログは同一HRの連続出力を間引き（2秒）して過剰ログを抑制。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — reset/lost追従用のサーフェスライフサイクル管理と診断ログを追加。
+
+### Behavioral Impact
+- reset や backbuffer 条件変更後に、次回キャプチャ時にサーフェスが再作成される。
+- reset 後に参照切れが発生した場合、`event=post_reset_rebind_failed` ログで即判別できる。
+- 正常再バインド時は `event=post_reset_rebind_ok` が出る。
+
+### Risk & Mitigation
+- Risk: DX9タイトルによっては reset/lost が頻発し、ログ量が増える可能性。
+- Mitigation: 失敗ログを同一HRで間引き、サーフェス再作成は必要時のみ実行する。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。

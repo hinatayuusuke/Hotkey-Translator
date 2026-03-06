@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <mutex>
 #include <vector>
@@ -65,9 +67,116 @@ namespace ht::hook::dx9
             std::uint32_t backBufferFormat = 0;
             std::uint32_t backBufferWidth = 0;
             std::uint32_t backBufferHeight = 0;
+
+            IDirect3DSurface9* stagingSurface = nullptr;
+            IDirect3DSurface9* resolvedSurface = nullptr;
+            std::uint32_t surfaceWidth = 0;
+            std::uint32_t surfaceHeight = 0;
+            std::uint32_t surfaceFormat = 0;
+            std::uint32_t surfaceMsaaType = 0;
+            std::uint32_t surfaceMsaaQuality = 0;
+            std::uint64_t surfaceRecreateCount = 0;
+
+            std::uint64_t resetCount = 0;
+            std::uint64_t lastResetQpc = 0;
+            bool pendingPostResetRebind = false;
+            std::uint32_t lastCaptureFailureHr = 0;
+            std::uint64_t lastCaptureFailureQpc = 0;
         };
 
         Dx9Runtime g_rt;
+
+        std::uint64_t NowQpc();
+
+        void LogDx9(const char* format, ...)
+        {
+            char message[1024]{};
+            va_list args;
+            va_start(args, format);
+            (void)vsnprintf_s(message, sizeof(message), _TRUNCATE, format, args);
+            va_end(args);
+
+            char line[1200]{};
+            (void)snprintf(line, sizeof(line), "stage=hook_dx9 %s\n", message);
+            OutputDebugStringA(line);
+        }
+
+        void ReleaseCaptureSurfacesLocked(Dx9Runtime& rt, const char* reason)
+        {
+            const bool hadStaging = rt.stagingSurface != nullptr;
+            const bool hadResolved = rt.resolvedSurface != nullptr;
+
+            if (rt.stagingSurface != nullptr)
+            {
+                rt.stagingSurface->Release();
+                rt.stagingSurface = nullptr;
+            }
+
+            if (rt.resolvedSurface != nullptr)
+            {
+                rt.resolvedSurface->Release();
+                rt.resolvedSurface = nullptr;
+            }
+
+            rt.surfaceWidth = 0;
+            rt.surfaceHeight = 0;
+            rt.surfaceFormat = 0;
+            rt.surfaceMsaaType = 0;
+            rt.surfaceMsaaQuality = 0;
+
+            if (hadStaging || hadResolved)
+            {
+                LogDx9(
+                    "event=capture_surfaces_release reason=%s hadStaging=%u hadResolved=%u.",
+                    reason != nullptr ? reason : "none",
+                    hadStaging ? 1u : 0u,
+                    hadResolved ? 1u : 0u);
+            }
+        }
+
+        bool ShouldLogCaptureFailureLocked(const Dx9Runtime& rt, HRESULT hr, std::uint64_t nowQpc)
+        {
+            if (hr != static_cast<HRESULT>(rt.lastCaptureFailureHr))
+            {
+                return true;
+            }
+
+            if (rt.qpcFreq == 0)
+            {
+                return true;
+            }
+
+            constexpr std::uint64_t kFailureLogIntervalQpcSec = 2;
+            return (nowQpc - rt.lastCaptureFailureQpc) >= (rt.qpcFreq * kFailureLogIntervalQpcSec);
+        }
+
+        void RecordCaptureFailureLocked(Dx9Runtime& rt, const char* reason, HRESULT hr)
+        {
+            const auto nowQpc = NowQpc();
+            if (!ShouldLogCaptureFailureLocked(rt, hr, nowQpc))
+            {
+                return;
+            }
+
+            rt.lastCaptureFailureHr = static_cast<std::uint32_t>(hr);
+            rt.lastCaptureFailureQpc = nowQpc;
+
+            LogDx9(
+                "event=capture_fail reason=%s hr=0x%08X resetCount=%llu pendingPostResetRebind=%u.",
+                reason != nullptr ? reason : "unknown",
+                static_cast<unsigned int>(static_cast<std::uint32_t>(hr)),
+                static_cast<unsigned long long>(rt.resetCount),
+                rt.pendingPostResetRebind ? 1u : 0u);
+
+            if (rt.pendingPostResetRebind)
+            {
+                LogDx9(
+                    "event=post_reset_rebind_failed reason=%s hr=0x%08X resetCount=%llu.",
+                    reason != nullptr ? reason : "unknown",
+                    static_cast<unsigned int>(static_cast<std::uint32_t>(hr)),
+                    static_cast<unsigned long long>(rt.resetCount));
+            }
+        }
 
         std::uint64_t NowQpc()
         {
@@ -109,6 +218,14 @@ namespace ht::hook::dx9
             rt.backBufferFormat = 0;
             rt.backBufferWidth = 0;
             rt.backBufferHeight = 0;
+
+            ReleaseCaptureSurfacesLocked(rt, "runtime_reset");
+            rt.surfaceRecreateCount = 0;
+            rt.resetCount = 0;
+            rt.lastResetQpc = 0;
+            rt.pendingPostResetRebind = false;
+            rt.lastCaptureFailureHr = 0;
+            rt.lastCaptureFailureQpc = 0;
         }
 
         bool RefreshConfigLocked(Dx9Runtime& rt)
@@ -162,16 +279,140 @@ namespace ht::hook::dx9
             return format == D3DFMT_A8R8G8B8 || format == D3DFMT_X8R8G8B8;
         }
 
-        bool CaptureAndShareFrameLocked(Dx9Runtime& rt, IDirect3DDevice9* device)
+        bool EnsureCaptureSurfacesLocked(Dx9Runtime& rt, IDirect3DDevice9* device, const D3DSURFACE_DESC& desc)
         {
             if (device == nullptr)
             {
                 return false;
             }
 
-            IDirect3DSurface9* backBuffer = nullptr;
-            if (FAILED(device->GetRenderTarget(0, &backBuffer)) || backBuffer == nullptr)
+            const std::uint32_t width = desc.Width;
+            const std::uint32_t height = desc.Height;
+            const std::uint32_t format = static_cast<std::uint32_t>(desc.Format);
+            const std::uint32_t msaaType = static_cast<std::uint32_t>(desc.MultiSampleType);
+            const std::uint32_t msaaQuality = desc.MultiSampleQuality;
+            const bool needsResolve = desc.MultiSampleType != D3DMULTISAMPLE_NONE;
+
+            const bool shapeChanged =
+                rt.surfaceWidth != width ||
+                rt.surfaceHeight != height ||
+                rt.surfaceFormat != format ||
+                rt.surfaceMsaaType != msaaType ||
+                rt.surfaceMsaaQuality != msaaQuality;
+
+            const bool resolveMismatch =
+                (needsResolve && rt.resolvedSurface == nullptr) ||
+                (!needsResolve && rt.resolvedSurface != nullptr);
+
+            const bool needsRecreate =
+                rt.stagingSurface == nullptr ||
+                shapeChanged ||
+                resolveMismatch ||
+                rt.pendingPostResetRebind;
+
+            if (!needsRecreate)
             {
+                return true;
+            }
+
+            const char* recreateReason = "surface_mismatch";
+            if (rt.pendingPostResetRebind)
+            {
+                recreateReason = "post_reset";
+            }
+            else if (rt.stagingSurface == nullptr)
+            {
+                recreateReason = "staging_missing";
+            }
+            else if (resolveMismatch)
+            {
+                recreateReason = "resolve_mode_changed";
+            }
+            else if (shapeChanged)
+            {
+                recreateReason = "backbuffer_changed";
+            }
+
+            ReleaseCaptureSurfacesLocked(rt, "recreate");
+
+            if (needsResolve)
+            {
+                const auto resolveHr = device->CreateRenderTarget(
+                    width,
+                    height,
+                    desc.Format,
+                    D3DMULTISAMPLE_NONE,
+                    0,
+                    FALSE,
+                    &rt.resolvedSurface,
+                    nullptr);
+                if (FAILED(resolveHr) || rt.resolvedSurface == nullptr)
+                {
+                    RecordCaptureFailureLocked(rt, "create_resolve_surface_failed", resolveHr);
+                    ReleaseCaptureSurfacesLocked(rt, "recreate_failed_resolve");
+                    return false;
+                }
+            }
+
+            const auto stagingHr = device->CreateOffscreenPlainSurface(
+                width,
+                height,
+                desc.Format,
+                D3DPOOL_SYSTEMMEM,
+                &rt.stagingSurface,
+                nullptr);
+            if (FAILED(stagingHr) || rt.stagingSurface == nullptr)
+            {
+                RecordCaptureFailureLocked(rt, "create_staging_surface_failed", stagingHr);
+                ReleaseCaptureSurfacesLocked(rt, "recreate_failed_staging");
+                return false;
+            }
+
+            rt.surfaceWidth = width;
+            rt.surfaceHeight = height;
+            rt.surfaceFormat = format;
+            rt.surfaceMsaaType = msaaType;
+            rt.surfaceMsaaQuality = msaaQuality;
+            rt.surfaceRecreateCount++;
+
+            LogDx9(
+                "event=capture_surfaces_recreate reason=%s resetCount=%llu count=%llu size=%ux%u format=%u msaaType=%u msaaQuality=%u.",
+                recreateReason,
+                static_cast<unsigned long long>(rt.resetCount),
+                static_cast<unsigned long long>(rt.surfaceRecreateCount),
+                width,
+                height,
+                format,
+                msaaType,
+                msaaQuality);
+
+            if (rt.pendingPostResetRebind)
+            {
+                rt.pendingPostResetRebind = false;
+                LogDx9(
+                    "event=post_reset_rebind_ok resetCount=%llu size=%ux%u format=%u.",
+                    static_cast<unsigned long long>(rt.resetCount),
+                    width,
+                    height,
+                    format);
+            }
+
+            return true;
+        }
+
+        bool CaptureAndShareFrameLocked(Dx9Runtime& rt, IDirect3DDevice9* device)
+        {
+            if (device == nullptr)
+            {
+                RecordCaptureFailureLocked(rt, "device_null", E_POINTER);
+                return false;
+            }
+
+            IDirect3DSurface9* backBuffer = nullptr;
+            const auto getRtHr = device->GetRenderTarget(0, &backBuffer);
+            if (FAILED(getRtHr) || backBuffer == nullptr)
+            {
+                RecordCaptureFailureLocked(rt, "get_render_target_failed", getRtHr);
                 return false;
             }
 
@@ -179,71 +420,58 @@ namespace ht::hook::dx9
             const HRESULT descHr = backBuffer->GetDesc(&desc);
             if (FAILED(descHr) || desc.Width == 0 || desc.Height == 0 || !IsSupportedCaptureFormat(desc.Format))
             {
+                RecordCaptureFailureLocked(rt, "backbuffer_desc_invalid", descHr);
+                backBuffer->Release();
+                return false;
+            }
+
+            if (!EnsureCaptureSurfacesLocked(rt, device, desc))
+            {
                 backBuffer->Release();
                 return false;
             }
 
             IDirect3DSurface9* copySource = backBuffer;
-            IDirect3DSurface9* resolved = nullptr;
             if (desc.MultiSampleType != D3DMULTISAMPLE_NONE)
             {
-                const HRESULT resolveCreateHr = device->CreateRenderTarget(
-                    desc.Width,
-                    desc.Height,
-                    desc.Format,
-                    D3DMULTISAMPLE_NONE,
-                    0,
-                    FALSE,
-                    &resolved,
-                    nullptr);
-                if (FAILED(resolveCreateHr) || resolved == nullptr)
+                if (rt.resolvedSurface == nullptr)
                 {
+                    RecordCaptureFailureLocked(rt, "resolve_surface_missing", E_FAIL);
                     backBuffer->Release();
                     return false;
                 }
 
-                const HRESULT stretchHr = device->StretchRect(backBuffer, nullptr, resolved, nullptr, D3DTEXF_NONE);
+                const HRESULT stretchHr = device->StretchRect(backBuffer, nullptr, rt.resolvedSurface, nullptr, D3DTEXF_NONE);
                 if (FAILED(stretchHr))
                 {
-                    resolved->Release();
+                    RecordCaptureFailureLocked(rt, "stretch_rect_failed", stretchHr);
                     backBuffer->Release();
                     return false;
                 }
 
-                copySource = resolved;
+                copySource = rt.resolvedSurface;
             }
 
-            IDirect3DSurface9* staging = nullptr;
-            const HRESULT createHr = device->CreateOffscreenPlainSurface(
-                desc.Width,
-                desc.Height,
-                desc.Format,
-                D3DPOOL_SYSTEMMEM,
-                &staging,
-                nullptr);
-            if (FAILED(createHr) || staging == nullptr)
+            if (rt.stagingSurface == nullptr)
             {
+                RecordCaptureFailureLocked(rt, "staging_surface_missing", E_FAIL);
                 backBuffer->Release();
                 return false;
             }
 
-            const HRESULT copyHr = device->GetRenderTargetData(copySource, staging);
-            if (resolved != nullptr)
-            {
-                resolved->Release();
-            }
+            const HRESULT copyHr = device->GetRenderTargetData(copySource, rt.stagingSurface);
             backBuffer->Release();
             if (FAILED(copyHr))
             {
-                staging->Release();
+                RecordCaptureFailureLocked(rt, "get_render_target_data_failed", copyHr);
                 return false;
             }
 
             D3DLOCKED_RECT locked{};
-            const HRESULT lockHr = staging->LockRect(&locked, nullptr, D3DLOCK_READONLY);
+            const HRESULT lockHr = rt.stagingSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
             if (FAILED(lockHr) || locked.pBits == nullptr || locked.Pitch <= 0)
             {
-                staging->Release();
+                RecordCaptureFailureLocked(rt, "staging_lock_failed", lockHr);
                 return false;
             }
 
@@ -260,8 +488,7 @@ namespace ht::hook::dx9
                 std::memcpy(dst, src, stride);
             }
 
-            staging->UnlockRect();
-            staging->Release();
+            rt.stagingSurface->UnlockRect();
 
             const DWORD pid = GetCurrentProcessId();
             const std::uint64_t frameId = ++rt.frameId;
@@ -276,9 +503,12 @@ namespace ht::hook::dx9
                     rt.scratch.data(),
                     payloadBytes))
             {
+                RecordCaptureFailureLocked(rt, "shared_frame_write_failed", E_FAIL);
                 return false;
             }
 
+            rt.lastCaptureFailureHr = 0;
+            rt.lastCaptureFailureQpc = 0;
             rt.lastFrameWriteQpc = NowQpc();
             rt.lastCaptureQpc = rt.lastPresentQpc;
             rt.backBufferFormat = static_cast<std::uint32_t>(desc.Format);
@@ -354,16 +584,44 @@ namespace ht::hook::dx9
         HRESULT STDMETHODCALLTYPE HookedReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* params)
         {
             ResetFn original = nullptr;
+            std::uint64_t presentCount = 0;
             {
                 std::lock_guard<std::mutex> lock(g_rt.mutex);
+                ReleaseCaptureSurfacesLocked(g_rt, "reset_begin");
                 g_rt.backBufferWidth = 0;
                 g_rt.backBufferHeight = 0;
                 g_rt.backBufferFormat = 0;
                 g_rt.lastCaptureQpc = 0;
+                presentCount = g_rt.presentCount;
                 original = g_rt.originalReset;
             }
 
-            return original ? original(device, params) : D3D_OK;
+            const auto result = original ? original(device, params) : D3D_OK;
+
+            {
+                std::lock_guard<std::mutex> lock(g_rt.mutex);
+                if (SUCCEEDED(result))
+                {
+                    g_rt.resetCount++;
+                    g_rt.lastResetQpc = NowQpc();
+                    g_rt.pendingPostResetRebind = true;
+                    LogDx9(
+                        "event=reset_result result=ok hr=0x%08X resetCount=%llu presentCount=%llu.",
+                        static_cast<unsigned int>(static_cast<std::uint32_t>(result)),
+                        static_cast<unsigned long long>(g_rt.resetCount),
+                        static_cast<unsigned long long>(presentCount));
+                }
+                else
+                {
+                    LogDx9(
+                        "event=reset_result result=failed hr=0x%08X resetCount=%llu presentCount=%llu.",
+                        static_cast<unsigned int>(static_cast<std::uint32_t>(result)),
+                        static_cast<unsigned long long>(g_rt.resetCount),
+                        static_cast<unsigned long long>(presentCount));
+                }
+            }
+
+            return result;
         }
 
         bool CreateDummyDeviceAndGetVtable(void*** outVtable)
