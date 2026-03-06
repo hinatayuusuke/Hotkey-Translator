@@ -1,7 +1,9 @@
 #include "SharedFrameWriter.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstring>
+#include <limits>
 
 namespace ht::hook::ipc
 {
@@ -116,20 +118,29 @@ namespace ht::hook::ipc
             return false;
         }
 
-        const auto totalBytes = sizeof(FrameHeader) + payloadBytes;
+        const std::uint64_t totalBytes64 = static_cast<std::uint64_t>(sizeof(FrameHeader)) + static_cast<std::uint64_t>(payloadBytes);
+        if (totalBytes64 > static_cast<std::uint64_t>(std::numeric_limits<SIZE_T>::max()))
+        {
+            SetLastError(LastErrorKind::MappingSizeInvalid, ERROR_INVALID_PARAMETER, payloadBytes, 0);
+            return false;
+        }
+
+        const SIZE_T totalBytes = static_cast<SIZE_T>(totalBytes64);
+        const DWORD mappingSizeHigh = static_cast<DWORD>((totalBytes64 >> 32u) & 0xFFFFFFFFull);
+        const DWORD mappingSizeLow = static_cast<DWORD>(totalBytes64 & 0xFFFFFFFFull);
         mappingName_ = BuildFrameMappingName(pid, api);
 
         mappingHandle_ = CreateFileMappingW(
             INVALID_HANDLE_VALUE,
             nullptr,
             PAGE_READWRITE,
-            static_cast<DWORD>((totalBytes >> 32) & 0xFFFFFFFF),
-            static_cast<DWORD>(totalBytes & 0xFFFFFFFF),
+            mappingSizeHigh,
+            mappingSizeLow,
             mappingName_.c_str());
 
         if (mappingHandle_ == nullptr)
         {
-            SetLastError(LastErrorKind::CreateFileMappingFailed, GetLastError(), payloadBytes, totalBytes);
+            SetLastError(LastErrorKind::CreateFileMappingFailed, GetLastError(), payloadBytes, static_cast<std::size_t>(totalBytes));
             return false;
         }
 
@@ -139,13 +150,13 @@ namespace ht::hook::ipc
             const DWORD gle = GetLastError();
             CloseHandle(mappingHandle_);
             mappingHandle_ = nullptr;
-            SetLastError(LastErrorKind::MapViewFailed, gle, payloadBytes, totalBytes);
+            SetLastError(LastErrorKind::MapViewFailed, gle, payloadBytes, static_cast<std::size_t>(totalBytes));
             return false;
         }
 
         mappedCapacityBytes_ = payloadBytes;
         std::memset(mappedView_, 0, totalBytes);
-        SetLastError(LastErrorKind::None, 0, payloadBytes, totalBytes);
+        SetLastError(LastErrorKind::None, 0, payloadBytes, static_cast<std::size_t>(totalBytes));
         return true;
     }
 }

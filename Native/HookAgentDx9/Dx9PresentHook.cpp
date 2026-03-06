@@ -144,6 +144,9 @@ namespace ht::hook::dx9
             bool createDeviceHookSeen = false;
             bool createDeviceExHookSeen = false;
             std::uint64_t lastSkipCapturePresentCount = 0;
+            ipc::SharedFrameWriter::LastErrorKind lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
+            DWORD lastWriteFrameErrorGle = 0;
+            std::uint64_t writeFrameErrorStreak = 0;
         };
 
         Dx9Runtime g_rt;
@@ -504,6 +507,9 @@ namespace ht::hook::dx9
             rt.createDeviceHookSeen = false;
             rt.createDeviceExHookSeen = false;
             rt.lastSkipCapturePresentCount = 0;
+            rt.lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
+            rt.lastWriteFrameErrorGle = 0;
+            rt.writeFrameErrorStreak = 0;
         }
 
         bool RefreshConfigLocked(Dx9Runtime& rt)
@@ -865,20 +871,54 @@ namespace ht::hook::dx9
                 const auto totalBytes = rt.frameWriter.LastTotalBytes();
                 const auto mapNameFail = rt.frameWriter.MappingName();
                 const auto mapNameFailUtf8 = WideToUtf8(mapNameFail);
-                LogDx9(
-                    "event=write_frame_failed frameId=%llu reason=%s gle=%lu requestedPayloadBytes=%llu totalBytes=%llu map=\"%s\".",
-                    static_cast<unsigned long long>(frameId),
-                    errorName,
-                    static_cast<unsigned long>(writerGle),
-                    static_cast<unsigned long long>(requestedBytes),
-                    static_cast<unsigned long long>(totalBytes),
-                    mapNameFailUtf8.c_str());
+                const bool sameFailureAsLast =
+                    (rt.lastWriteFrameErrorKind == errorKind) &&
+                    (rt.lastWriteFrameErrorGle == writerGle);
+                if (sameFailureAsLast)
+                {
+                    rt.writeFrameErrorStreak++;
+                }
+                else
+                {
+                    rt.writeFrameErrorStreak = 1;
+                    rt.lastWriteFrameErrorKind = errorKind;
+                    rt.lastWriteFrameErrorGle = writerGle;
+                }
+
+                const bool shouldLogFailure =
+                    (rt.writeFrameErrorStreak == 1) ||
+                    ((rt.writeFrameErrorStreak % 60ull) == 0);
+                if (shouldLogFailure)
+                {
+                    LogDx9(
+                        "event=write_frame_failed frameId=%llu reason=%s gle=%lu requestedPayloadBytes=%llu totalBytes=%llu map=\"%s\" streak=%llu.",
+                        static_cast<unsigned long long>(frameId),
+                        errorName,
+                        static_cast<unsigned long>(writerGle),
+                        static_cast<unsigned long long>(requestedBytes),
+                        static_cast<unsigned long long>(totalBytes),
+                        mapNameFailUtf8.c_str(),
+                        static_cast<unsigned long long>(rt.writeFrameErrorStreak));
+                }
                 RecordCaptureFailureLocked(rt, "shared_frame_write_failed", E_FAIL);
                 return false;
             }
 
             const auto mapNameOk = rt.frameWriter.MappingName();
             const auto mapNameOkUtf8 = WideToUtf8(mapNameOk);
+            if (rt.writeFrameErrorStreak > 0)
+            {
+                LogDx9(
+                    "event=write_frame_recovered frameId=%llu previousReason=%s previousGle=%lu previousStreak=%llu map=\"%s\".",
+                    static_cast<unsigned long long>(frameId),
+                    FrameWriterErrorToString(rt.lastWriteFrameErrorKind),
+                    static_cast<unsigned long>(rt.lastWriteFrameErrorGle),
+                    static_cast<unsigned long long>(rt.writeFrameErrorStreak),
+                    mapNameOkUtf8.c_str());
+                rt.writeFrameErrorStreak = 0;
+                rt.lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
+                rt.lastWriteFrameErrorGle = 0;
+            }
             LogDx9(
                 "event=write_frame_ok frameId=%llu width=%u height=%u payloadBytes=%llu map=\"%s\".",
                 static_cast<unsigned long long>(frameId),

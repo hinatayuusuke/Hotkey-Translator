@@ -16671,3 +16671,39 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 16:23 (Asia/Taipei) — DX9 x86 共有メモリ作成失敗（GLE=8）修正 + 失敗ログ抑制**
+
+### Summary
+- DX9 x86で `CreateFileMappingW` が `GLE=8` で失敗する問題を修正し、`write_frame_failed` の連続大量ログを抑制した。
+
+### Context / Goal
+- Terrariaログで `present_hook_hit` は出るが毎フレーム `write_frame_failed reason=create_file_mapping_failed gle=8` となり、frame map が作れず capture が失敗していた。
+- 併せて同一失敗ログが大量に出て可読性が低下していた。
+
+### Changes
+- `SharedFrameWriter` の mapping サイズ計算を x86安全化:
+  - `totalBytes` を `uint64_t` で計算し、`SIZE_T` 上限チェックを追加。
+  - `CreateFileMappingW` の `dwMaximumSizeHigh/Low` を `uint64_t` から分割して設定。
+  - x86での `>> 32` 未定義シフトを除去。
+- `Dx9PresentHook` に write失敗の連続抑制を追加:
+  - 同一 `errorKind+gle` は `streak` をカウント。
+  - 初回と60回ごとのみ `event=write_frame_failed` を出力。
+  - 復旧時に `event=write_frame_recovered` を1回出力してカウンタをリセット。
+
+### Files Touched
+- `Native/HookCommon/SharedFrameWriter.cpp` — mappingサイズ計算を `uint64_t` ベースへ修正、x86安全化。
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — `write_frame_failed` 連続抑制ロジックと復旧ログを追加。
+
+### Behavioral Impact
+- x86 DX9で `CreateFileMappingW` サイズ引数が正しくなり、`GLE=8` の誤発生を回避できる。
+- 連続失敗時のログ量が大幅に減る。
+
+### Risk & Mitigation
+- Risk: 失敗ログを間引くことで瞬間的な変化を見逃す可能性。
+- Mitigation: 初回失敗は必ず記録し、60回ごとに継続失敗を記録、復旧時も記録する。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+- x86ビルドで `SharedFrameWriter.cpp` の `C4293` 警告が出ないことを確認。
