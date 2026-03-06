@@ -87,6 +87,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int MirrorOverlayTopmostResyncIntervalMs = 500;
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
+    private const string FixedHookHostX86RelativePath = "Native\\HookHost\\bin\\x86\\HookHost.exe";
+    private const string FixedHookAgentDx9RelativePath = "Native\\HookHost\\bin\\HookAgentDx9.dll";
+    private const string FixedHookAgentDx9X86RelativePath = "Native\\HookHost\\bin\\x86\\HookAgentDx9.dll";
     private const string FixedMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
     private const string FixedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
 
@@ -1401,6 +1404,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (settings.EnableGraphicsHookPipeline)
         {
             ShowMissingBinaryDialogIfNeeded("bin_hookhost_missing", FixedHookHostRelativePath, "Graphics hook");
+            if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9)
+            {
+                // WHY: Dx9 は x86/x64 両方を配布して runtime で切り替えるため、両系統を事前チェックする。
+                ShowMissingBinaryDialogIfNeeded("bin_hookhost_x86_missing", FixedHookHostX86RelativePath, "Graphics hook (x86 host)");
+                ShowMissingBinaryDialogIfNeeded("bin_hook_dx9_x64_missing", FixedHookAgentDx9RelativePath, "Graphics hook DX9 agent (x64)");
+                ShowMissingBinaryDialogIfNeeded("bin_hook_dx9_x86_missing", FixedHookAgentDx9X86RelativePath, "Graphics hook DX9 agent (x86)");
+            }
         }
 
         if (settings.EnableMirrorFullscreenMode)

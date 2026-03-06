@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipes;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -13,7 +14,16 @@ namespace Hotkey_Translator.Services.Hook;
 
 internal sealed class GraphicsHookClientService : IDisposable
 {
-    private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
+    private const string FixedHookHostRelativePathX64 = "Native\\HookHost\\bin\\HookHost.exe";
+    private const string FixedHookHostRelativePathX86 = "Native\\HookHost\\bin\\x86\\HookHost.exe";
+    private const string FixedHookAgentDx9RelativePathX64 = "Native\\HookHost\\bin\\HookAgentDx9.dll";
+    private const string FixedHookAgentDx9RelativePathX86 = "Native\\HookHost\\bin\\x86\\HookAgentDx9.dll";
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private const ushort ImageFileMachineUnknown = 0x0000;
+    private const ushort ImageFileMachineI386 = 0x014c;
+    private const ushort ImageFileMachineAmd64 = 0x8664;
+    private const ushort ImageFileMachineArm64 = 0xAA64;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase
@@ -27,6 +37,7 @@ internal sealed class GraphicsHookClientService : IDisposable
     private StreamReader? _reader;
     private StreamWriter? _writer;
     private Process? _hostProcess;
+    private string _hostPath = string.Empty;
     private string _lastPipeName = "hotkey_translator_hook";
     private int _attachedPid;
     private GraphicsHookApiKind _attachedApi = GraphicsHookApiKind.Dx11;
@@ -34,6 +45,29 @@ internal sealed class GraphicsHookClientService : IDisposable
     private CancellationTokenSource? _receiveCts;
     private Task? _receiveTask;
     private bool _disposed;
+
+    private enum ProcessBitness
+    {
+        Unknown = 0,
+        X86,
+        X64
+    }
+
+    private readonly struct HostSelection
+    {
+        public HostSelection(string hostPath, string dx9AgentPath, ProcessBitness targetBitness, GraphicsHookApiKind api)
+        {
+            HostPath = hostPath;
+            Dx9AgentPath = dx9AgentPath;
+            TargetBitness = targetBitness;
+            Api = api;
+        }
+
+        public string HostPath { get; }
+        public string Dx9AgentPath { get; }
+        public ProcessBitness TargetBitness { get; }
+        public GraphicsHookApiKind Api { get; }
+    }
 
     public GraphicsHookClientService(Func<AppLogger?> loggerAccessor)
     {
@@ -77,7 +111,19 @@ internal sealed class GraphicsHookClientService : IDisposable
                 return;
             }
 
-            if (!EnsureHostProcess(settings))
+            if (!TryResolveHostSelection(settings, settings.FixedCaptureWindowProcessId, out var hostSelection, out var hostResolveReason))
+            {
+                _loggerAccessor()?.Error(
+                    $"stage=graphics_hook event=attach_skip reason={hostResolveReason ?? "host_selection_failed"} pid={settings.FixedCaptureWindowProcessId} api={settings.GraphicsHookApi}.");
+                if (settings.GraphicsHookFallbackOnError)
+                {
+                    await DetachInternalAsync($"attach_skip:{hostResolveReason ?? "host_selection_failed"}", cancellationToken).ConfigureAwait(false);
+                }
+
+                return;
+            }
+
+            if (!EnsureHostProcess(hostSelection))
             {
                 _loggerAccessor()?.Error("stage=graphics_hook event=host_start_failed.");
                 if (settings.GraphicsHookFallbackOnError)
@@ -125,7 +171,7 @@ internal sealed class GraphicsHookClientService : IDisposable
                 effectiveOverlayEnabled,
                 _runtimeConfigFlags);
             _loggerAccessor()?.Info(
-                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
+                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} bitness={FormatBitness(hostSelection.TargetBitness)} host=\"{hostSelection.HostPath}\" agent=\"{hostSelection.Dx9AgentPath}\" fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
         }
         catch (OperationCanceledException)
         {
@@ -276,14 +322,21 @@ internal sealed class GraphicsHookClientService : IDisposable
         return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
-    private bool EnsureHostProcess(AppSettings settings)
+    private bool EnsureHostProcess(HostSelection hostSelection)
     {
         if (_hostProcess is { HasExited: false })
         {
-            return true;
+            if (string.Equals(_hostPath, hostSelection.HostPath, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // WHY: x86/x64 を跨ぐと既存Hostでは注入できないため、bitness変更時はHostを入れ替える。
+            TryForceTerminateHostProcessOnDispose();
+            DisposePipe();
         }
 
-        var hostPath = ResolveHostPath();
+        var hostPath = hostSelection.HostPath;
         if (!File.Exists(hostPath))
         {
             _loggerAccessor()?.Error($"Graphics HookHost executable not found: {hostPath}");
@@ -307,7 +360,9 @@ internal sealed class GraphicsHookClientService : IDisposable
                 return false;
             }
 
-            _loggerAccessor()?.Info($"stage=graphics_hook event=host_started path=\"{hostPath}\" pid={_hostProcess.Id}.");
+            _hostPath = hostPath;
+            _loggerAccessor()?.Info(
+                $"stage=graphics_hook event=host_started path=\"{hostPath}\" pid={_hostProcess.Id} bitness={FormatBitness(hostSelection.TargetBitness)} api={hostSelection.Api}.");
             return true;
         }
         catch (Exception ex)
@@ -316,6 +371,189 @@ internal sealed class GraphicsHookClientService : IDisposable
             return false;
         }
     }
+
+    private bool TryResolveHostSelection(AppSettings settings, int pid, out HostSelection selection, out string? failureReason)
+    {
+        var targetBitness = GetProcessBitness(pid, out var bitnessReason);
+        if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9 && targetBitness == ProcessBitness.Unknown)
+        {
+            failureReason = $"target_bitness_unknown({bitnessReason ?? "unknown"})";
+            selection = default;
+            return false;
+        }
+
+        var hostPath = ResolveHostPath(targetBitness, settings.GraphicsHookApi);
+        var agentPath = ResolveDx9AgentPath(targetBitness, settings.GraphicsHookApi);
+
+        if (!File.Exists(hostPath))
+        {
+            failureReason = $"host_missing({hostPath})";
+            selection = default;
+            return false;
+        }
+
+        if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9 && !File.Exists(agentPath))
+        {
+            failureReason = $"agent_missing({agentPath})";
+            selection = default;
+            return false;
+        }
+
+        selection = new HostSelection(hostPath, agentPath, targetBitness, settings.GraphicsHookApi);
+        failureReason = null;
+        _loggerAccessor()?.Info(
+            $"stage=graphics_hook event=host_selection pid={pid} api={settings.GraphicsHookApi} target_bitness={FormatBitness(targetBitness)} host=\"{hostPath}\" agent=\"{agentPath}\" reason={bitnessReason ?? "none"}.");
+        return true;
+    }
+
+    private static string ResolveHostPath(ProcessBitness targetBitness, GraphicsHookApiKind api)
+    {
+        // WHY: Dx9 のみ x86 Host を選択する。Dx11/Vulkan は既存の x64 Host 配置を維持する。
+        if (api == GraphicsHookApiKind.Dx9 && targetBitness == ProcessBitness.X86)
+        {
+            return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePathX86));
+        }
+
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePathX64));
+    }
+
+    private static string ResolveDx9AgentPath(ProcessBitness targetBitness, GraphicsHookApiKind api)
+    {
+        if (api != GraphicsHookApiKind.Dx9)
+        {
+            return string.Empty;
+        }
+
+        var relativePath = targetBitness == ProcessBitness.X86
+            ? FixedHookAgentDx9RelativePathX86
+            : FixedHookAgentDx9RelativePathX64;
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
+    }
+
+    private static string FormatBitness(ProcessBitness bitness)
+    {
+        return bitness switch
+        {
+            ProcessBitness.X86 => "x86",
+            ProcessBitness.X64 => "x64",
+            _ => "unknown"
+        };
+    }
+
+    private static ProcessBitness GetProcessBitness(int pid, out string? reason)
+    {
+        reason = null;
+        if (pid <= 0)
+        {
+            reason = "invalid_pid";
+            return ProcessBitness.Unknown;
+        }
+
+        var processHandle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (processHandle == IntPtr.Zero)
+        {
+            reason = $"open_process_failed({Marshal.GetLastWin32Error()})";
+            return ProcessBitness.Unknown;
+        }
+
+        try
+        {
+            if (TryGetProcessBitnessWithWow64Process2(processHandle, out var wow64v2Bitness, out var wow64v2Reason))
+            {
+                reason = wow64v2Reason;
+                return wow64v2Bitness;
+            }
+
+            if (TryGetProcessBitnessWithWow64Process(processHandle, out var wow64Bitness, out var wow64Reason))
+            {
+                reason = wow64Reason;
+                return wow64Bitness;
+            }
+
+            reason = "wow64_query_failed";
+            return ProcessBitness.Unknown;
+        }
+        finally
+        {
+            _ = CloseHandle(processHandle);
+        }
+    }
+
+    private static bool TryGetProcessBitnessWithWow64Process2(IntPtr processHandle, out ProcessBitness bitness, out string reason)
+    {
+        bitness = ProcessBitness.Unknown;
+        reason = "wow64process2_unavailable";
+
+        try
+        {
+            if (!IsWow64Process2(processHandle, out var processMachine, out var nativeMachine))
+            {
+                reason = $"wow64process2_failed({Marshal.GetLastWin32Error()})";
+                return false;
+            }
+
+            if (processMachine == ImageFileMachineI386)
+            {
+                bitness = ProcessBitness.X86;
+                reason = "wow64process2_i386";
+                return true;
+            }
+
+            if (processMachine == ImageFileMachineUnknown &&
+                (nativeMachine == ImageFileMachineAmd64 || nativeMachine == ImageFileMachineArm64))
+            {
+                bitness = ProcessBitness.X64;
+                reason = "wow64process2_native64";
+                return true;
+            }
+
+            reason = $"wow64process2_unknown(pm={processMachine},nm={nativeMachine})";
+            return false;
+        }
+        catch (EntryPointNotFoundException)
+        {
+            reason = "wow64process2_not_found";
+            return false;
+        }
+    }
+
+    private static bool TryGetProcessBitnessWithWow64Process(IntPtr processHandle, out ProcessBitness bitness, out string reason)
+    {
+        bitness = ProcessBitness.Unknown;
+        reason = "wow64process_unavailable";
+
+        if (!IsWow64Process(processHandle, out var isWow64))
+        {
+            reason = $"wow64process_failed({Marshal.GetLastWin32Error()})";
+            return false;
+        }
+
+        if (!Environment.Is64BitOperatingSystem)
+        {
+            bitness = ProcessBitness.X86;
+            reason = "wow64process_os32";
+            return true;
+        }
+
+        bitness = isWow64 ? ProcessBitness.X86 : ProcessBitness.X64;
+        reason = isWow64 ? "wow64process_wow64" : "wow64process_native64";
+        return true;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint processAccess, bool inheritHandle, int processId);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr hObject);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWow64Process(IntPtr process, out bool wow64Process);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWow64Process2(IntPtr process, out ushort processMachine, out ushort nativeMachine);
 
     private async Task<bool> EnsurePipeConnectedAsync(AppSettings settings, CancellationToken cancellationToken)
     {
@@ -663,12 +901,8 @@ internal sealed class GraphicsHookClientService : IDisposable
         finally
         {
             _hostProcess = null;
+            _hostPath = string.Empty;
         }
-    }
-
-    private static string ResolveHostPath()
-    {
-        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePath));
     }
 
     private void DisposePipe()
@@ -759,6 +993,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             }
 
             _hostProcess = null;
+            _hostPath = string.Empty;
         }
     }
 }

@@ -16259,3 +16259,48 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - cmake --build Native/build --config Debug --target HookAgentDx9 HookHost 実行成功。
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 10:23 (Asia/Taipei) — DX9統合 Step2（x86/x64デュアル配布・bitness選択）実装**
+
+### Summary
+- DX9 attach 時にターゲット bitness を判定して Host/Agent を選択する実装を追加し、x86/x64 の配布先を分離した。
+
+### Context / Goal
+- Doc/GraphicsHook_DX9_Integration_Direction.md の Step2 を実装する。
+- HookHost.exe / HookAgentDx9.dll を x86/x64 で共存させ、診断ログで選択結果を追えるようにする。
+
+### Changes
+- GraphicsHookClientService に PID bitness 判定（IsWow64Process2 / IsWow64Process）を追加。
+- Dx9 attach 時の Host/Agent 選択を追加（x64: `bin`, x86: `bin\\x86`）。
+- attach ログに bitness / host path / agent path を追加。
+- Host 稼働中に bitness が変わった場合は Host を再起動して切り替える処理を追加。
+- CMake で HookHost と HookAgentDx9 の x86 出力先を `Native/HookHost/bin/x86` に分離。
+- Dx9 選択時の前提ファイル（x86 Host/Agent）を MainWindow の不足チェックに追加。
+- x86 ビルド時に MinHook が失敗するため、intrinsic 宣言（`intrin.h`）を追加して解消。
+
+### Files Touched
+- `Services/Hook/GraphicsHookClientService.cs` — bitness判定、Host/Agent選択、選択ログ、Host切替再起動を追加。
+- `Native/HookHost/CMakeLists.txt` — Win32 ビルド時の出力先を `bin/x86` に分離。
+- `Native/HookAgentDx9/CMakeLists.txt` — Win32 ビルド時の出力先を `bin/x86` に分離。
+- `MainWindow.xaml.cs` — Dx9時の x86 Host/Agent 前提チェックを追加。
+- `Native/ThirdParty/MinHook/src/trampoline.c` — x86 ビルド向けに `intrin.h` を追加。
+- `Native/ThirdParty/MinHook/src/hde/hde32.c` — x86 ビルド向けに `intrin.h` を追加。
+
+### Behavioral Impact
+- API=Dx9 の attach で、対象プロセスが x86 なら `Native/HookHost/bin/x86/HookHost.exe` と `Native/HookHost/bin/x86/HookAgentDx9.dll` を使う。
+- API=Dx9 の attach で、対象プロセスが x64 なら従来の `Native/HookHost/bin` 側を使う。
+- ログに bitness と選択結果が出るため、配布ミスや誤選択の切り分けが容易になる。
+
+### Risk & Mitigation
+- Risk: x86 MinHook ビルドが環境依存で失敗すると x86配布が欠ける。
+- Mitigation: MinHook の x86 intrinsic 解決を追加し、Win32 ビルド検証を実施した。
+- Risk: Dx9以外で x86 Host を使う導線は未実装。
+- Mitigation: 本実装は Step2 の要求どおり Dx9 attach の選択に限定し、既存 Dx11/Vulkan 経路への影響を最小化した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+- `cmake -S Native -B Native/build -A x64` 実行成功。
+- `cmake --build Native/build --config Debug --target HookHost HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` 実行成功。
+- 生成物確認: `Native/HookHost/bin/x86/HookHost.exe`, `Native/HookHost/bin/x86/HookAgentDx9.dll`。

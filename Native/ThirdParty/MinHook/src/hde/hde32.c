@@ -7,6 +7,10 @@
 
 #if defined(_M_IX86) || defined(__i386__)
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 #include "hde32.h"
 #include "table32.h"
 
