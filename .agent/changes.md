@@ -16466,3 +16466,67 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 14:08 (Asia/Taipei) — DX9 vtable読取ガード + hook targetページ検証を追加**
+
+### Summary
+- `create_dummy_device` 後に発生していた AV 切り分け/回避のため、vtable読取を例外ガードし、hook target のページ属性チェックを追加した。
+
+### Context / Goal
+- 要求どおり、`vtable` 読み取り前に `__try/__except` で保護し、失敗時に `vtable_access_failed` で即 return する。
+- 取得した `presentTarget/resetTarget` に null チェックとページ属性（実行可能ページ）チェックを実装する。
+
+### Changes
+- `TryReadVtableTargets` を追加し、`vtable[kReset]/vtable[kPresent]` 参照を `__try/__except` で保護。
+- 例外時は `event=install_hook_result result=fail reason=vtable_access_failed ...` を記録して失敗復帰。
+- `ValidateHookTargetPointer` を追加し、`VirtualQuery` で以下を検証:
+  - null でない
+  - `MEM_COMMIT`
+  - `PAGE_GUARD/PAGE_NOACCESS` でない
+  - `PAGE_EXECUTE*` のいずれか
+- 検証失敗時は `invalid_*_target_page` として即 return。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — vtable読取ガードと hook target 妥当性チェックを追加。
+
+### Behavioral Impact
+- `create_dummy_device` 直後に起きていた未捕捉クラッシュを、失敗ログ付きで安全に失敗復帰できる。
+- 無効な関数ポインタへの MinHook 適用を事前に遮断できる。
+
+### Risk & Mitigation
+- Risk: 実行可能属性が特殊な環境で、妥当なtargetでも保守的に弾かれる可能性。
+- Mitigation: 判定結果を詳細ログ化し、必要なら許容条件を後続で調整できるようにした。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 14:19 (Asia/Taipei) — DX9 dummy-device存命中にhook targets取得する方式へ切替**
+
+### Summary
+- vtableポインタを関数外へ持ち出す方式を廃止し、dummy device が生存している間に Present/Reset の関数アドレスを直接取得する実装へ変更した。
+
+### Context / Goal
+- `vtable_access_failed` が `create_dummy_device ok` 直後に発生していたため、解放後のvtable参照をなくして失敗要因を除去する。
+
+### Changes
+- `CreateDummyDeviceAndGetVtable` を `CreateDummyDeviceAndGetHookTargets` に置換。
+- dummy device 存命中に `vtable[reset/present]` を読み取り、`outResetTarget/outPresentTarget` を直接返す形へ変更。
+- 既存の install 側 `TryReadVtableTargets` 呼び出しを削除し、取得済み target をそのまま妥当性検証へ渡すよう変更。
+- `vtable_access_failed` 例外ログは dummy device 内の読取り時点で出すよう整理。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — hook target 解決経路を dummy-device内読取りへ変更。
+
+### Behavioral Impact
+- `create_dummy_device` 後に別スコープで vtable を読む経路がなくなり、`resolve_targets begin` 直後の AV 発生要因を減らせる。
+
+### Risk & Mitigation
+- Risk: ダミーデバイス固有の vtable 実装と実ゲームデバイス実装が乖離する環境では、依然としてフック失敗の可能性がある。
+- Mitigation: 取得した target には既存の `VirtualQuery` 妥当性チェックを適用し、失敗時は明示ログで止める。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。

@@ -425,6 +425,60 @@ namespace ht::hook::dx9
             return format == D3DFMT_A8R8G8B8 || format == D3DFMT_X8R8G8B8;
         }
 
+        bool IsExecutableProtection(DWORD protect)
+        {
+            const DWORD baseProtect = protect & 0xFFu;
+            return
+                baseProtect == PAGE_EXECUTE ||
+                baseProtect == PAGE_EXECUTE_READ ||
+                baseProtect == PAGE_EXECUTE_READWRITE ||
+                baseProtect == PAGE_EXECUTE_WRITECOPY;
+        }
+
+        bool ValidateHookTargetPointer(void* target, const char* name)
+        {
+            if (target == nullptr)
+            {
+                LogDx9("event=install_step step=validate_target result=fail reason=null_target name=%s.", name != nullptr ? name : "unknown");
+                return false;
+            }
+
+            MEMORY_BASIC_INFORMATION mbi{};
+            const SIZE_T queried = VirtualQuery(target, &mbi, sizeof(mbi));
+            if (queried != sizeof(mbi))
+            {
+                LogDx9(
+                    "event=install_step step=validate_target result=fail reason=virtual_query_failed name=%s target=%p gle=%lu.",
+                    name != nullptr ? name : "unknown",
+                    target,
+                    static_cast<unsigned long>(GetLastError()));
+                return false;
+            }
+
+            const bool committed = mbi.State == MEM_COMMIT;
+            const bool guarded = (mbi.Protect & PAGE_GUARD) != 0;
+            const bool noAccess = (mbi.Protect & PAGE_NOACCESS) != 0;
+            const bool executable = IsExecutableProtection(mbi.Protect);
+            if (!committed || guarded || noAccess || !executable)
+            {
+                LogDx9(
+                    "event=install_step step=validate_target result=fail reason=invalid_page name=%s target=%p state=0x%08X protect=0x%08X type=0x%08X.",
+                    name != nullptr ? name : "unknown",
+                    target,
+                    static_cast<unsigned int>(mbi.State),
+                    static_cast<unsigned int>(mbi.Protect),
+                    static_cast<unsigned int>(mbi.Type));
+                return false;
+            }
+
+            LogDx9(
+                "event=install_step step=validate_target result=ok name=%s target=%p protect=0x%08X.",
+                name != nullptr ? name : "unknown",
+                target,
+                static_cast<unsigned int>(mbi.Protect));
+            return true;
+        }
+
         bool EnsureCaptureSurfacesLocked(Dx9Runtime& rt, IDirect3DDevice9* device, const D3DSURFACE_DESC& desc)
         {
             if (device == nullptr)
@@ -770,13 +824,21 @@ namespace ht::hook::dx9
             return result;
         }
 
-        bool CreateDummyDeviceAndGetVtable(void*** outVtable)
+        bool CreateDummyDeviceAndGetHookTargets(
+            void** outPresentTarget,
+            void** outResetTarget,
+            std::uint32_t& outExceptionCode,
+            void*** outVtable)
         {
-            if (outVtable == nullptr)
+            outExceptionCode = 0;
+            if (outPresentTarget == nullptr || outResetTarget == nullptr || outVtable == nullptr)
             {
-                LogDx9("event=create_dummy_device fail reason=out_vtable_null.");
+                LogDx9("event=create_dummy_device fail reason=out_target_null.");
                 return false;
             }
+
+            *outPresentTarget = nullptr;
+            *outResetTarget = nullptr;
             *outVtable = nullptr;
 
             WNDCLASSW wc{};
@@ -848,17 +910,50 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            void** vtable = *reinterpret_cast<void***>(device);
-            if (vtable != nullptr)
+            void** vtable = nullptr;
+            __try
             {
-                *outVtable = vtable;
+                vtable = *reinterpret_cast<void***>(device);
+                if (vtable != nullptr)
+                {
+                    *outResetTarget = vtable[kDeviceResetIndex];
+                    *outPresentTarget = vtable[kDevicePresentIndex];
+                    *outVtable = vtable;
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                outExceptionCode = static_cast<std::uint32_t>(GetExceptionCode());
             }
 
             device->Release();
             d3d9->Release();
             DestroyWindow(hwnd);
-            LogDx9("event=create_dummy_device result=ok.");
-            return *outVtable != nullptr;
+
+            if (outExceptionCode != 0)
+            {
+                LogDx9(
+                    "event=create_dummy_device fail reason=vtable_access_failed code=0x%08X.",
+                    static_cast<unsigned int>(outExceptionCode));
+                return false;
+            }
+
+            if (*outVtable == nullptr || *outPresentTarget == nullptr || *outResetTarget == nullptr)
+            {
+                LogDx9(
+                    "event=create_dummy_device fail reason=target_extract_failed vtable=%p presentTarget=%p resetTarget=%p.",
+                    *outVtable,
+                    *outPresentTarget,
+                    *outResetTarget);
+                return false;
+            }
+
+            LogDx9(
+                "event=create_dummy_device result=ok vtable=%p presentTarget=%p resetTarget=%p.",
+                *outVtable,
+                *outPresentTarget,
+                *outResetTarget);
+            return true;
         }
 
         bool InstallPresentHookImpl(Dx9Runtime& rt)
@@ -879,16 +974,28 @@ namespace ht::hook::dx9
             rt.overlayEnabled = false;
 
             void** vtable = nullptr;
+            void* presentTarget = nullptr;
+            void* resetTarget = nullptr;
+            std::uint32_t vtableExceptionCode = 0;
             LogDx9("event=install_step step=create_dummy_device begin.");
-            if (!CreateDummyDeviceAndGetVtable(&vtable) || vtable == nullptr)
+            if (!CreateDummyDeviceAndGetHookTargets(&presentTarget, &resetTarget, vtableExceptionCode, &vtable))
             {
-                LogDx9("event=install_hook_result result=fail reason=create_dummy_device_failed.");
+                if (vtableExceptionCode != 0)
+                {
+                    LogDx9(
+                        "event=install_hook_result result=fail reason=vtable_access_failed code=0x%08X.",
+                        static_cast<unsigned int>(vtableExceptionCode));
+                }
+                else
+                {
+                    LogDx9("event=install_hook_result result=fail reason=create_dummy_device_failed.");
+                }
                 return false;
             }
             LogDx9("event=install_step step=create_dummy_device ok vtable=%p.", vtable);
 
-            rt.resetTarget = vtable[kDeviceResetIndex];
-            rt.presentTarget = vtable[kDevicePresentIndex];
+            rt.presentTarget = presentTarget;
+            rt.resetTarget = resetTarget;
             LogDx9(
                 "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p presentIndex=%d resetIndex=%d.",
                 rt.presentTarget,
@@ -897,7 +1004,19 @@ namespace ht::hook::dx9
                 kDeviceResetIndex);
             if (rt.resetTarget == nullptr || rt.presentTarget == nullptr)
             {
-                LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing.");
+                LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing_or_null.");
+                return false;
+            }
+
+            if (!ValidateHookTargetPointer(rt.presentTarget, "presentTarget"))
+            {
+                LogDx9("event=install_hook_result result=fail reason=invalid_present_target_page.");
+                return false;
+            }
+
+            if (!ValidateHookTargetPointer(rt.resetTarget, "resetTarget"))
+            {
+                LogDx9("event=install_hook_result result=fail reason=invalid_reset_target_page.");
                 return false;
             }
 
