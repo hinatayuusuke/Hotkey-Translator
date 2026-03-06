@@ -114,6 +114,7 @@ namespace ht::hook::dx9
             std::uint64_t lastFrameWriteQpc = 0;
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
             bool overlayEnabled = false;
+            bool perfDiagLogEnabled = false;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -154,6 +155,8 @@ namespace ht::hook::dx9
         HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
         DWORD g_diagFilePid = 0;
         std::wstring g_diagFilePath;
+        std::atomic_bool g_perfDiagLogEnabled{false};
+        std::atomic_bool g_diagFileSinkEnabled{false};
 
         std::uint64_t NowQpc();
 
@@ -308,7 +311,37 @@ namespace ht::hook::dx9
             {
                 line[lineLen - 1] = '\0';
             }
-            AppendDiagFileLine(line);
+            if (g_diagFileSinkEnabled.load(std::memory_order_relaxed))
+            {
+                AppendDiagFileLine(line);
+            }
+        }
+
+        void LogDx9Perf(const char* format, ...)
+        {
+            if (!g_perfDiagLogEnabled.load(std::memory_order_relaxed))
+            {
+                return;
+            }
+
+            char message[1024]{};
+            va_list args;
+            va_start(args, format);
+            (void)vsnprintf_s(message, sizeof(message), _TRUNCATE, format, args);
+            va_end(args);
+
+            char line[1200]{};
+            (void)snprintf(line, sizeof(line), "stage=hook_dx9 %s\n", message);
+            OutputDebugStringA(line);
+            const std::size_t lineLen = std::strlen(line);
+            if (lineLen > 0 && line[lineLen - 1] == '\n')
+            {
+                line[lineLen - 1] = '\0';
+            }
+            if (g_diagFileSinkEnabled.load(std::memory_order_relaxed))
+            {
+                AppendDiagFileLine(line);
+            }
         }
 
         void ReleaseCaptureSurfacesLocked(Dx9Runtime& rt, const char* reason)
@@ -484,6 +517,13 @@ namespace ht::hook::dx9
             rt.lastFrameWriteQpc = 0;
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.overlayEnabled = false;
+            rt.perfDiagLogEnabled = false;
+            g_perfDiagLogEnabled.store(false, std::memory_order_relaxed);
+            const bool wasDiagFileSinkEnabled = g_diagFileSinkEnabled.exchange(false, std::memory_order_relaxed);
+            if (wasDiagFileSinkEnabled)
+            {
+                CloseDiagFile();
+            }
 
             rt.presentCount = 0;
             rt.lastPresentQpc = 0;
@@ -540,6 +580,14 @@ namespace ht::hook::dx9
             rt.configuredFpsLimit = ClampFps(cfg.captureFpsLimit);
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
             rt.overlayEnabled = (cfg.overlayEnabled != 0);
+            rt.perfDiagLogEnabled = (cfg.reserved0 & ipc::kConfigFlagEnablePerfDiagLog) != 0;
+            g_perfDiagLogEnabled.store(rt.perfDiagLogEnabled, std::memory_order_relaxed);
+            const bool diagFileSinkEnabled = (cfg.reserved0 & ipc::kConfigFlagEnableDiagFileSink) != 0;
+            const bool wasDiagFileSinkEnabled = g_diagFileSinkEnabled.exchange(diagFileSinkEnabled, std::memory_order_relaxed);
+            if (wasDiagFileSinkEnabled && !diagFileSinkEnabled)
+            {
+                CloseDiagFile();
+            }
             return true;
         }
 
@@ -746,7 +794,7 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            LogDx9(
+            LogDx9Perf(
                 "event=capture_begin presentCount=%llu presentKind=%u.",
                 static_cast<unsigned long long>(rt.presentCount),
                 rt.lastPresentKind);
@@ -768,7 +816,7 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            LogDx9(
+            LogDx9Perf(
                 "event=capture_backbuffer_desc width=%u height=%u format=%u msaaType=%u msaaQuality=%u.",
                 static_cast<unsigned int>(desc.Width),
                 static_cast<unsigned int>(desc.Height),
@@ -845,7 +893,7 @@ namespace ht::hook::dx9
             const std::uint64_t frameId = ++rt.frameId;
             const auto mapName = rt.frameWriter.MappingName();
             const auto mapNameUtf8 = WideToUtf8(mapName);
-            LogDx9(
+            LogDx9Perf(
                 "event=write_frame_begin frameId=%llu width=%u height=%u stride=%u payloadBytes=%llu map=\"%s\".",
                 static_cast<unsigned long long>(frameId),
                 width,
@@ -908,7 +956,7 @@ namespace ht::hook::dx9
             const auto mapNameOkUtf8 = WideToUtf8(mapNameOk);
             if (rt.writeFrameErrorStreak > 0)
             {
-                LogDx9(
+                LogDx9Perf(
                     "event=write_frame_recovered frameId=%llu previousReason=%s previousGle=%lu previousStreak=%llu map=\"%s\".",
                     static_cast<unsigned long long>(frameId),
                     FrameWriterErrorToString(rt.lastWriteFrameErrorKind),
@@ -919,7 +967,7 @@ namespace ht::hook::dx9
                 rt.lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
                 rt.lastWriteFrameErrorGle = 0;
             }
-            LogDx9(
+            LogDx9Perf(
                 "event=write_frame_ok frameId=%llu width=%u height=%u payloadBytes=%llu map=\"%s\".",
                 static_cast<unsigned long long>(frameId),
                 width,
@@ -1017,19 +1065,19 @@ namespace ht::hook::dx9
 
             if (exCode != 0)
             {
-                LogDx9("event=runtime_vtable_probe_failed code=0x%08X fromEx=%u.", static_cast<unsigned int>(exCode), fromEx ? 1u : 0u);
+                LogDx9Perf("event=runtime_vtable_probe_failed code=0x%08X fromEx=%u.", static_cast<unsigned int>(exCode), fromEx ? 1u : 0u);
                 return;
             }
 
             if (FAILED(swapChainHr))
             {
-                LogDx9(
+                LogDx9Perf(
                     "event=runtime_swapchain_probe_failed hr=0x%08X fromEx=%u.",
                     static_cast<unsigned int>(static_cast<std::uint32_t>(swapChainHr)),
                     fromEx ? 1u : 0u);
             }
 
-            LogDx9(
+            LogDx9Perf(
                 "event=runtime_targets fromEx=%u present=%p reset=%p swapchainPresent=%p presentEx=%p resetEx=%p.",
                 fromEx ? 1u : 0u,
                 runtimePresent,
@@ -1044,7 +1092,7 @@ namespace ht::hook::dx9
             const std::uint32_t matchPresentEx = (rt.presentExTarget == nullptr) ? 2u : ((runtimePresentEx == rt.presentExTarget) ? 1u : 0u);
             const std::uint32_t matchResetEx = (rt.resetExTarget == nullptr) ? 2u : ((runtimeResetEx == rt.resetExTarget) ? 1u : 0u);
 
-            LogDx9(
+            LogDx9Perf(
                 "event=runtime_target_compare fromEx=%u matchPresent=%u matchReset=%u matchSwapchainPresent=%u matchPresentEx=%u matchResetEx=%u dummyPresent=%p dummyReset=%p dummySwapchainPresent=%p dummyPresentEx=%p dummyResetEx=%p.",
                 fromEx ? 1u : 0u,
                 matchPresent,
@@ -1079,7 +1127,7 @@ namespace ht::hook::dx9
                 if (!g_rt.createDeviceHookSeen)
                 {
                     g_rt.createDeviceHookSeen = true;
-                    LogDx9("event=runtime_device_created kind=device9 ptr=%p.", *returnedDevice);
+                    LogDx9Perf("event=runtime_device_created kind=device9 ptr=%p.", *returnedDevice);
                 }
                 LogRuntimeTargetsComparisonLocked(g_rt, *returnedDevice, false);
             }
@@ -1108,7 +1156,7 @@ namespace ht::hook::dx9
                 if (!g_rt.createDeviceExHookSeen)
                 {
                     g_rt.createDeviceExHookSeen = true;
-                    LogDx9("event=runtime_device_created kind=device9ex ptr=%p.", *returnedDevice);
+                    LogDx9Perf("event=runtime_device_created kind=device9ex ptr=%p.", *returnedDevice);
                 }
                 LogRuntimeTargetsComparisonLocked(g_rt, static_cast<IDirect3DDevice9*>(*returnedDevice), true);
             }
@@ -1124,7 +1172,7 @@ namespace ht::hook::dx9
             if (!g_rt.direct3dCreate9Seen)
             {
                 g_rt.direct3dCreate9Seen = true;
-                LogDx9("event=runtime_create9_hit sdk=%u obj=%p.", static_cast<unsigned int>(sdkVersion), d3d9);
+                LogDx9Perf("event=runtime_create9_hit sdk=%u obj=%p.", static_cast<unsigned int>(sdkVersion), d3d9);
             }
 
             if (d3d9 != nullptr)
@@ -1134,11 +1182,11 @@ namespace ht::hook::dx9
 
                 if (exCode != 0)
                 {
-                    LogDx9("event=runtime_create9_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
+                    LogDx9Perf("event=runtime_create9_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
                 }
                 else
                 {
-                    LogDx9(
+                    LogDx9Perf(
                         "event=runtime_create9_target target=%p dummyTarget=%p match=%u.",
                         runtimeCreateDeviceTarget,
                         g_rt.createDeviceTarget,
@@ -1159,7 +1207,7 @@ namespace ht::hook::dx9
             if (!g_rt.direct3dCreate9ExSeen)
             {
                 g_rt.direct3dCreate9ExSeen = true;
-                LogDx9(
+                LogDx9Perf(
                     "event=runtime_create9ex_hit sdk=%u hr=0x%08X obj=%p.",
                     static_cast<unsigned int>(sdkVersion),
                     static_cast<unsigned int>(static_cast<std::uint32_t>(hr)),
@@ -1173,11 +1221,11 @@ namespace ht::hook::dx9
 
                 if (exCode != 0)
                 {
-                    LogDx9("event=runtime_create9ex_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
+                    LogDx9Perf("event=runtime_create9ex_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
                 }
                 else
                 {
-                    LogDx9(
+                    LogDx9Perf(
                         "event=runtime_create9ex_target target=%p dummyTarget=%p match=%u.",
                         runtimeCreateDeviceExTarget,
                         g_rt.createDeviceExTarget,
@@ -1212,7 +1260,7 @@ namespace ht::hook::dx9
                 if (!g_rt.presentHookSeen)
                 {
                     g_rt.presentHookSeen = true;
-                    LogDx9(
+                    LogDx9Perf(
                         "event=present_hook_hit kind=present presentCount=%llu qpc=%llu.",
                         static_cast<unsigned long long>(g_rt.presentCount),
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
@@ -1232,7 +1280,7 @@ namespace ht::hook::dx9
                         const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
                             ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
                             : 0;
-                        LogDx9(
+                        LogDx9Perf(
                             "event=capture_skip reason=interval_gate kind=present presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
                             static_cast<unsigned long long>(g_rt.presentCount),
                             static_cast<unsigned long long>(elapsed),
@@ -1279,7 +1327,7 @@ namespace ht::hook::dx9
                 if (!g_rt.swapChainPresentHookSeen)
                 {
                     g_rt.swapChainPresentHookSeen = true;
-                    LogDx9(
+                    LogDx9Perf(
                         "event=present_hook_hit kind=swapchain_present presentCount=%llu qpc=%llu.",
                         static_cast<unsigned long long>(g_rt.presentCount),
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
@@ -1309,7 +1357,7 @@ namespace ht::hook::dx9
                         const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
                             ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
                             : 0;
-                        LogDx9(
+                        LogDx9Perf(
                             "event=capture_skip reason=interval_gate kind=swapchain_present presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
                             static_cast<unsigned long long>(g_rt.presentCount),
                             static_cast<unsigned long long>(elapsed),
@@ -1401,7 +1449,7 @@ namespace ht::hook::dx9
                 if (!g_rt.presentExHookSeen)
                 {
                     g_rt.presentExHookSeen = true;
-                    LogDx9(
+                    LogDx9Perf(
                         "event=present_hook_hit kind=present_ex presentCount=%llu qpc=%llu.",
                         static_cast<unsigned long long>(g_rt.presentCount),
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
@@ -1421,7 +1469,7 @@ namespace ht::hook::dx9
                         const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
                             ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
                             : 0;
-                        LogDx9(
+                        LogDx9Perf(
                             "event=capture_skip reason=interval_gate kind=present_ex presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
                             static_cast<unsigned long long>(g_rt.presentCount),
                             static_cast<unsigned long long>(elapsed),

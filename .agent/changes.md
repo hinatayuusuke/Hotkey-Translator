@@ -16707,3 +16707,45 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
 - x86ビルドで `SharedFrameWriter.cpp` の `C4293` 警告が出ないことを確認。
+
+**2026-03-06 16:39 (Asia/Taipei) — DX9 Hookログスイッチ適用（C# RuntimeConfig flags連動）**
+
+### Summary
+- 既存の GraphicsHook runtime config flags（`EnableGraphicsHookPerfDiagLog` / `EnableGraphicsHookDiagFileSink`）を DX9 Hook 側で実際に適用し、調査ログのオン/オフを制御できるようにした。
+
+### Context / Goal
+- DX9 Hook は常時ログ出力で、調査フェーズ後も高頻度ログが残っていた。
+- 既存の C# 設定フラグを DX9 側に反映し、通常時は静かに、必要時のみ詳細ログを出せる状態にする。
+
+### Changes
+- `Dx9PresentHook.cpp` にログ制御状態を追加:
+  - `g_perfDiagLogEnabled`（診断ログ）
+  - `g_diagFileSinkEnabled`（ファイル出力）
+  - runtime フィールド `perfDiagLogEnabled`
+- `RefreshConfigLocked` で `cfg.reserved0` の config flags を読み取り反映:
+  - `kConfigFlagEnablePerfDiagLog`
+  - `kConfigFlagEnableDiagFileSink`
+- ファイル sink OFF 時に `CloseDiagFile()` でハンドルを即解放。
+- 高頻度・調査系ログを `LogDx9Perf` に分離し、PerfDiag有効時のみ出力に変更:
+  - `runtime_*` 比較ログ
+  - `present_hook_hit`
+  - `capture_begin` / `capture_backbuffer_desc`
+  - `capture_skip interval_gate`
+  - `write_frame_begin` / `write_frame_ok` / `write_frame_recovered`
+- `LogDx9`（通常ログ）は継続しつつ、ファイル追記は `diag file sink` が有効時のみ行うよう変更。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — runtime config flags 反映、ログ関数分離、出力制御を実装。
+
+### Behavioral Impact
+- `EnableGraphicsHookPerfDiagLog=false` では DX9 の高頻度調査ログが出ない。
+- `EnableGraphicsHookDiagFileSink=false` では `hook_dx9_<pid>.log` への追記が行われない。
+- 既存の attach/install/capture_fail などの基礎ログは継続し、最低限の障害把握は維持される。
+
+### Risk & Mitigation
+- Risk: 診断時にフラグがOFFだと必要ログが見えない。
+- Mitigation: 既存UI設定で即時ON可能、runtime config で反映される設計にした。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
