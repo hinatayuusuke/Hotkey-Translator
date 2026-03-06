@@ -1,0 +1,6 @@
+LIBRARY "HookAgentDx9"
+EXPORTS
+    InstallDx9Hook
+    UninstallDx9Hook
+    InstallDx9HookThread
+    UninstallDx9HookThread

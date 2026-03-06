@@ -561,12 +561,22 @@ namespace
         HMODULE localModule = LoadLibraryW(dllPath.c_str());
         if (localModule == nullptr)
         {
+            LogHost(
+                "event=resolve_export_failed reason=local_loadlibrary_failed dll=\"%ls\" export=%s gle=%lu.",
+                dllPath.c_str(),
+                exportName != nullptr ? exportName : "null",
+                static_cast<unsigned long>(GetLastError()));
             return false;
         }
 
         const auto localFn = reinterpret_cast<std::uintptr_t>(GetProcAddress(localModule, exportName));
         if (localFn == 0)
         {
+            LogHost(
+                "event=resolve_export_failed reason=getprocaddress_failed dll=\"%ls\" export=%s gle=%lu.",
+                dllPath.c_str(),
+                exportName != nullptr ? exportName : "null",
+                static_cast<unsigned long>(GetLastError()));
             FreeLibrary(localModule);
             return false;
         }

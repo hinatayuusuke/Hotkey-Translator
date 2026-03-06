@@ -16370,3 +16370,36 @@ dl_ocr_engine.py.
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` は `HookAgentDx9.dll` のファイルロックにより失敗（LNK1104）。
 - x86失敗時に `tasklist /m HookAgentDx9.dll` では該当プロセスを検出できず、ロック元は未特定。
+
+**2026-03-06 13:28 (Asia/Taipei) — DX9 x86 export固定（.def）とHost export解決ログ強化**
+
+### Summary
+- x86での `Remote_install_hook_failed` 対策として DX9 agent の export 名を .def で固定し、HookHost 側に export 解決失敗ログを追加した。
+
+### Context / Goal
+- x86 で `InstallDx9HookThread` 呼び出しが `ok=0 installExit=0` になる失敗を解消・切り分けしやすくする。
+- export 名デコレート差異（__stdcall）を排除し、Host の `GetProcAddress` 失敗時の原因をログ化する。
+
+### Changes
+- `HookAgentDx9.def` を追加し、`InstallDx9HookThread` など4 export を非デコレート名で固定。
+- HookAgentDx9 の CMake に `.def` を組み込み。
+- HookHost の `RemoteCallExportNoArg` で `LoadLibraryW/GetProcAddress` 失敗時に詳細ログを追加。
+
+### Files Touched
+- `Native/HookAgentDx9/HookAgentDx9.def` — DX9 agent の export 定義を追加。
+- `Native/HookAgentDx9/CMakeLists.txt` — `.def` をビルド入力に追加。
+- `Native/HookHost/main.cpp` — export 解決失敗ログを追加。
+
+### Behavioral Impact
+- x86ターゲットでも Host から `InstallDx9HookThread` を名前解決しやすくなる。
+- 失敗時は `stage=hook_host event=resolve_export_failed ...` が出て、原因判定が可能になる。
+
+### Risk & Mitigation
+- Risk: `.def` の export 名と実装名がずれるとリンク時エラーになる。
+- Mitigation: エントリ名を `dllmain.cpp` の実シンボルに合わせ、x64/x86 の両方でビルド確認した。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookHost HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` 実行成功。
+- 生成物確認: `Native/HookHost/bin/x86/HookAgentDx9.dll`（更新時刻反映）。
