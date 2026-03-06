@@ -97,6 +97,9 @@ namespace ht::hook::dx9
             bool pendingPostResetRebind = false;
             std::uint32_t lastCaptureFailureHr = 0;
             std::uint64_t lastCaptureFailureQpc = 0;
+            bool presentHookSeen = false;
+            bool presentExHookSeen = false;
+            std::uint64_t lastSkipCapturePresentCount = 0;
         };
 
         Dx9Runtime g_rt;
@@ -357,6 +360,27 @@ namespace ht::hook::dx9
             return std::clamp(fps, 1u, 240u);
         }
 
+        const char* FrameWriterErrorToString(ipc::SharedFrameWriter::LastErrorKind kind)
+        {
+            switch (kind)
+            {
+            case ipc::SharedFrameWriter::LastErrorKind::None:
+                return "none";
+            case ipc::SharedFrameWriter::LastErrorKind::InvalidArguments:
+                return "invalid_arguments";
+            case ipc::SharedFrameWriter::LastErrorKind::EnsureCapacityFailed:
+                return "ensure_capacity_failed";
+            case ipc::SharedFrameWriter::LastErrorKind::MappingSizeInvalid:
+                return "mapping_size_invalid";
+            case ipc::SharedFrameWriter::LastErrorKind::CreateFileMappingFailed:
+                return "create_file_mapping_failed";
+            case ipc::SharedFrameWriter::LastErrorKind::MapViewFailed:
+                return "map_view_failed";
+            default:
+                return "unknown";
+            }
+        }
+
         void ResetRuntimeStateLocked(Dx9Runtime& rt)
         {
             rt.frameWriter.Reset();
@@ -395,6 +419,9 @@ namespace ht::hook::dx9
             rt.pendingPostResetRebind = false;
             rt.lastCaptureFailureHr = 0;
             rt.lastCaptureFailureQpc = 0;
+            rt.presentHookSeen = false;
+            rt.presentExHookSeen = false;
+            rt.lastSkipCapturePresentCount = 0;
         }
 
         bool RefreshConfigLocked(Dx9Runtime& rt)
@@ -631,6 +658,11 @@ namespace ht::hook::dx9
                 return false;
             }
 
+            LogDx9(
+                "event=capture_begin presentCount=%llu presentKind=%u.",
+                static_cast<unsigned long long>(rt.presentCount),
+                rt.lastPresentKind);
+
             IDirect3DSurface9* backBuffer = nullptr;
             const auto getRtHr = device->GetRenderTarget(0, &backBuffer);
             if (FAILED(getRtHr) || backBuffer == nullptr)
@@ -647,6 +679,14 @@ namespace ht::hook::dx9
                 backBuffer->Release();
                 return false;
             }
+
+            LogDx9(
+                "event=capture_backbuffer_desc width=%u height=%u format=%u msaaType=%u msaaQuality=%u.",
+                static_cast<unsigned int>(desc.Width),
+                static_cast<unsigned int>(desc.Height),
+                static_cast<unsigned int>(desc.Format),
+                static_cast<unsigned int>(desc.MultiSampleType),
+                static_cast<unsigned int>(desc.MultiSampleQuality));
 
             if (!EnsureCaptureSurfacesLocked(rt, device, desc))
             {
@@ -715,6 +755,16 @@ namespace ht::hook::dx9
 
             const DWORD pid = GetCurrentProcessId();
             const std::uint64_t frameId = ++rt.frameId;
+            const auto mapName = rt.frameWriter.MappingName();
+            const auto mapNameUtf8 = WideToUtf8(mapName);
+            LogDx9(
+                "event=write_frame_begin frameId=%llu width=%u height=%u stride=%u payloadBytes=%llu map=\"%s\".",
+                static_cast<unsigned long long>(frameId),
+                width,
+                height,
+                stride,
+                static_cast<unsigned long long>(payloadBytes),
+                mapNameUtf8.c_str());
             if (!rt.frameWriter.WriteFrame(
                     pid,
                     ipc::GraphicsApi::Dx9,
@@ -726,9 +776,34 @@ namespace ht::hook::dx9
                     rt.scratch.data(),
                     payloadBytes))
             {
+                const auto errorKind = rt.frameWriter.LastError();
+                const auto errorName = FrameWriterErrorToString(errorKind);
+                const auto writerGle = rt.frameWriter.LastWin32Error();
+                const auto requestedBytes = rt.frameWriter.LastRequestedPayloadBytes();
+                const auto totalBytes = rt.frameWriter.LastTotalBytes();
+                const auto mapNameFail = rt.frameWriter.MappingName();
+                const auto mapNameFailUtf8 = WideToUtf8(mapNameFail);
+                LogDx9(
+                    "event=write_frame_failed frameId=%llu reason=%s gle=%lu requestedPayloadBytes=%llu totalBytes=%llu map=\"%s\".",
+                    static_cast<unsigned long long>(frameId),
+                    errorName,
+                    static_cast<unsigned long>(writerGle),
+                    static_cast<unsigned long long>(requestedBytes),
+                    static_cast<unsigned long long>(totalBytes),
+                    mapNameFailUtf8.c_str());
                 RecordCaptureFailureLocked(rt, "shared_frame_write_failed", E_FAIL);
                 return false;
             }
+
+            const auto mapNameOk = rt.frameWriter.MappingName();
+            const auto mapNameOkUtf8 = WideToUtf8(mapNameOk);
+            LogDx9(
+                "event=write_frame_ok frameId=%llu width=%u height=%u payloadBytes=%llu map=\"%s\".",
+                static_cast<unsigned long long>(frameId),
+                width,
+                height,
+                static_cast<unsigned long long>(payloadBytes),
+                mapNameOkUtf8.c_str());
 
             rt.lastCaptureFailureHr = 0;
             rt.lastCaptureFailureQpc = 0;
@@ -786,11 +861,36 @@ namespace ht::hook::dx9
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 1;
+                if (!g_rt.presentHookSeen)
+                {
+                    g_rt.presentHookSeen = true;
+                    LogDx9(
+                        "event=present_hook_hit kind=present presentCount=%llu qpc=%llu.",
+                        static_cast<unsigned long long>(g_rt.presentCount),
+                        static_cast<unsigned long long>(g_rt.lastPresentQpc));
+                }
                 (void)RefreshConfigLocked(g_rt);
 
-                if (ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc))
+                const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
+                if (shouldCapture)
                 {
                     (void)CaptureAndShareFrameLocked(g_rt, device);
+                }
+                else
+                {
+                    if (g_rt.lastSkipCapturePresentCount == 0 || (g_rt.presentCount - g_rt.lastSkipCapturePresentCount) >= 120)
+                    {
+                        g_rt.lastSkipCapturePresentCount = g_rt.presentCount;
+                        const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
+                            ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
+                            : 0;
+                        LogDx9(
+                            "event=capture_skip reason=interval_gate kind=present presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
+                            static_cast<unsigned long long>(g_rt.presentCount),
+                            static_cast<unsigned long long>(elapsed),
+                            static_cast<unsigned long long>(g_rt.captureIntervalQpc),
+                            static_cast<unsigned long long>(g_rt.lastCaptureQpc));
+                    }
                 }
 
                 PublishStatusLocked(g_rt);
@@ -869,11 +969,36 @@ namespace ht::hook::dx9
                 g_rt.presentCount++;
                 g_rt.lastPresentQpc = NowQpc();
                 g_rt.lastPresentKind = 2;
+                if (!g_rt.presentExHookSeen)
+                {
+                    g_rt.presentExHookSeen = true;
+                    LogDx9(
+                        "event=present_hook_hit kind=present_ex presentCount=%llu qpc=%llu.",
+                        static_cast<unsigned long long>(g_rt.presentCount),
+                        static_cast<unsigned long long>(g_rt.lastPresentQpc));
+                }
                 (void)RefreshConfigLocked(g_rt);
 
-                if (ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc))
+                const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
+                if (shouldCapture)
                 {
                     (void)CaptureAndShareFrameLocked(g_rt, static_cast<IDirect3DDevice9*>(device));
+                }
+                else
+                {
+                    if (g_rt.lastSkipCapturePresentCount == 0 || (g_rt.presentCount - g_rt.lastSkipCapturePresentCount) >= 120)
+                    {
+                        g_rt.lastSkipCapturePresentCount = g_rt.presentCount;
+                        const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
+                            ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
+                            : 0;
+                        LogDx9(
+                            "event=capture_skip reason=interval_gate kind=present_ex presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
+                            static_cast<unsigned long long>(g_rt.presentCount),
+                            static_cast<unsigned long long>(elapsed),
+                            static_cast<unsigned long long>(g_rt.captureIntervalQpc),
+                            static_cast<unsigned long long>(g_rt.lastCaptureQpc));
+                    }
                 }
 
                 PublishStatusLocked(g_rt);

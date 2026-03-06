@@ -15,10 +15,23 @@ namespace ht::hook::ipc
         Reset();
     }
 
+    void SharedFrameWriter::SetLastError(
+        LastErrorKind kind,
+        DWORD win32Error,
+        std::size_t requestedPayloadBytes,
+        std::size_t totalBytes)
+    {
+        lastErrorKind_ = kind;
+        lastWin32Error_ = win32Error;
+        lastRequestedPayloadBytes_ = requestedPayloadBytes;
+        lastTotalBytes_ = totalBytes;
+    }
+
     bool SharedFrameWriter::EnsureCapacity(DWORD pid, GraphicsApi api, std::size_t payloadBytes)
     {
         if (mappedView_ != nullptr && mappedCapacityBytes_ >= payloadBytes)
         {
+            SetLastError(LastErrorKind::None, 0, payloadBytes, sizeof(FrameHeader) + payloadBytes);
             return true;
         }
 
@@ -38,11 +51,16 @@ namespace ht::hook::ipc
     {
         if (payload == nullptr || payloadBytes == 0)
         {
+            SetLastError(LastErrorKind::InvalidArguments, ERROR_INVALID_PARAMETER, payloadBytes, 0);
             return false;
         }
 
         if (!EnsureCapacity(pid, api, payloadBytes))
         {
+            if (lastErrorKind_ == LastErrorKind::None)
+            {
+                SetLastError(LastErrorKind::EnsureCapacityFailed, GetLastError(), payloadBytes, sizeof(FrameHeader) + payloadBytes);
+            }
             return false;
         }
 
@@ -65,6 +83,7 @@ namespace ht::hook::ipc
         header->reserved0 = 0;
         header->timestampQpc = timestampQpc;
         MemoryBarrier();
+        SetLastError(LastErrorKind::None, 0, payloadBytes, sizeof(FrameHeader) + payloadBytes);
         return true;
     }
 
@@ -84,6 +103,7 @@ namespace ht::hook::ipc
 
         mappedCapacityBytes_ = 0;
         mappingName_.clear();
+        SetLastError(LastErrorKind::None, 0, 0, 0);
     }
 
     bool SharedFrameWriter::RecreateMapping(DWORD pid, GraphicsApi api, std::size_t payloadBytes)
@@ -92,6 +112,7 @@ namespace ht::hook::ipc
 
         if (payloadBytes == 0 || payloadBytes > kMaxPayloadBytes)
         {
+            SetLastError(LastErrorKind::MappingSizeInvalid, ERROR_INVALID_PARAMETER, payloadBytes, sizeof(FrameHeader) + payloadBytes);
             return false;
         }
 
@@ -108,19 +129,23 @@ namespace ht::hook::ipc
 
         if (mappingHandle_ == nullptr)
         {
+            SetLastError(LastErrorKind::CreateFileMappingFailed, GetLastError(), payloadBytes, totalBytes);
             return false;
         }
 
         mappedView_ = static_cast<std::uint8_t*>(MapViewOfFile(mappingHandle_, FILE_MAP_ALL_ACCESS, 0, 0, totalBytes));
         if (mappedView_ == nullptr)
         {
+            const DWORD gle = GetLastError();
             CloseHandle(mappingHandle_);
             mappingHandle_ = nullptr;
+            SetLastError(LastErrorKind::MapViewFailed, gle, payloadBytes, totalBytes);
             return false;
         }
 
         mappedCapacityBytes_ = payloadBytes;
         std::memset(mappedView_, 0, totalBytes);
+        SetLastError(LastErrorKind::None, 0, payloadBytes, totalBytes);
         return true;
     }
 }

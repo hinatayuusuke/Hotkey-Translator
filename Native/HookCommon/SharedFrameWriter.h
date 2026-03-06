@@ -13,6 +13,16 @@ namespace ht::hook::ipc
     class SharedFrameWriter
     {
     public:
+        enum class LastErrorKind : std::uint32_t
+        {
+            None = 0,
+            InvalidArguments = 1,
+            EnsureCapacityFailed = 2,
+            MappingSizeInvalid = 3,
+            CreateFileMappingFailed = 4,
+            MapViewFailed = 5,
+        };
+
         SharedFrameWriter() = default;
         ~SharedFrameWriter();
 
@@ -33,13 +43,22 @@ namespace ht::hook::ipc
 
         void Reset();
         std::wstring MappingName() const { return mappingName_; }
+        LastErrorKind LastError() const { return lastErrorKind_; }
+        DWORD LastWin32Error() const { return lastWin32Error_; }
+        std::size_t LastRequestedPayloadBytes() const { return lastRequestedPayloadBytes_; }
+        std::size_t LastTotalBytes() const { return lastTotalBytes_; }
 
     private:
         bool RecreateMapping(DWORD pid, GraphicsApi api, std::size_t payloadBytes);
+        void SetLastError(LastErrorKind kind, DWORD win32Error, std::size_t requestedPayloadBytes, std::size_t totalBytes);
 
         HANDLE mappingHandle_ = nullptr;
         std::uint8_t* mappedView_ = nullptr;
         std::wstring mappingName_;
         std::size_t mappedCapacityBytes_ = 0;
+        LastErrorKind lastErrorKind_ = LastErrorKind::None;
+        DWORD lastWin32Error_ = 0;
+        std::size_t lastRequestedPayloadBytes_ = 0;
+        std::size_t lastTotalBytes_ = 0;
     };
 }

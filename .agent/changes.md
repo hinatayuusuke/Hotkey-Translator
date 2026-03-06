@@ -16560,3 +16560,40 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功（既存警告 `SharedFrameWriter.cpp` C4293 は継続）。
+
+**2026-03-06 15:01 (Asia/Taipei) — DX9 Capture失敗切り分け用の調査ログ強化**
+
+### Summary
+- DX9/DX9Exで「attach成功だがframe mapping未検出」の切り分けができるよう、Presentヒット・Capture判定・WriteFrame失敗理由の診断ログを追加した。
+
+### Context / Goal
+- 既存ログでは attach 成功以降の情報が不足し、`present未ヒット` と `write失敗` を分離できなかった。
+- 失敗位置を一回の再現で特定できるログ粒度にする。
+
+### Changes
+- `HookedPresent` / `HookedPresentEx` に初回ヒットログ（`event=present_hook_hit`）を追加。
+- capture間引き時に `event=capture_skip reason=interval_gate` を周期ログ出力。
+- `CaptureAndShareFrameLocked` に `capture_begin` / `capture_backbuffer_desc` / `write_frame_begin` / `write_frame_ok` ログを追加。
+- `SharedFrameWriter` に直近エラー状態を保持する機能を追加（error kind / win32 error / requested payload / total bytes）。
+- `WriteFrame` 失敗時に `event=write_frame_failed` として SharedFrameWriter の詳細エラーを出力。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — Present/PresentExヒット、capture skip、capture/write段階ログ、WriteFrame失敗詳細ログを追加。
+- `Native/HookCommon/SharedFrameWriter.h` — `LastErrorKind` と診断getterを追加。
+- `Native/HookCommon/SharedFrameWriter.cpp` — 各失敗点で last error を設定する処理を追加。
+
+### Behavioral Impact
+- 実行時ログから以下を即判別可能: 
+  - Present/PresentExが一度も呼ばれていない
+  - 呼ばれているが間引きでcaptureしていない
+  - captureしているが共有メモリ作成/MapView/引数不正でWriteFrame失敗している
+- 機能仕様（capture結果やoverlay挙動）自体は変更しない。
+
+### Risk & Mitigation
+- Risk: ログ量増加によるI/O負荷。
+- Mitigation: skipログは120 presentごとに間引き、詳細ログはcaptureタイミング時のみ出力。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+- 既知警告: `SharedFrameWriter.cpp` の x86 C4293 は継続（既存警告）。
