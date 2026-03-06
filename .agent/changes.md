@@ -16630,3 +16630,44 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
 - x86ビルド時に `HookAgentDx9.dll` 使用中で `LNK1168` が一度発生。対象プロセス停止後に再ビルド成功。
+
+**2026-03-06 15:54 (Asia/Taipei) — DX9 runtime target比較の調査ログ追加（Create9/CreateDevice観測）**
+
+### Summary
+- DX9で「hook install成功だがpresent未ヒット」の原因切り分けのため、`Direct3DCreate9/9Ex` と `CreateDevice/CreateDeviceEx` の観測フックと runtime-vtable 比較ログを追加した。
+
+### Context / Goal
+- 既存ログでは install 成功後に `present_hook_hit` が出ない理由（API未通過 or 関数アドレス不一致）が断定できなかった。
+- dummy由来targetと実行時device由来targetの一致/不一致をログで確定する。
+
+### Changes
+- `Dx9PresentHook.cpp` に診断用フックを追加:
+  - `HookedDirect3DCreate9`, `HookedDirect3DCreate9Ex`
+  - `HookedCreateDevice`, `HookedCreateDeviceEx`
+- runtime device から取得した target を比較する `LogRuntimeTargetsComparisonLocked` を追加。
+- dummy作成時に `CreateDevice/CreateDeviceEx` の target も取得し、比較基準として保持。
+- install フローに以下を追加:
+  - `MH_CreateHook` for `CreateDevice/CreateDeviceEx`（作成失敗時は診断のみskip）
+  - `MH_CreateHookApiEx` for `Direct3DCreate9/Direct3DCreate9Ex`（target取得して enable）
+- 追加ログ:
+  - `runtime_create9_hit`, `runtime_create9ex_hit`
+  - `runtime_create9_target`, `runtime_create9ex_target`
+  - `runtime_device_created`
+  - `runtime_targets`, `runtime_target_compare`
+  - `runtime_vtable_probe_failed`, `runtime_swapchain_probe_failed`
+- uninstall/ reset に診断フック関連ポインタの解除・初期化を追加。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — runtime観測フック、target比較ログ、install/uninstall配線を追加。
+
+### Behavioral Impact
+- キャプチャ仕様は変更せず、診断ログの粒度のみ増加。
+- 1回の再現で「dummy target と runtime target の不一致」有無を判定可能。
+
+### Risk & Mitigation
+- Risk: 診断フック追加で初期化時の分岐が増え、失敗時にノイズログが増える。
+- Mitigation: 診断フックは作成/有効化失敗時に `skip` として継続し、既存キャプチャ経路を止めない設計にした。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。

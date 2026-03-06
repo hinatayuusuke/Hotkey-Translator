@@ -29,6 +29,25 @@ namespace ht::hook::dx9
             HWND,
             const RGNDATA*);
         using ResetFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
+        using Direct3DCreate9Fn = IDirect3D9* (WINAPI*)(UINT);
+        using Direct3DCreate9ExFn = HRESULT(WINAPI*)(UINT, IDirect3D9Ex**);
+        using CreateDeviceFn = HRESULT(STDMETHODCALLTYPE*)(
+            IDirect3D9*,
+            UINT,
+            D3DDEVTYPE,
+            HWND,
+            DWORD,
+            D3DPRESENT_PARAMETERS*,
+            IDirect3DDevice9**);
+        using CreateDeviceExFn = HRESULT(STDMETHODCALLTYPE*)(
+            IDirect3D9Ex*,
+            UINT,
+            D3DDEVTYPE,
+            HWND,
+            DWORD,
+            D3DPRESENT_PARAMETERS*,
+            D3DDISPLAYMODEEX*,
+            IDirect3DDevice9Ex**);
         using SwapChainPresentFn = HRESULT(STDMETHODCALLTYPE*)(
             IDirect3DSwapChain9*,
             const RECT*,
@@ -48,6 +67,8 @@ namespace ht::hook::dx9
         constexpr int kDeviceResetIndex = 16;
         constexpr int kDevicePresentIndex = 17;
         constexpr int kSwapChainPresentIndex = 3;
+        constexpr int kD3D9CreateDeviceIndex = 16;
+        constexpr int kD3D9ExCreateDeviceExIndex = 20;
         constexpr int kDevicePresentExIndex = 121;
         constexpr int kDeviceResetExIndex = 132;
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
@@ -65,11 +86,19 @@ namespace ht::hook::dx9
             void* swapChainPresentTarget = nullptr;
             void* presentExTarget = nullptr;
             void* resetExTarget = nullptr;
+            void* createDeviceTarget = nullptr;
+            void* createDeviceExTarget = nullptr;
             PresentFn originalPresent = nullptr;
             ResetFn originalReset = nullptr;
             SwapChainPresentFn originalSwapChainPresent = nullptr;
             PresentExFn originalPresentEx = nullptr;
             ResetExFn originalResetEx = nullptr;
+            CreateDeviceFn originalCreateDevice = nullptr;
+            CreateDeviceExFn originalCreateDeviceEx = nullptr;
+            Direct3DCreate9Fn originalDirect3DCreate9 = nullptr;
+            Direct3DCreate9ExFn originalDirect3DCreate9Ex = nullptr;
+            void* direct3DCreate9ApiTarget = nullptr;
+            void* direct3DCreate9ExApiTarget = nullptr;
 
             ipc::SharedFrameWriter frameWriter;
             ipc::SharedHookConfigReader configReader;
@@ -110,6 +139,10 @@ namespace ht::hook::dx9
             bool presentHookSeen = false;
             bool swapChainPresentHookSeen = false;
             bool presentExHookSeen = false;
+            bool direct3dCreate9Seen = false;
+            bool direct3dCreate9ExSeen = false;
+            bool createDeviceHookSeen = false;
+            bool createDeviceExHookSeen = false;
             std::uint64_t lastSkipCapturePresentCount = 0;
         };
 
@@ -392,6 +425,29 @@ namespace ht::hook::dx9
             }
         }
 
+        void* TryReadVtableEntry(void* objectPtr, int index, std::uint32_t& exCode)
+        {
+            exCode = 0;
+            void* target = nullptr;
+            __try
+            {
+                if (objectPtr != nullptr)
+                {
+                    void** vtable = *reinterpret_cast<void***>(objectPtr);
+                    if (vtable != nullptr && index >= 0)
+                    {
+                        target = vtable[index];
+                    }
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                exCode = static_cast<std::uint32_t>(GetExceptionCode());
+                target = nullptr;
+            }
+            return target;
+        }
+
         void ResetRuntimeStateLocked(Dx9Runtime& rt)
         {
             rt.frameWriter.Reset();
@@ -404,11 +460,19 @@ namespace ht::hook::dx9
             rt.swapChainPresentTarget = nullptr;
             rt.presentExTarget = nullptr;
             rt.resetExTarget = nullptr;
+            rt.createDeviceTarget = nullptr;
+            rt.createDeviceExTarget = nullptr;
             rt.originalPresent = nullptr;
             rt.originalReset = nullptr;
             rt.originalSwapChainPresent = nullptr;
             rt.originalPresentEx = nullptr;
             rt.originalResetEx = nullptr;
+            rt.originalCreateDevice = nullptr;
+            rt.originalCreateDeviceEx = nullptr;
+            rt.originalDirect3DCreate9 = nullptr;
+            rt.originalDirect3DCreate9Ex = nullptr;
+            rt.direct3DCreate9ApiTarget = nullptr;
+            rt.direct3DCreate9ExApiTarget = nullptr;
 
             rt.frameId = 0;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
@@ -435,6 +499,10 @@ namespace ht::hook::dx9
             rt.presentHookSeen = false;
             rt.swapChainPresentHookSeen = false;
             rt.presentExHookSeen = false;
+            rt.direct3dCreate9Seen = false;
+            rt.direct3dCreate9ExSeen = false;
+            rt.createDeviceHookSeen = false;
+            rt.createDeviceExHookSeen = false;
             rt.lastSkipCapturePresentCount = 0;
         }
 
@@ -854,6 +922,232 @@ namespace ht::hook::dx9
             (void)rt.statusWriter.Write(status);
         }
 
+        void LogRuntimeTargetsComparisonLocked(Dx9Runtime& rt, IDirect3DDevice9* device, bool fromEx)
+        {
+            if (device == nullptr)
+            {
+                return;
+            }
+
+            void* runtimePresent = nullptr;
+            void* runtimeReset = nullptr;
+            void* runtimePresentEx = nullptr;
+            void* runtimeResetEx = nullptr;
+            void* runtimeSwapChainPresent = nullptr;
+            HRESULT swapChainHr = E_FAIL;
+            std::uint32_t exCode = 0;
+
+            __try
+            {
+                void** deviceVtable = *reinterpret_cast<void***>(device);
+                if (deviceVtable != nullptr)
+                {
+                    runtimeReset = deviceVtable[kDeviceResetIndex];
+                    runtimePresent = deviceVtable[kDevicePresentIndex];
+                    if (fromEx)
+                    {
+                        runtimePresentEx = deviceVtable[kDevicePresentExIndex];
+                        runtimeResetEx = deviceVtable[kDeviceResetExIndex];
+                    }
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                exCode = static_cast<std::uint32_t>(GetExceptionCode());
+            }
+
+            IDirect3DSwapChain9* swapChain = nullptr;
+            swapChainHr = device->GetSwapChain(0, &swapChain);
+            if (SUCCEEDED(swapChainHr) && swapChain != nullptr)
+            {
+                __try
+                {
+                    void** swapVtable = *reinterpret_cast<void***>(swapChain);
+                    if (swapVtable != nullptr)
+                    {
+                        runtimeSwapChainPresent = swapVtable[kSwapChainPresentIndex];
+                    }
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER)
+                {
+                    exCode = static_cast<std::uint32_t>(GetExceptionCode());
+                }
+                swapChain->Release();
+            }
+
+            if (exCode != 0)
+            {
+                LogDx9("event=runtime_vtable_probe_failed code=0x%08X fromEx=%u.", static_cast<unsigned int>(exCode), fromEx ? 1u : 0u);
+                return;
+            }
+
+            if (FAILED(swapChainHr))
+            {
+                LogDx9(
+                    "event=runtime_swapchain_probe_failed hr=0x%08X fromEx=%u.",
+                    static_cast<unsigned int>(static_cast<std::uint32_t>(swapChainHr)),
+                    fromEx ? 1u : 0u);
+            }
+
+            LogDx9(
+                "event=runtime_targets fromEx=%u present=%p reset=%p swapchainPresent=%p presentEx=%p resetEx=%p.",
+                fromEx ? 1u : 0u,
+                runtimePresent,
+                runtimeReset,
+                runtimeSwapChainPresent,
+                runtimePresentEx,
+                runtimeResetEx);
+
+            const std::uint32_t matchPresent = (runtimePresent == rt.presentTarget) ? 1u : 0u;
+            const std::uint32_t matchReset = (runtimeReset == rt.resetTarget) ? 1u : 0u;
+            const std::uint32_t matchSwap = (runtimeSwapChainPresent == rt.swapChainPresentTarget) ? 1u : 0u;
+            const std::uint32_t matchPresentEx = (rt.presentExTarget == nullptr) ? 2u : ((runtimePresentEx == rt.presentExTarget) ? 1u : 0u);
+            const std::uint32_t matchResetEx = (rt.resetExTarget == nullptr) ? 2u : ((runtimeResetEx == rt.resetExTarget) ? 1u : 0u);
+
+            LogDx9(
+                "event=runtime_target_compare fromEx=%u matchPresent=%u matchReset=%u matchSwapchainPresent=%u matchPresentEx=%u matchResetEx=%u dummyPresent=%p dummyReset=%p dummySwapchainPresent=%p dummyPresentEx=%p dummyResetEx=%p.",
+                fromEx ? 1u : 0u,
+                matchPresent,
+                matchReset,
+                matchSwap,
+                matchPresentEx,
+                matchResetEx,
+                rt.presentTarget,
+                rt.resetTarget,
+                rt.swapChainPresentTarget,
+                rt.presentExTarget,
+                rt.resetExTarget);
+        }
+
+        HRESULT STDMETHODCALLTYPE HookedCreateDevice(
+            IDirect3D9* d3d9,
+            UINT adapter,
+            D3DDEVTYPE deviceType,
+            HWND focusWindow,
+            DWORD behaviorFlags,
+            D3DPRESENT_PARAMETERS* presentParameters,
+            IDirect3DDevice9** returnedDevice)
+        {
+            CreateDeviceFn original = g_rt.originalCreateDevice;
+            const HRESULT hr = original
+                ? original(d3d9, adapter, deviceType, focusWindow, behaviorFlags, presentParameters, returnedDevice)
+                : D3DERR_INVALIDCALL;
+
+            if (SUCCEEDED(hr) && returnedDevice != nullptr && *returnedDevice != nullptr)
+            {
+                std::lock_guard<std::mutex> lock(g_rt.mutex);
+                if (!g_rt.createDeviceHookSeen)
+                {
+                    g_rt.createDeviceHookSeen = true;
+                    LogDx9("event=runtime_device_created kind=device9 ptr=%p.", *returnedDevice);
+                }
+                LogRuntimeTargetsComparisonLocked(g_rt, *returnedDevice, false);
+            }
+
+            return hr;
+        }
+
+        HRESULT STDMETHODCALLTYPE HookedCreateDeviceEx(
+            IDirect3D9Ex* d3d9,
+            UINT adapter,
+            D3DDEVTYPE deviceType,
+            HWND focusWindow,
+            DWORD behaviorFlags,
+            D3DPRESENT_PARAMETERS* presentParameters,
+            D3DDISPLAYMODEEX* fullscreenDisplayMode,
+            IDirect3DDevice9Ex** returnedDevice)
+        {
+            CreateDeviceExFn original = g_rt.originalCreateDeviceEx;
+            const HRESULT hr = original
+                ? original(d3d9, adapter, deviceType, focusWindow, behaviorFlags, presentParameters, fullscreenDisplayMode, returnedDevice)
+                : D3DERR_INVALIDCALL;
+
+            if (SUCCEEDED(hr) && returnedDevice != nullptr && *returnedDevice != nullptr)
+            {
+                std::lock_guard<std::mutex> lock(g_rt.mutex);
+                if (!g_rt.createDeviceExHookSeen)
+                {
+                    g_rt.createDeviceExHookSeen = true;
+                    LogDx9("event=runtime_device_created kind=device9ex ptr=%p.", *returnedDevice);
+                }
+                LogRuntimeTargetsComparisonLocked(g_rt, static_cast<IDirect3DDevice9*>(*returnedDevice), true);
+            }
+
+            return hr;
+        }
+
+        IDirect3D9* WINAPI HookedDirect3DCreate9(UINT sdkVersion)
+        {
+            Direct3DCreate9Fn original = g_rt.originalDirect3DCreate9;
+            IDirect3D9* d3d9 = original ? original(sdkVersion) : nullptr;
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            if (!g_rt.direct3dCreate9Seen)
+            {
+                g_rt.direct3dCreate9Seen = true;
+                LogDx9("event=runtime_create9_hit sdk=%u obj=%p.", static_cast<unsigned int>(sdkVersion), d3d9);
+            }
+
+            if (d3d9 != nullptr)
+            {
+                std::uint32_t exCode = 0;
+                void* runtimeCreateDeviceTarget = TryReadVtableEntry(d3d9, kD3D9CreateDeviceIndex, exCode);
+
+                if (exCode != 0)
+                {
+                    LogDx9("event=runtime_create9_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
+                }
+                else
+                {
+                    LogDx9(
+                        "event=runtime_create9_target target=%p dummyTarget=%p match=%u.",
+                        runtimeCreateDeviceTarget,
+                        g_rt.createDeviceTarget,
+                        (runtimeCreateDeviceTarget == g_rt.createDeviceTarget) ? 1u : 0u);
+                }
+            }
+
+            return d3d9;
+        }
+
+        HRESULT WINAPI HookedDirect3DCreate9Ex(UINT sdkVersion, IDirect3D9Ex** outD3D9Ex)
+        {
+            Direct3DCreate9ExFn original = g_rt.originalDirect3DCreate9Ex;
+            const HRESULT hr = original ? original(sdkVersion, outD3D9Ex) : D3DERR_INVALIDCALL;
+            IDirect3D9Ex* d3d9Ex = (outD3D9Ex != nullptr) ? *outD3D9Ex : nullptr;
+
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            if (!g_rt.direct3dCreate9ExSeen)
+            {
+                g_rt.direct3dCreate9ExSeen = true;
+                LogDx9(
+                    "event=runtime_create9ex_hit sdk=%u hr=0x%08X obj=%p.",
+                    static_cast<unsigned int>(sdkVersion),
+                    static_cast<unsigned int>(static_cast<std::uint32_t>(hr)),
+                    d3d9Ex);
+            }
+
+            if (SUCCEEDED(hr) && d3d9Ex != nullptr)
+            {
+                std::uint32_t exCode = 0;
+                void* runtimeCreateDeviceExTarget = TryReadVtableEntry(d3d9Ex, kD3D9ExCreateDeviceExIndex, exCode);
+
+                if (exCode != 0)
+                {
+                    LogDx9("event=runtime_create9ex_vtable_probe_failed code=0x%08X.", static_cast<unsigned int>(exCode));
+                }
+                else
+                {
+                    LogDx9(
+                        "event=runtime_create9ex_target target=%p dummyTarget=%p match=%u.",
+                        runtimeCreateDeviceExTarget,
+                        g_rt.createDeviceExTarget,
+                        (runtimeCreateDeviceExTarget == g_rt.createDeviceExTarget) ? 1u : 0u);
+                }
+            }
+
+            return hr;
+        }
+
         HRESULT STDMETHODCALLTYPE HookedPresent(
             IDirect3DDevice9* device,
             const RECT* sourceRect,
@@ -1154,11 +1448,12 @@ namespace ht::hook::dx9
             void** outPresentTarget,
             void** outResetTarget,
             void** outSwapChainPresentTarget,
+            void** outCreateDeviceTarget,
             std::uint32_t& outExceptionCode,
             void*** outVtable)
         {
             outExceptionCode = 0;
-            if (outPresentTarget == nullptr || outResetTarget == nullptr || outSwapChainPresentTarget == nullptr || outVtable == nullptr)
+            if (outPresentTarget == nullptr || outResetTarget == nullptr || outSwapChainPresentTarget == nullptr || outCreateDeviceTarget == nullptr || outVtable == nullptr)
             {
                 LogDx9("event=create_dummy_device fail reason=out_target_null.");
                 return false;
@@ -1167,6 +1462,7 @@ namespace ht::hook::dx9
             *outPresentTarget = nullptr;
             *outResetTarget = nullptr;
             *outSwapChainPresentTarget = nullptr;
+            *outCreateDeviceTarget = nullptr;
             *outVtable = nullptr;
 
             WNDCLASSW wc{};
@@ -1200,6 +1496,19 @@ namespace ht::hook::dx9
                 LogDx9("event=create_dummy_device fail reason=direct3d_create9_failed.");
                 DestroyWindow(hwnd);
                 return false;
+            }
+
+            __try
+            {
+                void** d3d9Vtable = *reinterpret_cast<void***>(d3d9);
+                if (d3d9Vtable != nullptr)
+                {
+                    *outCreateDeviceTarget = d3d9Vtable[kD3D9CreateDeviceIndex];
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                outExceptionCode = static_cast<std::uint32_t>(GetExceptionCode());
             }
 
             D3DPRESENT_PARAMETERS pp{};
@@ -1292,34 +1601,37 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            if (*outVtable == nullptr || *outPresentTarget == nullptr || *outResetTarget == nullptr || *outSwapChainPresentTarget == nullptr)
+            if (*outVtable == nullptr || *outPresentTarget == nullptr || *outResetTarget == nullptr || *outSwapChainPresentTarget == nullptr || *outCreateDeviceTarget == nullptr)
             {
                 LogDx9(
-                    "event=create_dummy_device fail reason=target_extract_failed vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p.",
+                    "event=create_dummy_device fail reason=target_extract_failed vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p createDeviceTarget=%p.",
                     *outVtable,
                     *outPresentTarget,
                     *outResetTarget,
-                    *outSwapChainPresentTarget);
+                    *outSwapChainPresentTarget,
+                    *outCreateDeviceTarget);
                 return false;
             }
 
             LogDx9(
-                "event=create_dummy_device result=ok vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p.",
+                "event=create_dummy_device result=ok vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p createDeviceTarget=%p.",
                 *outVtable,
                 *outPresentTarget,
                 *outResetTarget,
-                *outSwapChainPresentTarget);
+                *outSwapChainPresentTarget,
+                *outCreateDeviceTarget);
             return true;
         }
 
         bool CreateDummyDeviceExAndGetHookTargets(
             void** outPresentExTarget,
             void** outResetExTarget,
+            void** outCreateDeviceExTarget,
             std::uint32_t& outExceptionCode,
             void*** outVtable)
         {
             outExceptionCode = 0;
-            if (outPresentExTarget == nullptr || outResetExTarget == nullptr || outVtable == nullptr)
+            if (outPresentExTarget == nullptr || outResetExTarget == nullptr || outCreateDeviceExTarget == nullptr || outVtable == nullptr)
             {
                 LogDx9("event=create_dummy_device_ex fail reason=out_target_null.");
                 return false;
@@ -1327,6 +1639,7 @@ namespace ht::hook::dx9
 
             *outPresentExTarget = nullptr;
             *outResetExTarget = nullptr;
+            *outCreateDeviceExTarget = nullptr;
             *outVtable = nullptr;
 
             WNDCLASSW wc{};
@@ -1363,6 +1676,19 @@ namespace ht::hook::dx9
                     static_cast<unsigned int>(static_cast<std::uint32_t>(hr)));
                 DestroyWindow(hwnd);
                 return false;
+            }
+
+            __try
+            {
+                void** d3d9ExVtable = *reinterpret_cast<void***>(d3d9Ex);
+                if (d3d9ExVtable != nullptr)
+                {
+                    *outCreateDeviceExTarget = d3d9ExVtable[kD3D9ExCreateDeviceExIndex];
+                }
+            }
+            __except (EXCEPTION_EXECUTE_HANDLER)
+            {
+                outExceptionCode = static_cast<std::uint32_t>(GetExceptionCode());
             }
 
             D3DPRESENT_PARAMETERS pp{};
@@ -1433,21 +1759,23 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            if (*outVtable == nullptr || *outPresentExTarget == nullptr || *outResetExTarget == nullptr)
+            if (*outVtable == nullptr || *outPresentExTarget == nullptr || *outResetExTarget == nullptr || *outCreateDeviceExTarget == nullptr)
             {
                 LogDx9(
-                    "event=create_dummy_device_ex fail reason=target_extract_failed vtable=%p presentExTarget=%p resetExTarget=%p.",
+                    "event=create_dummy_device_ex fail reason=target_extract_failed vtable=%p presentExTarget=%p resetExTarget=%p createDeviceExTarget=%p.",
                     *outVtable,
                     *outPresentExTarget,
-                    *outResetExTarget);
+                    *outResetExTarget,
+                    *outCreateDeviceExTarget);
                 return false;
             }
 
             LogDx9(
-                "event=create_dummy_device_ex result=ok vtable=%p presentExTarget=%p resetExTarget=%p.",
+                "event=create_dummy_device_ex result=ok vtable=%p presentExTarget=%p resetExTarget=%p createDeviceExTarget=%p.",
                 *outVtable,
                 *outPresentExTarget,
-                *outResetExTarget);
+                *outResetExTarget,
+                *outCreateDeviceExTarget);
             return true;
         }
 
@@ -1473,13 +1801,15 @@ namespace ht::hook::dx9
             void* swapChainPresentTarget = nullptr;
             void* presentExTarget = nullptr;
             void* resetExTarget = nullptr;
+            void* createDeviceTarget = nullptr;
+            void* createDeviceExTarget = nullptr;
             void** vtable = nullptr;
             void** vtableEx = nullptr;
             std::uint32_t vtableExceptionCode = 0;
             std::uint32_t vtableExExceptionCode = 0;
             bool hasDx9ExTargets = false;
             LogDx9("event=install_step step=create_dummy_device begin.");
-            if (!CreateDummyDeviceAndGetHookTargets(&presentTarget, &resetTarget, &swapChainPresentTarget, vtableExceptionCode, &vtable))
+            if (!CreateDummyDeviceAndGetHookTargets(&presentTarget, &resetTarget, &swapChainPresentTarget, &createDeviceTarget, vtableExceptionCode, &vtable))
             {
                 if (vtableExceptionCode != 0)
                 {
@@ -1496,7 +1826,7 @@ namespace ht::hook::dx9
             LogDx9("event=install_step step=create_dummy_device ok vtable=%p.", vtable);
 
             LogDx9("event=install_step step=create_dummy_device_ex begin.");
-            if (CreateDummyDeviceExAndGetHookTargets(&presentExTarget, &resetExTarget, vtableExExceptionCode, &vtableEx))
+            if (CreateDummyDeviceExAndGetHookTargets(&presentExTarget, &resetExTarget, &createDeviceExTarget, vtableExExceptionCode, &vtableEx))
             {
                 hasDx9ExTargets = true;
                 LogDx9("event=install_step step=create_dummy_device_ex ok vtable=%p.", vtableEx);
@@ -1515,19 +1845,25 @@ namespace ht::hook::dx9
             rt.swapChainPresentTarget = swapChainPresentTarget;
             rt.presentExTarget = hasDx9ExTargets ? presentExTarget : nullptr;
             rt.resetExTarget = hasDx9ExTargets ? resetExTarget : nullptr;
+            rt.createDeviceTarget = createDeviceTarget;
+            rt.createDeviceExTarget = hasDx9ExTargets ? createDeviceExTarget : nullptr;
             LogDx9(
-                "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p swapChainPresentTarget=%p presentExTarget=%p resetExTarget=%p presentIndex=%d resetIndex=%d swapChainPresentIndex=%d presentExIndex=%d resetExIndex=%d.",
+                "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p swapChainPresentTarget=%p presentExTarget=%p resetExTarget=%p createDeviceTarget=%p createDeviceExTarget=%p presentIndex=%d resetIndex=%d swapChainPresentIndex=%d presentExIndex=%d resetExIndex=%d createDeviceIndex=%d createDeviceExIndex=%d.",
                 rt.presentTarget,
                 rt.resetTarget,
                 rt.swapChainPresentTarget,
                 rt.presentExTarget,
                 rt.resetExTarget,
+                rt.createDeviceTarget,
+                rt.createDeviceExTarget,
                 kDevicePresentIndex,
                 kDeviceResetIndex,
                 kSwapChainPresentIndex,
                 kDevicePresentExIndex,
-                kDeviceResetExIndex);
-            if (rt.resetTarget == nullptr || rt.presentTarget == nullptr || rt.swapChainPresentTarget == nullptr)
+                kDeviceResetExIndex,
+                kD3D9CreateDeviceIndex,
+                kD3D9ExCreateDeviceExIndex);
+            if (rt.resetTarget == nullptr || rt.presentTarget == nullptr || rt.swapChainPresentTarget == nullptr || rt.createDeviceTarget == nullptr)
             {
                 LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing_or_null.");
                 return false;
@@ -1551,6 +1887,12 @@ namespace ht::hook::dx9
                 return false;
             }
 
+            if (!ValidateHookTargetPointer(rt.createDeviceTarget, "createDeviceTarget"))
+            {
+                LogDx9("event=install_hook_result result=fail reason=invalid_create_device_target_page.");
+                return false;
+            }
+
             if (rt.presentExTarget != nullptr && !ValidateHookTargetPointer(rt.presentExTarget, "presentExTarget"))
             {
                 LogDx9("event=install_hook_result result=fail reason=invalid_present_ex_target_page.");
@@ -1563,6 +1905,12 @@ namespace ht::hook::dx9
                 return false;
             }
 
+            if (rt.createDeviceExTarget != nullptr && !ValidateHookTargetPointer(rt.createDeviceExTarget, "createDeviceExTarget"))
+            {
+                LogDx9("event=install_hook_result result=fail reason=invalid_create_device_ex_target_page.");
+                return false;
+            }
+
             LogDx9("event=install_step step=mh_initialize begin.");
             const MH_STATUS initStatus = MH_Initialize();
             LogDx9("event=install_step step=mh_initialize status=%d.", static_cast<int>(initStatus));
@@ -1571,6 +1919,10 @@ namespace ht::hook::dx9
                 LogDx9("event=install_hook_result result=fail reason=mh_initialize_failed status=%d.", static_cast<int>(initStatus));
                 return false;
             }
+            bool createDeviceHookCreated = false;
+            bool createDeviceExHookCreated = false;
+            bool create9ApiHookCreated = false;
+            bool create9ExApiHookCreated = false;
 
             LogDx9("event=install_step step=mh_create_present begin target=%p hook=%p.", rt.presentTarget, reinterpret_cast<void*>(&HookedPresent));
             if (MH_CreateHook(
@@ -1646,6 +1998,69 @@ namespace ht::hook::dx9
                 LogDx9("event=install_step step=mh_create_reset_ex ok original=%p.", reinterpret_cast<void*>(rt.originalResetEx));
             }
 
+            LogDx9("event=install_step step=mh_create_create_device begin target=%p hook=%p.", rt.createDeviceTarget, reinterpret_cast<void*>(&HookedCreateDevice));
+            if (MH_CreateHook(
+                    rt.createDeviceTarget,
+                    reinterpret_cast<LPVOID>(&HookedCreateDevice),
+                    reinterpret_cast<LPVOID*>(&rt.originalCreateDevice)) == MH_OK)
+            {
+                createDeviceHookCreated = true;
+                LogDx9("event=install_step step=mh_create_create_device ok original=%p.", reinterpret_cast<void*>(rt.originalCreateDevice));
+            }
+            else
+            {
+                LogDx9("event=install_step step=mh_create_create_device skip reason=create_failed.");
+            }
+
+            if (rt.createDeviceExTarget != nullptr)
+            {
+                LogDx9("event=install_step step=mh_create_create_device_ex begin target=%p hook=%p.", rt.createDeviceExTarget, reinterpret_cast<void*>(&HookedCreateDeviceEx));
+                if (MH_CreateHook(
+                        rt.createDeviceExTarget,
+                        reinterpret_cast<LPVOID>(&HookedCreateDeviceEx),
+                        reinterpret_cast<LPVOID*>(&rt.originalCreateDeviceEx)) == MH_OK)
+                {
+                    createDeviceExHookCreated = true;
+                    LogDx9("event=install_step step=mh_create_create_device_ex ok original=%p.", reinterpret_cast<void*>(rt.originalCreateDeviceEx));
+                }
+                else
+                {
+                    LogDx9("event=install_step step=mh_create_create_device_ex skip reason=create_failed.");
+                }
+            }
+
+            LogDx9("event=install_step step=mh_create_api_direct3dcreate9 begin.");
+            if (MH_CreateHookApiEx(
+                    L"d3d9.dll",
+                    "Direct3DCreate9",
+                    reinterpret_cast<LPVOID>(&HookedDirect3DCreate9),
+                    reinterpret_cast<LPVOID*>(&rt.originalDirect3DCreate9),
+                    reinterpret_cast<LPVOID*>(&rt.direct3DCreate9ApiTarget)) == MH_OK)
+            {
+                create9ApiHookCreated = true;
+                LogDx9("event=install_step step=mh_create_api_direct3dcreate9 ok original=%p target=%p.", reinterpret_cast<void*>(rt.originalDirect3DCreate9), rt.direct3DCreate9ApiTarget);
+            }
+            else
+            {
+                LogDx9("event=install_step step=mh_create_api_direct3dcreate9 skip reason=create_failed.");
+            }
+
+            LogDx9("event=install_step step=mh_create_api_direct3dcreate9ex begin.");
+            if (MH_CreateHookApiEx(
+                    L"d3d9.dll",
+                    "Direct3DCreate9Ex",
+                    reinterpret_cast<LPVOID>(&HookedDirect3DCreate9Ex),
+                    reinterpret_cast<LPVOID*>(&rt.originalDirect3DCreate9Ex),
+                    reinterpret_cast<LPVOID*>(&rt.direct3DCreate9ExApiTarget)) == MH_OK)
+            {
+                create9ExApiHookCreated = true;
+                LogDx9("event=install_step step=mh_create_api_direct3dcreate9ex ok original=%p target=%p.", reinterpret_cast<void*>(rt.originalDirect3DCreate9Ex), rt.direct3DCreate9ExApiTarget);
+            }
+            else
+            {
+                LogDx9("event=install_step step=mh_create_api_direct3dcreate9ex skip reason=create_failed.");
+            }
+
             LogDx9("event=install_step step=mh_enable_present begin target=%p.", rt.presentTarget);
             if (MH_EnableHook(rt.presentTarget) != MH_OK)
             {
@@ -1705,6 +2120,74 @@ namespace ht::hook::dx9
                 return false;
             }
             LogDx9("event=install_step step=mh_enable_swapchain_present ok.");
+
+            if (createDeviceHookCreated)
+            {
+                LogDx9("event=install_step step=mh_enable_create_device begin target=%p.", rt.createDeviceTarget);
+                if (MH_EnableHook(rt.createDeviceTarget) != MH_OK)
+                {
+                    LogDx9("event=install_step step=mh_enable_create_device skip reason=enable_failed.");
+                    (void)MH_RemoveHook(rt.createDeviceTarget);
+                    rt.originalCreateDevice = nullptr;
+                }
+                else
+                {
+                    LogDx9("event=install_step step=mh_enable_create_device ok.");
+                }
+            }
+
+            if (createDeviceExHookCreated && rt.createDeviceExTarget != nullptr)
+            {
+                LogDx9("event=install_step step=mh_enable_create_device_ex begin target=%p.", rt.createDeviceExTarget);
+                if (MH_EnableHook(rt.createDeviceExTarget) != MH_OK)
+                {
+                    LogDx9("event=install_step step=mh_enable_create_device_ex skip reason=enable_failed.");
+                    (void)MH_RemoveHook(rt.createDeviceExTarget);
+                    rt.originalCreateDeviceEx = nullptr;
+                }
+                else
+                {
+                    LogDx9("event=install_step step=mh_enable_create_device_ex ok.");
+                }
+            }
+
+            if (create9ApiHookCreated)
+            {
+                LogDx9("event=install_step step=mh_enable_api_direct3dcreate9 begin target=%p.", rt.direct3DCreate9ApiTarget);
+                if (rt.direct3DCreate9ApiTarget == nullptr || MH_EnableHook(rt.direct3DCreate9ApiTarget) != MH_OK)
+                {
+                    LogDx9("event=install_step step=mh_enable_api_direct3dcreate9 skip reason=enable_failed.");
+                    if (rt.direct3DCreate9ApiTarget != nullptr)
+                    {
+                        (void)MH_RemoveHook(rt.direct3DCreate9ApiTarget);
+                    }
+                    rt.originalDirect3DCreate9 = nullptr;
+                    rt.direct3DCreate9ApiTarget = nullptr;
+                }
+                else
+                {
+                    LogDx9("event=install_step step=mh_enable_api_direct3dcreate9 ok.");
+                }
+            }
+
+            if (create9ExApiHookCreated)
+            {
+                LogDx9("event=install_step step=mh_enable_api_direct3dcreate9ex begin target=%p.", rt.direct3DCreate9ExApiTarget);
+                if (rt.direct3DCreate9ExApiTarget == nullptr || MH_EnableHook(rt.direct3DCreate9ExApiTarget) != MH_OK)
+                {
+                    LogDx9("event=install_step step=mh_enable_api_direct3dcreate9ex skip reason=enable_failed.");
+                    if (rt.direct3DCreate9ExApiTarget != nullptr)
+                    {
+                        (void)MH_RemoveHook(rt.direct3DCreate9ExApiTarget);
+                    }
+                    rt.originalDirect3DCreate9Ex = nullptr;
+                    rt.direct3DCreate9ExApiTarget = nullptr;
+                }
+                else
+                {
+                    LogDx9("event=install_step step=mh_enable_api_direct3dcreate9ex ok.");
+                }
+            }
 
             if (rt.presentExTarget != nullptr)
             {
@@ -1817,6 +2300,30 @@ namespace ht::hook::dx9
             (void)MH_RemoveHook(rt.resetExTarget);
         }
 
+        if (rt.createDeviceTarget != nullptr)
+        {
+            (void)MH_DisableHook(rt.createDeviceTarget);
+            (void)MH_RemoveHook(rt.createDeviceTarget);
+        }
+
+        if (rt.createDeviceExTarget != nullptr)
+        {
+            (void)MH_DisableHook(rt.createDeviceExTarget);
+            (void)MH_RemoveHook(rt.createDeviceExTarget);
+        }
+
+        if (rt.direct3DCreate9ApiTarget != nullptr)
+        {
+            (void)MH_DisableHook(rt.direct3DCreate9ApiTarget);
+            (void)MH_RemoveHook(rt.direct3DCreate9ApiTarget);
+        }
+
+        if (rt.direct3DCreate9ExApiTarget != nullptr)
+        {
+            (void)MH_DisableHook(rt.direct3DCreate9ExApiTarget);
+            (void)MH_RemoveHook(rt.direct3DCreate9ExApiTarget);
+        }
+
         (void)MH_Uninitialize();
 
         rt.presentTarget = nullptr;
@@ -1824,11 +2331,19 @@ namespace ht::hook::dx9
         rt.swapChainPresentTarget = nullptr;
         rt.presentExTarget = nullptr;
         rt.resetExTarget = nullptr;
+        rt.createDeviceTarget = nullptr;
+        rt.createDeviceExTarget = nullptr;
         rt.originalPresent = nullptr;
         rt.originalReset = nullptr;
         rt.originalSwapChainPresent = nullptr;
         rt.originalPresentEx = nullptr;
         rt.originalResetEx = nullptr;
+        rt.originalCreateDevice = nullptr;
+        rt.originalCreateDeviceEx = nullptr;
+        rt.originalDirect3DCreate9 = nullptr;
+        rt.originalDirect3DCreate9Ex = nullptr;
+        rt.direct3DCreate9ApiTarget = nullptr;
+        rt.direct3DCreate9ExApiTarget = nullptr;
         ResetRuntimeStateLocked(rt);
         LogDx9("event=uninstall_hook result=ok.");
         CloseDiagFile();
