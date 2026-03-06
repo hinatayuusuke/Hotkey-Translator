@@ -45,7 +45,7 @@ namespace ht::hook::dx11
 
         constexpr int kOverlayV2DebugSamples = 8;
         constexpr int kPresentDebugSamples = 16;
-        constexpr int kOverlayFontSteps = 12;
+        constexpr int kOverlayFontSteps = 16;
         constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500;
         constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200;
         constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300;
@@ -670,7 +670,7 @@ namespace ht::hook::dx11
                 builder.BuildRanges(&s_glyphRanges);
             }
 
-            // NOTE: 12-step mapping in [14..72] inclusive (linear). This favors stability over perfect matching
+            // NOTE: 16-step mapping in [14..120] inclusive (linear). This favors stability over perfect matching
             // and avoids runtime font scaling.
             static float kFontSizesPx[kOverlayFontSteps]{};
             static bool kFontSizesInited = false;
@@ -679,7 +679,7 @@ namespace ht::hook::dx11
                 for (int i = 0; i < kOverlayFontSteps; i++)
                 {
                     const float t = (kOverlayFontSteps > 1) ? (static_cast<float>(i) / static_cast<float>(kOverlayFontSteps - 1)) : 0.0f;
-                    kFontSizesPx[i] = 14.0f + (72.0f - 14.0f) * t;
+                    kFontSizesPx[i] = 14.0f + (120.0f - 14.0f) * t;
                 }
                 kFontSizesInited = true;
             }

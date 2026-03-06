@@ -32,7 +32,7 @@ public partial class OverlayWindow : Window
     private readonly OverlayFontFitter _fontFitter = new();
     private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
     private const double MinFontSize = 8;
-    private const double MaxFontSize = 72;
+    private const double MaxFontSize = 120;
     private const int FitIterations = 7;
     private const double FontQuantizeStepPx = 5.0;
     private const double FontHysteresisThreshold = 1.0;
@@ -233,7 +233,7 @@ public partial class OverlayWindow : Window
         }
 
         // WHY: Keep hook font requests within the native atlas range to avoid excessive fallback mismatch.
-        canvasFontPx = Math.Clamp(canvasFontPx, 14.0, 72.0);
+        canvasFontPx = Math.Clamp(canvasFontPx, 14.0, 120.0);
         fontPx = (float)canvasFontPx;
         return true;
     }

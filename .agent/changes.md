@@ -16872,3 +16872,33 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 23:28 (Asia/Taipei) — Hookフォント上限120と16段階化**
+
+### Summary
+- Hook向けフォントサイズの上限を120に引き上げ、DX11側のフォント段階を16段へ拡張した。
+
+### Context / Goal
+- Hookオーバーレイ文字が小さくなりやすい現状を緩和する。
+- 既存の実装方針（段階フォント選択）を維持したまま、サイズ上限と解像度を拡張する。
+
+### Changes
+- WPF側のフォントフィット上限を72→120へ変更。
+- WPF→Hookフォント変換の clamp 上限を72→120へ変更。
+- DX11 Hookのフォント段数を12→16へ変更。
+- DX11 Hookの段階フォントレンジを [14..72]→[14..120] へ変更。
+
+### Files Touched
+- UI/OverlayWindow.xaml.cs — MaxFontSize と Hook用 canvasFontPx clamp上限を120へ変更。
+- Native/HookAgentDx11/Dx11PresentHook.cpp — kOverlayFontSteps を16化、段階フォント上限を120へ変更。
+
+### Behavioral Impact
+- Hook表示時のフォントがより大きいサイズまで選択可能になる。
+- DX11 Hookのサイズ量子化が細かくなり、選択サイズの段差が小さくなる。
+
+### Risk & Mitigation
+- Risk: 大きなフォント利用時に描画コスト・アトラスメモリが増える可能性。
+- Mitigation: 変更はHook表示フォント経路に限定し、段階フォント選択方式は維持。
+
+### Tests / Verification
+- cmake --build Native/build --config Release --target HookAgentDx11 実行成功。
