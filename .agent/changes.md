@@ -16846,3 +16846,29 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 22:44 (Asia/Taipei) — Geminiターゲット言語正規化に韓国語を追加**
+
+### Summary
+- Geminiプロンプト生成時のターゲット言語名正規化に `ko` 系を追加した。
+
+### Context / Goal
+- `TargetLanguage` が `ko` の場合に、Gemini命令が言語コードのまま残る揺れを減らす。
+- 既存の `Japanese/English/...` 正規化ルールに合わせて `Korean` を返す。
+
+### Changes
+- `ResolveGeminiLanguageName` に `normalized.StartsWith("ko") => "Korean"` を追加。
+
+### Files Touched
+- `Services/GeminiClient.cs` — ターゲット言語名の正規化分岐を追加。
+
+### Behavioral Impact
+- `TargetLanguage=ko`（`ko-KR` 等含む）のとき、Gemini命令文の言語名が `Korean` になる。
+- その他言語への挙動変更はなし。
+
+### Risk & Mitigation
+- Risk: ほぼなし（分岐追加のみ）。
+- Mitigation: 既存の startsWith 判定スタイルに合わせ、局所変更に限定。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。

@@ -78,7 +78,7 @@ public sealed class GeminiClient
             },
             generationConfig = new
             {
-                temperature = 0.7,
+                temperature = 0.3,
                 // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
                 maxOutputTokens = 4096,
                 responseMimeType = "application/json",
@@ -246,6 +246,11 @@ public sealed class GeminiClient
         if (normalized.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
         {
             return "Japanese";
+        }
+
+        if (normalized.StartsWith("ko", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Korean";
         }
 
         if (normalized.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
