@@ -6,6 +6,7 @@
 # --- CMakeのビルド生成物 ---
 build/
 build_x86/
+build-vk/
 bin/
 out/
 CMakeFiles/
