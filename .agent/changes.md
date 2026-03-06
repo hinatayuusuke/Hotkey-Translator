@@ -16530,3 +16530,33 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 14:48 (Asia/Taipei) — DX9Ex対応（PresentEx/ResetExフック追加）**
+
+### Summary
+- DX9フックに `IDirect3DDevice9Ex::PresentEx/ResetEx` 経路を追加し、DX9Exタイトルでもキャプチャ起点を拾えるようにした。
+
+### Context / Goal
+- DX9 attach は成功しても `Hook shared frame mapping not found` となるケースがあり、`Present/Reset` のみでは呼ばれないDX9Ex経路を補完する必要があった。
+
+### Changes
+- `HookedPresentEx` / `HookedResetEx` を追加し、既存 `Present/Reset` と同じキャプチャ・状態更新フローに接続。
+- `CreateDummyDeviceExAndGetHookTargets` を追加し、`Direct3DCreate9Ex + CreateDeviceEx` で Ex vtable から `PresentEx/ResetEx` ターゲットを解決。
+- `InstallPresentHookImpl` を拡張し、Exターゲット検出時は MinHook の `create/enable` を追加実行、失敗時は既存同様にロールバック。
+- `UninstallPresentHook` と `ResetRuntimeStateLocked` に Exターゲット/原関数ポインタの解放・初期化を追加。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — DX9Exターゲット解決、PresentEx/ResetExフック、install/uninstall拡張を実装。
+
+### Behavioral Impact
+- DX9Ex実装タイトルで `PresentEx` が主経路でも、フレーム書き出しとステータス更新が発火する。
+- Exターゲットが解決できない環境では、ログを残して従来DX9経路のみで動作する。
+
+### Risk & Mitigation
+- Risk: Exターゲット作成/有効化失敗時に attach が失敗する可能性。
+- Mitigation: `create_dummy_device_ex` と `mh_*_ex` の段階ログを追加し、失敗箇所を即特定できるようにした。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功（既存警告 `SharedFrameWriter.cpp` C4293 は継続）。
