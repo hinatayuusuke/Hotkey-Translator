@@ -16749,3 +16749,39 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 20:48 (Asia/Taipei) — 縦結合/横結合の簡易強度設定をUIへ追加**
+
+### Summary
+- OCR結合の詳細閾値を直接触らずに調整できる簡易設定（横強度/縦強度）を実装した。
+
+### Context / Goal
+- ユーザーが縦結合・横結合の効きを直感的に調整できるようにする。
+- 既存の詳細閾値と互換性を維持しつつ、簡易設定ON時のみ閾値を自動マッピングする。
+
+### Changes
+- `AppSettings` に簡易結合設定を追加（有効フラグ、横強度、縦強度）。
+- `SettingsViewModel` に新規プロパティを追加し、Load/Apply/自動保存トリガーへ接続。
+- Settings UI（OCR Tuning）にチェックボックス＋2スライダーを追加。
+- `OcrLineGrouper` の有効閾値解決に簡易強度マッピングを追加。
+- 簡易強度適用時の有効閾値を変更時のみログ出力するよう追加。
+- `WritingModeSettingsRule` で横強度/縦強度を 0..100 に正規化するよう追加。
+
+### Files Touched
+- `Models/AppSettings.cs` — 簡易結合設定項目を追加。
+- `ViewModels/SettingsViewModel.cs` — 追加設定のVMバインディング、保存反映、変更時保存を実装。
+- `MainWindow.xaml` — OCR Tuningに simple merge tuning UI（チェック＋2スライダー）を追加。
+- `Services/OcrLineGrouper.cs` — 簡易強度→内部閾値マッピング、適用ログを実装。
+- `Services/Settings/Rules/WritingModeSettingsRule.cs` — 新規強度設定の範囲正規化を追加。
+
+### Behavioral Impact
+- `Use simple merge tuning` がONのとき、横/縦強度が内部の結合閾値へ連動適用される。
+- OFFのときは従来の詳細閾値挙動を維持する。
+- 強度値が範囲外でも保存時に 0..100 へ正規化される。
+
+### Risk & Mitigation
+- Risk: 簡易強度ON時に想定より結合が強すぎ/弱すぎになる可能性。
+- Mitigation: 既定は50で中庸に設定し、ON/OFFで即比較可能にした。ログで有効閾値を確認できる。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。

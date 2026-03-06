@@ -59,6 +59,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableDeepL;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
+    [ObservableProperty] private bool _enableSimpleMergeTuning;
+    [ObservableProperty] private double _horizontalMergeStrength = 50;
+    [ObservableProperty] private double _verticalMergeStrength = 50;
     [ObservableProperty] private bool _enableLogging;
     [ObservableProperty] private bool _enableOcrPerfLog;
     [ObservableProperty] private bool _enableOcrBinarization;
@@ -188,6 +191,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
                 VerticalModeOverride.Horizontal => "Horizontal",
                 _ => "Auto"
             };
+            EnableSimpleMergeTuning = settings.EnableSimpleMergeTuning;
+            HorizontalMergeStrength = settings.HorizontalMergeStrength;
+            VerticalMergeStrength = settings.VerticalMergeStrength;
             EnableLogging = settings.EnableLogging;
             EnableOcrPerfLog = settings.EnableOcrPerfLog;
             EnableOcrBinarization = settings.EnableOcrBinarization;
@@ -310,6 +316,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
             "Horizontal" => VerticalModeOverride.Horizontal,
             _ => VerticalModeOverride.Auto
         };
+        settings.EnableSimpleMergeTuning = EnableSimpleMergeTuning;
+        settings.HorizontalMergeStrength = (int)Math.Round(Math.Clamp(HorizontalMergeStrength, 0, 100));
+        settings.VerticalMergeStrength = (int)Math.Round(Math.Clamp(VerticalMergeStrength, 0, 100));
         settings.EnableLogging = EnableLogging;
         settings.EnableOcrPerfLog = EnableOcrPerfLog;
         settings.EnableOcrBinarization = EnableOcrBinarization;
@@ -556,6 +565,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableSimpleMergeTuningChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHorizontalMergeStrengthChanged(double value) => RequestSaveOnValueChange();
+    partial void OnVerticalMergeStrengthChanged(double value) => RequestSaveOnValueChange();
     partial void OnEnableLoggingChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrPerfLogChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrBinarizationChanged(bool value) => RequestSaveOnValueChange();

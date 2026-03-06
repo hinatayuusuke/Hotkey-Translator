@@ -171,6 +171,9 @@ public sealed class AppSettings
     public bool EnableLineMerge { get; set; } = true;
     public bool EnableEngineScaledLineMergeProfile { get; set; } = true;
     public bool EnableTwoStageLineMerge { get; set; } = true;
+    public bool EnableSimpleMergeTuning { get; set; } = false;
+    public int HorizontalMergeStrength { get; set; } = 50;
+    public int VerticalMergeStrength { get; set; } = 50;
     public double MergeOverlapRatioThreshold { get; set; } = 0.1;
     public double MergeVerticalWeight { get; set; } = 0.5;
     public double MergeThresholdRatio { get; set; } = 0.9;

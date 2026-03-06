@@ -25,10 +25,27 @@ public sealed class OcrLineGrouper
     private const double RatioClampMax = 5.0;
     private const double WeightClampMin = 0.0;
     private const double WeightClampMax = 5.0;
+    private const double SimpleHorizontalOverlapMin = 0.05;
+    private const double SimpleHorizontalOverlapMax = 0.20;
+    private const double SimpleHorizontalThresholdMin = 0.75;
+    private const double SimpleHorizontalThresholdMax = 1.20;
+    private const double SimpleHorizontalRowMaxGapMin = 0.90;
+    private const double SimpleHorizontalRowMaxGapMax = 2.40;
+    private const double SimpleHorizontalRowHardBreakMin = 1.20;
+    private const double SimpleHorizontalRowHardBreakMax = 3.00;
+    private const double SimpleVerticalGapMin = 0.80;
+    private const double SimpleVerticalGapMax = 2.00;
+    private const double SimpleVerticalColumnOverlapMin = 0.08;
+    private const double SimpleVerticalColumnOverlapMax = 0.35;
+    private const double SimpleVerticalColumnThresholdMin = 0.70;
+    private const double SimpleVerticalColumnThresholdMax = 1.30;
+    private const double SimpleVerticalColumnHardBreakMin = 1.10;
+    private const double SimpleVerticalColumnHardBreakMax = 2.60;
     private readonly AppLogger? _logger;
     private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
     private bool _hasAutoSelectedMode;
     private string? _lastLoggedProfileKey;
+    private string? _lastLoggedSimpleTuningKey;
 
     private enum WritingMode
     {
@@ -73,6 +90,7 @@ public sealed class OcrLineGrouper
 
         var thresholds = ResolveEffectiveThresholds(settings);
         LogEffectiveThresholdsIfChanged(thresholds, settings);
+        LogSimpleMergeTuningIfChanged(thresholds, settings);
 
         if (settings.VerticalModeOverride == VerticalModeOverride.Horizontal)
         {
@@ -822,9 +840,10 @@ public sealed class OcrLineGrouper
         var applyPaddleScale = settings.EnableEngineScaledLineMergeProfile &&
                                engineKind == OcrEngineKind.Paddle;
 
+        EffectiveMergeThresholds effective;
         if (!applyPaddleScale)
         {
-            return new EffectiveMergeThresholds(
+            effective = new EffectiveMergeThresholds(
                 settings.MergeOverlapRatioThreshold,
                 settings.MergeVerticalWeight,
                 settings.MergeThresholdRatio,
@@ -840,22 +859,26 @@ public sealed class OcrLineGrouper
                 EngineScaledApplied: false,
                 engineKind);
         }
+        else
+        {
+            effective = new EffectiveMergeThresholds(
+                ClampScaled(settings.MergeOverlapRatioThreshold, settings.PaddleMergeOverlapScale, OverlapClampMin, OverlapClampMax),
+                ClampScaled(settings.MergeVerticalWeight, settings.PaddleMergeVerticalWeightScale, WeightClampMin, WeightClampMax),
+                ClampScaled(settings.MergeThresholdRatio, settings.PaddleMergeThresholdScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.RowMergeYCenterToleranceRatio, settings.PaddleRowMergeYCenterToleranceScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.RowMergeHeightRatioMin, settings.PaddleRowMergeHeightRatioMinScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.RowMergeMaxGapRatio, settings.PaddleRowMergeMaxGapScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.RowMergeHardBreakRatio, settings.PaddleRowMergeHardBreakScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.VerticalGapRatio, settings.PaddleVerticalGapScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.VerticalColumnMergeOverlapRatioThreshold, settings.PaddleVerticalColumnMergeOverlapScale, OverlapClampMin, OverlapClampMax),
+                ClampScaled(settings.VerticalColumnMergeWeight, settings.PaddleVerticalColumnMergeWeightScale, WeightClampMin, WeightClampMax),
+                ClampScaled(settings.VerticalColumnMergeThresholdRatio, settings.PaddleVerticalColumnMergeThresholdScale, RatioClampMin, RatioClampMax),
+                ClampScaled(settings.VerticalColumnMergeHardBreakRatio, settings.PaddleVerticalColumnMergeHardBreakScale, RatioClampMin, RatioClampMax),
+                EngineScaledApplied: true,
+                engineKind);
+        }
 
-        return new EffectiveMergeThresholds(
-            ClampScaled(settings.MergeOverlapRatioThreshold, settings.PaddleMergeOverlapScale, OverlapClampMin, OverlapClampMax),
-            ClampScaled(settings.MergeVerticalWeight, settings.PaddleMergeVerticalWeightScale, WeightClampMin, WeightClampMax),
-            ClampScaled(settings.MergeThresholdRatio, settings.PaddleMergeThresholdScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.RowMergeYCenterToleranceRatio, settings.PaddleRowMergeYCenterToleranceScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.RowMergeHeightRatioMin, settings.PaddleRowMergeHeightRatioMinScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.RowMergeMaxGapRatio, settings.PaddleRowMergeMaxGapScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.RowMergeHardBreakRatio, settings.PaddleRowMergeHardBreakScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.VerticalGapRatio, settings.PaddleVerticalGapScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.VerticalColumnMergeOverlapRatioThreshold, settings.PaddleVerticalColumnMergeOverlapScale, OverlapClampMin, OverlapClampMax),
-            ClampScaled(settings.VerticalColumnMergeWeight, settings.PaddleVerticalColumnMergeWeightScale, WeightClampMin, WeightClampMax),
-            ClampScaled(settings.VerticalColumnMergeThresholdRatio, settings.PaddleVerticalColumnMergeThresholdScale, RatioClampMin, RatioClampMax),
-            ClampScaled(settings.VerticalColumnMergeHardBreakRatio, settings.PaddleVerticalColumnMergeHardBreakScale, RatioClampMin, RatioClampMax),
-            EngineScaledApplied: true,
-            engineKind);
+        return ApplySimpleMergeTuning(effective, settings);
     }
 
     private void LogEffectiveThresholdsIfChanged(EffectiveMergeThresholds thresholds, AppSettings settings)
@@ -884,6 +907,94 @@ public sealed class OcrLineGrouper
             $"colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}.");
     }
 
+    private void LogSimpleMergeTuningIfChanged(EffectiveMergeThresholds thresholds, AppSettings settings)
+    {
+        if (!settings.EnableSimpleMergeTuning || _logger == null)
+        {
+            _lastLoggedSimpleTuningKey = null;
+            return;
+        }
+
+        var key =
+            $"{settings.HorizontalMergeStrength}|{settings.VerticalMergeStrength}|" +
+            $"{thresholds.MergeOverlapRatioThreshold:0.###}|{thresholds.MergeThresholdRatio:0.###}|{thresholds.RowMergeMaxGapRatio:0.###}|{thresholds.RowMergeHardBreakRatio:0.###}|" +
+            $"{thresholds.VerticalGapRatio:0.###}|{thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}|{thresholds.VerticalColumnMergeThresholdRatio:0.###}|{thresholds.VerticalColumnMergeHardBreakRatio:0.###}";
+        if (string.Equals(key, _lastLoggedSimpleTuningKey, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _lastLoggedSimpleTuningKey = key;
+        _logger.Info(
+            $"Simple merge tuning: enabled=1 h={settings.HorizontalMergeStrength} v={settings.VerticalMergeStrength}, " +
+            $"h(overlap={thresholds.MergeOverlapRatioThreshold:0.###}, threshold={thresholds.MergeThresholdRatio:0.###}, rowMaxGap={thresholds.RowMergeMaxGapRatio:0.###}, rowHardBreak={thresholds.RowMergeHardBreakRatio:0.###}), " +
+            $"v(gap={thresholds.VerticalGapRatio:0.###}, colOverlap={thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}, colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}).");
+    }
+
+    private static EffectiveMergeThresholds ApplySimpleMergeTuning(EffectiveMergeThresholds current, AppSettings settings)
+    {
+        if (!settings.EnableSimpleMergeTuning)
+        {
+            return current;
+        }
+
+        var horizontal = Clamp01(settings.HorizontalMergeStrength / 100.0);
+        var vertical = Clamp01(settings.VerticalMergeStrength / 100.0);
+
+        var tunedHorizontalOverlap = ClampScaled(
+            Lerp(SimpleHorizontalOverlapMax, SimpleHorizontalOverlapMin, horizontal),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+        var tunedHorizontalThreshold = ClampScaled(
+            Lerp(SimpleHorizontalThresholdMin, SimpleHorizontalThresholdMax, horizontal),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedHorizontalRowMaxGap = ClampScaled(
+            Lerp(SimpleHorizontalRowMaxGapMin, SimpleHorizontalRowMaxGapMax, horizontal),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedHorizontalRowHardBreak = ClampScaled(
+            Lerp(SimpleHorizontalRowHardBreakMin, SimpleHorizontalRowHardBreakMax, horizontal),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedVerticalGap = ClampScaled(
+            Lerp(SimpleVerticalGapMin, SimpleVerticalGapMax, vertical),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedVerticalColumnOverlap = ClampScaled(
+            Lerp(SimpleVerticalColumnOverlapMax, SimpleVerticalColumnOverlapMin, vertical),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+        var tunedVerticalColumnThreshold = ClampScaled(
+            Lerp(SimpleVerticalColumnThresholdMin, SimpleVerticalColumnThresholdMax, vertical),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedVerticalColumnHardBreak = ClampScaled(
+            Lerp(SimpleVerticalColumnHardBreakMin, SimpleVerticalColumnHardBreakMax, vertical),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+
+        return current with
+        {
+            MergeOverlapRatioThreshold = tunedHorizontalOverlap,
+            MergeThresholdRatio = tunedHorizontalThreshold,
+            RowMergeMaxGapRatio = tunedHorizontalRowMaxGap,
+            RowMergeHardBreakRatio = tunedHorizontalRowHardBreak,
+            VerticalGapRatio = tunedVerticalGap,
+            VerticalColumnMergeOverlapRatioThreshold = tunedVerticalColumnOverlap,
+            VerticalColumnMergeThresholdRatio = tunedVerticalColumnThreshold,
+            VerticalColumnMergeHardBreakRatio = tunedVerticalColumnHardBreak
+        };
+    }
+
     private static double ClampScaled(double baseValue, double scale, double minValue, double maxValue)
     {
         var scaled = baseValue * scale;
@@ -893,6 +1004,11 @@ public sealed class OcrLineGrouper
         }
 
         return Math.Clamp(scaled, minValue, maxValue);
+    }
+
+    private static double Lerp(double minValue, double maxValue, double ratio)
+    {
+        return minValue + ((maxValue - minValue) * Clamp01(ratio));
     }
 
     private static List<OcrLine> OrderLines(IEnumerable<OcrLine> lines, WritingMode mode, AppSettings settings)
