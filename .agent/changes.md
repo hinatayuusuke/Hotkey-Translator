@@ -16597,3 +16597,36 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
 - 既知警告: `SharedFrameWriter.cpp` の x86 C4293 は継続（既存警告）。
+
+**2026-03-06 15:41 (Asia/Taipei) — DX9 SwapChain9::Present フック追加**
+
+### Summary
+- DX9の Device Present/PresentEx に加えて `IDirect3DSwapChain9::Present` をフックし、Device Present を通らないタイトルでもキャプチャ起点を拾えるようにした。
+
+### Context / Goal
+- attach/hook install は成功するが `present_hook_hit` が出ず、shared frame mapping が作成されない事象が継続していた。
+- D3D9タイトルでも SwapChain Present 経路のみ使うケースをカバーする。
+
+### Changes
+- `SwapChainPresentFn` と `kSwapChainPresentIndex=3` を追加。
+- runtime に `swapChainPresentTarget` / `originalSwapChainPresent` / `swapChainPresentHookSeen` を追加。
+- `HookedSwapChainPresent` を実装し、`GetDevice` 経由で既存 `CaptureAndShareFrameLocked` を再利用。
+- `CreateDummyDeviceAndGetHookTargets` で `GetSwapChain(0)` から swapchain vtable を取得し、`Present` ターゲットを解決。
+- install/uninstall に `mh_create/mh_enable/mh_disable/mh_remove` の swapchain_present 経路を追加。
+- reset/runtime reset の初期化に swapchain 関連ポインタ・フラグを追加。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — SwapChain9::Present フック実装、target解決、install/uninstall配線を追加。
+
+### Behavioral Impact
+- Device Present/PresentEx が未ヒットでも、SwapChain Present が使われるタイトルでキャプチャが発火する可能性が上がる。
+- 失敗時ログに `kind=swapchain_present` / `swapchain_get_device_failed` が出るため切り分けが容易になる。
+
+### Risk & Mitigation
+- Risk: hook対象が1本増えることで、MinHook設定失敗時の失敗面が増える。
+- Mitigation: 既存と同じ fail-fast + ロールバックを実装し、失敗理由を個別ログ化した。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+- x86ビルド時に `HookAgentDx9.dll` 使用中で `LNK1168` が一度発生。対象プロセス停止後に再ビルド成功。

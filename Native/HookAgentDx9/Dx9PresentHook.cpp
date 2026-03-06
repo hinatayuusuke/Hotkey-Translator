@@ -29,6 +29,13 @@ namespace ht::hook::dx9
             HWND,
             const RGNDATA*);
         using ResetFn = HRESULT(STDMETHODCALLTYPE*)(IDirect3DDevice9*, D3DPRESENT_PARAMETERS*);
+        using SwapChainPresentFn = HRESULT(STDMETHODCALLTYPE*)(
+            IDirect3DSwapChain9*,
+            const RECT*,
+            const RECT*,
+            HWND,
+            const RGNDATA*,
+            DWORD);
         using PresentExFn = HRESULT(STDMETHODCALLTYPE*)(
             IDirect3DDevice9Ex*,
             const RECT*,
@@ -40,6 +47,7 @@ namespace ht::hook::dx9
 
         constexpr int kDeviceResetIndex = 16;
         constexpr int kDevicePresentIndex = 17;
+        constexpr int kSwapChainPresentIndex = 3;
         constexpr int kDevicePresentExIndex = 121;
         constexpr int kDeviceResetExIndex = 132;
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
@@ -54,10 +62,12 @@ namespace ht::hook::dx9
 
             void* presentTarget = nullptr;
             void* resetTarget = nullptr;
+            void* swapChainPresentTarget = nullptr;
             void* presentExTarget = nullptr;
             void* resetExTarget = nullptr;
             PresentFn originalPresent = nullptr;
             ResetFn originalReset = nullptr;
+            SwapChainPresentFn originalSwapChainPresent = nullptr;
             PresentExFn originalPresentEx = nullptr;
             ResetExFn originalResetEx = nullptr;
 
@@ -98,6 +108,7 @@ namespace ht::hook::dx9
             std::uint32_t lastCaptureFailureHr = 0;
             std::uint64_t lastCaptureFailureQpc = 0;
             bool presentHookSeen = false;
+            bool swapChainPresentHookSeen = false;
             bool presentExHookSeen = false;
             std::uint64_t lastSkipCapturePresentCount = 0;
         };
@@ -390,10 +401,12 @@ namespace ht::hook::dx9
 
             rt.presentTarget = nullptr;
             rt.resetTarget = nullptr;
+            rt.swapChainPresentTarget = nullptr;
             rt.presentExTarget = nullptr;
             rt.resetExTarget = nullptr;
             rt.originalPresent = nullptr;
             rt.originalReset = nullptr;
+            rt.originalSwapChainPresent = nullptr;
             rt.originalPresentEx = nullptr;
             rt.originalResetEx = nullptr;
 
@@ -420,6 +433,7 @@ namespace ht::hook::dx9
             rt.lastCaptureFailureHr = 0;
             rt.lastCaptureFailureQpc = 0;
             rt.presentHookSeen = false;
+            rt.swapChainPresentHookSeen = false;
             rt.presentExHookSeen = false;
             rt.lastSkipCapturePresentCount = 0;
         }
@@ -904,6 +918,87 @@ namespace ht::hook::dx9
             return result;
         }
 
+        HRESULT STDMETHODCALLTYPE HookedSwapChainPresent(
+            IDirect3DSwapChain9* swapChain,
+            const RECT* sourceRect,
+            const RECT* destRect,
+            HWND destWindowOverride,
+            const RGNDATA* dirtyRegion,
+            DWORD flags)
+        {
+            if (g_presentDepth > 0)
+            {
+                return g_rt.originalSwapChainPresent
+                    ? g_rt.originalSwapChainPresent(swapChain, sourceRect, destRect, destWindowOverride, dirtyRegion, flags)
+                    : D3D_OK;
+            }
+
+            g_presentDepth++;
+            SwapChainPresentFn original = nullptr;
+            IDirect3DDevice9* device = nullptr;
+            const HRESULT getDeviceHr = (swapChain != nullptr) ? swapChain->GetDevice(&device) : E_POINTER;
+            {
+                std::lock_guard<std::mutex> lock(g_rt.mutex);
+                g_rt.presentCount++;
+                g_rt.lastPresentQpc = NowQpc();
+                g_rt.lastPresentKind = 3;
+                if (!g_rt.swapChainPresentHookSeen)
+                {
+                    g_rt.swapChainPresentHookSeen = true;
+                    LogDx9(
+                        "event=present_hook_hit kind=swapchain_present presentCount=%llu qpc=%llu.",
+                        static_cast<unsigned long long>(g_rt.presentCount),
+                        static_cast<unsigned long long>(g_rt.lastPresentQpc));
+                }
+                (void)RefreshConfigLocked(g_rt);
+
+                const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
+                if (shouldCapture)
+                {
+                    if (SUCCEEDED(getDeviceHr) && device != nullptr)
+                    {
+                        (void)CaptureAndShareFrameLocked(g_rt, device);
+                    }
+                    else
+                    {
+                        LogDx9(
+                            "event=capture_skip reason=swapchain_get_device_failed hr=0x%08X presentCount=%llu.",
+                            static_cast<unsigned int>(static_cast<std::uint32_t>(getDeviceHr)),
+                            static_cast<unsigned long long>(g_rt.presentCount));
+                    }
+                }
+                else
+                {
+                    if (g_rt.lastSkipCapturePresentCount == 0 || (g_rt.presentCount - g_rt.lastSkipCapturePresentCount) >= 120)
+                    {
+                        g_rt.lastSkipCapturePresentCount = g_rt.presentCount;
+                        const std::uint64_t elapsed = (g_rt.lastCaptureQpc > 0 && g_rt.lastPresentQpc >= g_rt.lastCaptureQpc)
+                            ? (g_rt.lastPresentQpc - g_rt.lastCaptureQpc)
+                            : 0;
+                        LogDx9(
+                            "event=capture_skip reason=interval_gate kind=swapchain_present presentCount=%llu elapsedQpc=%llu intervalQpc=%llu lastCaptureQpc=%llu.",
+                            static_cast<unsigned long long>(g_rt.presentCount),
+                            static_cast<unsigned long long>(elapsed),
+                            static_cast<unsigned long long>(g_rt.captureIntervalQpc),
+                            static_cast<unsigned long long>(g_rt.lastCaptureQpc));
+                    }
+                }
+
+                PublishStatusLocked(g_rt);
+                original = g_rt.originalSwapChainPresent;
+            }
+
+            const HRESULT result = original
+                ? original(swapChain, sourceRect, destRect, destWindowOverride, dirtyRegion, flags)
+                : D3D_OK;
+            if (device != nullptr)
+            {
+                device->Release();
+            }
+            g_presentDepth--;
+            return result;
+        }
+
         HRESULT STDMETHODCALLTYPE HookedReset(IDirect3DDevice9* device, D3DPRESENT_PARAMETERS* params)
         {
             ResetFn original = nullptr;
@@ -1058,11 +1153,12 @@ namespace ht::hook::dx9
         bool CreateDummyDeviceAndGetHookTargets(
             void** outPresentTarget,
             void** outResetTarget,
+            void** outSwapChainPresentTarget,
             std::uint32_t& outExceptionCode,
             void*** outVtable)
         {
             outExceptionCode = 0;
-            if (outPresentTarget == nullptr || outResetTarget == nullptr || outVtable == nullptr)
+            if (outPresentTarget == nullptr || outResetTarget == nullptr || outSwapChainPresentTarget == nullptr || outVtable == nullptr)
             {
                 LogDx9("event=create_dummy_device fail reason=out_target_null.");
                 return false;
@@ -1070,6 +1166,7 @@ namespace ht::hook::dx9
 
             *outPresentTarget = nullptr;
             *outResetTarget = nullptr;
+            *outSwapChainPresentTarget = nullptr;
             *outVtable = nullptr;
 
             WNDCLASSW wc{};
@@ -1157,6 +1254,32 @@ namespace ht::hook::dx9
                 outExceptionCode = static_cast<std::uint32_t>(GetExceptionCode());
             }
 
+            IDirect3DSwapChain9* swapChain = nullptr;
+            HRESULT swapChainHr = device->GetSwapChain(0, &swapChain);
+            if (SUCCEEDED(swapChainHr) && swapChain != nullptr)
+            {
+                void** swapChainVtable = nullptr;
+                __try
+                {
+                    swapChainVtable = *reinterpret_cast<void***>(swapChain);
+                    if (swapChainVtable != nullptr)
+                    {
+                        *outSwapChainPresentTarget = swapChainVtable[kSwapChainPresentIndex];
+                    }
+                }
+                __except (EXCEPTION_EXECUTE_HANDLER)
+                {
+                    outExceptionCode = static_cast<std::uint32_t>(GetExceptionCode());
+                }
+                swapChain->Release();
+            }
+            else
+            {
+                LogDx9(
+                    "event=create_dummy_device fail reason=get_swapchain_failed hr=0x%08X.",
+                    static_cast<unsigned int>(static_cast<std::uint32_t>(swapChainHr)));
+            }
+
             device->Release();
             d3d9->Release();
             DestroyWindow(hwnd);
@@ -1169,21 +1292,23 @@ namespace ht::hook::dx9
                 return false;
             }
 
-            if (*outVtable == nullptr || *outPresentTarget == nullptr || *outResetTarget == nullptr)
+            if (*outVtable == nullptr || *outPresentTarget == nullptr || *outResetTarget == nullptr || *outSwapChainPresentTarget == nullptr)
             {
                 LogDx9(
-                    "event=create_dummy_device fail reason=target_extract_failed vtable=%p presentTarget=%p resetTarget=%p.",
+                    "event=create_dummy_device fail reason=target_extract_failed vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p.",
                     *outVtable,
                     *outPresentTarget,
-                    *outResetTarget);
+                    *outResetTarget,
+                    *outSwapChainPresentTarget);
                 return false;
             }
 
             LogDx9(
-                "event=create_dummy_device result=ok vtable=%p presentTarget=%p resetTarget=%p.",
+                "event=create_dummy_device result=ok vtable=%p presentTarget=%p resetTarget=%p swapChainPresentTarget=%p.",
                 *outVtable,
                 *outPresentTarget,
-                *outResetTarget);
+                *outResetTarget,
+                *outSwapChainPresentTarget);
             return true;
         }
 
@@ -1345,6 +1470,7 @@ namespace ht::hook::dx9
 
             void* presentTarget = nullptr;
             void* resetTarget = nullptr;
+            void* swapChainPresentTarget = nullptr;
             void* presentExTarget = nullptr;
             void* resetExTarget = nullptr;
             void** vtable = nullptr;
@@ -1353,7 +1479,7 @@ namespace ht::hook::dx9
             std::uint32_t vtableExExceptionCode = 0;
             bool hasDx9ExTargets = false;
             LogDx9("event=install_step step=create_dummy_device begin.");
-            if (!CreateDummyDeviceAndGetHookTargets(&presentTarget, &resetTarget, vtableExceptionCode, &vtable))
+            if (!CreateDummyDeviceAndGetHookTargets(&presentTarget, &resetTarget, &swapChainPresentTarget, vtableExceptionCode, &vtable))
             {
                 if (vtableExceptionCode != 0)
                 {
@@ -1386,19 +1512,22 @@ namespace ht::hook::dx9
 
             rt.presentTarget = presentTarget;
             rt.resetTarget = resetTarget;
+            rt.swapChainPresentTarget = swapChainPresentTarget;
             rt.presentExTarget = hasDx9ExTargets ? presentExTarget : nullptr;
             rt.resetExTarget = hasDx9ExTargets ? resetExTarget : nullptr;
             LogDx9(
-                "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p presentExTarget=%p resetExTarget=%p presentIndex=%d resetIndex=%d presentExIndex=%d resetExIndex=%d.",
+                "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p swapChainPresentTarget=%p presentExTarget=%p resetExTarget=%p presentIndex=%d resetIndex=%d swapChainPresentIndex=%d presentExIndex=%d resetExIndex=%d.",
                 rt.presentTarget,
                 rt.resetTarget,
+                rt.swapChainPresentTarget,
                 rt.presentExTarget,
                 rt.resetExTarget,
                 kDevicePresentIndex,
                 kDeviceResetIndex,
+                kSwapChainPresentIndex,
                 kDevicePresentExIndex,
                 kDeviceResetExIndex);
-            if (rt.resetTarget == nullptr || rt.presentTarget == nullptr)
+            if (rt.resetTarget == nullptr || rt.presentTarget == nullptr || rt.swapChainPresentTarget == nullptr)
             {
                 LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing_or_null.");
                 return false;
@@ -1413,6 +1542,12 @@ namespace ht::hook::dx9
             if (!ValidateHookTargetPointer(rt.resetTarget, "resetTarget"))
             {
                 LogDx9("event=install_hook_result result=fail reason=invalid_reset_target_page.");
+                return false;
+            }
+
+            if (!ValidateHookTargetPointer(rt.swapChainPresentTarget, "swapChainPresentTarget"))
+            {
+                LogDx9("event=install_hook_result result=fail reason=invalid_swapchain_present_target_page.");
                 return false;
             }
 
@@ -1460,6 +1595,19 @@ namespace ht::hook::dx9
             }
             LogDx9("event=install_step step=mh_create_reset ok original=%p.", reinterpret_cast<void*>(rt.originalReset));
 
+            LogDx9("event=install_step step=mh_create_swapchain_present begin target=%p hook=%p.", rt.swapChainPresentTarget, reinterpret_cast<void*>(&HookedSwapChainPresent));
+            if (MH_CreateHook(
+                    rt.swapChainPresentTarget,
+                    reinterpret_cast<LPVOID>(&HookedSwapChainPresent),
+                    reinterpret_cast<LPVOID*>(&rt.originalSwapChainPresent)) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_create_swapchain_present_failed.");
+                (void)MH_RemoveHook(rt.resetTarget);
+                (void)MH_RemoveHook(rt.presentTarget);
+                return false;
+            }
+            LogDx9("event=install_step step=mh_create_swapchain_present ok original=%p.", reinterpret_cast<void*>(rt.originalSwapChainPresent));
+
             if (rt.presentExTarget != nullptr)
             {
                 LogDx9("event=install_step step=mh_create_present_ex begin target=%p hook=%p.", rt.presentExTarget, reinterpret_cast<void*>(&HookedPresentEx));
@@ -1469,6 +1617,7 @@ namespace ht::hook::dx9
                         reinterpret_cast<LPVOID*>(&rt.originalPresentEx)) != MH_OK)
                 {
                     LogDx9("event=install_hook_result result=fail reason=mh_create_present_ex_failed.");
+                    (void)MH_RemoveHook(rt.swapChainPresentTarget);
                     (void)MH_RemoveHook(rt.resetTarget);
                     (void)MH_RemoveHook(rt.presentTarget);
                     return false;
@@ -1489,6 +1638,7 @@ namespace ht::hook::dx9
                     {
                         (void)MH_RemoveHook(rt.presentExTarget);
                     }
+                    (void)MH_RemoveHook(rt.swapChainPresentTarget);
                     (void)MH_RemoveHook(rt.resetTarget);
                     (void)MH_RemoveHook(rt.presentTarget);
                     return false;
@@ -1508,6 +1658,7 @@ namespace ht::hook::dx9
                 {
                     (void)MH_RemoveHook(rt.presentExTarget);
                 }
+                (void)MH_RemoveHook(rt.swapChainPresentTarget);
                 (void)MH_RemoveHook(rt.resetTarget);
                 (void)MH_RemoveHook(rt.presentTarget);
                 return false;
@@ -1527,11 +1678,33 @@ namespace ht::hook::dx9
                 {
                     (void)MH_RemoveHook(rt.presentExTarget);
                 }
+                (void)MH_RemoveHook(rt.swapChainPresentTarget);
                 (void)MH_RemoveHook(rt.resetTarget);
                 (void)MH_RemoveHook(rt.presentTarget);
                 return false;
             }
             LogDx9("event=install_step step=mh_enable_reset ok.");
+
+            LogDx9("event=install_step step=mh_enable_swapchain_present begin target=%p.", rt.swapChainPresentTarget);
+            if (MH_EnableHook(rt.swapChainPresentTarget) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_enable_swapchain_present_failed.");
+                (void)MH_DisableHook(rt.resetTarget);
+                (void)MH_DisableHook(rt.presentTarget);
+                if (rt.resetExTarget != nullptr)
+                {
+                    (void)MH_RemoveHook(rt.resetExTarget);
+                }
+                if (rt.presentExTarget != nullptr)
+                {
+                    (void)MH_RemoveHook(rt.presentExTarget);
+                }
+                (void)MH_RemoveHook(rt.swapChainPresentTarget);
+                (void)MH_RemoveHook(rt.resetTarget);
+                (void)MH_RemoveHook(rt.presentTarget);
+                return false;
+            }
+            LogDx9("event=install_step step=mh_enable_swapchain_present ok.");
 
             if (rt.presentExTarget != nullptr)
             {
@@ -1545,7 +1718,9 @@ namespace ht::hook::dx9
                     {
                         (void)MH_RemoveHook(rt.resetExTarget);
                     }
+                    (void)MH_DisableHook(rt.swapChainPresentTarget);
                     (void)MH_RemoveHook(rt.presentExTarget);
+                    (void)MH_RemoveHook(rt.swapChainPresentTarget);
                     (void)MH_RemoveHook(rt.resetTarget);
                     (void)MH_RemoveHook(rt.presentTarget);
                     return false;
@@ -1563,6 +1738,7 @@ namespace ht::hook::dx9
                     {
                         (void)MH_DisableHook(rt.presentExTarget);
                     }
+                    (void)MH_DisableHook(rt.swapChainPresentTarget);
                     (void)MH_DisableHook(rt.resetTarget);
                     (void)MH_DisableHook(rt.presentTarget);
                     (void)MH_RemoveHook(rt.resetExTarget);
@@ -1570,6 +1746,7 @@ namespace ht::hook::dx9
                     {
                         (void)MH_RemoveHook(rt.presentExTarget);
                     }
+                    (void)MH_RemoveHook(rt.swapChainPresentTarget);
                     (void)MH_RemoveHook(rt.resetTarget);
                     (void)MH_RemoveHook(rt.presentTarget);
                     return false;
@@ -1622,6 +1799,12 @@ namespace ht::hook::dx9
             (void)MH_RemoveHook(rt.resetTarget);
         }
 
+        if (rt.swapChainPresentTarget != nullptr)
+        {
+            (void)MH_DisableHook(rt.swapChainPresentTarget);
+            (void)MH_RemoveHook(rt.swapChainPresentTarget);
+        }
+
         if (rt.presentExTarget != nullptr)
         {
             (void)MH_DisableHook(rt.presentExTarget);
@@ -1638,10 +1821,12 @@ namespace ht::hook::dx9
 
         rt.presentTarget = nullptr;
         rt.resetTarget = nullptr;
+        rt.swapChainPresentTarget = nullptr;
         rt.presentExTarget = nullptr;
         rt.resetExTarget = nullptr;
         rt.originalPresent = nullptr;
         rt.originalReset = nullptr;
+        rt.originalSwapChainPresent = nullptr;
         rt.originalPresentEx = nullptr;
         rt.originalResetEx = nullptr;
         ResetRuntimeStateLocked(rt);
