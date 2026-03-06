@@ -1,10 +1,23 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 
 namespace Hotkey_Translator;
 
 internal static class PasswordBoxAssistant
 {
+    static PasswordBoxAssistant()
+    {
+        // WHY: BoundPassword initial value is often empty string, same as DP default.
+        // In that case OnBoundPasswordChanged may not fire on startup, so PasswordChanged
+        // is never subscribed and user input cannot flow back to ViewModel.
+        EventManager.RegisterClassHandler(
+            typeof(PasswordBox),
+            FrameworkElement.LoadedEvent,
+            new RoutedEventHandler(OnPasswordBoxLoaded),
+            handledEventsToo: true);
+    }
+
     public static readonly DependencyProperty BoundPasswordProperty =
         DependencyProperty.RegisterAttached(
             "BoundPassword",
@@ -55,6 +68,38 @@ internal static class PasswordBoxAssistant
         }
 
         passwordBox.PasswordChanged += PasswordBoxOnPasswordChanged;
+    }
+
+    private static void OnPasswordBoxLoaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not PasswordBox passwordBox)
+        {
+            return;
+        }
+
+        var binding = BindingOperations.GetBindingExpression(passwordBox, BoundPasswordProperty);
+        if (binding == null)
+        {
+            return;
+        }
+
+        passwordBox.PasswordChanged -= PasswordBoxOnPasswordChanged;
+        passwordBox.PasswordChanged += PasswordBoxOnPasswordChanged;
+
+        if (GetIsUpdating(passwordBox))
+        {
+            return;
+        }
+
+        var boundPassword = GetBoundPassword(passwordBox) ?? string.Empty;
+        if (string.Equals(passwordBox.Password, boundPassword, System.StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        SetIsUpdating(passwordBox, true);
+        passwordBox.Password = boundPassword;
+        SetIsUpdating(passwordBox, false);
     }
 
     private static void PasswordBoxOnPasswordChanged(object sender, RoutedEventArgs e)

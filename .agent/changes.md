@@ -16818,3 +16818,31 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 22:32 (Asia/Taipei) — APIキー未保存の根本原因（PasswordBox購読漏れ）を修正**
+
+### Summary
+- PasswordBox初期値が空文字のときにイベント購読が漏れる問題を修正し、Gemini/DeepL APIキー入力が確実にVMへ反映されるようにした。
+
+### Context / Goal
+- APIキー入力後に「Settings saved.」ログが出ず、`settings.json` の `ApiKeyProtected/DeepLApiKeyProtected` も更新されない事象を解消する。
+- 既存UIバインディングを変えず、入力伝播の欠落のみを最小修正する。
+
+### Changes
+- `PasswordBoxAssistant` に静的コンストラクタを追加し、`PasswordBox.Loaded` をクラスハンドラで購読。
+- Loaded時に `BoundPassword` バインディングが存在するPasswordBoxへ `PasswordChanged` を必ず再購読する処理を追加。
+- Loaded時に `PasswordBox.Password` と `BoundPassword` を同期する安全処理を追加（更新フラグで再入防止）。
+
+### Files Touched
+- `UI/PasswordBoxAssistant.cs` — 初期状態でも `PasswordChanged` が必ず接続されるように修正。
+
+### Behavioral Impact
+- Gemini API key / DeepL API key の入力変更が確実に `SettingsViewModel` へ伝播し、保存トリガーが発火する。
+- 結果として `Settings saved.` ログおよび `ApiKeyProtected/DeepLApiKeyProtected` 更新が発生するようになる。
+
+### Risk & Mitigation
+- Risk: PasswordBox全体へのLoadedクラスハンドラ追加による副作用。
+- Mitigation: `BoundPassword` のバインディングがある場合のみ処理し、対象を限定している。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
