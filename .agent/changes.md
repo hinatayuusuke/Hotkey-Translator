@@ -16785,3 +16785,36 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 21:03 (Asia/Taipei) — 縦強度をStage-A列クラスタ固定ガードへ連動**
+
+### Summary
+- Vertical strength が効かなかった要因である `IsSameColumnCandidate` の固定3閾値を可変化し、簡易強度へ連動させた。
+
+### Context / Goal
+- 既存実装では縦方向 Stage-A の列クラスタ判定が固定定数で、縦強度設定を上げても結合結果が変わりにくかった。
+- 縦強度スライダーで Stage-A/Stage-B の両方に一貫して効く状態にする。
+
+### Changes
+- `EffectiveMergeThresholds` に Stage-A列クラスタ用3閾値を追加。
+- `BuildColumnClusters` / `IsSameColumnCandidate` を `thresholds` 受け取りに変更し、固定定数参照を廃止。
+- `ResolveEffectiveThresholds` で Stage-A列クラスタ閾値の既定値を構築。
+- `ApplySimpleMergeTuning` で縦強度に応じて Stage-A列クラスタ3閾値を再マッピング。
+- simple tuning ログに Stage-A列クラスタ閾値を追加。
+
+### Files Touched
+- `Services/OcrLineGrouper.cs` — Stage-A縦クラスタ閾値の可変化、縦強度連動、ログ拡張を実装。
+
+### Behavioral Impact
+- `Use simple merge tuning=ON` 時、縦強度が以下にも反映されるようになった。
+  - 列中心許容差（center tolerance）
+  - 幅比の最小条件（width ratio min）
+  - 列重なり最小条件（overlap ratio min）
+- これにより、従来より縦結合の体感差が出やすくなる。
+
+### Risk & Mitigation
+- Risk: 縦強度を高くすると過結合が増える可能性。
+- Mitigation: 既定50を維持し、各閾値を安全な範囲で clamp している。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。

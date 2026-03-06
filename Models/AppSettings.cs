@@ -169,7 +169,7 @@ public sealed class AppSettings
     public string FlorenceDevice { get; set; } = "cuda";
     public string? FlorenceModelDir { get; set; }
     public bool EnableLineMerge { get; set; } = true;
-    public bool EnableEngineScaledLineMergeProfile { get; set; } = true;
+    public bool EnableEngineScaledLineMergeProfile { get; set; } = false;
     public bool EnableTwoStageLineMerge { get; set; } = true;
     public bool EnableSimpleMergeTuning { get; set; } = false;
     public int HorizontalMergeStrength { get; set; } = 50;
@@ -249,8 +249,8 @@ public sealed class AppSettings
     public int LlamaGpuLayers { get; set; } = 999;
     public int LlamaThreads { get; set; } = 4;
     public int LlamaParallel { get; set; } = 1;
-    public int LlamaBatchSize { get; set; } = 512;
-    public int LlamaMaxTokens { get; set; } = 512;
+    public int LlamaBatchSize { get; set; } = 4096;
+    public int LlamaMaxTokens { get; set; } = 4096;
     public double LlamaTemperature { get; set; } = 0.3;
     public double LlamaTopP { get; set; } = 0.6;
     public int LlamaTopK { get; set; } = 20;

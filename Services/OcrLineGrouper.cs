@@ -41,6 +41,12 @@ public sealed class OcrLineGrouper
     private const double SimpleVerticalColumnThresholdMax = 1.30;
     private const double SimpleVerticalColumnHardBreakMin = 1.10;
     private const double SimpleVerticalColumnHardBreakMax = 2.60;
+    private const double SimpleVerticalStageACenterToleranceMin = 0.40;
+    private const double SimpleVerticalStageACenterToleranceMax = 0.85;
+    private const double SimpleVerticalStageAWidthRatioMinMin = 0.35;
+    private const double SimpleVerticalStageAWidthRatioMinMax = 0.80;
+    private const double SimpleVerticalStageAOverlapRatioMinMin = 0.05;
+    private const double SimpleVerticalStageAOverlapRatioMinMax = 0.30;
     private readonly AppLogger? _logger;
     private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
     private bool _hasAutoSelectedMode;
@@ -69,6 +75,9 @@ public sealed class OcrLineGrouper
         double RowMergeMaxGapRatio,
         double RowMergeHardBreakRatio,
         double VerticalGapRatio,
+        double VerticalStageACenterToleranceRatio,
+        double VerticalStageAWidthRatioMin,
+        double VerticalStageAOverlapRatioMin,
         double VerticalColumnMergeOverlapRatioThreshold,
         double VerticalColumnMergeWeight,
         double VerticalColumnMergeThresholdRatio,
@@ -314,7 +323,7 @@ public sealed class OcrLineGrouper
         }
 
         var ordered = OrderLines(lines, WritingMode.Vertical, settings);
-        var columnClusters = BuildColumnClusters(ordered, settings);
+        var columnClusters = BuildColumnClusters(ordered, settings, thresholds);
         var columnGroups = BuildColumnGroups(ordered, columnClusters, settings);
         var merged = new List<OcrLine>(ordered.Count);
         foreach (var columnGroup in columnGroups)
@@ -459,7 +468,10 @@ public sealed class OcrLineGrouper
         return unionFind;
     }
 
-    private static UnionFind BuildColumnClusters(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    private static UnionFind BuildColumnClusters(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        EffectiveMergeThresholds thresholds)
     {
         var unionFind = new UnionFind(lines.Count);
         var neighborCount = Math.Max(1, settings.RowMergeNeighborCount);
@@ -469,7 +481,7 @@ public sealed class OcrLineGrouper
             for (var offset = 1; offset <= neighborCount && i + offset < lines.Count; offset++)
             {
                 var b = lines[i + offset];
-                if (!IsSameColumnCandidate(a.Rect, b.Rect))
+                if (!IsSameColumnCandidate(a.Rect, b.Rect, thresholds))
                 {
                     continue;
                 }
@@ -500,7 +512,7 @@ public sealed class OcrLineGrouper
         return heightRatio >= thresholds.RowMergeHeightRatioMin;
     }
 
-    private static bool IsSameColumnCandidate(Rect a, Rect b)
+    private static bool IsSameColumnCandidate(Rect a, Rect b, EffectiveMergeThresholds thresholds)
     {
         var minWidth = Math.Min(a.Width, b.Width);
         var maxWidth = Math.Max(a.Width, b.Width);
@@ -510,19 +522,19 @@ public sealed class OcrLineGrouper
         }
 
         var centerDiff = Math.Abs(GetCenterX(a) - GetCenterX(b));
-        if (centerDiff > minWidth * VerticalColumnCenterToleranceRatio)
+        if (centerDiff > minWidth * thresholds.VerticalStageACenterToleranceRatio)
         {
             return false;
         }
 
         var widthRatio = minWidth / maxWidth;
-        if (widthRatio < VerticalColumnWidthRatioMin)
+        if (widthRatio < thresholds.VerticalStageAWidthRatioMin)
         {
             return false;
         }
 
         var overlapWidth = Math.Max(0, Math.Min(a.Right, b.Right) - Math.Max(a.Left, b.Left));
-        return (overlapWidth / minWidth) >= VerticalColumnOverlapRatioMin;
+        return (overlapWidth / minWidth) >= thresholds.VerticalStageAOverlapRatioMin;
     }
 
     private static bool ShouldMergeAdjacentTokens(Rect left, Rect right, EffectiveMergeThresholds thresholds)
@@ -852,6 +864,9 @@ public sealed class OcrLineGrouper
                 settings.RowMergeMaxGapRatio,
                 settings.RowMergeHardBreakRatio,
                 settings.VerticalGapRatio,
+                VerticalColumnCenterToleranceRatio,
+                VerticalColumnWidthRatioMin,
+                VerticalColumnOverlapRatioMin,
                 settings.VerticalColumnMergeOverlapRatioThreshold,
                 settings.VerticalColumnMergeWeight,
                 settings.VerticalColumnMergeThresholdRatio,
@@ -870,6 +885,9 @@ public sealed class OcrLineGrouper
                 ClampScaled(settings.RowMergeMaxGapRatio, settings.PaddleRowMergeMaxGapScale, RatioClampMin, RatioClampMax),
                 ClampScaled(settings.RowMergeHardBreakRatio, settings.PaddleRowMergeHardBreakScale, RatioClampMin, RatioClampMax),
                 ClampScaled(settings.VerticalGapRatio, settings.PaddleVerticalGapScale, RatioClampMin, RatioClampMax),
+                VerticalColumnCenterToleranceRatio,
+                VerticalColumnWidthRatioMin,
+                VerticalColumnOverlapRatioMin,
                 ClampScaled(settings.VerticalColumnMergeOverlapRatioThreshold, settings.PaddleVerticalColumnMergeOverlapScale, OverlapClampMin, OverlapClampMax),
                 ClampScaled(settings.VerticalColumnMergeWeight, settings.PaddleVerticalColumnMergeWeightScale, WeightClampMin, WeightClampMax),
                 ClampScaled(settings.VerticalColumnMergeThresholdRatio, settings.PaddleVerticalColumnMergeThresholdScale, RatioClampMin, RatioClampMax),
@@ -928,7 +946,8 @@ public sealed class OcrLineGrouper
         _logger.Info(
             $"Simple merge tuning: enabled=1 h={settings.HorizontalMergeStrength} v={settings.VerticalMergeStrength}, " +
             $"h(overlap={thresholds.MergeOverlapRatioThreshold:0.###}, threshold={thresholds.MergeThresholdRatio:0.###}, rowMaxGap={thresholds.RowMergeMaxGapRatio:0.###}, rowHardBreak={thresholds.RowMergeHardBreakRatio:0.###}), " +
-            $"v(gap={thresholds.VerticalGapRatio:0.###}, colOverlap={thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}, colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}).");
+            $"v(stageA_centerTol={thresholds.VerticalStageACenterToleranceRatio:0.###}, stageA_widthMin={thresholds.VerticalStageAWidthRatioMin:0.###}, stageA_overlapMin={thresholds.VerticalStageAOverlapRatioMin:0.###}, " +
+            $"gap={thresholds.VerticalGapRatio:0.###}, colOverlap={thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}, colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}).");
     }
 
     private static EffectiveMergeThresholds ApplySimpleMergeTuning(EffectiveMergeThresholds current, AppSettings settings)
@@ -981,6 +1000,21 @@ public sealed class OcrLineGrouper
             1.0,
             RatioClampMin,
             RatioClampMax);
+        var tunedVerticalStageACenterTolerance = ClampScaled(
+            Lerp(SimpleVerticalStageACenterToleranceMin, SimpleVerticalStageACenterToleranceMax, vertical),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+        var tunedVerticalStageAWidthRatioMin = ClampScaled(
+            Lerp(SimpleVerticalStageAWidthRatioMinMax, SimpleVerticalStageAWidthRatioMinMin, vertical),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+        var tunedVerticalStageAOverlapRatioMin = ClampScaled(
+            Lerp(SimpleVerticalStageAOverlapRatioMinMax, SimpleVerticalStageAOverlapRatioMinMin, vertical),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
 
         return current with
         {
@@ -989,6 +1023,9 @@ public sealed class OcrLineGrouper
             RowMergeMaxGapRatio = tunedHorizontalRowMaxGap,
             RowMergeHardBreakRatio = tunedHorizontalRowHardBreak,
             VerticalGapRatio = tunedVerticalGap,
+            VerticalStageACenterToleranceRatio = tunedVerticalStageACenterTolerance,
+            VerticalStageAWidthRatioMin = tunedVerticalStageAWidthRatioMin,
+            VerticalStageAOverlapRatioMin = tunedVerticalStageAOverlapRatioMin,
             VerticalColumnMergeOverlapRatioThreshold = tunedVerticalColumnOverlap,
             VerticalColumnMergeThresholdRatio = tunedVerticalColumnThreshold,
             VerticalColumnMergeHardBreakRatio = tunedVerticalColumnHardBreak
