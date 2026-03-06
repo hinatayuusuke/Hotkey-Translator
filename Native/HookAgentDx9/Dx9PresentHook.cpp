@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstring>
 #include <mutex>
+#include <string>
 #include <vector>
 
 #include <d3d9.h>
@@ -85,8 +86,147 @@ namespace ht::hook::dx9
         };
 
         Dx9Runtime g_rt;
+        std::mutex g_diagFileMutex;
+        HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
+        DWORD g_diagFilePid = 0;
+        std::wstring g_diagFilePath;
 
         std::uint64_t NowQpc();
+
+        std::string WideToUtf8(const std::wstring& value)
+        {
+            if (value.empty())
+            {
+                return {};
+            }
+
+            const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (bytes <= 1)
+            {
+                return {};
+            }
+
+            std::string out(static_cast<std::size_t>(bytes - 1), '\0');
+            (void)WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, out.data(), bytes, nullptr, nullptr);
+            return out;
+        }
+
+        bool EnsureDiagFileUnlocked()
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE && g_diagFilePid == pid)
+            {
+                return true;
+            }
+
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+                g_diagFilePid = 0;
+                g_diagFilePath.clear();
+            }
+
+            wchar_t tempPath[MAX_PATH]{};
+            const DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen == 0 || tempLen >= std::size(tempPath))
+            {
+                return false;
+            }
+
+            std::wstring dir = tempPath;
+            if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+            {
+                dir += L'\\';
+            }
+            dir += L"HotkeyTranslator";
+            (void)CreateDirectoryW(dir.c_str(), nullptr);
+
+            wchar_t fileName[128]{};
+            (void)swprintf_s(fileName, L"hook_dx9_%lu.log", static_cast<unsigned long>(pid));
+            std::wstring filePath = dir;
+            filePath += L'\\';
+            filePath += fileName;
+
+            HANDLE file = CreateFileW(
+                filePath.c_str(),
+                FILE_APPEND_DATA,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                nullptr,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (file == INVALID_HANDLE_VALUE)
+            {
+                return false;
+            }
+
+            g_diagFileHandle = file;
+            g_diagFilePid = pid;
+            g_diagFilePath = std::move(filePath);
+
+            const auto pathUtf8 = WideToUtf8(g_diagFilePath);
+            if (!pathUtf8.empty())
+            {
+                char openMsg[512]{};
+                (void)_snprintf_s(
+                    openMsg,
+                    sizeof(openMsg),
+                    _TRUNCATE,
+                    "stage=hook_dx9 event=file_log_open pid=%lu path=\"%s\".",
+                    static_cast<unsigned long>(pid),
+                    pathUtf8.c_str());
+                OutputDebugStringA(openMsg);
+                OutputDebugStringA("\n");
+            }
+
+            return true;
+        }
+
+        void AppendDiagFileLine(const char* line)
+        {
+            if (line == nullptr || line[0] == '\0')
+            {
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (!EnsureDiagFileUnlocked())
+            {
+                return;
+            }
+
+            SYSTEMTIME st{};
+            GetLocalTime(&st);
+            char prefix[64]{};
+            (void)_snprintf_s(
+                prefix,
+                sizeof(prefix),
+                _TRUNCATE,
+                "%02u:%02u:%02u.%03u ",
+                static_cast<unsigned int>(st.wHour),
+                static_cast<unsigned int>(st.wMinute),
+                static_cast<unsigned int>(st.wSecond),
+                static_cast<unsigned int>(st.wMilliseconds));
+
+            DWORD written = 0;
+            (void)WriteFile(g_diagFileHandle, prefix, static_cast<DWORD>(std::strlen(prefix)), &written, nullptr);
+            (void)WriteFile(g_diagFileHandle, line, static_cast<DWORD>(std::strlen(line)), &written, nullptr);
+            static constexpr char kNewLine[] = "\r\n";
+            (void)WriteFile(g_diagFileHandle, kNewLine, static_cast<DWORD>(sizeof(kNewLine) - 1), &written, nullptr);
+        }
+
+        void CloseDiagFile()
+        {
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+            }
+            g_diagFilePid = 0;
+            g_diagFilePath.clear();
+        }
 
         void LogDx9(const char* format, ...)
         {
@@ -99,6 +239,12 @@ namespace ht::hook::dx9
             char line[1200]{};
             (void)snprintf(line, sizeof(line), "stage=hook_dx9 %s\n", message);
             OutputDebugStringA(line);
+            const std::size_t lineLen = std::strlen(line);
+            if (lineLen > 0 && line[lineLen - 1] == '\n')
+            {
+                line[lineLen - 1] = '\0';
+            }
+            AppendDiagFileLine(line);
         }
 
         void ReleaseCaptureSurfacesLocked(Dx9Runtime& rt, const char* reason)
@@ -628,6 +774,7 @@ namespace ht::hook::dx9
         {
             if (outVtable == nullptr)
             {
+                LogDx9("event=create_dummy_device fail reason=out_vtable_null.");
                 return false;
             }
             *outVtable = nullptr;
@@ -653,12 +800,14 @@ namespace ht::hook::dx9
                 nullptr);
             if (hwnd == nullptr)
             {
+                LogDx9("event=create_dummy_device fail reason=create_window_failed gle=%lu.", static_cast<unsigned long>(GetLastError()));
                 return false;
             }
 
             IDirect3D9* d3d9 = Direct3DCreate9(D3D_SDK_VERSION);
             if (d3d9 == nullptr)
             {
+                LogDx9("event=create_dummy_device fail reason=direct3d_create9_failed.");
                 DestroyWindow(hwnd);
                 return false;
             }
@@ -693,6 +842,7 @@ namespace ht::hook::dx9
 
             if (FAILED(hr) || device == nullptr)
             {
+                LogDx9("event=create_dummy_device fail reason=create_device_failed hr=0x%08X.", static_cast<unsigned int>(static_cast<std::uint32_t>(hr)));
                 d3d9->Release();
                 DestroyWindow(hwnd);
                 return false;
@@ -707,6 +857,7 @@ namespace ht::hook::dx9
             device->Release();
             d3d9->Release();
             DestroyWindow(hwnd);
+            LogDx9("event=create_dummy_device result=ok.");
             return *outVtable != nullptr;
         }
     }
@@ -715,8 +866,10 @@ namespace ht::hook::dx9
     {
         auto& rt = g_rt;
         std::lock_guard<std::mutex> lock(rt.mutex);
+        LogDx9("event=install_hook_begin pid=%lu.", static_cast<unsigned long>(GetCurrentProcessId()));
         if (rt.installed.load(std::memory_order_acquire))
         {
+            LogDx9("event=install_hook_result result=already_installed.");
             return true;
         }
 
@@ -728,6 +881,7 @@ namespace ht::hook::dx9
         void** vtable = nullptr;
         if (!CreateDummyDeviceAndGetVtable(&vtable) || vtable == nullptr)
         {
+            LogDx9("event=install_hook_result result=fail reason=create_dummy_device_failed.");
             return false;
         }
 
@@ -735,12 +889,14 @@ namespace ht::hook::dx9
         rt.presentTarget = vtable[kDevicePresentIndex];
         if (rt.resetTarget == nullptr || rt.presentTarget == nullptr)
         {
+            LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing.");
             return false;
         }
 
         const MH_STATUS initStatus = MH_Initialize();
         if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
         {
+            LogDx9("event=install_hook_result result=fail reason=mh_initialize_failed status=%d.", static_cast<int>(initStatus));
             return false;
         }
 
@@ -749,6 +905,7 @@ namespace ht::hook::dx9
                 reinterpret_cast<LPVOID>(&HookedPresent),
                 reinterpret_cast<LPVOID*>(&rt.originalPresent)) != MH_OK)
         {
+            LogDx9("event=install_hook_result result=fail reason=mh_create_present_failed.");
             return false;
         }
 
@@ -757,12 +914,14 @@ namespace ht::hook::dx9
                 reinterpret_cast<LPVOID>(&HookedReset),
                 reinterpret_cast<LPVOID*>(&rt.originalReset)) != MH_OK)
         {
+            LogDx9("event=install_hook_result result=fail reason=mh_create_reset_failed.");
             (void)MH_RemoveHook(rt.presentTarget);
             return false;
         }
 
         if (MH_EnableHook(rt.presentTarget) != MH_OK)
         {
+            LogDx9("event=install_hook_result result=fail reason=mh_enable_present_failed.");
             (void)MH_RemoveHook(rt.resetTarget);
             (void)MH_RemoveHook(rt.presentTarget);
             return false;
@@ -770,6 +929,7 @@ namespace ht::hook::dx9
 
         if (MH_EnableHook(rt.resetTarget) != MH_OK)
         {
+            LogDx9("event=install_hook_result result=fail reason=mh_enable_reset_failed.");
             (void)MH_DisableHook(rt.presentTarget);
             (void)MH_RemoveHook(rt.resetTarget);
             (void)MH_RemoveHook(rt.presentTarget);
@@ -777,6 +937,7 @@ namespace ht::hook::dx9
         }
 
         rt.installed.store(true, std::memory_order_release);
+        LogDx9("event=install_hook_result result=ok qpcFreq=%llu.", static_cast<unsigned long long>(rt.qpcFreq));
         return true;
     }
 
@@ -786,6 +947,7 @@ namespace ht::hook::dx9
         std::lock_guard<std::mutex> lock(rt.mutex);
         if (!rt.installed.load(std::memory_order_acquire))
         {
+            CloseDiagFile();
             return;
         }
 
@@ -810,5 +972,7 @@ namespace ht::hook::dx9
         rt.originalPresent = nullptr;
         rt.originalReset = nullptr;
         ResetRuntimeStateLocked(rt);
+        LogDx9("event=uninstall_hook result=ok.");
+        CloseDiagFile();
     }
 }

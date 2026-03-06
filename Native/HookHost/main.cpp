@@ -1,8 +1,12 @@
 #include <windows.h>
 
+#include <cstdarg>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <iostream>
 #include <iterator>
+#include <mutex>
 #include <string>
 #include <tlhelp32.h>
 #include <unordered_map>
@@ -37,6 +41,179 @@ namespace
 
     std::unordered_map<DWORD, ProcessHookState> g_states;
     bool g_shutdownRequested = false;
+    std::mutex g_diagFileMutex;
+    HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
+    DWORD g_diagFilePid = 0;
+    std::wstring g_diagFilePath;
+
+    std::string WideToUtf8(const std::wstring& value)
+    {
+        if (value.empty())
+        {
+            return {};
+        }
+
+        const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (bytes <= 1)
+        {
+            return {};
+        }
+
+        std::string out(static_cast<std::size_t>(bytes - 1), '\0');
+        (void)WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, out.data(), bytes, nullptr, nullptr);
+        return out;
+    }
+
+    bool EnsureDiagFileUnlocked()
+    {
+        const DWORD pid = GetCurrentProcessId();
+        if (g_diagFileHandle != INVALID_HANDLE_VALUE && g_diagFilePid == pid)
+        {
+            return true;
+        }
+
+        if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(g_diagFileHandle);
+            g_diagFileHandle = INVALID_HANDLE_VALUE;
+            g_diagFilePid = 0;
+            g_diagFilePath.clear();
+        }
+
+        wchar_t tempPath[MAX_PATH]{};
+        const DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+        if (tempLen == 0 || tempLen >= std::size(tempPath))
+        {
+            return false;
+        }
+
+        std::wstring dir = tempPath;
+        if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+        {
+            dir += L'\\';
+        }
+        dir += L"HotkeyTranslator";
+        (void)CreateDirectoryW(dir.c_str(), nullptr);
+
+        wchar_t fileName[128]{};
+        (void)swprintf_s(fileName, L"hook_host_%lu.log", static_cast<unsigned long>(pid));
+        std::wstring filePath = dir;
+        filePath += L'\\';
+        filePath += fileName;
+
+        HANDLE file = CreateFileW(
+            filePath.c_str(),
+            FILE_APPEND_DATA,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr,
+            OPEN_ALWAYS,
+            FILE_ATTRIBUTE_NORMAL,
+            nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+        {
+            return false;
+        }
+
+        g_diagFileHandle = file;
+        g_diagFilePid = pid;
+        g_diagFilePath = std::move(filePath);
+
+        const auto pathUtf8 = WideToUtf8(g_diagFilePath);
+        if (!pathUtf8.empty())
+        {
+            char openMsg[512]{};
+            (void)_snprintf_s(
+                openMsg,
+                sizeof(openMsg),
+                _TRUNCATE,
+                "stage=hook_host event=file_log_open pid=%lu path=\"%s\".",
+                static_cast<unsigned long>(pid),
+                pathUtf8.c_str());
+            OutputDebugStringA(openMsg);
+            OutputDebugStringA("\n");
+        }
+
+        return true;
+    }
+
+    void AppendDiagFileLine(const char* line)
+    {
+        if (line == nullptr || line[0] == '\0')
+        {
+            return;
+        }
+
+        std::lock_guard<std::mutex> lock(g_diagFileMutex);
+        if (!EnsureDiagFileUnlocked())
+        {
+            return;
+        }
+
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        char prefix[64]{};
+        (void)_snprintf_s(
+            prefix,
+            sizeof(prefix),
+            _TRUNCATE,
+            "%02u:%02u:%02u.%03u ",
+            static_cast<unsigned int>(st.wHour),
+            static_cast<unsigned int>(st.wMinute),
+            static_cast<unsigned int>(st.wSecond),
+            static_cast<unsigned int>(st.wMilliseconds));
+
+        DWORD written = 0;
+        (void)WriteFile(g_diagFileHandle, prefix, static_cast<DWORD>(std::strlen(prefix)), &written, nullptr);
+        (void)WriteFile(g_diagFileHandle, line, static_cast<DWORD>(std::strlen(line)), &written, nullptr);
+        static constexpr char kNewLine[] = "\r\n";
+        (void)WriteFile(g_diagFileHandle, kNewLine, static_cast<DWORD>(sizeof(kNewLine) - 1), &written, nullptr);
+    }
+
+    void CloseDiagFile()
+    {
+        std::lock_guard<std::mutex> lock(g_diagFileMutex);
+        if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(g_diagFileHandle);
+            g_diagFileHandle = INVALID_HANDLE_VALUE;
+        }
+
+        g_diagFilePid = 0;
+        g_diagFilePath.clear();
+    }
+
+    const char* ApiToLogString(ht::hook::ipc::GraphicsApi api)
+    {
+        switch (api)
+        {
+            case ht::hook::ipc::GraphicsApi::Dx11: return "Dx11";
+            case ht::hook::ipc::GraphicsApi::Dx12: return "Dx12";
+            case ht::hook::ipc::GraphicsApi::OpenGl: return "OpenGL";
+            case ht::hook::ipc::GraphicsApi::Vulkan: return "Vulkan";
+            case ht::hook::ipc::GraphicsApi::Dx9: return "Dx9";
+            default: return "Unknown";
+        }
+    }
+
+    void LogHost(const char* format, ...)
+    {
+        if (format == nullptr)
+        {
+            return;
+        }
+
+        char payload[1024]{};
+        va_list args;
+        va_start(args, format);
+        (void)_vsnprintf_s(payload, sizeof(payload), _TRUNCATE, format, args);
+        va_end(args);
+
+        char line[1200]{};
+        (void)_snprintf_s(line, sizeof(line), _TRUNCATE, "stage=hook_host %s", payload);
+        OutputDebugStringA(line);
+        OutputDebugStringA("\n");
+        AppendDiagFileLine(line);
+    }
 
     bool WriteResponse(HANDLE pipe, const std::string& response)
     {
@@ -294,12 +471,14 @@ namespace
         HANDLE thread = CreateRemoteThread(process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteFn), nullptr, 0, nullptr);
         if (thread == nullptr)
         {
+            LogHost("event=remote_call_noarg_failed reason=create_remote_thread_failed gle=%lu fn=%p.", static_cast<unsigned long>(GetLastError()), remoteFn);
             return false;
         }
 
         const DWORD wait = WaitForSingleObject(thread, kRemoteTimeoutMs);
         if (wait != WAIT_OBJECT_0)
         {
+            LogHost("event=remote_call_noarg_failed reason=wait_failed wait=%lu fn=%p.", static_cast<unsigned long>(wait), remoteFn);
             CloseHandle(thread);
             return false;
         }
@@ -317,12 +496,14 @@ namespace
         HANDLE thread = CreateRemoteThread(process, nullptr, 0, reinterpret_cast<LPTHREAD_START_ROUTINE>(remoteFn), arg, 0, nullptr);
         if (thread == nullptr)
         {
+            LogHost("event=remote_call_onearg_failed reason=create_remote_thread_failed gle=%lu fn=%p arg=%p.", static_cast<unsigned long>(GetLastError()), remoteFn, arg);
             return false;
         }
 
         const DWORD wait = WaitForSingleObject(thread, kRemoteTimeoutMs);
         if (wait != WAIT_OBJECT_0)
         {
+            LogHost("event=remote_call_onearg_failed reason=wait_failed wait=%lu fn=%p arg=%p.", static_cast<unsigned long>(wait), remoteFn, arg);
             CloseHandle(thread);
             return false;
         }
@@ -339,6 +520,11 @@ namespace
         HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
         if (snap == INVALID_HANDLE_VALUE)
         {
+            LogHost(
+                "event=find_remote_module_failed reason=snapshot_failed pid=%lu leaf=\"%ls\" gle=%lu.",
+                static_cast<unsigned long>(pid),
+                leafName.c_str(),
+                static_cast<unsigned long>(GetLastError()));
             return nullptr;
         }
 
@@ -346,6 +532,11 @@ namespace
         me.dwSize = sizeof(me);
         if (!Module32FirstW(snap, &me))
         {
+            LogHost(
+                "event=find_remote_module_failed reason=module32first_failed pid=%lu leaf=\"%ls\" gle=%lu.",
+                static_cast<unsigned long>(pid),
+                leafName.c_str(),
+                static_cast<unsigned long>(GetLastError()));
             CloseHandle(snap);
             return nullptr;
         }
@@ -360,6 +551,7 @@ namespace
         } while (Module32NextW(snap, &me));
 
         CloseHandle(snap);
+        LogHost("event=find_remote_module_failed reason=leaf_not_found pid=%lu leaf=\"%ls\".", static_cast<unsigned long>(pid), leafName.c_str());
         return nullptr;
     }
 
@@ -404,8 +596,16 @@ namespace
         if (process == nullptr)
         {
             outReason = "OpenProcess_failed";
+            LogHost(
+                "event=inject_failed reason=%s pid=%lu api=%s gle=%lu.",
+                outReason.c_str(),
+                static_cast<unsigned long>(pid),
+                ApiToLogString(api),
+                static_cast<unsigned long>(GetLastError()));
             return false;
         }
+
+        LogHost("event=inject_begin pid=%lu api=%s dll=\"%ls\".", static_cast<unsigned long>(pid), ApiToLogString(api), dllPath.c_str());
 
         const std::size_t bytes = (dllPath.size() + 1) * sizeof(wchar_t);
         void* remoteStr = VirtualAllocEx(process, nullptr, bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
@@ -413,6 +613,7 @@ namespace
         {
             CloseHandle(process);
             outReason = "VirtualAllocEx_failed";
+            LogHost("event=inject_failed reason=%s pid=%lu gle=%lu.", outReason.c_str(), static_cast<unsigned long>(pid), static_cast<unsigned long>(GetLastError()));
             return false;
         }
 
@@ -422,6 +623,7 @@ namespace
             VirtualFreeEx(process, remoteStr, 0, MEM_RELEASE);
             CloseHandle(process);
             outReason = "WriteProcessMemory_failed";
+            LogHost("event=inject_failed reason=%s pid=%lu gle=%lu written=%llu expected=%llu.", outReason.c_str(), static_cast<unsigned long>(pid), static_cast<unsigned long>(GetLastError()), static_cast<unsigned long long>(written), static_cast<unsigned long long>(bytes));
             return false;
         }
 
@@ -432,6 +634,7 @@ namespace
             VirtualFreeEx(process, remoteStr, 0, MEM_RELEASE);
             CloseHandle(process);
             outReason = "GetProcAddress_LoadLibraryW_failed";
+            LogHost("event=inject_failed reason=%s pid=%lu gle=%lu.", outReason.c_str(), static_cast<unsigned long>(pid), static_cast<unsigned long>(GetLastError()));
             return false;
         }
 
@@ -441,8 +644,11 @@ namespace
             VirtualFreeEx(process, remoteStr, 0, MEM_RELEASE);
             CloseHandle(process);
             outReason = "Remote_LoadLibraryW_failed";
+            LogHost("event=inject_failed reason=%s pid=%lu loadExit=%lu.", outReason.c_str(), static_cast<unsigned long>(pid), static_cast<unsigned long>(loadExit));
             return false;
         }
+
+        LogHost("event=inject_loadlibrary_ok pid=%lu loadExit=%lu.", static_cast<unsigned long>(pid), static_cast<unsigned long>(loadExit));
 
         VirtualFreeEx(process, remoteStr, 0, MEM_RELEASE);
 
@@ -452,6 +658,7 @@ namespace
         {
             CloseHandle(process);
             outReason = "api_not_implemented";
+            LogHost("event=inject_failed reason=%s pid=%lu.", outReason.c_str(), static_cast<unsigned long>(pid));
             return false;
         }
 
@@ -460,8 +667,11 @@ namespace
         {
             CloseHandle(process);
             outReason = "Remote_module_not_found";
+            LogHost("event=inject_failed reason=%s pid=%lu leaf=\"%ls\".", outReason.c_str(), static_cast<unsigned long>(pid), dllLeaf);
             return false;
         }
+
+        LogHost("event=inject_module_found pid=%lu module=%p leaf=\"%ls\".", static_cast<unsigned long>(pid), outRemoteModule, dllLeaf);
 
         DWORD installExit = 0;
         const bool okInstall = RemoteCallExportNoArg(process, dllPath, outRemoteModule, installExport, installExit);
@@ -470,10 +680,12 @@ namespace
         if (!okInstall || installExit == 0)
         {
             outReason = "Remote_install_hook_failed";
+            LogHost("event=inject_failed reason=%s pid=%lu export=%s ok=%u installExit=%lu.", outReason.c_str(), static_cast<unsigned long>(pid), installExport, okInstall ? 1u : 0u, static_cast<unsigned long>(installExit));
             return false;
         }
 
         outReason = "ok";
+        LogHost("event=inject_ok pid=%lu export=%s installExit=%lu.", static_cast<unsigned long>(pid), installExport, static_cast<unsigned long>(installExit));
         return true;
     }
 
@@ -571,15 +783,29 @@ namespace
             AttachRequest req{};
             if (!ParseAttach(message, req))
             {
+                LogHost("event=attach_parse_failed.");
                 WriteResponse(pipe, BuildState("Failed", "attach_parse_failed", ht::hook::ipc::GraphicsApi::Dx11, 0));
                 return;
             }
+
+            LogHost(
+                "event=attach_received pid=%lu api=%s fps=%u overlay=%u flags=0x%08X.",
+                static_cast<unsigned long>(req.pid),
+                ApiToLogString(req.api),
+                req.captureFpsLimit,
+                req.enableOverlay ? 1u : 0u,
+                static_cast<unsigned int>(req.configFlags));
 
             const auto existing = g_states.find(req.pid);
             if (existing != g_states.end() && existing->second.remoteModule != nullptr)
             {
                 if (existing->second.api != req.api)
                 {
+                    LogHost(
+                        "event=attach_reject reason=api_mismatch_existing pid=%lu existingApi=%s requestedApi=%s.",
+                        static_cast<unsigned long>(req.pid),
+                        ApiToLogString(existing->second.api),
+                        ApiToLogString(req.api));
                     WriteResponse(pipe, BuildState("Failed", "attach_failed:api_mismatch_existing", req.api, req.pid));
                     return;
                 }
@@ -602,6 +828,7 @@ namespace
                     if (installExport == nullptr)
                     {
                         CloseHandle(process);
+                        LogHost("event=attach_reapply_failed reason=api_not_implemented pid=%lu.", static_cast<unsigned long>(req.pid));
                         WriteResponse(pipe, BuildState("Failed", "attach_failed:api_not_implemented", existing->second.api, req.pid));
                         return;
                     }
@@ -614,15 +841,28 @@ namespace
                     CloseHandle(process);
                     if (ok && installExit != 0)
                     {
+                        LogHost(
+                            "event=attach_reapply_ok pid=%lu export=%s exit=%lu.",
+                            static_cast<unsigned long>(req.pid),
+                            installExport,
+                            static_cast<unsigned long>(installExit));
                         WriteResponse(pipe, BuildState("Attached", "ok_existing", existing->second.api, req.pid));
                         return;
                     }
+
+                    LogHost(
+                        "event=attach_reapply_failed reason=remote_install_hook_failed pid=%lu export=%s ok=%u exit=%lu.",
+                        static_cast<unsigned long>(req.pid),
+                        installExport,
+                        ok ? 1u : 0u,
+                        static_cast<unsigned long>(installExit));
                 }
             }
 
             const auto dllLeaf = ResolveAgentDllLeaf(req.api);
             if (dllLeaf == nullptr)
             {
+                LogHost("event=attach_reject reason=api_not_implemented pid=%lu api=%s.", static_cast<unsigned long>(req.pid), ApiToLogString(req.api));
                 WriteResponse(pipe, BuildState("Failed", "attach_failed:api_not_implemented", req.api, req.pid));
                 return;
             }
@@ -635,6 +875,12 @@ namespace
             const bool ok = InjectAgent(req.pid, req.api, dllPath, remoteModule, reason);
             if (!ok)
             {
+                LogHost(
+                    "event=attach_failed pid=%lu api=%s reason=%s dll=\"%ls\".",
+                    static_cast<unsigned long>(req.pid),
+                    ApiToLogString(req.api),
+                    reason.c_str(),
+                    dllPath.c_str());
                 WriteResponse(pipe, BuildState("Failed", "attach_failed:" + reason, req.api, req.pid));
                 return;
             }
@@ -652,6 +898,12 @@ namespace
                 req.configFlags);
             g_states[req.pid] = std::move(st);
 
+            LogHost(
+                "event=attach_ok pid=%lu api=%s module=%p dll=\"%ls\".",
+                static_cast<unsigned long>(req.pid),
+                ApiToLogString(req.api),
+                remoteModule,
+                dllPath.c_str());
             WriteResponse(pipe, BuildState("Attached", "ok", req.api, req.pid));
             return;
         }
@@ -661,6 +913,7 @@ namespace
             DWORD pid = 0;
             if (!ParseDetach(message, pid))
             {
+                LogHost("event=detach_parse_failed.");
                 WriteResponse(pipe, BuildState("Failed", "detach_parse_failed", ht::hook::ipc::GraphicsApi::Dx11, 0));
                 return;
             }
@@ -668,12 +921,14 @@ namespace
             const auto it = g_states.find(pid);
             if (it == g_states.end())
             {
+                LogHost("event=detach_skip reason=not_attached pid=%lu.", static_cast<unsigned long>(pid));
                 WriteResponse(pipe, BuildState("Detached", "not_attached", ht::hook::ipc::GraphicsApi::Dx11, pid));
                 return;
             }
 
             std::string reason;
             (void)UninstallAgent(it->second, reason);
+            LogHost("event=detach_done pid=%lu reason=%s.", static_cast<unsigned long>(pid), reason.c_str());
 
             // WHY: With vtable patching, unloading the agent DLL would leave dangling function pointers in swapchain vtables.
             // We keep the module loaded for process lifetime in v1; detach only disables capture.
@@ -684,12 +939,14 @@ namespace
 
         if (message.find("\"type\":\"shutdown\"") != std::string::npos)
         {
+            LogHost("event=shutdown_requested.");
             DisableAllHooksForShutdown();
             WriteResponse(pipe, BuildState("Stopped", "shutdown", ht::hook::ipc::GraphicsApi::Dx11, 0));
             g_shutdownRequested = true;
             return;
         }
 
+        LogHost("event=unknown_message.");
         WriteResponse(pipe, BuildState("Running", "unknown_message", ht::hook::ipc::GraphicsApi::Dx11, 0));
     }
 }
@@ -697,7 +954,9 @@ namespace
 int wmain()
 {
     std::wcout << L"[HookHost] starting pipe server: " << kPipeName << std::endl;
+    LogHost("event=host_start pid=%lu pipe=\"%ls\".", static_cast<unsigned long>(GetCurrentProcessId()), kPipeName);
     const DWORD parentPid = GetParentProcessId(GetCurrentProcessId());
+    LogHost("event=parent_detected pid=%lu parentPid=%lu.", static_cast<unsigned long>(GetCurrentProcessId()), static_cast<unsigned long>(parentPid));
 
     for (;;)
     {
@@ -705,6 +964,8 @@ int wmain()
         {
             DisableAllHooksForShutdown();
             std::wcout << L"[HookHost] parent process exited; shutting down." << std::endl;
+            LogHost("event=host_shutdown reason=parent_exited.");
+            CloseDiagFile();
             return 0;
         }
 
@@ -721,6 +982,8 @@ int wmain()
         if (pipe == INVALID_HANDLE_VALUE)
         {
             std::cerr << "[HookHost] CreateNamedPipeW failed: " << GetLastError() << std::endl;
+            LogHost("event=host_shutdown reason=create_named_pipe_failed gle=%lu.", static_cast<unsigned long>(GetLastError()));
+            CloseDiagFile();
             return 1;
         }
 
@@ -768,6 +1031,8 @@ int wmain()
                             CloseHandle(connectOv.hEvent);
                             CloseHandle(pipe);
                             std::wcout << L"[HookHost] parent process exited; shutting down." << std::endl;
+                            LogHost("event=host_shutdown reason=parent_exited_wait_connect.");
+                            CloseDiagFile();
                             return 0;
                         }
 
@@ -831,5 +1096,7 @@ int wmain()
         }
     }
 
+    LogHost("event=host_shutdown reason=requested.");
+    CloseDiagFile();
     return 0;
 }

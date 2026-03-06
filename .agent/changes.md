@@ -16336,3 +16336,37 @@ dl_ocr_engine.py.
 - `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。
+
+**2026-03-06 12:06 (Asia/Taipei) — DX9調査ログのファイル出力実装（HookHost + HookAgentDx9）**
+
+### Summary
+- DX9 attach/注入/フック失敗を追跡するため、HookHost と HookAgentDx9 の双方にファイルログを追加した。
+
+### Context / Goal
+- DX9 attach 失敗（`Remote_module_not_found` / `Remote_install_hook_failed`）の原因を、DebugView 非依存で切り分け可能にする。
+- ログを時刻付き1行イベント形式で残し、失敗分岐を後追いしやすくする。
+
+### Changes
+- HookAgentDx9 に UTF-8 ファイルログ（`%TEMP%\\HotkeyTranslator\\hook_dx9_<pid>.log`）を追加。
+- HookAgentDx9 の install 経路（dummy device / MinHook create-enable）を段階ログ化。
+- HookAgentDx9 の uninstall でログクローズを追加。
+- HookHost に UTF-8 ファイルログ（`%TEMP%\\HotkeyTranslator\\hook_host_<pid>.log`）を追加。
+- HookHost の attach/InjectAgent/remote call/module探索/detach/shutdown 各分岐を段階ログ化。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — file logger追加、install/uninstall/失敗点ログを追加。
+- `Native/HookHost/main.cpp` — file logger追加、attach/remote inject の診断ログを追加。
+
+### Behavioral Impact
+- DebugView が取れない環境でも、`%TEMP%\\HotkeyTranslator` 配下のログから DX9 attach 失敗箇所を特定できる。
+- 失敗理由が `attach_failed:*` だけでなく、直前の内部イベント（RemoteCall失敗、module列挙失敗、install export失敗）まで追跡できる。
+
+### Risk & Mitigation
+- Risk: ログ出力量が増える。
+- Mitigation: 1行イベント形式で最小限の項目に限定し、調査対象のHookHost/DX9経路にのみ追加した。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookHost HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` は `HookAgentDx9.dll` のファイルロックにより失敗（LNK1104）。
+- x86失敗時に `tasklist /m HookAgentDx9.dll` では該当プロセスを検出できず、ロック元は未特定。
