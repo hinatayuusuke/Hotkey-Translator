@@ -29,7 +29,8 @@ namespace ht::hook::ipc
         Dx11 = 1,
         Dx12 = 2,
         OpenGl = 3,
-        Vulkan = 4
+        Vulkan = 4,
+        Dx9 = 5
     };
 
     enum class CommandType : std::uint32_t

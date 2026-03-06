@@ -873,6 +873,7 @@
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                           <ComboBoxItem Content="DX11" Tag="Dx11" />
+                                          <ComboBoxItem Content="DX9 (capture-only planned)" Tag="Dx9" />
                                           <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
                                       </ComboBox>
                                   </StackPanel>

@@ -206,6 +206,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableGraphicsHookPipeline = settings.EnableGraphicsHookPipeline;
             GraphicsHookApiTag = settings.GraphicsHookApi switch
             {
+                GraphicsHookApiKind.Dx9 => "Dx9",
                 GraphicsHookApiKind.Vulkan => "Vulkan",
                 _ => "Dx11"
             };
@@ -327,6 +328,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableGraphicsHookPipeline = EnableGraphicsHookPipeline;
         settings.GraphicsHookApi = GraphicsHookApiTag switch
         {
+            "Dx9" => GraphicsHookApiKind.Dx9,
             "Vulkan" => GraphicsHookApiKind.Vulkan,
             _ => GraphicsHookApiKind.Dx11
         };

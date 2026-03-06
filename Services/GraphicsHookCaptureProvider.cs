@@ -156,7 +156,8 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         var fallbacks = new[]
         {
             GraphicsHookApiKind.Dx11,
-            GraphicsHookApiKind.Vulkan
+            GraphicsHookApiKind.Vulkan,
+            GraphicsHookApiKind.Dx9
         };
         foreach (var api in fallbacks)
         {

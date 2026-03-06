@@ -70,6 +70,7 @@ internal static class GraphicsHookStatusReader
         {
             GraphicsHookApiKind.Dx11,
             GraphicsHookApiKind.Vulkan,
+            GraphicsHookApiKind.Dx9,
             GraphicsHookApiKind.Dx12,
             GraphicsHookApiKind.OpenGl
         };

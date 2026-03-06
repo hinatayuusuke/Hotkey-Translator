@@ -81,6 +81,7 @@ namespace
             case ht::hook::ipc::GraphicsApi::Dx12: apiName = "DX12"; break;
             case ht::hook::ipc::GraphicsApi::OpenGl: apiName = "OpenGL"; break;
             case ht::hook::ipc::GraphicsApi::Vulkan: apiName = "Vulkan"; break;
+            case ht::hook::ipc::GraphicsApi::Dx9: apiName = "DX9"; break;
             default: break;
         }
 
@@ -127,6 +128,8 @@ namespace
                 return L"HookAgentDx11.dll";
             case ht::hook::ipc::GraphicsApi::Vulkan:
                 return L"HookAgentVulkan.dll";
+            case ht::hook::ipc::GraphicsApi::Dx9:
+                return L"HookAgentDx9.dll";
             default:
                 return nullptr;
         }
@@ -140,6 +143,8 @@ namespace
                 return "InstallDx11HookThread";
             case ht::hook::ipc::GraphicsApi::Vulkan:
                 return "InstallVulkanHookThread";
+            case ht::hook::ipc::GraphicsApi::Dx9:
+                return "InstallDx9HookThread";
             default:
                 return nullptr;
         }
@@ -153,6 +158,8 @@ namespace
                 return "UninstallDx11HookThread";
             case ht::hook::ipc::GraphicsApi::Vulkan:
                 return "UninstallVulkanHookThread";
+            case ht::hook::ipc::GraphicsApi::Dx9:
+                return "UninstallDx9HookThread";
             default:
                 return nullptr;
         }
@@ -246,6 +253,7 @@ namespace
             case ht::hook::ipc::GraphicsApi::Dx12:
             case ht::hook::ipc::GraphicsApi::OpenGl:
             case ht::hook::ipc::GraphicsApi::Vulkan:
+            case ht::hook::ipc::GraphicsApi::Dx9:
                 outReq.api = static_cast<ht::hook::ipc::GraphicsApi>(apiRaw);
                 break;
             default:

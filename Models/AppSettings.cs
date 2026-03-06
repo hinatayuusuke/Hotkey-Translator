@@ -19,7 +19,8 @@ public enum GraphicsHookApiKind : uint
     Dx11 = 1,
     Dx12 = 2,
     OpenGl = 3,
-    Vulkan = 4
+    Vulkan = 4,
+    Dx9 = 5
 }
 
 public enum VerticalModeOverride

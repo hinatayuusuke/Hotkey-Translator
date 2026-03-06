@@ -16186,3 +16186,41 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+
+**2026-03-06 09:51 (Asia/Taipei) — DX9統合 Step1（API拡張）実装**
+
+### Summary
+- GraphicsHook DX9 の第1段階として、API定義・HookHostルーティング・capture reader許容を追加した。
+
+### Context / Goal
+- Doc/GraphicsHook_DX9_Integration_Direction.md の Step1（制御面API拡張）を先行実装する。
+- HookAgentDx9本体（capture実装）は未着手のまま、制御面だけ先に通す。
+
+### Changes
+- C#/Nativeの Graphics API enum に Dx9 = 5 を追加。
+- HookHost に DX9 ルーティングを追加（DLL名、install/uninstall export、attach parse許容、state api名表示）。
+- GraphicsHookCaptureProvider の frame mapping fallback 候補に DX9 を追加。
+- GraphicsHookStatusReader.TryReadAny の探索候補に DX9 を追加。
+- UIの Hook API 選択に DX9 (capture-only planned) を追加し、SettingsViewModel の保存変換に Dx9 を追加。
+
+### Files Touched
+- Models/AppSettings.cs — GraphicsHookApiKind.Dx9 を追加。
+- Native/HookCommon/HookIpcProtocol.h — GraphicsApi::Dx9 を追加。
+- Native/HookHost/main.cpp — DX9 の attachルーティング/parse/api名を追加。
+- Services/GraphicsHookCaptureProvider.cs — frame mapping fallback に DX9 を追加。
+- Services/Hook/GraphicsHookStatusReader.cs — status探索候補に DX9 を追加。
+- ViewModels/SettingsViewModel.cs — GraphicsHookApiTag の Dx9 変換を追加。
+- MainWindow.xaml — Hook API コンボへ DX9 項目を追加。
+
+### Behavioral Impact
+- 設定で API=Dx9 を選択/保存できる。
+- HookHost は DX9 attach 要求を受け、HookAgentDx9.dll を解決しに行く（現時点では DLL 未実装のため attach は失敗想定）。
+- capture/status reader は DX9 の共有メモリ命名を探索可能。
+
+### Risk & Mitigation
+- Risk: DX9 agent未実装のため API=Dx9 では attach 失敗する。
+- Mitigation: Step1の意図どおり制御面のみ先行実装。次段で HookAgentDx9 実装を追加する前提。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+- cmake --build Native/build --config Debug --target HookHost 実行成功。
