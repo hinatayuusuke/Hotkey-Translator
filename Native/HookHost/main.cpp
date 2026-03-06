@@ -687,7 +687,7 @@ namespace
         const bool okInstall = RemoteCallExportNoArg(process, dllPath, outRemoteModule, installExport, installExit);
         CloseHandle(process);
 
-        if (!okInstall || installExit == 0)
+        if (!okInstall || installExit != 1)
         {
             outReason = "Remote_install_hook_failed";
             LogHost("event=inject_failed reason=%s pid=%lu export=%s ok=%u installExit=%lu.", outReason.c_str(), static_cast<unsigned long>(pid), installExport, okInstall ? 1u : 0u, static_cast<unsigned long>(installExit));
@@ -849,7 +849,7 @@ namespace
                         installExport,
                         installExit);
                     CloseHandle(process);
-                    if (ok && installExit != 0)
+                    if (ok && installExit == 1)
                     {
                         LogHost(
                             "event=attach_reapply_ok pid=%lu export=%s exit=%lu.",

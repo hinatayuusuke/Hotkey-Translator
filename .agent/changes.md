@@ -16403,3 +16403,66 @@ dl_ocr_engine.py.
 - `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
 - `cmake --build Native/build_x86 --config Debug --target HookHost HookAgentDx9` 実行成功。
 - 生成物確認: `Native/HookHost/bin/x86/HookAgentDx9.dll`（更新時刻反映）。
+
+**2026-03-06 13:45 (Asia/Taipei) — HookHost install成功判定を strict に修正**
+
+### Summary
+- `Install*HookThread` の戻り値判定を `!=0` から `==1` に変更し、クラッシュ終了コードを成功扱いしないよう修正した。
+
+### Context / Goal
+- `installExit=0xC0000005` のような例外終了が `attach_ok` と誤判定される問題を解消する。
+- 最小差分で判定のみを是正し、後続調査ログの解釈を正しくする。
+
+### Changes
+- HookHost の inject 経路で `installExit != 1` を失敗扱いに変更。
+- HookHost の re-attach 経路で `installExit == 1` のときのみ成功扱いに変更。
+
+### Files Touched
+- `Native/HookHost/main.cpp` — install成功条件を strict 判定へ変更。
+
+### Behavioral Impact
+- `InstallDx9HookThread` がアクセス違反等で終了した場合、`attach_ok` ではなく `attach_failed:Remote_install_hook_failed` になる。
+- 失敗の二次症状（誤attach後のdetach失敗）を減らせる。
+
+### Risk & Mitigation
+- Risk: 将来 `Install*HookThread` が 1 以外の成功コードを返す実装に変わると失敗扱いになる。
+- Mitigation: 現行実装は成功時に 1 を返す契約で統一されており、判定を契約に合わせた。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookHost` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookHost` 実行成功。
+
+**2026-03-06 13:55 (Asia/Taipei) — DX9 Install経路の段階ログと例外コード記録を追加**
+
+### Summary
+- `InstallPresentHook` の各ステップを詳細ログ化し、例外時に `install_exception` を記録する調査ログを実装した。
+
+### Context / Goal
+- `installExit=0xC0000005` の発生位置を `dummy device 後のどこか` から、具体的なステップ単位で特定できるようにする。
+
+### Changes
+- `InstallPresentHook` 本体を `InstallPresentHookImpl` に分離。
+- `InstallPresentHook` 外側に `__try/__except` を追加し、例外コードを `event=install_exception` として記録。
+- 以下の段階ログを追加:
+  - qpc/capture interval 設定
+  - dummy device 作成 begin/ok
+  - vtable target 解決
+  - `MH_Initialize` begin/status
+  - `MH_CreateHook` (present/reset) begin/ok
+  - `MH_EnableHook` (present/reset) begin/ok
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — install経路の詳細ログ・例外ログを追加。
+
+### Behavioral Impact
+- DX9 attach 失敗時、`hook_dx9_<pid>.log` からクラッシュ/失敗箇所をステップ単位で特定可能になる。
+
+### Risk & Mitigation
+- Risk: install時ログ量が増える。
+- Mitigation: 追加ログは install経路に限定し、通常Presentループには影響しない。
+
+### Tests / Verification
+- `cmake --build Native/build --config Debug --target HookAgentDx9` 実行成功。
+- `cmake -S Native -B Native/build_x86 -A Win32` 実行成功。
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9` 実行成功。

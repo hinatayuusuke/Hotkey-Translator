@@ -860,85 +860,119 @@ namespace ht::hook::dx9
             LogDx9("event=create_dummy_device result=ok.");
             return *outVtable != nullptr;
         }
+
+        bool InstallPresentHookImpl(Dx9Runtime& rt)
+        {
+            std::lock_guard<std::mutex> lock(rt.mutex);
+            LogDx9("event=install_hook_begin pid=%lu.", static_cast<unsigned long>(GetCurrentProcessId()));
+            if (rt.installed.load(std::memory_order_acquire))
+            {
+                LogDx9("event=install_hook_result result=already_installed.");
+                return true;
+            }
+
+            rt.qpcFreq = QueryQpcFreq();
+            LogDx9("event=install_step step=qpc_freq value=%llu.", static_cast<unsigned long long>(rt.qpcFreq));
+            rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
+            LogDx9("event=install_step step=capture_interval_qpc value=%llu.", static_cast<unsigned long long>(rt.captureIntervalQpc));
+            rt.configuredFpsLimit = kDefaultCaptureFps;
+            rt.overlayEnabled = false;
+
+            void** vtable = nullptr;
+            LogDx9("event=install_step step=create_dummy_device begin.");
+            if (!CreateDummyDeviceAndGetVtable(&vtable) || vtable == nullptr)
+            {
+                LogDx9("event=install_hook_result result=fail reason=create_dummy_device_failed.");
+                return false;
+            }
+            LogDx9("event=install_step step=create_dummy_device ok vtable=%p.", vtable);
+
+            rt.resetTarget = vtable[kDeviceResetIndex];
+            rt.presentTarget = vtable[kDevicePresentIndex];
+            LogDx9(
+                "event=install_step step=resolve_targets presentTarget=%p resetTarget=%p presentIndex=%d resetIndex=%d.",
+                rt.presentTarget,
+                rt.resetTarget,
+                kDevicePresentIndex,
+                kDeviceResetIndex);
+            if (rt.resetTarget == nullptr || rt.presentTarget == nullptr)
+            {
+                LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing.");
+                return false;
+            }
+
+            LogDx9("event=install_step step=mh_initialize begin.");
+            const MH_STATUS initStatus = MH_Initialize();
+            LogDx9("event=install_step step=mh_initialize status=%d.", static_cast<int>(initStatus));
+            if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_initialize_failed status=%d.", static_cast<int>(initStatus));
+                return false;
+            }
+
+            LogDx9("event=install_step step=mh_create_present begin target=%p hook=%p.", rt.presentTarget, reinterpret_cast<void*>(&HookedPresent));
+            if (MH_CreateHook(
+                    rt.presentTarget,
+                    reinterpret_cast<LPVOID>(&HookedPresent),
+                    reinterpret_cast<LPVOID*>(&rt.originalPresent)) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_create_present_failed.");
+                return false;
+            }
+            LogDx9("event=install_step step=mh_create_present ok original=%p.", reinterpret_cast<void*>(rt.originalPresent));
+
+            LogDx9("event=install_step step=mh_create_reset begin target=%p hook=%p.", rt.resetTarget, reinterpret_cast<void*>(&HookedReset));
+            if (MH_CreateHook(
+                    rt.resetTarget,
+                    reinterpret_cast<LPVOID>(&HookedReset),
+                    reinterpret_cast<LPVOID*>(&rt.originalReset)) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_create_reset_failed.");
+                (void)MH_RemoveHook(rt.presentTarget);
+                return false;
+            }
+            LogDx9("event=install_step step=mh_create_reset ok original=%p.", reinterpret_cast<void*>(rt.originalReset));
+
+            LogDx9("event=install_step step=mh_enable_present begin target=%p.", rt.presentTarget);
+            if (MH_EnableHook(rt.presentTarget) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_enable_present_failed.");
+                (void)MH_RemoveHook(rt.resetTarget);
+                (void)MH_RemoveHook(rt.presentTarget);
+                return false;
+            }
+            LogDx9("event=install_step step=mh_enable_present ok.");
+
+            LogDx9("event=install_step step=mh_enable_reset begin target=%p.", rt.resetTarget);
+            if (MH_EnableHook(rt.resetTarget) != MH_OK)
+            {
+                LogDx9("event=install_hook_result result=fail reason=mh_enable_reset_failed.");
+                (void)MH_DisableHook(rt.presentTarget);
+                (void)MH_RemoveHook(rt.resetTarget);
+                (void)MH_RemoveHook(rt.presentTarget);
+                return false;
+            }
+            LogDx9("event=install_step step=mh_enable_reset ok.");
+
+            rt.installed.store(true, std::memory_order_release);
+            LogDx9("event=install_hook_result result=ok qpcFreq=%llu.", static_cast<unsigned long long>(rt.qpcFreq));
+            return true;
+        }
     }
 
     bool InstallPresentHook()
     {
         auto& rt = g_rt;
-        std::lock_guard<std::mutex> lock(rt.mutex);
-        LogDx9("event=install_hook_begin pid=%lu.", static_cast<unsigned long>(GetCurrentProcessId()));
-        if (rt.installed.load(std::memory_order_acquire))
+        __try
         {
-            LogDx9("event=install_hook_result result=already_installed.");
-            return true;
+            return InstallPresentHookImpl(rt);
         }
-
-        rt.qpcFreq = QueryQpcFreq();
-        rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
-        rt.configuredFpsLimit = kDefaultCaptureFps;
-        rt.overlayEnabled = false;
-
-        void** vtable = nullptr;
-        if (!CreateDummyDeviceAndGetVtable(&vtable) || vtable == nullptr)
+        __except (EXCEPTION_EXECUTE_HANDLER)
         {
-            LogDx9("event=install_hook_result result=fail reason=create_dummy_device_failed.");
+            const auto ex = static_cast<std::uint32_t>(GetExceptionCode());
+            LogDx9("event=install_exception code=0x%08X.", static_cast<unsigned int>(ex));
             return false;
         }
-
-        rt.resetTarget = vtable[kDeviceResetIndex];
-        rt.presentTarget = vtable[kDevicePresentIndex];
-        if (rt.resetTarget == nullptr || rt.presentTarget == nullptr)
-        {
-            LogDx9("event=install_hook_result result=fail reason=vtable_entry_missing.");
-            return false;
-        }
-
-        const MH_STATUS initStatus = MH_Initialize();
-        if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
-        {
-            LogDx9("event=install_hook_result result=fail reason=mh_initialize_failed status=%d.", static_cast<int>(initStatus));
-            return false;
-        }
-
-        if (MH_CreateHook(
-                rt.presentTarget,
-                reinterpret_cast<LPVOID>(&HookedPresent),
-                reinterpret_cast<LPVOID*>(&rt.originalPresent)) != MH_OK)
-        {
-            LogDx9("event=install_hook_result result=fail reason=mh_create_present_failed.");
-            return false;
-        }
-
-        if (MH_CreateHook(
-                rt.resetTarget,
-                reinterpret_cast<LPVOID>(&HookedReset),
-                reinterpret_cast<LPVOID*>(&rt.originalReset)) != MH_OK)
-        {
-            LogDx9("event=install_hook_result result=fail reason=mh_create_reset_failed.");
-            (void)MH_RemoveHook(rt.presentTarget);
-            return false;
-        }
-
-        if (MH_EnableHook(rt.presentTarget) != MH_OK)
-        {
-            LogDx9("event=install_hook_result result=fail reason=mh_enable_present_failed.");
-            (void)MH_RemoveHook(rt.resetTarget);
-            (void)MH_RemoveHook(rt.presentTarget);
-            return false;
-        }
-
-        if (MH_EnableHook(rt.resetTarget) != MH_OK)
-        {
-            LogDx9("event=install_hook_result result=fail reason=mh_enable_reset_failed.");
-            (void)MH_DisableHook(rt.presentTarget);
-            (void)MH_RemoveHook(rt.resetTarget);
-            (void)MH_RemoveHook(rt.presentTarget);
-            return false;
-        }
-
-        rt.installed.store(true, std::memory_order_release);
-        LogDx9("event=install_hook_result result=ok qpcFreq=%llu.", static_cast<unsigned long long>(rt.qpcFreq));
-        return true;
     }
 
     void UninstallPresentHook()
