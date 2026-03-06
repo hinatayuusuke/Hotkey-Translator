@@ -16224,3 +16224,38 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
 - cmake --build Native/build --config Debug --target HookHost 実行成功。
+
+**2026-03-06 10:10 (Asia/Taipei) — DX9統合 Step3（HookAgentDx9 MVP capture-only）実装**
+
+### Summary
+- HookAgentDx9 を新規追加し、DX9 Present/Resetフック経由で共有メモリへフレームを書き出す capture-only MVP を実装した。
+
+### Context / Goal
+- Doc/GraphicsHook_DX9_Integration_Direction.md の 3) HookAgentDx9（MVP: capture-only）まで実装する。
+- Overlay描画は非対象として、まず安定キャプチャ経路を成立させる。
+
+### Changes
+- Native に HookAgentDx9 DLL プロジェクトを追加し、HookHost/bin 出力に接続。
+- MinHook で IDirect3DDevice9 の Present/Reset をフックする実装を追加。
+- Presentで runtime config 読み込み（api=Dx9）、fps制限、capture実行、hook status publish を実装。
+- Captureは RenderTarget 取得→MSAA時 resolve→SystemMem surface へ copy→BGRA row copy→SharedFrameWriter(api=Dx9) 書き込みを実装。
+- Resetでバックバッファ関連キャッシュとcaptureタイミング状態をクリア。
+
+### Files Touched
+- Native/CMakeLists.txt — dd_subdirectory(HookAgentDx9) を追加。
+- Native/HookAgentDx9/CMakeLists.txt — DX9 agent DLL のビルド定義を追加。
+- Native/HookAgentDx9/dllmain.cpp — InstallDx9Hook* / UninstallDx9Hook* export を実装。
+- Native/HookAgentDx9/Dx9PresentHook.h — DX9 hook公開インターフェースを追加。
+- Native/HookAgentDx9/Dx9PresentHook.cpp — Present/Reset hook、capture、status publish を実装。
+
+### Behavioral Impact
+- API=Dx9 で attach した際、DX9タイトルから共有メモリへフレーム供給できるようになる。
+- この段階では DX9 in-game overlay 描画は行わない（capture-only）。
+
+### Risk & Mitigation
+- Risk: 未対応フォーマットやデバイス状態によりフレーム取得が失敗する可能性。
+- Mitigation: 対応フォーマットを限定（A8R8G8B8/X8R8G8B8）し、失敗時はフレーム書き込みをスキップしてクラッシュを回避。
+
+### Tests / Verification
+- cmake --build Native/build --config Debug --target HookAgentDx9 HookHost 実行成功。
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
