@@ -16940,3 +16940,34 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+
+**2026-03-07 16:17 (Asia/Taipei) — Paddle/NDL排他緩和とPaddle EnginePool単一化**
+
+### Summary
+- NDLとPaddleのホスト排他を解除し、Paddle EnginePoolのキャッシュ上限を1に固定した。
+
+### Context / Goal
+- NDLとPaddleを同時常駐できるようにして、切替時のウォームアップ待ちを減らす。
+- 同時常駐に伴うメモリ増加を抑えるため、Paddle側のモデルキャッシュを最小化する。
+
+### Changes
+- gRPCホスト依存停止設定を変更し、PaddleとNDLが互いを停止しないようにした。
+- PaddleOCR-VLは引き続きPaddle/NDLと排他を維持した。
+- OcrService/server.py の EnginePool 最大キャッシュ数を 1 に変更した。
+- 起動ログの EnginePool max 表示を 1 に更新した。
+
+### Files Touched
+- Services/Application/ResourceHostFacade.cs — StopBeforeStartHostIds を調整して Paddle↔NDL の排他を解除。
+- OcrService/server.py — max_engines のデフォルト/起動設定/ログ出力を1に固定。
+
+### Behavioral Impact
+- PaddleとNDLは同時に起動状態を維持できる（PaddleVLは従来どおり排他）。
+- Paddle側はモデルキャッシュが常に1エンジンに制限され、切替時に再初期化が発生しやすくなる。
+
+### Risk & Mitigation
+- Risk: Paddleモデル切替時の初回レイテンシ増加。
+- Mitigation: 目的どおりメモリを優先し、ログでEnginePool構成を明示して挙動を追跡可能にした。
+
+### Tests / Verification
+- dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+- python -m py_compile OcrService/server.py 実行成功。

@@ -62,7 +62,7 @@ class EnginePool:
         text_det_box_thresh: float,
         text_det_unclip_ratio: float,
         text_rec_score_thresh: float,
-        max_engines: int = 2,
+        max_engines: int = 1,
         ttl_seconds: int = 1800,
     ):
         self._default_language = default_language
@@ -184,10 +184,10 @@ def main() -> int:
         args.text_det_box_thresh,
         args.text_det_unclip_ratio,
         args.text_rec_score_thresh,
-        max_engines=2,
+        max_engines=1,
         ttl_seconds=1800,
     )
-    logging.info("PaddleOCR EnginePool: max=%s ttl=%ss", 2, 1800)
+    logging.info("PaddleOCR EnginePool: max=%s ttl=%ss", 1, 1800)
 
     max_message_bytes = max(1, args.max_message_bytes)
     logging.info("PaddleOCR gRPC max_message_bytes=%s", max_message_bytes)

@@ -68,7 +68,7 @@ public sealed class AppSettings
     public bool EnableOcrGamma { get; set; } = false;
     public double OcrGamma { get; set; } = 1.0;
     public bool EnableOcrGrayscale { get; set; } = true;
-    public bool EnableOcrContrast { get; set; } = true;
+    public bool EnableOcrContrast { get; set; } = false;
     public double OcrContrast { get; set; } = 1.5;
     public bool EnableLogging { get; set; } = true;
     public bool EnableOcrPerfLog { get; set; } = false;

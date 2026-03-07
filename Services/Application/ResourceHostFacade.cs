@@ -125,7 +125,8 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl, HostIdNdl }
+                // WHY: Allow Paddle + NDL to coexist (hot-switch ready). Keep PaddleVL exclusive.
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
             },
             new()
             {
@@ -151,7 +152,8 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisableNdlOcr,
                 FailureLogMessage = "NDLOCR gRPC host failed to start.",
                 FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdPaddleVl }
+                // WHY: Allow NDL + Paddle to coexist (hot-switch ready). Keep PaddleVL exclusive.
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
             },
             new()
             {
