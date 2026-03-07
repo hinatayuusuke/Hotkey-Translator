@@ -972,7 +972,7 @@ public sealed class PipelineOrchestrator
         // Keep this conservative until we introduce a settings surface (font/alpha/max bytes).
         const uint fgArgb = 0xFFFFFFFF;
         const uint bgArgb = 0xAA0A0A0A;
-        const float paddingPx = 6.0f;
+        const float paddingPx = 3.0f;
         const float roundingPx = 6.0f;
         const uint roiPreviewFgArgb = 0xFF3CF05A;
         const float roiPreviewStrokePx = 2.0f;

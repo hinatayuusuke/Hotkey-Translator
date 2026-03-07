@@ -30,7 +30,7 @@ public partial class OverlayWindow : Window
     private Rect? _smallBoxClipBoundsDip;
     private Dictionary<string, double> _fontSizeCache = new();
     private readonly OverlayFontFitter _fontFitter = new();
-    private static readonly Thickness OverlayPadding = new(4, 2, 4, 2);
+    private static readonly Thickness OverlayPadding = new(1, 0, 1, 0);
     private const double MinFontSize = 8;
     private const double MaxFontSize = 120;
     private const int FitIterations = 7;

@@ -16971,3 +16971,34 @@ dl_ocr_engine.py.
 ### Tests / Verification
 - dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
 - python -m py_compile OcrService/server.py 実行成功。
+
+**2026-03-07 18:21 (Asia/Taipei) — オーバーレイ内パディングを縮小**
+
+### Summary
+- WPFオーバーレイとHookオーバーレイのテキスト内パディングを指定値に縮小した。
+
+### Context / Goal
+- オーバーレイ枠とテキスト間の余白を詰め、表示密度を上げる。
+- WPF経路とHook経路で見た目が大きく乖離しないよう、両方の定義値を調整する。
+
+### Changes
+- WPF側 OverlayPadding を 
+ew(4, 2, 4, 2) から 
+ew(2, 1, 2, 1) に変更。
+- Hook v2コマンドの paddingPx を 6.0f から 3.0f に変更。
+
+### Files Touched
+- UI/OverlayWindow.xaml.cs — OverlayPadding を縮小。
+- Services/PipelineOrchestrator.cs — Hook向け paddingPx を縮小。
+
+### Behavioral Impact
+- WPFオーバーレイ表示の枠内余白が縮小される。
+- Hook表示（DX11/Vulkan）でも同様に枠内余白が縮小される。
+
+### Risk & Mitigation
+- Risk: 文字が枠端に近づき、長文折返し時の見た目が窮屈になる可能性。
+- Mitigation: 値変更のみの局所修正に限定し、必要なら即座に再調整できる。
+
+### Tests / Verification
+- dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+- cmake --build Native/build --config Release --target HookAgentDx11 実行成功。
