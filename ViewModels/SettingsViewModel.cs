@@ -30,6 +30,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private double _paddleConfidenceThreshold;
     [ObservableProperty] private double _ocrBinarizationThreshold;
     [ObservableProperty] private double _ocrGamma;
+    [ObservableProperty] private double _ocrContrast;
     [ObservableProperty] private double _ocrDownsampleScale;
     [ObservableProperty] private double _ocrTwoPassLowThreshold;
     [ObservableProperty] private double _ocrTwoPassHighThreshold;
@@ -68,6 +69,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableOcrAutoThreshold;
     [ObservableProperty] private bool _enableOcrAutoInvert;
     [ObservableProperty] private bool _enableOcrGamma;
+    [ObservableProperty] private bool _enableOcrGrayscale;
+    [ObservableProperty] private bool _enableOcrContrast;
     [ObservableProperty] private bool _enableOcrDownsampling;
     [ObservableProperty] private bool _enableOcrTwoPass;
     [ObservableProperty] private bool _ocrTwoPassPreferAuto;
@@ -200,6 +203,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableOcrAutoThreshold = settings.EnableOcrAutoThreshold;
             EnableOcrAutoInvert = settings.EnableOcrAutoInvert;
             EnableOcrGamma = settings.EnableOcrGamma;
+            EnableOcrGrayscale = settings.EnableOcrGrayscale;
+            EnableOcrContrast = settings.EnableOcrContrast;
             EnableOcrDownsampling = settings.EnableOcrDownsampling;
             EnableOcrTwoPass = settings.EnableOcrTwoPass;
             OcrTwoPassPreferAuto = settings.OcrTwoPassPreferAuto;
@@ -257,6 +262,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             PaddleConfidenceThreshold = settings.PaddleConfidenceThreshold;
             OcrBinarizationThreshold = settings.OcrBinarizationThreshold;
             OcrGamma = settings.OcrGamma;
+            OcrContrast = double.IsFinite(settings.OcrContrast) ? Math.Clamp(settings.OcrContrast, 0.5, 2.0) : 1.0;
             OcrDownsampleScale = settings.OcrDownsampleScale;
             OcrTwoPassLowThreshold = settings.OcrTwoPassLowThreshold;
             OcrTwoPassHighThreshold = settings.OcrTwoPassHighThreshold;
@@ -325,6 +331,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableOcrAutoThreshold = EnableOcrAutoThreshold;
         settings.EnableOcrAutoInvert = EnableOcrAutoInvert;
         settings.EnableOcrGamma = EnableOcrGamma;
+        settings.EnableOcrGrayscale = EnableOcrGrayscale;
+        settings.EnableOcrContrast = EnableOcrContrast;
         settings.EnableOcrDownsampling = EnableOcrDownsampling;
         settings.EnableOcrTwoPass = EnableOcrTwoPass;
         settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAuto;
@@ -505,6 +513,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThreshold, 2);
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThreshold);
         settings.OcrGamma = Math.Round(OcrGamma, 2);
+        settings.OcrContrast = Math.Round(Math.Clamp(OcrContrast, 0.5, 2.0), 2);
         settings.OcrDownsampleScale = Math.Round(OcrDownsampleScale, 2);
         settings.OcrTwoPassLowThreshold = (int)Math.Round(OcrTwoPassLowThreshold);
         settings.OcrTwoPassHighThreshold = (int)Math.Round(OcrTwoPassHighThreshold);
@@ -536,6 +545,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnPaddleConfidenceThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrBinarizationThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrGammaChanged(double value) => RequestSaveOnValueChange();
+    partial void OnOcrContrastChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrDownsampleScaleChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrTwoPassLowThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrTwoPassHighThresholdChanged(double value) => RequestSaveOnValueChange();
@@ -574,6 +584,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableOcrAutoThresholdChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrAutoInvertChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrGammaChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrGrayscaleChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableOcrContrastChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrDownsamplingChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrTwoPassChanged(bool value) => RequestSaveOnValueChange();
     partial void OnOcrTwoPassPreferAutoChanged(bool value) => RequestSaveOnValueChange();

@@ -16902,3 +16902,41 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - cmake --build Native/build --config Release --target HookAgentDx11 実行成功。
+
+**2026-03-07 14:58 (Asia/Taipei) — OCR前処理にGrayscale/Contrastを追加**
+
+### Summary
+- OCR前処理にグレースケール化とコントラスト調整（スライダー）を追加し、設定UIと実行パイプラインを接続した。
+
+### Context / Goal
+- 前処理で低コントラスト文字の可読性を上げるため、既存のGamma/Binarizationに加えて追加調整を可能にする。
+- 設定変更時にシーンスナップショット比較キーへ反映されるようにして、判定の一貫性を維持する。
+
+### Changes
+- AppSettings に EnableOcrGrayscale, EnableOcrContrast, OcrContrast を追加。
+- SettingsViewModel に対応プロパティを追加し、Load/Apply/自動保存トリガーを接続。
+- OCR Settings UI に以下を追加:
+  - Enable grayscale conversion
+  - Enable contrast adjustment
+  - Contrast スライダー（0.5–2.0, step 0.1）
+- OcrPreprocessService の前処理順を Gamma -> Grayscale -> Contrast -> Binarization に拡張。
+- SceneTextSnapshotService.BuildSnapshotSignature に grayscale/contrast 設定を含めるよう更新。
+
+### Files Touched
+- Models/AppSettings.cs — 前処理設定3項目を追加。
+- ViewModels/SettingsViewModel.cs — 新規設定のロード/保存/変更通知を追加。
+- MainWindow.xaml — OCR Settings に Grayscale/Contrast UI を追加。
+- Services/OcrPreprocessService.cs — グレースケール化・コントラスト処理を実装し、前処理チェーンに統合。
+- Services/SceneTextSnapshotService.cs — スナップショット署名に新設定を追加。
+
+### Behavioral Impact
+- OCR前処理でグレースケール化とコントラスト補正をON/OFFできる。
+- Contrastを有効にすると、設定値に応じて前処理画像のコントラストが調整される。
+- Scene change系の比較シグネチャに新設定が反映される。
+
+### Risk & Mitigation
+- Risk: 前処理強度を上げすぎるとOCR精度が逆に低下する可能性。
+- Mitigation: デフォルトは EnableOcrGrayscale=false, EnableOcrContrast=false, OcrContrast=1.0 とし、既存挙動を維持。
+
+### Tests / Verification
+- dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

@@ -451,6 +451,10 @@
                                           IsChecked="{Binding Settings.EnableOcrAutoInvert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrGrayscaleCheck" Content="Enable grayscale conversion" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrGrayscale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrContrastCheck" Content="Enable contrast adjustment" Margin="0,4,0,0"
+                                          IsChecked="{Binding Settings.EnableOcrContrast, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0"
                                           IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrTwoPass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -583,6 +587,31 @@
                                             <Style TargetType="TextBlock">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrGammaSlider, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Contrast" Width="150" VerticalAlignment="Center" />
+                                    <Slider x:Name="OcrContrastSlider"
+                                            Width="180"
+                                            Minimum="0.5"
+                                            Maximum="2.0"
+                                            IsSnapToTickEnabled="True"
+                                            TickFrequency="0.1"
+                                            SmallChange="0.05"
+                                            LargeChange="0.1"
+                                            IsEnabled="{Binding Settings.EnableOcrContrast}"
+                                            Value="{Binding Settings.OcrContrast, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock x:Name="OcrContrastValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                               Text="{Binding ElementName=OcrContrastSlider, Path=Value, StringFormat={}{0:F2}}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrContrastSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
                                                     </DataTrigger>
                                                 </Style.Triggers>

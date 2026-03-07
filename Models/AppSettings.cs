@@ -67,6 +67,9 @@ public sealed class AppSettings
     public bool EnableOcrAutoInvert { get; set; } = false;
     public bool EnableOcrGamma { get; set; } = false;
     public double OcrGamma { get; set; } = 1.0;
+    public bool EnableOcrGrayscale { get; set; } = true;
+    public bool EnableOcrContrast { get; set; } = true;
+    public double OcrContrast { get; set; } = 1.5;
     public bool EnableLogging { get; set; } = true;
     public bool EnableOcrPerfLog { get; set; } = false;
     public int OcrPerfLogThresholdMs { get; set; } = 200;
@@ -115,9 +118,9 @@ public sealed class AppSettings
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
     public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";
-    public double PaddleTextDetThresh { get; set; } = 0.5;
-    public double PaddleTextDetBoxThresh { get; set; } = 0.68;
-    public double PaddleTextDetUnclipRatio { get; set; } = 1.3;
+    public double PaddleTextDetThresh { get; set; } = 0.3;
+    public double PaddleTextDetBoxThresh { get; set; } = 0.5;
+    public double PaddleTextDetUnclipRatio { get; set; } = 1.0;
     public double PaddleTextRecScoreThresh { get; set; } = 0.58;
     public bool EnablePaddleConfidenceFilter { get; set; } = false;
     public double PaddleConfidenceThreshold { get; set; } = 0.6;
