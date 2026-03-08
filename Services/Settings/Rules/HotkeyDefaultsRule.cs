@@ -39,6 +39,30 @@ internal sealed class HotkeyDefaultsRule : ISettingsRule
             changed = true;
         }
 
+        if (string.IsNullOrWhiteSpace(settings.HotkeyNextRoiPresetKey))
+        {
+            settings.HotkeyNextRoiPresetKey = "F6";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyNextRoiPresetModifiers))
+        {
+            settings.HotkeyNextRoiPresetModifiers = "Shift";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyPreviousRoiPresetKey))
+        {
+            settings.HotkeyPreviousRoiPresetKey = "F6";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyPreviousRoiPresetModifiers))
+        {
+            settings.HotkeyPreviousRoiPresetModifiers = "Control";
+            changed = true;
+        }
+
         if (string.IsNullOrWhiteSpace(settings.HotkeyLockCaptureWindowKey))
         {
             settings.HotkeyLockCaptureWindowKey = "F7";

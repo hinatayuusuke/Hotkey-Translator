@@ -20,6 +20,8 @@ internal sealed class HotkeyCommandController
     private readonly WindowBindingService _windowBindingService;
     private readonly Func<Task> _saveSettingsAsync;
     private readonly Func<Task> _selectRoiAsync;
+    private readonly Func<Task> _selectNextRoiPresetAsync;
+    private readonly Func<Task> _selectPreviousRoiPresetAsync;
     private readonly Func<OverlayPresenter?> _overlayPresenterAccessor;
     private readonly Func<bool> _overlayEnabledAccessor;
     private readonly Action<bool> _setOverlayEnabled;
@@ -40,6 +42,8 @@ internal sealed class HotkeyCommandController
         WindowBindingService windowBindingService,
         Func<Task> saveSettingsAsync,
         Func<Task> selectRoiAsync,
+        Func<Task> selectNextRoiPresetAsync,
+        Func<Task> selectPreviousRoiPresetAsync,
         Func<OverlayPresenter?> overlayPresenterAccessor,
         Func<bool> overlayEnabledAccessor,
         Action<bool> setOverlayEnabled,
@@ -59,6 +63,8 @@ internal sealed class HotkeyCommandController
         _windowBindingService = windowBindingService;
         _saveSettingsAsync = saveSettingsAsync;
         _selectRoiAsync = selectRoiAsync;
+        _selectNextRoiPresetAsync = selectNextRoiPresetAsync;
+        _selectPreviousRoiPresetAsync = selectPreviousRoiPresetAsync;
         _overlayPresenterAccessor = overlayPresenterAccessor;
         _overlayEnabledAccessor = overlayEnabledAccessor;
         _setOverlayEnabled = setOverlayEnabled;
@@ -192,6 +198,16 @@ internal sealed class HotkeyCommandController
     public Task HandleSelectRoiHotkeyAsync()
     {
         return _selectRoiAsync();
+    }
+
+    public Task HandleNextRoiPresetHotkeyAsync()
+    {
+        return _selectNextRoiPresetAsync();
+    }
+
+    public Task HandlePreviousRoiPresetHotkeyAsync()
+    {
+        return _selectPreviousRoiPresetAsync();
     }
 
     public void HandleToggleOverlayHotkey()

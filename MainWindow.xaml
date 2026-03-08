@@ -105,6 +105,11 @@
     
                                 <CheckBox x:Name="EnableRoiCheck" Content="Enable" VerticalAlignment="Center" Margin="10,0,0,0"
                                           IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBlock Text="Slot" VerticalAlignment="Center" Margin="12,0,6,0" />
+                                <ComboBox x:Name="RoiPresetSlotBox"
+                                          Width="90"
+                                          VerticalAlignment="Center"
+                                          SelectionChanged="OnRoiPresetSlotBoxSelectionChanged" />
                             </StackPanel>
                             <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RuntimeStatus.RoiStatusMessage}" Margin="0,6,0,0" Grid.ColumnSpan="2" />
                         </Grid>

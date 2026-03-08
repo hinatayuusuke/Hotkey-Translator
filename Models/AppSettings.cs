@@ -1,5 +1,7 @@
 ﻿using System.Text.Json.Serialization;
 
+using System.Collections.Generic;
+
 namespace Hotkey_Translator.Models;
 
 public enum CaptureMode
@@ -40,6 +42,8 @@ public enum VerticalColumnOrder
 
 public sealed class AppSettings
 {
+    public List<RoiPreset> RoiPresets { get; set; } = new();
+    public int ActiveRoiPresetIndex { get; set; }
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }
     public NormalizedRect? NormalizedRoi { get; set; }
@@ -223,6 +227,10 @@ public sealed class AppSettings
     public string HotkeyToggleSceneAutoTranslateModifiers { get; set; } = "None";
     public string HotkeySelectRoiKey { get; set; } = "F6";
     public string HotkeySelectRoiModifiers { get; set; } = "None";
+    public string HotkeyNextRoiPresetKey { get; set; } = "F6";
+    public string HotkeyNextRoiPresetModifiers { get; set; } = "Shift";
+    public string HotkeyPreviousRoiPresetKey { get; set; } = "F6";
+    public string HotkeyPreviousRoiPresetModifiers { get; set; } = "Control";
     public string HotkeyLockCaptureWindowKey { get; set; } = "F7";
     public string HotkeyLockCaptureWindowModifiers { get; set; } = "None";
     public string HotkeyUnlockCaptureWindowKey { get; set; } = "F7";

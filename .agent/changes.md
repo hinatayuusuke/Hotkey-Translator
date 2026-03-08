@@ -17002,3 +17002,50 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
 - cmake --build Native/build --config Release --target HookAgentDx11 実行成功。
+**2026-03-08 11:03 (Asia/Taipei) — ROIプリセット10スロットと切替ホットキーを実装**
+
+### Summary
+- 固定10スロットのROIプリセット保存、単一アクティブ切替、Shift+F6/Ctrl+F6ホットキー、1秒ROIプレビューを追加した。
+
+### Context / Goal
+- ROIを毎回描き直さず、保存済み領域を即座に切り替えられるようにする。
+- 既存の単一ROIパイプラインを壊さず、正規化座標保存を前提にスロット運用へ拡張する。
+
+### Changes
+- `RoiPreset` モデルと `AppSettings` の ROI スロット配列、アクティブスロット、次/前ホットキー設定を追加した。
+- 設定正規化ルールを追加し、ROIスロットを常に10件へ補完し、アクティブスロットをクランプするようにした。
+- Home の ROI セクションにスロット選択 ComboBox を追加し、選択時に保存済み ROI を即時適用するようにした。
+- F6 確定時に現在選択中スロットへ ROI を保存するように変更した。
+- Shift+F6 / Ctrl+F6 で ROI スロットを次 / 前に切り替える hotkey 経路を追加した。
+- WPF オーバーレイに 1 秒だけ表示する ROI border preview を追加し、Hook preview も同時間だけ再利用するようにした。
+- ROI プリセット実装案ドキュメントに既定 hotkey を反映した。
+
+### Files Touched
+- `Models/AppSettings.cs` — ROIスロット配列、アクティブスロット、次/前 hotkey 設定を追加。
+- `Models/RoiPreset.cs` — ROIスロット1件分の保存モデルを追加。
+- `Services/Settings/AppSettingsValidator.cs` — ROIプリセット正規化ルールを登録。
+- `Services/Settings/Rules/RoiPresetSettingsRule.cs` — スロット10件補完と index/座標正規化を追加。
+- `Services/Settings/Rules/HotkeyDefaultsRule.cs` — Shift+F6/Ctrl+F6 の既定 hotkey を追加。
+- `Services/Application/HotkeyCommandController.cs` — 次/前 ROI スロット切替コマンドを追加。
+- `MainWindow.xaml` — ROI スロット選択 ComboBox を追加。
+- `MainWindow.xaml.cs` — ROIスロット適用、F6保存先変更、1秒Hook preview制御、hotkey登録を追加。
+- `UI/OverlayWindow.xaml` — ROI preview border レイヤを追加。
+- `UI/OverlayWindow.xaml.cs` — WPF ROI preview の表示/自動消去を追加。
+- `Services/OverlayPresenter.cs` — WPF overlay への ROI preview 表示APIを追加。
+- `Doc/RoiPreset_HotkeySwitch_Implementation_Plan.md` — 既定 hotkey を反映。
+
+### Behavioral Impact
+- ROI は固定10スロットで保存され、選択中スロットが F6 の保存先になる。
+- UI選択または Shift+F6 / Ctrl+F6 でスロットを切り替えると、保存済みROIが即時適用される。
+- 保存済みROIを適用した際、WPF overlay と Hook preview で約1秒の枠線プレビューが表示される。
+- 空スロット選択時は ROI を消さず、保存先だけ切り替わる。
+
+### Risk & Mitigation
+- Risk: スロット切替時の preview が overlay 非表示や hook 状態と競合する可能性。
+- Mitigation: WPF 側は独立 border レイヤ、Hook 側は既存 preview 経路の短時間再利用に限定した。
+- Risk: 既存 settings.json にスロット情報がない場合の不整合。
+- Mitigation: 正規化ルールで常に10件へ補完し、active index をクランプするようにした。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+- 実機UI操作・hotkey挙動の手動確認は未実施。

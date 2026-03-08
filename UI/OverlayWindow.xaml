@@ -9,6 +9,14 @@
         ResizeMode="NoResize">
     <Grid IsHitTestVisible="False">
         <Canvas x:Name="OverlayCanvas" />
+        <Canvas x:Name="RoiPreviewCanvas">
+            <Border x:Name="RoiPreviewBorder"
+                    Background="Transparent"
+                    BorderBrush="#FFFFC857"
+                    BorderThickness="2"
+                    CornerRadius="1"
+                    Visibility="Collapsed" />
+        </Canvas>
         <Canvas x:Name="ToastCanvas">
             <Border x:Name="ToastContainer"
                     Background="#CC000000"

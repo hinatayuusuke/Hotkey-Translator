@@ -69,10 +69,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly PreviewZoomCoordinator _previewZoomCoordinator;
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
     private readonly DispatcherTimer _mirrorOverlayTopmostTimer;
+    private readonly DispatcherTimer _roiPresetPreviewClearTimer;
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
     private bool _startupHookLaunchHandled;
+    private bool _isApplyingRoiPresetSlotSelection;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
     private readonly bool _hookRoiTraceEnabled =
         string.Equals(Environment.GetEnvironmentVariable("HT_HOOK_ROI_TRACE"), "1", StringComparison.Ordinal);
@@ -85,6 +87,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const int MirrorOverlayTopmostResyncIntervalMs = 500;
+    private const int RoiPresetSlotCount = 10;
+    private const int RoiPresetPreviewDurationMs = 1000;
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string FixedHookHostRelativePath = "Native\\HookHost\\bin\\HookHost.exe";
     private const string FixedHookHostX86RelativePath = "Native\\HookHost\\bin\\x86\\HookHost.exe";
@@ -103,11 +107,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
+        RoiPresetSlotBox.ItemsSource = BuildRoiPresetSlotOptions();
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
         };
         _mirrorOverlayTopmostTimer.Tick += OnMirrorOverlayTopmostTimerTick;
+        _roiPresetPreviewClearTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        {
+            Interval = TimeSpan.FromMilliseconds(RoiPresetPreviewDurationMs)
+        };
+        _roiPresetPreviewClearTimer.Tick += OnRoiPresetPreviewClearTimerTick;
         _mainWindowViewModel = new MainWindowViewModel(
             new SettingsViewModel(_settingsChangeScheduler),
             new RuntimeStatusViewModel(),
@@ -229,6 +239,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _windowBindingService,
             () => _settingsService.SaveAsync(),
             SelectRoiAsync,
+            () => ChangeRoiPresetByOffsetAsync(1, "hotkey"),
+            () => ChangeRoiPresetByOffsetAsync(-1, "hotkey"),
             () => _overlayPresenter,
             () => _overlayEnabled,
             enabled => _overlayEnabled = enabled,
@@ -318,7 +330,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
+        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. Shift+F6: next ROI slot. Ctrl+F6: previous ROI slot. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
         await TryHandleStartupHookLaunchAsync(settings).ConfigureAwait(true);
         _drawerLayoutController.SyncForCurrentState();
         _winRtLanguagePackUiController.Start();
@@ -399,6 +411,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _isClosing = true;
         EnsureMirrorOverlayTopmostTimerActive(false);
         _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
+        _roiPresetPreviewClearTimer.Stop();
+        _roiPresetPreviewClearTimer.Tick -= OnRoiPresetPreviewClearTimerTick;
         if (_mainHwndSource != null)
         {
             _mainHwndSource.RemoveHook(WndProc);
@@ -804,6 +818,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
     }
 
+    private async void OnNextRoiPresetHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleNextRoiPresetHotkeyAsync().ConfigureAwait(true);
+    }
+
+    private async void OnPreviousRoiPresetHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandlePreviousRoiPresetHotkeyAsync().ConfigureAwait(true);
+    }
+
     private async void OnToggleOverlayHotkeyPressed(object? sender, EventArgs e)
     {
         _hotkeyCommandController.HandleToggleOverlayHotkey();
@@ -931,6 +955,130 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         // WHY: Mirror toggle may bind foreground window, so keep UI hotkey/settings panes in sync.
         _mainWindowViewModel.Settings.LoadFrom(settings);
         UpdateAutoTranslateBadgeVisibility(settings);
+    }
+
+    private static IReadOnlyList<string> BuildRoiPresetSlotOptions()
+    {
+        return Enumerable.Range(1, RoiPresetSlotCount)
+            .Select(index => $"Slot {index}")
+            .ToList();
+    }
+
+    private async void OnRoiPresetSlotBoxSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isApplyingRoiPresetSlotSelection || !IsLoaded || _isClosing)
+        {
+            return;
+        }
+
+        var slotIndex = RoiPresetSlotBox.SelectedIndex;
+        if (slotIndex < 0)
+        {
+            return;
+        }
+
+        await ApplyRoiPresetSlotAsync(slotIndex, "ui").ConfigureAwait(true);
+    }
+
+    private void OnRoiPresetPreviewClearTimerTick(object? sender, EventArgs e)
+    {
+        _roiPresetPreviewClearTimer.Stop();
+        _pipeline?.UpdateHookRoiPreview(null);
+    }
+
+    private async Task ChangeRoiPresetByOffsetAsync(int offset, string trigger)
+    {
+        var settings = _settingsService.Settings;
+        EnsureRoiPresetSlots(settings);
+        var currentIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+        var nextIndex = (currentIndex + offset + RoiPresetSlotCount) % RoiPresetSlotCount;
+        await ApplyRoiPresetSlotAsync(nextIndex, trigger).ConfigureAwait(true);
+    }
+
+    private async Task ApplyRoiPresetSlotAsync(int slotIndex, string trigger)
+    {
+        var settings = _settingsService.Settings;
+        EnsureRoiPresetSlots(settings);
+        slotIndex = Math.Clamp(slotIndex, 0, RoiPresetSlotCount - 1);
+        settings.ActiveRoiPresetIndex = slotIndex;
+
+        var preset = settings.RoiPresets[slotIndex];
+        Rect previewRectScreen = Rect.Empty;
+        if (preset.NormalizedRoi is { } normalized && !normalized.IsEmpty)
+        {
+            settings.NormalizedRoi = normalized;
+            settings.EnableRoi = preset.EnableRoi;
+            if (_captureManager != null)
+            {
+                var frameBounds = _captureManager.GetCaptureBounds(settings);
+                previewRectScreen = normalized.ToAbsolute(frameBounds);
+                settings.Roi = previewRectScreen.IsEmpty ? null : SerializableRect.FromRect(previewRectScreen);
+            }
+
+            ShowTransientRoiPreview(previewRectScreen);
+            AppendLog($"ROI slot {slotIndex + 1} applied ({trigger}).");
+        }
+        else
+        {
+            AppendLog($"ROI slot {slotIndex + 1} selected ({trigger}). Slot is empty.");
+        }
+
+        SyncRoiPresetSlotUi(settings);
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+        UpdateRoiStatus(settings);
+        await _settingsService.SaveAsync().ConfigureAwait(true);
+    }
+
+    private void SyncRoiPresetSlotUi(AppSettings settings)
+    {
+        EnsureRoiPresetSlots(settings);
+        _isApplyingRoiPresetSlotSelection = true;
+        try
+        {
+            RoiPresetSlotBox.SelectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+        }
+        finally
+        {
+            _isApplyingRoiPresetSlotSelection = false;
+        }
+    }
+
+    private void ShowTransientRoiPreview(Rect rectScreen)
+    {
+        if (rectScreen.IsEmpty || rectScreen.Width <= 0 || rectScreen.Height <= 0)
+        {
+            return;
+        }
+
+        _overlayPresenter?.ShowRoiPreview(rectScreen, RoiPresetPreviewDurationMs);
+        _pipeline?.UpdateHookRoiPreview(rectScreen);
+        _roiPresetPreviewClearTimer.Stop();
+        _roiPresetPreviewClearTimer.Start();
+    }
+
+    private static void EnsureRoiPresetSlots(AppSettings settings)
+    {
+        settings.RoiPresets ??= new List<RoiPreset>();
+        for (var i = settings.RoiPresets.Count; i < RoiPresetSlotCount; i++)
+        {
+            settings.RoiPresets.Add(new RoiPreset { SlotIndex = i });
+        }
+
+        if (settings.RoiPresets.Count > RoiPresetSlotCount)
+        {
+            settings.RoiPresets.RemoveRange(RoiPresetSlotCount, settings.RoiPresets.Count - RoiPresetSlotCount);
+        }
+
+        for (var i = 0; i < settings.RoiPresets.Count; i++)
+        {
+            settings.RoiPresets[i].SlotIndex = i;
+            if (settings.RoiPresets[i].NormalizedRoi is { } normalized)
+            {
+                settings.RoiPresets[i].NormalizedRoi = normalized.Clamp();
+            }
+        }
+
+        settings.ActiveRoiPresetIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
     }
 
     private async Task RunOnceAsync(ForceRunOptions options)
@@ -1116,12 +1264,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             }
             if (result == true && selector.SelectedRect is { } rect)
             {
+                EnsureRoiPresetSlots(settings);
                 settings.Roi = SerializableRect.FromRect(rect);
                 settings.NormalizedRoi = selector.SelectedNormalizedRect;
                 var roiWasDisabled = !settings.EnableRoi;
                 settings.EnableRoi = true;
+                var activeSlotIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+                var preset = settings.RoiPresets[activeSlotIndex];
+                preset.NormalizedRoi = selector.SelectedNormalizedRect;
+                preset.EnableRoi = true;
                 _mainWindowViewModel.Settings.LoadFrom(settings);
 
+                SyncRoiPresetSlotUi(settings);
                 UpdateRoiStatus(settings);
                 await _settingsService.SaveAsync().ConfigureAwait(true);
                 if (roiWasDisabled)
@@ -1129,7 +1283,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                     AppendLog("ROI enabled automatically.");
                 }
 
-                AppendLog("ROI updated.");
+                AppendLog($"ROI updated and saved to slot {activeSlotIndex + 1}.");
                 return;
             }
 
@@ -1181,10 +1335,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
+        EnsureRoiPresetSlots(settings);
         ReloadLlamaModelOptions(settings);
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
+        SyncRoiPresetSlotUi(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateRoiStatus(settings);
         _isApplyingSettings = false;
@@ -1194,21 +1350,23 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void UpdateRoiStatus(AppSettings settings)
     {
+        EnsureRoiPresetSlots(settings);
+        var slotLabel = $"slot {settings.ActiveRoiPresetIndex + 1}";
         if (!settings.EnableRoi)
         {
-            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = "ROI: disabled";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = $"ROI: disabled ({slotLabel})";
             return;
         }
 
         if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
-            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = "ROI: not set";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = $"ROI: not set ({slotLabel})";
             return;
         }
 
         var roi = settings.NormalizedRoi.Value;
         _mainWindowViewModel.RuntimeStatus.RoiStatusMessage =
-            $"ROI: {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
+            $"ROI ({slotLabel}): {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
     }
 
     private void UpdateTranslationStatus(AppSettings settings)
@@ -1366,7 +1524,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
     {
         // WHY: Rehydrate VM from normalized settings so invalid text input is corrected in bound controls.
+        EnsureRoiPresetSlots(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
+        SyncRoiPresetSlotUi(settings);
         _overlayWindow?.ApplyStyle(settings);
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
@@ -1548,6 +1708,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
                       $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
+                      $"RoiNext={FormatHotkey(config.NextRoiPresetKey, config.NextRoiPresetModifiers)}, " +
+                      $"RoiPrev={FormatHotkey(config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
                       $"Unlock={FormatHotkey(config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers)}, " +
                       $"Mirror={FormatHotkey(config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers)}, " +
@@ -1577,6 +1739,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             new("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9,
                 OnToggleSceneAutoTranslateHotkeyPressed),
             new("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed),
+            new("NextRoiPreset", config.NextRoiPresetKey, config.NextRoiPresetModifiers, 11, OnNextRoiPresetHotkeyPressed),
+            new("PreviousRoiPreset", config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers, 12, OnPreviousRoiPresetHotkeyPressed),
             new("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7,
                 OnLockCaptureWindowHotkeyPressed),
             new("UnlockWindow", config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, 8,
@@ -1603,6 +1767,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ParseModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers),
             ParseKey(settings.HotkeySelectRoiKey, Key.F6),
             ParseModifiers(settings.HotkeySelectRoiModifiers),
+            ParseKey(settings.HotkeyNextRoiPresetKey, Key.F6),
+            ParseModifiers(settings.HotkeyNextRoiPresetModifiers),
+            ParseKey(settings.HotkeyPreviousRoiPresetKey, Key.F6),
+            ParseModifiers(settings.HotkeyPreviousRoiPresetModifiers),
             ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
             ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
             ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F7),
@@ -1846,6 +2014,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ModifierKeys ToggleSceneAutoTranslateModifiers,
         Key SelectRoiKey,
         ModifierKeys SelectRoiModifiers,
+        Key NextRoiPresetKey,
+        ModifierKeys NextRoiPresetModifiers,
+        Key PreviousRoiPresetKey,
+        ModifierKeys PreviousRoiPresetModifiers,
         Key LockCaptureWindowKey,
         ModifierKeys LockCaptureWindowModifiers,
         Key UnlockCaptureWindowKey,
@@ -1862,6 +2034,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
+            yield return ("Next ROI slot", NextRoiPresetKey, NextRoiPresetModifiers);
+            yield return ("Previous ROI slot", PreviousRoiPresetKey, PreviousRoiPresetModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);
             yield return ("Unlock window", UnlockCaptureWindowKey, UnlockCaptureWindowModifiers);
             yield return ("Mirror fullscreen", ToggleMirrorFullscreenKey, ToggleMirrorFullscreenModifiers);
@@ -1882,6 +2056,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ModifierKeys.None,
             Key.F6,
             ModifierKeys.None,
+            Key.F6,
+            ModifierKeys.Shift,
+            Key.F6,
+            ModifierKeys.Control,
             Key.F7,
             ModifierKeys.None,
             Key.F7,

@@ -50,6 +50,7 @@ public partial class OverlayWindow : Window
     private const double DominantAxisBoostRatio = 0.90;
     private const double SecondaryAxisBoostRatio = 0.45;
     private readonly DispatcherTimer _toastTimer;
+    private readonly DispatcherTimer _roiPreviewTimer;
     private DateTime _lastToastAtUtc = DateTime.MinValue;
 
     private enum OverlayWritingMode
@@ -67,6 +68,8 @@ public partial class OverlayWindow : Window
         _toastTimer = new DispatcherTimer(DispatcherPriority.Background);
         _toastTimer.Interval = TimeSpan.FromMilliseconds(ToastDurationMs);
         _toastTimer.Tick += OnToastTimerTick;
+        _roiPreviewTimer = new DispatcherTimer(DispatcherPriority.Background);
+        _roiPreviewTimer.Tick += OnRoiPreviewTimerTick;
     }
 
     public void ApplyStyle(AppSettings settings)
@@ -243,6 +246,42 @@ public partial class OverlayWindow : Window
         OverlayCanvas.Opacity = visible ? 1.0 : 0.0;
     }
 
+    public void ShowRoiPreview(Rect rectDip, int durationMs)
+    {
+        if (RoiPreviewBorder == null)
+        {
+            return;
+        }
+
+        if (rectDip.IsEmpty || rectDip.Width <= 0 || rectDip.Height <= 0)
+        {
+            HideRoiPreview();
+            return;
+        }
+
+        RoiPreviewBorder.Width = rectDip.Width;
+        RoiPreviewBorder.Height = rectDip.Height;
+        Canvas.SetLeft(RoiPreviewBorder, rectDip.X);
+        Canvas.SetTop(RoiPreviewBorder, rectDip.Y);
+        RoiPreviewBorder.Visibility = Visibility.Visible;
+        _roiPreviewTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(1, durationMs));
+        _roiPreviewTimer.Stop();
+        _roiPreviewTimer.Start();
+    }
+
+    public void HideRoiPreview()
+    {
+        _roiPreviewTimer.Stop();
+        if (RoiPreviewBorder == null)
+        {
+            return;
+        }
+
+        RoiPreviewBorder.Visibility = Visibility.Collapsed;
+        RoiPreviewBorder.Width = 0;
+        RoiPreviewBorder.Height = 0;
+    }
+
     public bool TryPromoteTopMost(out string? reason)
     {
         reason = null;
@@ -409,6 +448,11 @@ public partial class OverlayWindow : Window
         {
             ToastContainer.Visibility = Visibility.Collapsed;
         }
+    }
+
+    private void OnRoiPreviewTimerTick(object? sender, EventArgs e)
+    {
+        HideRoiPreview();
     }
 
     private void UpdateBounds()

@@ -130,6 +130,16 @@ public sealed class OverlayPresenter
         });
     }
 
+    public void ShowRoiPreview(Rect screenRect, int durationMs = 1000)
+    {
+        InvokeOnUi("OverlayRoiPreview", measureRender: false, () =>
+        {
+            var mappedRect = MapScreenRect(screenRect) ?? screenRect;
+            var rectDip = DpiHelper.ScreenRectToWindowDip(_window, mappedRect);
+            _window.ShowRoiPreview(rectDip, durationMs);
+        });
+    }
+
     public void ShowLoadingSpinner(Rect anchor)
     {
         if (!_isEnabled)

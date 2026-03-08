@@ -13,6 +13,7 @@ internal sealed class AppSettingsValidator
         _rules = new ISettingsRule[]
         {
             new HotkeyDefaultsRule(),
+            new RoiPresetSettingsRule(),
             new SceneSemanticSettingsRule(),
             new WritingModeSettingsRule(),
             new SmallBoxReadabilitySettingsRule(),
