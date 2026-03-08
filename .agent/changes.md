@@ -17136,3 +17136,80 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
 - g で旧  .5 下限が対象箇所に残っていないことを確認。
+**2026-03-09 02:30 (Asia/Taipei) — レトロゲーム向けHSV単一点採色案を追加**
+
+### Summary
+- レトロゲーム前提の 1ピクセル採色 + 内部固定幅HSV + 任意の縁色合成 実装案を追加した。
+
+### Context / Goal
+- 近傍サンプリングやHSV微調整UIを避け、色数が安定したレトロゲーム向けにUIを簡潔化したい。
+- 単一点採色を入口にしつつ、内部では完全一致ではなく固定幅のHSV抽出で壊れにくさを確保する。
+
+### Changes
+- レトロゲーム向け専用のHSV色抽出MVP案を新規ドキュメント化した。
+- Fill色とOutline色の2マスクを OR 合成する方針を定義した。
+- UIは Pick Fill Color / Pick Outline Color 中心で、HSVスライダーを出さない方針を明記した。
+
+### Files Touched
+- Doc/RetroGame_HsvSinglePixelPick_Implementation_Plan.md — 単一点採色ベースのレトロゲーム向けHSV抽出実装案を追加。
+
+### Behavioral Impact
+- コード挙動への影響はない。今後のレトロゲーム向けHSV抽出実装の前提仕様が明確になる。
+
+### Risk & Mitigation
+- Risk: ドキュメントのみで実装は未着手のため、実コードとの差分が今後発生する可能性。
+- Mitigation: MVP範囲を単純化し、非ゴールを明記して過剰実装を避ける方針にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-03-09 02:34 (Asia/Taipei) — レトロゲーム向けHSV単一点採色案を日本語化**
+
+### Summary
+- RetroGame_HsvSinglePixelPick_Implementation_Plan.md を日本語へ書き直した。
+
+### Context / Goal
+- 追加済みの実装案ドキュメントを、日本語でそのまま参照・実装判断できる状態にする。
+- 内容は維持しつつ、レトロゲーム前提の仕様を日本語で明確化する。
+
+### Changes
+- 英文だったドキュメント全体を日本語へ置き換えた。
+- 構成は維持し、ゴール / 非ゴール / 実装手順 / リスクを日本語で整理した。
+
+### Files Touched
+- Doc/RetroGame_HsvSinglePixelPick_Implementation_Plan.md — レトロゲーム向けHSV単一点採色案を日本語化。
+
+### Behavioral Impact
+- コード挙動への影響はない。ドキュメントの可読性のみ改善される。
+
+### Risk & Mitigation
+- Risk: 翻訳時に技術意図が変わる可能性。
+- Mitigation: 元の構成とMVP範囲は維持し、内容追加は行っていない。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-03-09 03:05 (Asia/Taipei) — レトロ字幕色抽出案を2クリック自動判定仕様へ更新**
+
+### Summary
+- RetroGame_HsvSinglePixelPick_Implementation_Plan.md を、2クリック自動判定のUI仕様へ更新した。
+
+### Context / Goal
+- 縁色用の別チェックや確定操作をなくし、有効化 + 採色ボタン + 最大2クリック の最小UIに整理する。
+- 同色なら単色、異色なら2色合成と自動判定する仕様を明文化する。
+
+### Changes
+- UI案を Pick Subtitle Color 1ボタン構成へ変更した。
+- ColorA / ColorB ベースの内部モデルと、自動判定ルールを追加した。
+- 実装手順、DoD、MVP を 最大2クリック + 自動判定 前提に更新した。
+
+### Files Touched
+- Doc/RetroGame_HsvSinglePixelPick_Implementation_Plan.md — 2クリック自動判定の最小UI仕様へ更新。
+
+### Behavioral Impact
+- コード挙動への影響はない。今後の実装前提仕様が、より簡潔なUI方針へ更新される。
+
+### Risk & Mitigation
+- Risk: 1回クリックで終了する操作や、2回目未取得時の終了条件が実装時に曖昧になる可能性。
+- Mitigation: ドキュメント上は 1回でも成立、2回目取得で自動終了 を明記し、実装時に入力終了条件を別途詰める前提にした。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
