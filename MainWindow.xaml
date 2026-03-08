@@ -67,7 +67,7 @@
                         <Grid Margin="0,6,0,0" HorizontalAlignment="Left">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="240" />
+                                <ColumnDefinition Width="280" />
                                 <ColumnDefinition Width="80" />
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
