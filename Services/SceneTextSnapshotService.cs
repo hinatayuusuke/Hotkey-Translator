@@ -158,7 +158,7 @@ public sealed class SceneTextSnapshotService
         return
             $"{settings.OcrEngine}|{settings.EnableRoi}|{settings.NormalizedRoi?.X:0.####},{settings.NormalizedRoi?.Y:0.####}," +
             $"{settings.NormalizedRoi?.Width:0.####},{settings.NormalizedRoi?.Height:0.####}|{settings.SourceLanguage}|{settings.TargetLanguage}|" +
-            $"{settings.EnableOcrBinarization}|{settings.OcrBinarizationThreshold}|{settings.EnableOcrAutoThreshold}|{settings.EnableOcrAutoInvert}|" +
+            $"{settings.EnableOcrBinarization}|{settings.OcrBinarizationThreshold}|{settings.EnableOcrAutoThreshold}|" +
             $"{settings.EnableOcrGamma}|{settings.OcrGamma:0.####}|{settings.EnableOcrGrayscale}|{settings.EnableOcrContrast}|{settings.OcrContrast:0.####}|" +
             $"{settings.EnableOcrDownsampling}|{settings.OcrDownsampleScale:0.####}|" +
             $"{settings.EnableOcrTwoPass}|{settings.OcrTwoPassLowThreshold}|{settings.OcrTwoPassHighThreshold}|{settings.OcrTwoPassPreferAuto}|" +

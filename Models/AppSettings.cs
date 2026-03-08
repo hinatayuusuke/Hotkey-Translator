@@ -68,7 +68,6 @@ public sealed class AppSettings
     public bool EnableOcrBinarization { get; set; } = false;
     public int OcrBinarizationThreshold { get; set; } = 160;
     public bool EnableOcrAutoThreshold { get; set; } = false;
-    public bool EnableOcrAutoInvert { get; set; } = false;
     public bool EnableOcrGamma { get; set; } = false;
     public double OcrGamma { get; set; } = 1.0;
     public bool EnableOcrGrayscale { get; set; } = false;

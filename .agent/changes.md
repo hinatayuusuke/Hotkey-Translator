@@ -17049,3 +17049,62 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
 - 実機UI操作・hotkey挙動の手動確認は未実施。
+**2026-03-09 01:56 (Asia/Taipei) — HSVクリック採色の実装案を追加**
+
+### Summary
+- クリック採色を起点にした HSV 自動抽出のMVP実装案ドキュメントを追加した。
+
+### Context / Goal
+- 色付き字幕向けに、手動HSV調整だけでは使いにくい前処理の導入方針を整理する。
+- 1ピクセル依存ではなく、近傍サンプリングから HSV 閾値を自動初期化する案を明文化する。
+
+### Changes
+- Pick Subtitle Color を起点にした HSV 自動抽出の設計方針をドキュメント化した。
+- ゴール / 非ゴール、設定項目、前処理順序、実装ステップ、リスクを整理した。
+- MVP を 単一HSVマスク + 近傍サンプリング + 手動微調整併用 に限定した。
+
+### Files Touched
+- Doc/HSV_ColorPick_AutoExtraction_Implementation_Plan.md — クリック採色ベースの HSV 自動抽出実装案を新規追加。
+
+### Behavioral Impact
+- コード挙動への影響はない。今後の HSV 色抽出実装の前提仕様が明確になる。
+
+### Risk & Mitigation
+- Risk: ドキュメントのみで実装は未着手のため、実コードとの差分が今後発生する可能性。
+- Mitigation: MVP 範囲と非ゴールを明示し、過剰実装を避ける方針にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-03-09 02:03 (Asia/Taipei) — OCR Auto Invert を削除**
+
+### Summary
+- OCR前処理の Auto invert 設定と実装を削除した。
+
+### Context / Goal
+- Auto invert (dark background) は平均輝度ベースの粗い補助機能で、現状の前処理設計では価値が薄い。
+- Otsu は残しつつ、意味の薄い Auto invert だけを先に整理する。
+
+### Changes
+- AppSettings と SettingsViewModel から EnableOcrAutoInvert を削除した。
+- OCR Settings UI から Auto invert (dark background) チェックボックスを削除した。
+- OcrPreprocessService の平均輝度ベース反転ロジックを削除した。
+- SceneTextSnapshotService の前処理シグネチャから EnableOcrAutoInvert を除外した。
+
+### Files Touched
+- Models/AppSettings.cs — EnableOcrAutoInvert 設定を削除。
+- ViewModels/SettingsViewModel.cs — ViewModel の読込/保存/自動保存トリガから EnableOcrAutoInvert を削除。
+- MainWindow.xaml — OCR preprocess UI から Auto invert チェックボックスを削除。
+- Services/OcrPreprocessService.cs — 平均輝度ベースの自動反転処理を削除。
+- Services/SceneTextSnapshotService.cs — 前処理差分キーから EnableOcrAutoInvert を削除。
+
+### Behavioral Impact
+- OCR二値化では Auto threshold (Otsu) と手動 threshold のみが残る。
+- 暗背景時の自動白黒反転は行われなくなる。
+
+### Risk & Mitigation
+- Risk: 一部の暗背景字幕で従来より二値化結果が変わる可能性。
+- Mitigation: Otsu と手動 threshold は維持し、今後は HSV 抽出など意味の明確な前処理へ寄せる。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+- g -n --hidden "EnableOcrAutoInvert|EnableOcrAutoInvertCheck|Auto invert \(dark background\)" . でコード側残骸がないことを確認（.Doc/ の旧メモ除く）。

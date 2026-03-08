@@ -67,7 +67,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableOcrPerfLog;
     [ObservableProperty] private bool _enableOcrBinarization;
     [ObservableProperty] private bool _enableOcrAutoThreshold;
-    [ObservableProperty] private bool _enableOcrAutoInvert;
     [ObservableProperty] private bool _enableOcrGamma;
     [ObservableProperty] private bool _enableOcrGrayscale;
     [ObservableProperty] private bool _enableOcrContrast;
@@ -201,7 +200,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableOcrPerfLog = settings.EnableOcrPerfLog;
             EnableOcrBinarization = settings.EnableOcrBinarization;
             EnableOcrAutoThreshold = settings.EnableOcrAutoThreshold;
-            EnableOcrAutoInvert = settings.EnableOcrAutoInvert;
             EnableOcrGamma = settings.EnableOcrGamma;
             EnableOcrGrayscale = settings.EnableOcrGrayscale;
             EnableOcrContrast = settings.EnableOcrContrast;
@@ -329,7 +327,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableOcrPerfLog = EnableOcrPerfLog;
         settings.EnableOcrBinarization = EnableOcrBinarization;
         settings.EnableOcrAutoThreshold = EnableOcrAutoThreshold;
-        settings.EnableOcrAutoInvert = EnableOcrAutoInvert;
         settings.EnableOcrGamma = EnableOcrGamma;
         settings.EnableOcrGrayscale = EnableOcrGrayscale;
         settings.EnableOcrContrast = EnableOcrContrast;
@@ -582,7 +579,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableOcrPerfLogChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrBinarizationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrAutoThresholdChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnEnableOcrAutoInvertChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrGammaChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrGrayscaleChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrContrastChanged(bool value) => RequestSaveOnValueChange();

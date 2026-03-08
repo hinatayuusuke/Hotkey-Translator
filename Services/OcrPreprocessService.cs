@@ -382,9 +382,6 @@ public sealed class OcrPreprocessService
                 threshold = ComputeOtsuThreshold(histogram, pixelCount, threshold);
             }
 
-            // WHY: Mean luminance provides a cheap signal for dark backgrounds with bright text.
-            var invert = settings.EnableOcrAutoInvert && pixelCount > 0 && (sumLuma / (double)pixelCount) < 128.0;
-
             for (var y = 0; y < height; y++)
             {
                 var inputRow = inputStride < 0 ? (height - 1 - y) * inputRowBytes : y * inputRowBytes;
@@ -396,10 +393,6 @@ public sealed class OcrPreprocessService
                     var g = inputBuffer[inputIndex + 1];
                     var r = inputBuffer[inputIndex + 2];
                     var luma = (int)((0.299 * r) + (0.587 * g) + (0.114 * b));
-                    if (invert)
-                    {
-                        luma = 255 - luma;
-                    }
                     var v = (byte)(luma >= threshold ? 255 : 0);
 
                     var outputIndex = outputRow + (x * 4);

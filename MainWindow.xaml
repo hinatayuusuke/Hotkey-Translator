@@ -451,9 +451,6 @@
                                 <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrAutoThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrAutoInvertCheck" Content="Auto invert (dark background)" Margin="0,4,0,0"
-                                          IsEnabled="{Binding Settings.EnableOcrBinarization}"
-                                          IsChecked="{Binding Settings.EnableOcrAutoInvert, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrGrayscaleCheck" Content="Enable grayscale conversion" Margin="0,4,0,0"
