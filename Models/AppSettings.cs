@@ -260,8 +260,8 @@ public sealed class AppSettings
     public int LlamaGpuLayers { get; set; } = 999;
     public int LlamaThreads { get; set; } = 4;
     public int LlamaParallel { get; set; } = 1;
-    public int LlamaBatchSize { get; set; } = 4096;
-    public int LlamaMaxTokens { get; set; } = 4096;
+    public int LlamaBatchSize { get; set; } = 2048;
+    public int LlamaMaxTokens { get; set; } = 2048;
     public double LlamaTemperature { get; set; } = 0.3;
     public double LlamaTopP { get; set; } = 0.6;
     public int LlamaTopK { get; set; } = 20;
