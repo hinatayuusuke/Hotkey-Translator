@@ -632,7 +632,7 @@
                                     <TextBlock Text="Downsample scale" Width="150" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrDownsampleScaleSlider"
                                             Width="180"
-                                            Minimum="0.5"
+                                            Minimum="0.3"
                                             Maximum="1.0"
                                             IsSnapToTickEnabled="True"
                                             TickFrequency="0.05"

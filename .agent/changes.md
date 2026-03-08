@@ -17108,3 +17108,31 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
 - g -n --hidden "EnableOcrAutoInvert|EnableOcrAutoInvertCheck|Auto invert \(dark background\)" . でコード側残骸がないことを確認（.Doc/ の旧メモ除く）。
+**2026-03-09 02:10 (Asia/Taipei) — OCR downsampling 下限を 30% に拡張**
+
+### Summary
+- OCR downsampling の最小値を 0.5 から 0.3 へ広げた。
+
+### Context / Goal
+- より強い縮小率を試せるようにし、OCR入力のダウンサンプリング設定幅を拡張する。
+- UI 表示値と実処理側のクランプを一致させる。
+
+### Changes
+- OCR Settings の downsample scale slider 最小値を  .3 に変更した。
+- OCR前処理コーディネーターの実行時クランプ下限を  .3 に変更した。
+
+### Files Touched
+- MainWindow.xaml — downsample scale slider の最小値を 0.3 に変更。
+- Services/OcrPreprocessCoordinator.cs — OcrDownsampleScale のクランプ下限を 0.3 に変更。
+
+### Behavioral Impact
+- Enable Ocr Downsampling 有効時、OCR入力を 30% まで縮小できるようになる。
+- 0.3 未満の値は実行時に 0.3 へクランプされる。
+
+### Risk & Mitigation
+- Risk: 縮小しすぎると小さい文字の認識率が落ちる可能性。
+- Mitigation: 設定は任意機能のままとし、ユーザが元の高い縮小率へ戻せるようにしている。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+- g で旧  .5 下限が対象箇所に残っていないことを確認。

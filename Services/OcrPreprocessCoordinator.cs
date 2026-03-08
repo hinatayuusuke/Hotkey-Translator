@@ -177,7 +177,7 @@ public sealed class OcrPreprocessCoordinator
             return new OcrInputState(roiBitmap, 1.0, 1.0, false);
         }
 
-        var scale = Math.Clamp(settings.OcrDownsampleScale, 0.5, 1.0);
+        var scale = Math.Clamp(settings.OcrDownsampleScale, 0.3, 1.0);
         if (scale >= 1.0)
         {
             return new OcrInputState(roiBitmap, 1.0, 1.0, false);
