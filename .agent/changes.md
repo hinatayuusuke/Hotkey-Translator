@@ -4711,7 +4711,8 @@ aw_tokens > soft_no_split_tokens.
 
 ### Tests / Verification
 - dotnet build -nologo 実行成功（0 error / 0 warning）。
-- g -n "OnRestartLlamaCpp|OnStopLlamaServer|Restart Llama.cpp|Stop llama-server" MainWindow.xaml MainWindow.xaml.cs でイベント接続を確認。
+- 
+g -n "OnRestartLlamaCpp|OnStopLlamaServer|Restart Llama.cpp|Stop llama-server" MainWindow.xaml MainWindow.xaml.cs でイベント接続を確認。
 
 **2026-02-07 22:04 (Asia/Taipei) — Tighten Llama batch prompts for JSON compliance**
 
@@ -4744,7 +4745,8 @@ aw_tokens > soft_no_split_tokens.
 **2026-02-07 23:17 (Asia/Taipei) — Add JSON schema response_format for multi-item Llama batches**
 
 ### Summary
-- llama_engine.py の複数件バッチ送信に esponse_format(json_schema) を追加しました。
+- llama_engine.py の複数件バッチ送信に 
+esponse_format(json_schema) を追加しました。
 
 ### Context / Goal
 - 小型モデルでJSON崩れが発生しやすいため、下流生成をスキーマ制約で安定化したい。
@@ -4756,15 +4758,18 @@ aw_tokens > soft_no_split_tokens.
 - WHY コメントを追加し、複数件時のみ制約を掛ける意図を明示。
 
 ### Files Touched
-- TranslationServiceLlama/llama_engine.py — 複数件バッチの esponse_format(json_schema) 追加とスキーマ定義関数を実装。
+- TranslationServiceLlama/llama_engine.py — 複数件バッチの 
+esponse_format(json_schema) 追加とスキーマ定義関数を実装。
 
 ### Behavioral Impact
 - 複数件翻訳リクエストで、llama-server の構造化出力制約が有効になる。
-- 単一件翻訳では従来どおり esponse_format を付与せず挙動維持。
+- 単一件翻訳では従来どおり 
+esponse_format を付与せず挙動維持。
 - 既存のJSONパース失敗時フォールバック（分割/空文字）は維持。
 
 ### Risk & Mitigation
-- Risk: 一部 llama-server 実装差異で esponse_format 未対応の場合、HTTPエラーとなる可能性。
+- Risk: 一部 llama-server 実装差異で 
+esponse_format 未対応の場合、HTTPエラーとなる可能性。
 - Mitigation: 既存の例外処理と分割フォールバック経路を維持し、失敗時は段階的に縮小して処理継続。
 
 ### Tests / Verification
@@ -4808,7 +4813,8 @@ aw_tokens > soft_no_split_tokens.
 - DoDで検証可能な条件を追加し、実装・確認の着地点を揃えたい。
 
 ### Changes
-- インターフェース設計に、単件時は esponse_format / grammar を送らない方針を追記。
+- インターフェース設計に、単件時は 
+esponse_format / grammar を送らない方針を追記。
 - 実装手順に、単件レスポンスはJSONパーサーを通さない手順を追記。
 - Definition of Doneに、単件送信ログで制約未付与を確認する条件を追加。
 
@@ -4835,8 +4841,10 @@ aw_tokens > soft_no_split_tokens.
 - 単件翻訳ではJSON制約を外し、構文出力の露出を抑えたい。
 
 ### Changes
-- _translate_batch_once を分岐化し、len(texts)==1 は esponse_format/grammar を付けない単件プレーン翻訳へ変更。
-- 複数件は 1回目 esponse_format(json_schema)、失敗時のみ 2回目 grammar で再送する段階実行へ変更。
+- _translate_batch_once を分岐化し、len(texts)==1 は 
+esponse_format/grammar を付けない単件プレーン翻訳へ変更。
+- 複数件は 1回目 
+esponse_format(json_schema)、失敗時のみ 2回目 grammar で再送する段階実行へ変更。
 - 出力スキーマを短縮キー 	/i/x に変更し、旧キー 	ranslations/index/translated_text も互換受理。
 - パーサーを救済強化（コードフェンス除去、最外JSON抽出、エスケープ改行正規化、余剰 } 切り詰め、JSON文字列の再デコード）。
 - 段階別ログを追加（plain_single_success, schema_success, grammar_fallback_success, parser_rescue_success, split_fallback）。
@@ -6143,11 +6151,13 @@ aw_tokens > soft_no_split_tokens.
 - 既存の IReadOnlyDictionary<string,string> 契約を維持して他プロバイダへの影響を避けたい。
 
 ### Changes
-- Services/GeminiClient.cs の esponseSchema を {"translations":["..."]} へ最小化。
+- Services/GeminiClient.cs の 
+esponseSchema を {"translations":["..."]} へ最小化。
 - パース処理を配列ベースへ変更し、TryParseTranslations で順序保持リストを取得。
 - RemapByIndex を追加し、min(texts.Count, translations.Count) の先頭N部分適用で辞書に再マップ。
 - 空要素は辞書へ入れず原文フォールバックに倒す仕様を実装。
-- raw dump を失敗時/短件数時のみ保存する条件付きに変更し、保存理由（eason）をメタ情報へ追加。
+- raw dump を失敗時/短件数時のみ保存する条件付きに変更し、保存理由（
+eason）をメタ情報へ追加。
 - Geminiログを status, latency, count(in/out) 中心の最小ログへ整理。
 
 ### Files Touched
@@ -9267,7 +9277,8 @@ ull logger が固定されていた。
 - 原因は markdown fallback により ox=[0,0,1,1] が返ることだったため、PaddleOCR-VLの実出力形式を正しくパースする。
 
 ### Changes
-- OcrServiceVL/ocr_vl_engine.py の _parse_page_dict に es ラッパー辞書の再帰処理を追加。
+- OcrServiceVL/ocr_vl_engine.py の _parse_page_dict に 
+es ラッパー辞書の再帰処理を追加。
 - parsing_res_list（lock_content + lock_bbox / lock_polygon_points）のパース処理を追加。
 - lock_bbox の xyxy / xywh を吸収する _bbox_to_ltrbwh を追加。
 - 既存 lines / ocr_res / rec_texts+polys パースは維持し、互換性を確保。
@@ -9285,7 +9296,8 @@ ull logger が固定されていた。
 
 ### Tests / Verification
 - uv run --project OcrServiceVL python OcrServiceVL/test_ocr_vl_engine.py "OcrServiceVL/test2.png" --device gpu:0 --pipeline-version v1.5 --max-pixels 500000 --layout-threshold 0.5 --max-new-tokens 512 --merge-layout-blocks --use-ocr-for-image-block --use-layout-detection --no-enable-hpi --no-use-tensorrt --precision fp16 --output-json "OcrServiceVL/outputs/ocr_vl_result.json" --pretty --traceback
-- 結果確認: ecognized_lines=1、ox=[-14.0, 13.0, 1152.0, 208.0]（1x1 fallback ではない）。
+- 結果確認: 
+ecognized_lines=1、ox=[-14.0, 13.0, 1152.0, 208.0]（1x1 fallback ではない）。
 **2026-02-14 16:36 (Asia/Taipei) — OCR gRPC上限/自動縮小 共通対策の実装案作成**
 
 ### Summary
@@ -10225,7 +10237,8 @@ ull logger が固定されていた。
 
 ### Risk & Mitigation
 - Risk: 通知カテゴリの境界が実装時に曖昧化する可能性。
-- Mitigation: 通知コード体系（untime.fallback.* など）を計画内で定義し、発火点を固定する。
+- Mitigation: 通知コード体系（
+untime.fallback.* など）を計画内で定義し、発火点を固定する。
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）。
@@ -11069,14 +11082,16 @@ ull logger が固定されていた。
 **2026-02-15 20:14 (Asia/Taipei) — overlayUpdate base64 decode 失敗の修正（JSONエスケープ対応）**
 
 ### Summary
-- HookHost 側で ectsB64 が JSON エスケープ（例: \/ や \u002B）されている場合でも正しくデコードできるようにした。
+- HookHost 側で 
+ectsB64 が JSON エスケープ（例: \/ や \u002B）されている場合でも正しくデコードできるようにした。
 
 ### Context / Goal
 - stage=dx11_hook event=hook_state state=Failed reason=overlay_decode_failed が継続し、HookAgent 側へ矩形コマンドが渡らず枠描画が動かない。
 - C# から送る base64 文字列が JSON でエスケープされる場合、現状の HookHost 実装（生文字列抽出）では base64 として不正になり得る。
 
 ### Changes
-- HookHost: ectsB64 を base64 decode 前に JSON 文字列として unescape（\/, \\, \uXXXX など最小対応）。
+- HookHost: 
+ectsB64 を base64 decode 前に JSON 文字列として unescape（\/, \\, \uXXXX など最小対応）。
 - unescape 失敗時は overlay_unescape_failed を返す。
 
 ### Files Touched
@@ -11087,7 +11102,8 @@ ull logger が固定されていた。
 
 ### Risk & Mitigation
 - Risk: 簡易パーサのため、非ASCIIや複雑なエスケープを含む文字列は弾く。
-- Mitigation: v1 の ectsB64 は base64（ASCII）前提なので仕様上問題になりにくい。
+- Mitigation: v1 の 
+ectsB64 は base64（ASCII）前提なので仕様上問題になりにくい。
 
 ### Tests / Verification
 - cmake --build Native/build --config Release: 成功。
@@ -12632,10 +12648,12 @@ dl_ocr_engine.py.
 
 ### Context / Goal
 - User requested only two changes: execution time breakdown logging and minimal parallelization.
-- Keep output compatibility (ecognize JSON schema) while improving observability and throughput.
+- Keep output compatibility (
+ecognize JSON schema) while improving observability and throughput.
 
 ### Changes
-- Added timing measurement in ecognize() for decode, detect+select, recognize, and total elapsed time.
+- Added timing measurement in 
+ecognize() for decode, detect+select, recognize, and total elapsed time.
 - Added _log_timing_summary() to emit one structured summary log line to stderr per recognition call.
 - Added minimal parallelization for line recognition via ThreadPoolExecutor (CPU only, max workers capped).
 - Refactored per-line OCR path into _recognize_line() and preserved deterministic output ordering by line index.
@@ -12644,7 +12662,8 @@ dl_ocr_engine.py.
 - NDLOCR/ndl_ocr_engine.py — added timing instrumentation, minimal CPU parallel line OCR, and structured timing summary logging.
 
 ### Behavioral Impact
-- ecognize() now outputs timing summary logs to stderr by default.
+- 
+ecognize() now outputs timing summary logs to stderr by default.
 - CPU mode may process multiple detected lines concurrently (up to 2 workers by default).
 - JSON output format/content contract remains unchanged.
 
@@ -12815,7 +12834,8 @@ dl_ocr_engine.py.
 - 既存モデルが固定 atch=1 の場合でもクラッシュせず動作を維持する必要がある。
 
 ### Changes
-- ecognize() に CUDA専用の認識経路 _recognize_items_batched() を追加。
+- 
+ecognize() に CUDA専用の認識経路 _recognize_items_batched() を追加。
 - pred_char_count に基づき rec30/rec50/rec100 へ振り分け、既存カスケード閾値（25/45）を維持したまま段階実行。
 - _build_line_result() を追加し、単発経路とバッチ経路の出力整合を統一。
 - _parseq_read_batch_with_score() と _decode_parseq_logits_with_score() を追加。
@@ -12828,7 +12848,8 @@ dl_ocr_engine.py.
 ### Behavioral Impact
 - CUDA時の認識処理は単発ループからモデル別集約フローへ変更。
 - 既存PARSeq（固定batch=1）では安全に逐次実行へフォールバックするため、挙動互換を維持。
-- ログに ecognize_batch の1行が追加され、ボトルネック分析がしやすくなった。
+- ログに 
+ecognize_batch の1行が追加され、ボトルネック分析がしやすくなった。
 
 ### Risk & Mitigation
 - Risk: モデル入力shapeの解釈誤りで不正なバッチ投入となる可能性。
@@ -13091,7 +13112,8 @@ dl_ocr_engine.py.
 - Reduce loop-like duplicate lines before gRPC response to stabilize downstream diff/translation/overlay behavior.
 
 ### Changes
-- Added line dedup stage in ecognize() after per-line recognition and before JSON serialization.
+- Added line dedup stage in 
+ecognize() after per-line recognition and before JSON serialization.
 - Implemented duplicate predicate with two gates: bbox IoU and normalized text similarity (SequenceMatcher).
 - Dedup keeps highest-confidence candidate by evaluating candidates in descending confidence order.
 - Re-assigned stable sequential id after dedup and restored deterministic output ordering by (y, x).
@@ -14513,7 +14535,8 @@ dl_ocr_engine.py.
 - ROI枠だけ表示し、旧テキスト復活を防ぐ必要があった。
 
 ### Changes
-- UpdateHookRoiPreview の oi_preview_update 経路で overlayItems を常に空配列に固定。
+- UpdateHookRoiPreview の 
+oi_preview_update 経路で overlayItems を常に空配列に固定。
 - WHYコメントを追加し、ROIプレビュー時はテキスト再配信しない意図を明記。
 
 ### Files Touched
@@ -14525,7 +14548,8 @@ dl_ocr_engine.py.
 
 ### Risk & Mitigation
 - Risk: ROIプレビュー中にテキストを同時表示したい用途では表示されなくなる。
-- Mitigation: 変更は oi_preview_update のみで、通常配信経路は維持。必要なら将来フラグで切替可能。
+- Mitigation: 変更は 
+oi_preview_update のみで、通常配信経路は維持。必要なら将来フラグで切替可能。
 
 ### Tests / Verification
 - dotnet build Hotkey-Translator.sln を実行し、0 warnings / 0 errors を確認。
@@ -14768,7 +14792,8 @@ dl_ocr_engine.py.
 - 中国語（簡体/繁体）とロシア語を指定可能にする必要があった。
 
 ### Changes
-- C# 側 ResolvePaddleLanguage を拡張し、zh-* を ch / chinese_cht に、u* を cyrillic に正規化。
+- C# 側 ResolvePaddleLanguage を拡張し、zh-* を ch / chinese_cht に、
+u* を cyrillic に正規化。
 - Python 側 OcrService/ocr_engine.py の最終 lang_for_engine 解決を同ルールへ更新し、C#から渡したタグが en に潰れないように修正。
 
 ### Files Touched
@@ -14778,12 +14803,14 @@ dl_ocr_engine.py.
 - OcrService/ocr_engine.py — PaddleOCR 初期化時の lang_for_engine マッピングを拡張。
 
 ### Behavioral Impact
-- SourceLanguage=zh-CN は ch、zh-TW/zh-HK/zh-MO/zh-Hant は chinese_cht、u は cyrillic として PaddleOCR に渡る。
+- SourceLanguage=zh-CN は ch、zh-TW/zh-HK/zh-MO/zh-Hant は chinese_cht、
+u は cyrillic として PaddleOCR に渡る。
 - gRPCホスト引数・gRPC実行時リクエスト・Python側内部正規化が同じ判定ルールで動作する。
 
 ### Risk & Mitigation
 - Risk: SourceLanguage の表記ゆれ（例: 非標準タグ）で期待外の en へ落ちる可能性。
-- Mitigation: zh-Hant-* / zh-TW/HK/MO / u-* を明示的に許容し、その他は従来どおり en へ安全フォールバック。
+- Mitigation: zh-Hant-* / zh-TW/HK/MO / 
+u-* を明示的に許容し、その他は従来どおり en へ安全フォールバック。
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
@@ -14814,7 +14841,8 @@ dl_ocr_engine.py.
 - Mitigation: 参照ゼロ確認後に削除し、dotnet build で回帰を確認。
 
 ### Tests / Verification
-- g -n "PaddleOcrProvider|paddle_ocr_bridge.py" Services Models ViewModels MainWindow.xaml.cs MainWindow.xaml で参照なしを確認。
+- 
+g -n "PaddleOcrProvider|paddle_ocr_bridge.py" Services Models ViewModels MainWindow.xaml.cs MainWindow.xaml で参照なしを確認。
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
 **2026-03-02 01:18 (Asia/Taipei) — Unify Paddle model normalization and auto model selection**
 
@@ -14850,7 +14878,8 @@ dl_ocr_engine.py.
 
 ### Tests / Verification
 - dotnet build -p:UseAppHost=false 実行成功（0 warnings / 0 errors）。
-- g -n "PaddleModelResolver" Services/PaddleGrpcHost.cs Services/PaddleGrpcOcrProvider.cs Services/Settings/Rules/PaddleOcrSettingsRule.cs で置換経路を確認。
+- 
+g -n "PaddleModelResolver" Services/PaddleGrpcHost.cs Services/PaddleGrpcOcrProvider.cs Services/Settings/Rules/PaddleOcrSettingsRule.cs で置換経路を確認。
 **2026-03-02 01:23 (Asia/Taipei) — Drop legacy-style Paddle model remap and keep strict allowlist guard**
 
 ### Summary
@@ -15245,7 +15274,8 @@ dl_ocr_engine.py.
 **2026-03-03 10:36 (Asia/Taipei) — Add elevated helper flow for WinRT OCR language-pack install**
 
 ### Summary
-- WinRT OCR言語パック導入を unas 昇格ヘルパー経由に切り替え、非管理者本体のまま導入できるようにした。
+- WinRT OCR言語パック導入を 
+unas 昇格ヘルパー経由に切り替え、非管理者本体のまま導入できるようにした。
 
 ### Context / Goal
 - 非管理者での Add-WindowsCapability 実行が権限不足で失敗するため、必要時のみUAC昇格する経路に変更する。
@@ -15255,14 +15285,16 @@ dl_ocr_engine.py.
 - 昇格専用ヘルパープロジェクト WinRtLanguagePackElevator を新規追加。
 - ヘルパーは --capability 引数のみ受け付け、Language.OCR~~~<locale>~0.0.1.0 形式以外を拒否。
 - ヘルパー内で PowerShell Add-WindowsCapability を実行し、失敗時は DISM へフォールバック。
-- WindowsCapabilityInstaller を更新し、unas でヘルパーを起動（exe優先、無い場合は dotnet <dll> で起動）。
+- WindowsCapabilityInstaller を更新し、
+unas でヘルパーを起動（exe優先、無い場合は dotnet <dll> で起動）。
 - Hotkey-Translator.csproj にヘルパープロジェクト参照を追加し、通常ビルドで同時ビルドされるようにした。
 - Hotkey-Translator.sln にヘルパープロジェクトを追加。
 
 ### Files Touched
 - Tools/WinRtLanguagePackElevator/WinRtLanguagePackElevator.csproj — 昇格ヘルパーの新規プロジェクト定義を追加。
 - Tools/WinRtLanguagePackElevator/Program.cs — capability検証と導入実行ロジックを追加。
-- Services/WindowsCapabilityInstaller.cs — 非昇格実行を廃止し、unas ヘルパー起動へ変更。
+- Services/WindowsCapabilityInstaller.cs — 非昇格実行を廃止し、
+unas ヘルパー起動へ変更。
 - Hotkey-Translator.csproj — ヘルパープロジェクト参照を追加。
 - Hotkey-Translator.sln — ヘルパープロジェクトを追加。
 
@@ -15310,7 +15342,8 @@ dl_ocr_engine.py.
 - WinRT言語パック導入時にアプリ内モーダル進捗表示（%）を追加し、完了/失敗メッセージを明確化した。
 
 ### Context / Goal
-- unas 実行では親プロセスで標準出力を直接読めないため、導入中の状態がユーザーに見えづらかった。
+- 
+unas 実行では親プロセスで標準出力を直接読めないため、導入中の状態がユーザーに見えづらかった。
 - 導入中モーダルとパーセント進捗を表示し、成功/失敗の結果を明示する。
 
 ### Changes
@@ -17107,7 +17140,8 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
-- g -n --hidden "EnableOcrAutoInvert|EnableOcrAutoInvertCheck|Auto invert \(dark background\)" . でコード側残骸がないことを確認（.Doc/ の旧メモ除く）。
+- 
+g -n --hidden "EnableOcrAutoInvert|EnableOcrAutoInvertCheck|Auto invert \(dark background\)" . でコード側残骸がないことを確認（.Doc/ の旧メモ除く）。
 **2026-03-09 02:10 (Asia/Taipei) — OCR downsampling 下限を 30% に拡張**
 
 ### Summary
@@ -17135,7 +17169,8 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
-- g で旧  .5 下限が対象箇所に残っていないことを確認。
+- 
+g で旧  .5 下限が対象箇所に残っていないことを確認。
 **2026-03-09 02:30 (Asia/Taipei) — レトロゲーム向けHSV単一点採色案を追加**
 
 ### Summary
@@ -17937,3 +17972,68 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+**2026-03-09 23:17 (Asia/Taipei) — VisionLLMテストに翻訳モードと生HTTPダンプを追加**
+
+### Summary
+- 	Test_vision_llama_engine.py だけを修正し、VisionLLM の翻訳経路と生の HTTP request/response body を確認できるようにした。
+
+### Context / Goal
+- VisionLLM の翻訳失敗が 
+esponse.json() 段階の JSON パース失敗に見え、実際の HTTP 応答本文を確認したい。
+- 本体 ision_llama_engine.py を変えず、テストコードだけで再現・観測できる状態にしたい。
+
+### Changes
+- --mode ocr|translate を追加し、既存 OCR テストに加えて翻訳経路も直接叩けるようにした。
+- --text、--source-lang、--target-lang を追加し、translate モードで複数 item を送れるようにした。
+- httpx.Client.post をテスト側で一時ラップし、最後の HTTP JSON request と raw response body を捕捉するようにした。
+- 失敗時に raw request / raw response を標準出力へ表示し、任意でファイルへ保存できるようにした。
+- --raw-request-out と --raw-response-out を追加した。
+- 成功時も最後の raw request / raw response を出せるようにした。
+
+### Files Touched
+- OcrServiceVisionLlm/test_vision_llama_engine.py — translate モード、HTTP trace capture、raw request/response dump を追加した。
+
+### Behavioral Impact
+- VisionLLM テストで OCR だけでなく翻訳経路も単独検証できる。
+- 
+esponse.json() に失敗するケースでも、壊れた HTTP 応答本文をそのまま確認できる。
+- 本体サーバ実装の挙動は変更していない。
+
+### Risk & Mitigation
+- Risk: テスト中に httpx.Client.post を monkey patch するため、同一プロセス内で他の HTTP 呼び出しもフックされる可能性。
+- Mitigation: 対象 client を is client で限定し、finally で必ず元へ戻すようにした。
+- Risk: 生レスポンス本文に長文が含まれ、コンソール出力が長くなる。
+- Mitigation: --raw-request-out / --raw-response-out でファイル保存もできるようにした。
+
+### Tests / Verification
+- python -m py_compile OcrServiceVisionLlm\\test_vision_llama_engine.py 実行成功。
+**2026-03-09 23:27 (Asia/Taipei) — VisionLLMテストにOCR→翻訳直結モードを追加**
+
+### Summary
+- 	est_vision_llama_engine.py に、画像 OCR 結果をそのまま翻訳へ渡す ocr-translate モードを追加した。
+
+### Context / Goal
+- VisionLLM の想定実運用は、画像から OCR した文字列をそのまま翻訳へ送る経路である。
+- テストコードでも、手入力 --text ではなく実際の OCR 結果を使って翻訳失敗を再現・観測したい。
+
+### Changes
+- --mode に ocr-translate を追加した。
+- ocr-translate モードでは各 run ごとに engine.recognize(image) の結果を 1 item のまま engine.translate([text], ...) へ渡すようにした。
+- ocr-translate 実行時は OCR text と翻訳結果の両方を表示するようにした。
+- 既存の 	ranslate モードは手入力 --text を送る用途としてそのまま残した。
+
+### Files Touched
+- OcrServiceVisionLlm/test_vision_llama_engine.py — ocr-translate モードを追加し、OCR→翻訳の一連経路をテストできるようにした。
+
+### Behavioral Impact
+- VisionLLM テストで、画像 OCR から翻訳までの実経路を 1 コマンドで再現できる。
+- raw HTTP request/response ダンプは最後の翻訳リクエストに対して取得される。
+
+### Risk & Mitigation
+- Risk: OCR 結果を 1 item に固定して送るため、将来の実アプリ分割単位と差が出る可能性。
+- Mitigation: コメントで「現在の VisionLLM path を模倣する」ことを明示し、まずは再現性優先にしている。
+- Risk: 	ranslate モードと ocr-translate モードの使い分けが増える。
+- Mitigation: --mode help を拡張し、用途を分けている。
+
+### Tests / Verification
+- python -m py_compile OcrServiceVisionLlm\\test_vision_llama_engine.py 実行成功。

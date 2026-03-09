@@ -4,7 +4,9 @@ import statistics
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
+import httpx
 from vision_llama_engine import (
     LlamaServerHost,
     VisionLlamaEngine,
@@ -15,6 +17,12 @@ from vision_llama_engine import (
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Direct VisionLlamaEngine OCR smoke test")
+    parser.add_argument(
+        "--mode",
+        choices=["ocr", "translate", "ocr-translate"],
+        default="ocr",
+        help="Run OCR only, translate only, or OCR-then-translate path",
+    )
     parser.add_argument("--image", required=True, help="Input image path")
     parser.add_argument("--llama-server", default=r"..\TranslationServiceLlama\LlamaCpp\llama-server.exe", help="llama-server path")
     parser.add_argument("--model", default=r"..\TranslationServiceLlama\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf", help="GGUF model path")
@@ -55,6 +63,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--text-out", default=None, help="Optional path to write the final OCR text")
     parser.add_argument("--json-out", default=None, help="Optional path to write timing/text summary JSON")
+    parser.add_argument("--text", action="append", dest="texts", help="Translation item. Can be specified multiple times.")
+    parser.add_argument("--source-lang", default="ja", help="Translation source language")
+    parser.add_argument("--target-lang", default="en", help="Translation target language")
+    parser.add_argument("--raw-response-out", default=None, help="Optional path to write the last raw HTTP response body")
+    parser.add_argument("--raw-request-out", default=None, help="Optional path to write the last HTTP JSON request body")
     return parser.parse_args()
 
 
@@ -83,6 +96,45 @@ def write_json(path: str | None, payload: dict) -> None:
     if not path:
         return
     Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+class HttpTraceCapture:
+    def __init__(self) -> None:
+        self.last_request_json: Any | None = None
+        self.last_response_text: str = ""
+        self.last_status_code: int | None = None
+
+
+def install_http_trace(client: httpx.Client, capture: HttpTraceCapture):
+    original_post = httpx.Client.post
+
+    def traced_post(self, *args, **kwargs):
+        response = original_post(self, *args, **kwargs)
+        if self is client:
+            capture.last_request_json = kwargs.get("json")
+            capture.last_status_code = response.status_code
+            capture.last_response_text = response.text
+        return response
+
+    httpx.Client.post = traced_post
+
+    def restore() -> None:
+        httpx.Client.post = original_post
+
+    return restore
+
+
+def dump_http_trace(capture: HttpTraceCapture, raw_request_out: str | None, raw_response_out: str | None) -> None:
+    if capture.last_request_json is not None:
+        request_text = json.dumps(capture.last_request_json, ensure_ascii=False, indent=2)
+        print("--- Last HTTP Request JSON ---")
+        print(request_text)
+        write_text(raw_request_out, request_text)
+
+    if capture.last_response_text:
+        print("--- Last HTTP Response Body ---")
+        print(capture.last_response_text)
+        write_text(raw_response_out, capture.last_response_text)
 
 
 def main() -> int:
@@ -132,11 +184,14 @@ def main() -> int:
 
     host = LlamaServerHost(server_config)
     engine = VisionLlamaEngine(host, request_config, args.max_image_side)
+    trace_capture = HttpTraceCapture()
+    restore_http_trace = install_http_trace(engine._client, trace_capture)
 
     warmup = max(0, args.warmup)
     repeat = max(1, args.repeat)
     timings_ms: list[float] = []
     final_text = ""
+    final_translations: list[str] = []
     startup_start = time.perf_counter()
 
     try:
@@ -145,28 +200,79 @@ def main() -> int:
         print(f"startup_ms={startup_ms:.2f}")
         print(f"image_bytes={len(image_bytes)} max_image_side={args.max_image_side} model={model_path.name} mmproj={mmproj_path.name}")
 
-        for index in range(warmup):
-            began = time.perf_counter()
-            text = engine.recognize(image_bytes, args.language)
-            elapsed_ms = (time.perf_counter() - began) * 1000.0
-            print(f"warmup[{index + 1}/{warmup}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
+        if args.mode == "translate":
+            texts = [text for text in (args.texts or []) if text]
+            if not texts:
+                print("Translate mode requires at least one --text.")
+                return 2
 
-        for index in range(repeat):
-            began = time.perf_counter()
-            text = engine.recognize(image_bytes, args.language)
-            elapsed_ms = (time.perf_counter() - began) * 1000.0
-            timings_ms.append(elapsed_ms)
-            final_text = text
-            print(f"run[{index + 1}/{repeat}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
+        try:
+            if args.mode == "ocr":
+                for index in range(warmup):
+                    began = time.perf_counter()
+                    text = engine.recognize(image_bytes, args.language)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    print(f"warmup[{index + 1}/{warmup}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
+
+                for index in range(repeat):
+                    began = time.perf_counter()
+                    text = engine.recognize(image_bytes, args.language)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    timings_ms.append(elapsed_ms)
+                    final_text = text
+                    print(f"run[{index + 1}/{repeat}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
+            elif args.mode == "translate":
+                for index in range(warmup):
+                    began = time.perf_counter()
+                    translations = engine.translate(texts, args.source_lang, args.target_lang)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    print(f"warmup[{index + 1}/{warmup}] translate_ms={elapsed_ms:.2f} items={len(translations)}")
+
+                for index in range(repeat):
+                    began = time.perf_counter()
+                    translations = engine.translate(texts, args.source_lang, args.target_lang)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    timings_ms.append(elapsed_ms)
+                    final_translations = translations
+                    print(f"run[{index + 1}/{repeat}] translate_ms={elapsed_ms:.2f} items={len(translations)}")
+            else:
+                for index in range(warmup):
+                    began = time.perf_counter()
+                    text = engine.recognize(image_bytes, args.language)
+                    # WHY: Match the app's current VisionLLM path where OCR text is forwarded as-is.
+                    translations = engine.translate([text], args.source_lang, args.target_lang)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    print(
+                        f"warmup[{index + 1}/{warmup}] ocr_translate_ms={elapsed_ms:.2f} "
+                        f"ocr_chars={len(text)} items={len(translations)}"
+                    )
+
+                for index in range(repeat):
+                    began = time.perf_counter()
+                    text = engine.recognize(image_bytes, args.language)
+                    translations = engine.translate([text], args.source_lang, args.target_lang)
+                    elapsed_ms = (time.perf_counter() - began) * 1000.0
+                    timings_ms.append(elapsed_ms)
+                    final_text = text
+                    final_translations = translations
+                    print(
+                        f"run[{index + 1}/{repeat}] ocr_translate_ms={elapsed_ms:.2f} "
+                        f"ocr_chars={len(text)} items={len(translations)}"
+                    )
+        except Exception as exc:
+            print(f"ERROR: {exc}")
+            dump_http_trace(trace_capture, args.raw_request_out, args.raw_response_out)
+            return 1
 
         summary = {
+            "mode": args.mode,
             "startup_ms": startup_ms,
             "warmup_count": warmup,
             "repeat_count": repeat,
-            "ocr_ms": timings_ms,
-            "ocr_ms_avg": statistics.mean(timings_ms),
-            "ocr_ms_min": min(timings_ms),
-            "ocr_ms_max": max(timings_ms),
+            "run_ms": timings_ms,
+            "run_ms_avg": statistics.mean(timings_ms),
+            "run_ms_min": min(timings_ms),
+            "run_ms_max": max(timings_ms),
             "image_path": str(image_path),
             "image_bytes": len(image_bytes),
             "model_path": str(model_path),
@@ -175,18 +281,36 @@ def main() -> int:
             "gpu_layers": resolve_gpu_layers(args),
             "max_image_side": args.max_image_side,
             "disable_thinking": args.disable_thinking,
+            "language": args.language,
+            "source_lang": args.source_lang,
+            "target_lang": args.target_lang,
             "text": final_text,
+            "translations": final_translations,
+            "last_status_code": trace_capture.last_status_code,
         }
 
-        print("--- OCR Text ---")
-        print(final_text)
+        if args.mode == "ocr":
+            print("--- OCR Text ---")
+            print(final_text)
+        else:
+            if final_text:
+                print("--- OCR Text ---")
+                print(final_text)
+            print("--- Translations ---")
+            for idx, item in enumerate(final_translations):
+                print(f"[{idx}] {item}")
         print("--- Summary ---")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
+        dump_http_trace(trace_capture, args.raw_request_out, args.raw_response_out)
 
-        write_text(args.text_out, final_text)
+        if args.mode == "ocr":
+            write_text(args.text_out, final_text)
+        else:
+            write_text(args.text_out, "\n".join(final_translations))
         write_json(args.json_out, summary)
         return 0
     finally:
+        restore_http_trace()
         host.stop()
 
 
