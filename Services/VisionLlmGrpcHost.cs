@@ -18,6 +18,9 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string SharedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
     private const string SharedLlamaModelsRelativePath = "TranslationServiceLlama\\LlamaCpp\\Models";
+    private readonly object _lock = new();
+    private int? _trackedLlamaServerPid;
+    private string? _trackedLlamaServerPath;
 
     public VisionLlmGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
@@ -45,6 +48,12 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         if (!File.Exists(llamaServerPath))
         {
             throw new FileNotFoundException($"VisionLLM llama-server not found: {llamaServerPath}");
+        }
+
+        lock (_lock)
+        {
+            _trackedLlamaServerPath = Path.GetFullPath(llamaServerPath);
+            _trackedLlamaServerPid = null;
         }
 
         var modelsDir = ResolvePath(SharedLlamaModelsRelativePath);
@@ -165,6 +174,22 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
             TimeSpan.FromSeconds(Math.Max(1, settings.VisionLlmGrpcRestartWindowSeconds)));
     }
 
+    protected override void OnAfterStop()
+    {
+        // WHY: uv/python can exit before the child llama-server tears down, leaving the HTTP server orphaned.
+        // Track and terminate the child process explicitly as a shutdown fallback.
+        TryKillTrackedLlamaServer();
+        lock (_lock)
+        {
+            _trackedLlamaServerPid = null;
+        }
+    }
+
+    protected override void OnProcessOutputLine(string line, bool isError)
+    {
+        TryTrackLlamaServerPid(line);
+    }
+
     private static string ResolveEndpoint(AppSettings settings)
     {
         if (!string.IsNullOrWhiteSpace(settings.VisionLlmGrpcEndpoint))
@@ -202,5 +227,142 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         }
 
         return resolved;
+    }
+
+    private void TryTrackLlamaServerPid(string line)
+    {
+        const string marker = "vision llama-server pid=";
+        var index = line.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var start = index + marker.Length;
+        var end = start;
+        while (end < line.Length && char.IsDigit(line[end]))
+        {
+            end++;
+        }
+
+        if (end <= start || !int.TryParse(line[start..end], out var pid))
+        {
+            return;
+        }
+
+        lock (_lock)
+        {
+            _trackedLlamaServerPid = pid;
+        }
+
+        Logger?.Info($"Tracked VisionLLM llama-server pid: {pid}");
+    }
+
+    private void TryKillTrackedLlamaServer()
+    {
+        int? trackedPid;
+        string? trackedPath;
+        lock (_lock)
+        {
+            trackedPid = _trackedLlamaServerPid;
+            trackedPath = _trackedLlamaServerPath;
+        }
+
+        if (trackedPid.HasValue && TryKillLlamaProcessByPid(trackedPid.Value, trackedPath))
+        {
+            return;
+        }
+
+        TryKillLlamaProcessByPath(trackedPath);
+    }
+
+    private bool TryKillLlamaProcessByPid(int pid, string? trackedPath)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(pid);
+            if (process.HasExited)
+            {
+                return true;
+            }
+
+            if (!IsExpectedLlamaServerProcess(process, trackedPath))
+            {
+                Logger?.Info($"Skip VisionLLM PID {pid} because it does not match tracked llama-server executable.");
+                return false;
+            }
+
+            Logger?.Info($"Force-killing tracked VisionLLM llama-server PID {pid}.");
+            process.Kill(true);
+            process.WaitForExit(2000);
+            return true;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Logger?.Info($"Failed to kill tracked VisionLLM llama-server PID {pid}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private void TryKillLlamaProcessByPath(string? trackedPath)
+    {
+        if (string.IsNullOrWhiteSpace(trackedPath))
+        {
+            return;
+        }
+
+        var name = Path.GetFileNameWithoutExtension(trackedPath);
+        foreach (var process in Process.GetProcessesByName(name))
+        {
+            var pid = process.Id;
+            try
+            {
+                using (process)
+                {
+                    if (process.HasExited || !IsExpectedLlamaServerProcess(process, trackedPath))
+                    {
+                        continue;
+                    }
+
+                    Logger?.Info($"Force-killing residual VisionLLM llama-server PID {process.Id}.");
+                    process.Kill(true);
+                    process.WaitForExit(2000);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger?.Info($"Failed to kill residual VisionLLM llama-server PID {pid}: {ex.Message}");
+            }
+        }
+    }
+
+    private static bool IsExpectedLlamaServerProcess(Process process, string? trackedPath)
+    {
+        if (string.IsNullOrWhiteSpace(trackedPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var executable = process.MainModule?.FileName;
+            if (string.IsNullOrWhiteSpace(executable))
+            {
+                return false;
+            }
+
+            return string.Equals(
+                Path.GetFullPath(executable),
+                Path.GetFullPath(trackedPath),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }

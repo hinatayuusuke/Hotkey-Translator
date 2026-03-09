@@ -17608,3 +17608,29 @@ ew(2, 1, 2, 1) に変更。
 - `dotnet build Hotkey-Translator.csproj`
 - `python -m compileall OcrServiceVisionLlm`
 - `Get-Content -Encoding UTF8 Doc\VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md`
+**2026-03-09 18:05 (Asia/Taipei) — VisionLLM llama-server 終了残留対策**
+
+### Summary
+- `VisionLlmGrpcHost` に child `llama-server.exe` の追跡と shutdown fallback kill を追加し、終了時の残留を抑止した。
+
+### Context / Goal
+- VisionLLM gRPC host 停止後も `llama-server.exe` が残ることがある。
+- `TranslationServiceLlama` 側は child PID/path の追跡と `OnAfterStop()` の明示 kill を持っているため、同じ保護を Vision 側にも入れたい。
+
+### Changes
+- `VisionLlmGrpcHost` に `_trackedLlamaServerPid` / `_trackedLlamaServerPath` を追加した。
+- 起動前に `llama-server.exe` のフルパスを保持し、`OnProcessOutputLine()` で `vision llama-server pid=` を拾って child PID を追跡するようにした。
+- `OnAfterStop()` を実装し、tracked PID 優先・path fallback の順で residual `llama-server.exe` を明示 kill するようにした。
+
+### Files Touched
+- `Services/VisionLlmGrpcHost.cs` — child `llama-server.exe` の PID/path 追跡と `OnAfterStop()` cleanup を追加。
+
+### Behavioral Impact
+- VisionLLM gRPC host 停止時、親 `uv/python` 終了後に `llama-server.exe` が孤児化しても回収されやすくなる。
+
+### Risk & Mitigation
+- Risk: 別用途の `llama-server.exe` を誤って kill する。
+- Mitigation: tracked PID を優先し、fallback でも実行ファイルのフルパス一致を確認してから kill する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`
