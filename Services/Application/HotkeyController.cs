@@ -76,26 +76,37 @@ internal sealed class HotkeyController : IDisposable
     private bool TryRegisterBindingsWin32(IReadOnlyList<HotkeyBindingRegistration> bindings)
     {
         var newSlots = new Dictionary<int, HotkeyManager>();
+        var failedCount = 0;
         foreach (var binding in bindings)
         {
+            HotkeyManager? manager = null;
             try
             {
-                var manager = new HotkeyManager(_ownerWindow, binding.Key, binding.Modifiers, binding.Id);
+                manager = new HotkeyManager(_ownerWindow, binding.Key, binding.Modifiers, binding.Id);
                 manager.HotkeyPressed += binding.Handler;
                 manager.Register();
                 newSlots.Add(binding.Id, manager);
             }
             catch (Exception ex)
             {
-                foreach (var created in newSlots.Values)
-                {
-                    created.Dispose();
-                }
-
+                manager?.Dispose();
+                failedCount++;
                 _loggerAccessor()?.Error(
                     $"Failed to register Win32 hotkeys. Failed to register hotkey ({binding.Name}: {_formatHotkey(binding.Key, binding.Modifiers)}). {ex.Message}");
-                return false;
             }
+        }
+
+        if (newSlots.Count == 0)
+        {
+            return false;
+        }
+
+        if (failedCount > 0)
+        {
+            // WHY: RegisterHotKey can fail because one combination is already owned by another app.
+            // Keep the successfully registered bindings active instead of disabling the whole hotkey set.
+            _loggerAccessor()?.Info(
+                $"Win32 hotkeys registered with partial success. success={newSlots.Count} failed={failedCount}.");
         }
 
         _rawInputManager?.Dispose();

@@ -17906,3 +17906,34 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
+**2026-03-09 22:27 (Asia/Taipei) — Win32ホットキー登録を部分成功許容へ変更**
+
+### Summary
+- Win32 hotkey 登録で 1 件衝突しても、成功した他の hotkey を有効化したまま残すようにした。
+
+### Context / Goal
+- Alt+F10 のように 1 つの hotkey が外部と衝突すると、既存実装では登録処理全体をロールバックして全 hotkey が無効になっていた。
+- 衝突した hotkey だけを無効化し、他の hotkey は使える状態を維持したい。
+
+### Changes
+- HotkeyController.TryRegisterBindingsWin32() を all-or-nothing から partial success へ変更した。
+- 各 binding を個別登録し、失敗した binding はログを出して継続するようにした。
+- 失敗した binding の HotkeyManager はその場で dispose するようにした。
+- 1件以上成功した場合は、その成功分だけを新しい active hotkey set として採用するようにした。
+- 一部失敗時は success / ailed 件数の要約ログを出すようにした。
+
+### Files Touched
+- Services/Application/HotkeyController.cs — Win32 hotkey 登録を部分成功許容に変更し、部分失敗時のログ要約を追加した。
+
+### Behavioral Impact
+- 外部アプリや OS と衝突した hotkey が一部あっても、登録成功した他の hotkey は引き続き使える。
+- すべて失敗した場合だけ、登録失敗として扱う。
+
+### Risk & Mitigation
+- Risk: 一部の hotkey だけ無効でも、ユーザが全体成功と誤認する可能性。
+- Mitigation: 個別エラーに加えて、partial success の要約ログを出すようにした。
+- Risk: 失敗した binding の途中状態が残る可能性。
+- Mitigation: 失敗時に該当 HotkeyManager を即 dispose するようにした。
+
+### Tests / Verification
+- dotnet build .\\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

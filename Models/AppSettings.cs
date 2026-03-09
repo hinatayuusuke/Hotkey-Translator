@@ -247,7 +247,7 @@ public sealed class AppSettings
     public string HotkeyForceRunNextRoiModifiers { get; set; } = "Shift";
     public string HotkeyForceRunNextNextRoiKey { get; set; } = "F10";
     public string HotkeyForceRunNextNextRoiModifiers { get; set; } = "Control";
-    public string HotkeyForceGeminiStrictKey { get; set; } = "F10";
+    public string HotkeyForceGeminiStrictKey { get; set; } = "F8";
     public string HotkeyForceGeminiStrictModifiers { get; set; } = "Alt";
     public string HotkeyOcrOnlyKey { get; set; } = "F11";
     public string HotkeyOcrOnlyModifiers { get; set; } = "None";
