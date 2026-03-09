@@ -63,3 +63,45 @@ uv run test_translation_engine.py --send-mode llama-json-batch --text "Hello wor
 
 注意:
 - `--device` / `--batch-size` / `--max-tokens` / `--gpu-layers` は `--auto-start-server` とセットでないとエラーになります。
+
+
+変更ファイル:
+- `TranslationServiceLlama/test_llama_vision_ocr.py`
+
+できること:
+- `llama-server` をローカル起動
+- 画像を `data:image/...;base64,...` に変換
+- `/v1/chat/completions` に `image_url` 付きで送信
+- 抽出テキストを標準出力
+- 必要なら raw JSON を `--json-out`、文字列を `--text-out` に保存
+- `--mmproj` も指定可能
+- think mode は既定で無効
+
+確認:
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`
+
+実行例:
+```powershell
+cd "G:\Local App\Hotkey-Translator\TranslationServiceLlama"
+uv run test_llama_vision_ocr.py `
+  --image ".\test.png" `
+  --model ".\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf" `
+  --device gpu `
+  --json-out ".\out\vision_raw.json" `
+  --text-out ".\out\vision_text.txt"
+  --mode ocr|translate
+  --source-lang
+  --target-lang
+```
+
+`mmproj` が必要なモデルなら:
+```powershell
+uv run test_llama_vision_ocr.py `
+  --image ".\test.png" `
+  --model ".\LlamaCpp\Models\<vision-model>.gguf" `
+  --mmproj ".\LlamaCpp\Models\<mmproj>.gguf" `
+  --device gpu
+```
+
+  

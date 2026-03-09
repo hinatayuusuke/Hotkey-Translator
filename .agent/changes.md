@@ -17248,3 +17248,59 @@ ew(2, 1, 2, 1) に変更。
   - 起動ログで `--reasoning-budget 0` を確認
   - llama-server ログで `thinking = 0` を確認
   - 翻訳結果 `こんにちは、世界。` を確認
+**2026-03-09 14:08 (Asia/Taipei) — Llama Vision OCRテストスクリプト追加**
+
+### Summary
+- Qwen系 visionモデルの画像文字抽出を単体検証するテスト用スクリプトを追加した。
+
+### Context / Goal
+- 本番のTranslationServiceLlamaは text-only 契約のため、先に vision入力がこの環境で成立するかを単体で確認したい。
+- 画像を入力し、文字抽出結果だけを確認できる最小テスト経路を用意する。
+
+### Changes
+- `llama-server` をローカル起動し、画像を data URL に変換して `/v1/chat/completions` へ送る単体スクリプトを追加した。
+- `--mmproj`、`--json-out`、`--text-out`、`--disable-thinking` を備え、visionモデルの差分確認に必要な最小オプションを追加した。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — 画像を vision入力として送信し、抽出テキストと raw JSON を確認するテストスクリプトを新規追加。
+
+### Behavioral Impact
+- 本番コードには影響しない。
+- `TranslationServiceLlama` 配下で、vision対応GGUFの画像OCR可否を単独で検証できるようになる。
+
+### Risk & Mitigation
+- Risk: 使用するGGUFや `llama-server` ビルドが vision未対応だと、スクリプト自体は動いても画像を解釈できない。
+- Mitigation: `--mmproj` を明示指定可能にし、raw JSON を `--json-out` へ保存してモデル側非対応か応答不正かを切り分けやすくした。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+- 実画像推論は未実施（このターンでは入力画像と vision対応モデルの組み合わせを固定していないため）。
+**2026-03-09 14:14 (Asia/Taipei) — Visionテストを画像直接翻訳モードへ拡張**
+
+### Summary
+- `test_llama_vision_ocr.py` に OCR と画像直接翻訳の切替モードを追加した。
+
+### Context / Goal
+- 画像から文字抽出だけでなく、vision入力から直接翻訳した場合の品質も同じ単体スクリプトで比較したい。
+- 本番コードへ入れる前に、OCR と translate の差分を引数だけで再現できる状態にする。
+
+### Changes
+- `--mode ocr|translate`、`--source-lang`、`--target-lang` を追加した。
+- OCR用と translate用の既定プロンプトを切り替える `build_user_prompt()` を追加した。
+- 実行関数を `run_vision_chat()` に一般化し、出力表示を OCR 固定文言から汎用文言へ変更した。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — OCR/画像直接翻訳を切り替え可能な単体スクリプトへ拡張。
+
+### Behavioral Impact
+- 本番コードには影響しない。
+- 単体テストで、同一画像に対して OCR と画像直接翻訳を同じ起動系で比較できるようになる。
+
+### Risk & Mitigation
+- Risk: translate モードでもモデルが画像説明へ寄る可能性がある。
+- Mitigation: 既定プロンプトを「翻訳のみ・画像説明禁止」に固定し、必要なら `--prompt` 上書きで比較できるようにした。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
