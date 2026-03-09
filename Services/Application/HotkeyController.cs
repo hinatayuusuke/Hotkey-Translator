@@ -76,25 +76,26 @@ internal sealed class HotkeyController : IDisposable
     private bool TryRegisterBindingsWin32(IReadOnlyList<HotkeyBindingRegistration> bindings)
     {
         var newSlots = new Dictionary<int, HotkeyManager>();
-        try
+        foreach (var binding in bindings)
         {
-            foreach (var binding in bindings)
+            try
             {
                 var manager = new HotkeyManager(_ownerWindow, binding.Key, binding.Modifiers, binding.Id);
                 manager.HotkeyPressed += binding.Handler;
                 manager.Register();
                 newSlots.Add(binding.Id, manager);
             }
-        }
-        catch (Exception ex)
-        {
-            foreach (var created in newSlots.Values)
+            catch (Exception ex)
             {
-                created.Dispose();
-            }
+                foreach (var created in newSlots.Values)
+                {
+                    created.Dispose();
+                }
 
-            _loggerAccessor()?.Error($"Failed to register Win32 hotkeys. {ex.Message}");
-            return false;
+                _loggerAccessor()?.Error(
+                    $"Failed to register Win32 hotkeys. Failed to register hotkey ({binding.Name}: {_formatHotkey(binding.Key, binding.Modifiers)}). {ex.Message}");
+                return false;
+            }
         }
 
         _rawInputManager?.Dispose();

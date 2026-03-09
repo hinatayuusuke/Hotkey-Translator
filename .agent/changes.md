@@ -17875,3 +17875,34 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+**2026-03-09 22:19 (Asia/Taipei) — Win32ホットキー登録失敗の診断ログ強化**
+
+### Summary
+- Win32 hotkey 登録失敗時に、失敗した hotkey 名・組み合わせ・Win32 error code をログへ出すようにした。
+
+### Context / Goal
+- 起動時に `Failed to register Win32 hotkeys. Failed to register hotkey.` だけが出ており、どの hotkey が原因か切り分けできなかった。
+- 設定重複なのか、外部アプリ/OS との競合なのかを次回起動ログだけで判定できる状態にしたい。
+
+### Changes
+- `HotkeyManager.Register()` で HWND 未準備を明示的に検出するようにした。
+- `RegisterHotKey` / `UnregisterHotKey` の P/Invoke を `SetLastError=true` に変更した。
+- `RegisterHotKey` 失敗時に `Win32Exception` を投げ、key / modifiers / id / vk / hwnd / win32 error code を含めるようにした。
+- `HotkeyController.TryRegisterBindingsWin32()` を binding 単位で捕捉するように変更し、失敗した hotkey 名とフォーマット済み組み合わせをログへ出すようにした。
+
+### Files Touched
+- `Services/HotkeyManager.cs` — Win32 error code を取得できるようにし、登録失敗時の例外情報を詳細化した。
+- `Services/Application/HotkeyController.cs` — binding 単位の失敗ログを追加し、どの hotkey が失敗したか分かるようにした。
+
+### Behavioral Impact
+- 次回起動時に hotkey 登録が失敗した場合、どの hotkey が失敗したかと Win32 error code がログに残る。
+- hotkey の実挙動自体は変えず、診断情報だけを増やしている。
+
+### Risk & Mitigation
+- Risk: エラーメッセージが長くなりログ量が少し増える。
+- Mitigation: 成功時ログは増やさず、失敗時だけ詳細化している。
+- Risk: Win32 error code の解釈を誤る可能性。
+- Mitigation: hotkey 名・組み合わせも同時に出すため、競合キーを直接確認できる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功（0 warnings, 0 errors）。
