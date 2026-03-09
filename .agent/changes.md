@@ -17360,3 +17360,33 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
 - `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 14:32 (Asia/Taipei) — Visionテストへ送信前リサイズを追加**
+
+### Summary
+- `test_llama_vision_ocr.py` に送信前リサイズを追加し、長辺1024超の画像を自動縮小するようにした。
+
+### Context / Goal
+- レトロゲーム用途では入力画像サイズがそのまま前処理・転送コストへ効くため、送信前に上限を設けたい。
+- まずは安全側として、長辺1024を既定にしつつ、無効化や比較ができる形にする。
+
+### Changes
+- `Pillow` を `TranslationServiceLlama/pyproject.toml` へ追加し、画像リサイズ依存を導入した。
+- `test_llama_vision_ocr.py` に `--max-image-side` を追加し、長辺が上限を超えた場合はアスペクト比維持で PNG に再エンコードして送信するようにした。
+- 元画像サイズと送信サイズを `image_info` として標準出力および `json-out` に残すようにした。
+
+### Files Touched
+- `TranslationServiceLlama/pyproject.toml` — `pillow` 依存を追加。
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — 送信前リサイズ、サイズログ、`--max-image-side` 引数を追加。
+
+### Behavioral Impact
+- 単体 vision テストで、長辺1024を超える画像は既定で縮小してから `llama-server` へ送信される。
+- `--max-image-side 0` を指定すれば従来どおり元画像のまま送信できる。
+
+### Risk & Mitigation
+- Risk: 縮小しすぎると小さい文字が潰れて OCR 品質が落ちる。
+- Mitigation: 長辺1024を既定にしつつ、CLIで上限値を調整・無効化できるようにした。送信サイズもログへ残す。
+
+### Tests / Verification
+- `uv sync`（`TranslationServiceLlama` 作業ディレクトリ）
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）

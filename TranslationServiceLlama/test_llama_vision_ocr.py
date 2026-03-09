@@ -1,5 +1,6 @@
 import argparse
 import base64
+import io
 import json
 import mimetypes
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from PIL import Image
 
 REQUIRED_CUDA_DLLS = (
     "cudart64_12.dll",
@@ -50,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--parallel", type=int, default=1, help="Parallel slots")
     parser.add_argument("--batch-size", type=int, default=512, help="Batch size")
     parser.add_argument("--max-tokens", type=int, default=512, help="Max output tokens")
+    parser.add_argument(
+        "--max-image-side",
+        type=int,
+        default=1024,
+        help="Resize before upload when the longer image side exceeds this value. Use 0 to disable.",
+    )
     parser.add_argument("--http-timeout-sec", type=float, default=120.0, help="HTTP timeout")
     parser.add_argument("--startup-timeout-sec", type=float, default=120.0, help="Server startup timeout")
     parser.add_argument(
@@ -267,6 +275,48 @@ def build_data_url(image_path: Path) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+def prepare_image_for_upload(image_path: Path, max_image_side: int) -> tuple[str, dict[str, object]]:
+    if max_image_side <= 0:
+        return build_data_url(image_path), {
+            "original_width": None,
+            "original_height": None,
+            "sent_width": None,
+            "sent_height": None,
+            "resized": False,
+        }
+
+    with Image.open(image_path) as image:
+        original_width, original_height = image.size
+        longest_side = max(original_width, original_height)
+        if longest_side <= max_image_side:
+            return build_data_url(image_path), {
+                "original_width": original_width,
+                "original_height": original_height,
+                "sent_width": original_width,
+                "sent_height": original_height,
+                "resized": False,
+            }
+
+        scale = max_image_side / float(longest_side)
+        sent_width = max(1, int(round(original_width * scale)))
+        sent_height = max(1, int(round(original_height * scale)))
+        # WHY: Vision OCR only needs a bounded upload size; keep aspect ratio so the prompt sees the same layout.
+        resized = image.convert("RGB").resize((sent_width, sent_height), Image.Resampling.LANCZOS)
+        buffer = io.BytesIO()
+        resized.save(buffer, format="PNG")
+        encoded = base64.b64encode(buffer.getvalue()).decode("ascii")
+        return (
+            f"data:image/png;base64,{encoded}",
+            {
+                "original_width": original_width,
+                "original_height": original_height,
+                "sent_width": sent_width,
+                "sent_height": sent_height,
+                "resized": True,
+            },
+        )
+
+
 def extract_message_content(payload: dict) -> str:
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -374,7 +424,7 @@ def build_common_generation_args(args: argparse.Namespace) -> dict[str, object]:
     return body
 
 
-def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int, Optional[dict]]:
+def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int, Optional[dict], dict[str, object]]:
     base_dir = Path(__file__).resolve().parent
     image_path = resolve_path(base_dir, args.image)
     model_path = resolve_path(base_dir, args.model)
@@ -386,7 +436,7 @@ def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int, Optional[
     base_url = f"http://{args.host}:{args.port}"
     wait_llama_http_ready(base_url, args.startup_timeout_sec)
     model_name = model_path.name
-    data_url = build_data_url(image_path)
+    data_url, image_info = prepare_image_for_upload(image_path, args.max_image_side)
     user_prompt = build_user_prompt(args)
     body = {
         "model": model_name,
@@ -406,7 +456,7 @@ def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int, Optional[
         body["response_format"] = {"type": "json_object"}
     payload, text, elapsed_ms = run_chat_completion(base_url, body, args.http_timeout_sec)
     boxes_payload = parse_boxes_payload(text) if args.mode == "ocr" and args.output_format == "boxes-json" else None
-    return payload, text, elapsed_ms, boxes_payload
+    return payload, text, elapsed_ms, boxes_payload, image_info
 
 
 def run_text_translate(args: argparse.Namespace, extracted_text: str) -> tuple[dict, str, int]:
@@ -439,11 +489,22 @@ def main() -> int:
     local_server: Optional[subprocess.Popen[str]] = None
     try:
         local_server = start_local_server(args)
-        payload, text, elapsed_ms, boxes_payload = run_vision_chat(args)
-        output_payload: object = payload
+        payload, text, elapsed_ms, boxes_payload, image_info = run_vision_chat(args)
+        output_payload: object = {
+            "vision_response": payload,
+            "vision_text": text,
+            "image_info": image_info,
+        }
         output_text = text
         total_elapsed_ms = elapsed_ms
         print(f"{args.mode} vision pass completed in {elapsed_ms} ms")
+        if image_info.get("original_width") is not None:
+            print(
+                "image upload size: "
+                f"original={image_info['original_width']}x{image_info['original_height']} "
+                f"sent={image_info['sent_width']}x{image_info['sent_height']} "
+                f"resized={image_info['resized']}"
+            )
         print("--- Vision Output ---")
         print(text)
         if boxes_payload is not None:
@@ -462,6 +523,7 @@ def main() -> int:
                 "translation_response": translation_payload,
                 "ocr_text": text,
                 "translated_text": translated_text,
+                "image_info": image_info,
             }
             output_text = translated_text
             print(f"ocr-then-translate text pass completed in {translation_elapsed_ms} ms")
