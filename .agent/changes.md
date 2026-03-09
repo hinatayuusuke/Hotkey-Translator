@@ -17304,3 +17304,59 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
 - `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 14:19 (Asia/Taipei) — Vision OCRテストへ座標付きJSON出力モードを追加**
+
+### Summary
+- `test_llama_vision_ocr.py` に、画像全体比率の bbox JSON を要求・保存する `boxes-json` モードを追加した。
+
+### Context / Goal
+- OCRモードで、抽出文字列だけでなく全体画像に対する割合座標も返せるかを vision モデルで実験したい。
+- `llama_engine.py` の JSON 強制方針を参考にしつつ、実験用に軽い `response_format=json_object` を使う。
+
+### Changes
+- `--output-format text|boxes-json` と `--boxes-out` を追加した。
+- bbox用既定プロンプトを追加し、`ocr + boxes-json` 時は `response_format={"type":"json_object"}` を付与するようにした。
+- モデル応答から `{"blocks":[{"text","x","y","w","h"}]}` を抽出・表示・保存するパーサを追加した。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — OCR bbox JSON 実験用の出力モード、JSONパース、保存処理を追加。
+
+### Behavioral Impact
+- 本番コードには影響しない。
+- vision モデルが座標付きJSONを返せるかを、単体スクリプトで即確認できるようになる。
+
+### Risk & Mitigation
+- Risk: モデルが JSON を壊したり、0-1 範囲外の bbox を返す可能性がある。
+- Mitigation: まずは `response_format=json_object` の軽い強制に留め、raw 出力を `--json-out` と `--text-out` に残して失敗時の再確認を容易にした。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 14:26 (Asia/Taipei) — Visionテストへ OCR後翻訳モードを追加**
+
+### Summary
+- `test_llama_vision_ocr.py` に `ocr-then-translate` モードを追加し、画像OCR結果をテキスト翻訳へ渡せるようにした。
+
+### Context / Goal
+- 画像直接翻訳ではなく、まず OCR 抽出した文字列を翻訳させる経路を試したい。
+- 座標品質に依存せず、OCR と翻訳を段階分離して品質を見たい。
+
+### Changes
+- `--mode` に `ocr-then-translate` を追加した。
+- vision入力の OCR パスと、テキスト専用の翻訳パスを分ける `run_text_translate()` を追加した。
+- `json-out` は OCR応答と翻訳応答をまとめて保存し、`text-out` は最終翻訳文を保存するようにした。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — OCR後翻訳モード、共通 generation 設定、2段階出力保存を追加。
+
+### Behavioral Impact
+- 本番コードには影響しない。
+- 単体テストで、画像OCR結果をそのままテキスト翻訳へ流す比較が可能になる。
+
+### Risk & Mitigation
+- Risk: OCR結果自体が崩れていると、翻訳段は正常でも品質が低く見える。
+- Mitigation: vision pass の出力を標準出力と `json-out` に残し、OCR品質と翻訳品質を切り分けやすくした。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）

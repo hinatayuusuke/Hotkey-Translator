@@ -19,9 +19,19 @@ REQUIRED_CUDA_DLLS = (
 )
 
 DEFAULT_PROMPT = "Extract all visible text from this image. Output plain text only. Preserve line breaks. Do not translate."
+DEFAULT_BOXES_PROMPT = (
+    "Extract all visible text blocks from this image. "
+    'Return JSON only with this schema: {"blocks":[{"text":"...","x":0.0,"y":0.0,"w":0.0,"h":0.0}]}. '
+    "x, y, w, h must be normalized to the full image size and stay between 0 and 1. "
+    "Do not translate. Do not include explanation."
+)
 DEFAULT_TRANSLATE_PROMPT = (
     "Translate all visible text in this image from {source_lang} to {target_lang}. "
     "Output translated text only. Preserve line breaks where possible. Do not describe the image."
+)
+DEFAULT_TEXT_TRANSLATE_PROMPT = (
+    "Translate the following text from {source_lang} to {target_lang}. "
+    "Output translated text only. Preserve line breaks where possible. Do not explain."
 )
 
 
@@ -42,7 +52,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-tokens", type=int, default=512, help="Max output tokens")
     parser.add_argument("--http-timeout-sec", type=float, default=120.0, help="HTTP timeout")
     parser.add_argument("--startup-timeout-sec", type=float, default=120.0, help="Server startup timeout")
-    parser.add_argument("--mode", choices=["ocr", "translate"], default="ocr", help="Vision task mode")
+    parser.add_argument(
+        "--mode",
+        choices=["ocr", "translate", "ocr-then-translate"],
+        default="ocr",
+        help="Vision task mode",
+    )
+    parser.add_argument(
+        "--output-format",
+        choices=["text", "boxes-json"],
+        default="text",
+        help="OCR output format. boxes-json is intended for OCR mode experiments.",
+    )
     parser.add_argument("--source-lang", default="ja", help="Source language for translate mode")
     parser.add_argument("--target-lang", default="en", help="Target language for translate mode")
     parser.add_argument("--prompt", default=None, help="Optional prompt override")
@@ -61,6 +82,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--json-out", default=None, help="Optional path to write raw JSON response")
     parser.add_argument("--text-out", default=None, help="Optional path to write extracted text")
+    parser.add_argument("--boxes-out", default=None, help="Optional path to write parsed OCR boxes JSON")
     return parser.parse_args()
 
 
@@ -266,15 +288,93 @@ def extract_message_content(payload: dict) -> str:
     return ""
 
 
+def extract_json_object(raw_text: str) -> Optional[str]:
+    if not raw_text:
+        return None
+
+    text = raw_text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3:
+            text = "\n".join(lines[1:-1]).strip()
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start == -1 or end == -1 or end <= start:
+        return None
+    return text[start:end + 1]
+
+
+def parse_boxes_payload(raw_text: str) -> Optional[dict]:
+    parsed = extract_json_object(raw_text)
+    if not parsed:
+        return None
+    try:
+        payload = json.loads(parsed)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list):
+        return None
+    return payload
+
+
+def summarize_boxes(blocks_payload: dict) -> str:
+    blocks = blocks_payload.get("blocks", [])
+    if not isinstance(blocks, list):
+        return ""
+    lines: list[str] = []
+    for idx, block in enumerate(blocks):
+        if not isinstance(block, dict):
+            continue
+        text = block.get("text", "")
+        x = block.get("x", "")
+        y = block.get("y", "")
+        w = block.get("w", "")
+        h = block.get("h", "")
+        lines.append(f"[{idx}] x={x} y={y} w={w} h={h} text={text}")
+    return "\n".join(lines)
+
+
 def build_user_prompt(args: argparse.Namespace) -> str:
     if args.prompt:
         return args.prompt
+    if args.mode == "ocr" and args.output_format == "boxes-json":
+        return DEFAULT_BOXES_PROMPT
     if args.mode == "translate":
         return DEFAULT_TRANSLATE_PROMPT.format(source_lang=args.source_lang, target_lang=args.target_lang)
     return DEFAULT_PROMPT
 
 
-def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int]:
+def run_chat_completion(base_url: str, body: dict[str, object], timeout_sec: float) -> tuple[dict, str, int]:
+    started = time.monotonic()
+    with httpx.Client(base_url=base_url, timeout=max(1.0, timeout_sec)) as client:
+        response = client.post("/v1/chat/completions", json=body)
+        response.raise_for_status()
+        payload = response.json()
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    return payload, extract_message_content(payload), elapsed_ms
+
+
+def build_common_generation_args(args: argparse.Namespace) -> dict[str, object]:
+    body: dict[str, object] = {
+        "temperature": 0.0,
+        "top_p": 0.1,
+        "top_k": 20,
+        "repeat_penalty": 1.0,
+        "max_tokens": args.max_tokens,
+        "stream": False,
+    }
+    if args.disable_thinking:
+        body["reasoning_budget"] = 0
+        body["reasoning_format"] = "none"
+        body["chat_template_kwargs"] = {"enable_thinking": False}
+    return body
+
+
+def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int, Optional[dict]]:
     base_dir = Path(__file__).resolve().parent
     image_path = resolve_path(base_dir, args.image)
     model_path = resolve_path(base_dir, args.model)
@@ -299,25 +399,35 @@ def run_vision_chat(args: argparse.Namespace) -> tuple[dict, str, int]:
                 ],
             }
         ],
-        "temperature": 0.0,
-        "top_p": 0.1,
-        "top_k": 20,
-        "repeat_penalty": 1.0,
-        "max_tokens": args.max_tokens,
-        "stream": False,
+        **build_common_generation_args(args),
     }
-    if args.disable_thinking:
-        body["reasoning_budget"] = 0
-        body["reasoning_format"] = "none"
-        body["chat_template_kwargs"] = {"enable_thinking": False}
+    if args.mode == "ocr" and args.output_format == "boxes-json":
+        # WHY: Vision OCR bbox experiments are fragile; force JSON object mode before adding heavier grammar fallback.
+        body["response_format"] = {"type": "json_object"}
+    payload, text, elapsed_ms = run_chat_completion(base_url, body, args.http_timeout_sec)
+    boxes_payload = parse_boxes_payload(text) if args.mode == "ocr" and args.output_format == "boxes-json" else None
+    return payload, text, elapsed_ms, boxes_payload
 
-    started = time.monotonic()
-    with httpx.Client(base_url=base_url, timeout=max(1.0, args.http_timeout_sec)) as client:
-        response = client.post("/v1/chat/completions", json=body)
-        response.raise_for_status()
-        payload = response.json()
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    return payload, extract_message_content(payload), elapsed_ms
+
+def run_text_translate(args: argparse.Namespace, extracted_text: str) -> tuple[dict, str, int]:
+    base_dir = Path(__file__).resolve().parent
+    model_path = resolve_path(base_dir, args.model)
+    base_url = f"http://{args.host}:{args.port}"
+    body = {
+        "model": model_path.name,
+        "messages": [
+            {
+                "role": "system",
+                "content": DEFAULT_TEXT_TRANSLATE_PROMPT.format(
+                    source_lang=args.source_lang,
+                    target_lang=args.target_lang,
+                ),
+            },
+            {"role": "user", "content": extracted_text},
+        ],
+        **build_common_generation_args(args),
+    }
+    return run_chat_completion(base_url, body, args.http_timeout_sec)
 
 
 def write_text(path: str, text: str) -> None:
@@ -329,17 +439,45 @@ def main() -> int:
     local_server: Optional[subprocess.Popen[str]] = None
     try:
         local_server = start_local_server(args)
-        payload, text, elapsed_ms = run_vision_chat(args)
-        print(f"{args.mode} completed in {elapsed_ms} ms")
-        print("--- Model Output ---")
+        payload, text, elapsed_ms, boxes_payload = run_vision_chat(args)
+        output_payload: object = payload
+        output_text = text
+        total_elapsed_ms = elapsed_ms
+        print(f"{args.mode} vision pass completed in {elapsed_ms} ms")
+        print("--- Vision Output ---")
         print(text)
+        if boxes_payload is not None:
+            blocks = boxes_payload.get("blocks", [])
+            block_count = len(blocks) if isinstance(blocks, list) else 0
+            print("--- Parsed Boxes ---")
+            print(f"blocks={block_count}")
+            summary = summarize_boxes(boxes_payload)
+            if summary:
+                print(summary)
+        if args.mode == "ocr-then-translate":
+            translation_payload, translated_text, translation_elapsed_ms = run_text_translate(args, text)
+            total_elapsed_ms += translation_elapsed_ms
+            output_payload = {
+                "ocr_response": payload,
+                "translation_response": translation_payload,
+                "ocr_text": text,
+                "translated_text": translated_text,
+            }
+            output_text = translated_text
+            print(f"ocr-then-translate text pass completed in {translation_elapsed_ms} ms")
+            print("--- Translated Text ---")
+            print(translated_text)
+        print(f"total elapsed: {total_elapsed_ms} ms")
 
         if args.json_out:
-            Path(args.json_out).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            Path(args.json_out).write_text(json.dumps(output_payload, ensure_ascii=False, indent=2), encoding="utf-8")
             print(f"[OK] wrote json: {args.json_out}")
         if args.text_out:
-            write_text(args.text_out, text)
+            write_text(args.text_out, output_text)
             print(f"[OK] wrote text: {args.text_out}")
+        if args.boxes_out and boxes_payload is not None:
+            Path(args.boxes_out).write_text(json.dumps(boxes_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            print(f"[OK] wrote boxes: {args.boxes_out}")
         return 0
     finally:
         if local_server is not None:
