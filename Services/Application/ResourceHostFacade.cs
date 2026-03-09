@@ -270,25 +270,25 @@ internal sealed class ResourceHostFacade : IDisposable
 
     private void StopHostsNoLongerNeeded(AppSettings settings)
     {
-        if (_paddleGrpcHost.IsRunning && !ShouldLoadPaddle(settings))
+        if (_paddleGrpcHost.IsRunning && !ShouldKeepPaddleResident(settings))
         {
             _loggerAccessor()?.Info("stage=grpc_host host=paddle_grpc event=stop_unused.");
             StopPaddle();
         }
 
-        if (_paddleVlGrpcHost.IsRunning && !ShouldLoadPaddleVl(settings))
+        if (_paddleVlGrpcHost.IsRunning && !ShouldKeepPaddleVlResident(settings))
         {
             _loggerAccessor()?.Info("stage=grpc_host host=paddle_vl_grpc event=stop_unused.");
             StopPaddleVl();
         }
 
-        if (_ndlGrpcHost.IsRunning && !ShouldLoadNdl(settings))
+        if (_ndlGrpcHost.IsRunning && !ShouldKeepNdlResident(settings))
         {
             _loggerAccessor()?.Info("stage=grpc_host host=ndl_grpc event=stop_unused.");
             StopNdl();
         }
 
-        if (_visionLlmGrpcHost.IsRunning && !ShouldLoadVisionLlm(settings))
+        if (_visionLlmGrpcHost.IsRunning && !ShouldKeepVisionLlmResident(settings))
         {
             _loggerAccessor()?.Info("stage=grpc_host host=vision_llm_grpc event=stop_unused.");
             StopVisionLlm();
@@ -307,6 +307,45 @@ internal sealed class ResourceHostFacade : IDisposable
                settings.EnableVisionLlmGrpcHost &&
                settings.EnableVisionLlmSharedLocalTranslation &&
                settings.EnableLlamaCppTranslation;
+    }
+
+    private static bool ShouldKeepPaddleResident(AppSettings settings)
+    {
+        // WHY: Paddle and NDL are intentionally hot-switch ready together, so selecting either OCR
+        // keeps both hosts resident. VisionLLM and PaddleOCR-VL stay exclusive because they carry
+        // their own heavier pipelines.
+        return settings.EnablePaddleGrpcHost &&
+               settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl;
+    }
+
+    private static bool ShouldKeepPaddleVlResident(AppSettings settings)
+    {
+        return settings.EnablePaddleVlGrpcHost &&
+               settings.OcrEngine == OcrEngineKind.PaddleVllm;
+    }
+
+    private static bool ShouldKeepNdlResident(AppSettings settings)
+    {
+        return settings.EnableNdlGrpcHost &&
+               settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl;
+    }
+
+    private static bool ShouldKeepVisionLlmResident(AppSettings settings)
+    {
+        if (!settings.EnableVisionLlmGrpcHost)
+        {
+            return false;
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.VisionLlm)
+        {
+            return true;
+        }
+
+        // WHY: When local Llama translation is disabled, VisionLLM can stay warm across WinRT/NDL
+        // switches because it is no longer competing with the pure-translation llama host for VRAM.
+        return !settings.EnableLlamaCppTranslation &&
+               settings.OcrEngine is OcrEngineKind.WinRt or OcrEngineKind.Ndl;
     }
 
     private static bool ShouldStopLlamaAsUnused(AppSettings settings)

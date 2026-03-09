@@ -17747,3 +17747,32 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj`
+**2026-03-09 20:04 (Asia/Taipei) — gRPC host の残留判定を共存ポリシーへ合わせて修正**
+
+### Summary
+- `stop_unused` の判定を単純な `ShouldLoad*` から、Paddle/NDL 共存と VisionLLM 条件付き残留を考慮した resident 判定へ修正した。
+
+### Context / Goal
+- `StopHostsNoLongerNeeded()` の追加により、PaddleOCR と NDL の共存が壊れ、VisionLLM の残留条件も意図とずれていた。
+- 共存ポリシーをコードへ明示し、不要 host 停止だけを正しく行いたい。
+
+### Changes
+- `StopHostsNoLongerNeeded()` で `ShouldKeep*Resident()` helper を使うように変更した。
+- Paddle/NDL は `OcrEngine == Paddle or Ndl` のとき両方とも resident とみなすようにした。
+- PaddleOCR-VL は従来どおり単独 resident とした。
+- VisionLLM は `OcrEngine == VisionLlm` のとき常駐し、さらに `EnableLlamaCppTranslation=false` かつ `OcrEngine == WinRt or Ndl` のときも warm 状態を維持できるようにした。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — host ごとの resident 判定 helper を追加し、不要停止判定を共存ポリシーに合わせて修正。
+
+### Behavioral Impact
+- PaddleOCR と NDL は再び共存できる。
+- VisionLLM から WinRT/NDL へ切替えても、ローカル Llama translation が無効なら VisionLLM host は残る。
+- PaddleOCR / PaddleOCR-VL / VisionLLM は引き続き相互排他で動作する。
+
+### Risk & Mitigation
+- Risk: resident 条件が複雑化し、将来の host 追加時に抜け漏れが出る。
+- Mitigation: helper 名を明示し、共存ポリシーを WHY コメントでコード化した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`
