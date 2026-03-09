@@ -121,6 +121,11 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         startInfo.ArgumentList.Add("--repeat-penalty");
         startInfo.ArgumentList.Add(settings.LlamaRepeatPenalty.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("--disable-thinking");
+        if (settings.EnableVisionLlmDiagFileLog)
+        {
+            startInfo.ArgumentList.Add("--diag-log-file");
+            startInfo.ArgumentList.Add(ResolveDiagLogPath(settings));
+        }
 
         var process = StartProcessWithLogging(startInfo, "VisionLlmGrpc");
         return Task.FromResult(process);
@@ -227,6 +232,18 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         }
 
         return resolved;
+    }
+
+    private static string ResolveDiagLogPath(AppSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.VisionLlmDiagLogPath))
+        {
+            return Path.GetFullPath(settings.VisionLlmDiagLogPath.Trim());
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), "HotkeyTranslator");
+        Directory.CreateDirectory(dir);
+        return Path.Combine(dir, "vision_llm_diag.log");
     }
 
     private void TryTrackLlamaServerPid(string line)

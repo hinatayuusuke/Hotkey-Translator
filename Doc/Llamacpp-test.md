@@ -84,10 +84,7 @@ uv run test_translation_engine.py --send-mode llama-json-batch --text "Hello wor
 実行例:
 ```powershell
 cd "G:\Local App\Hotkey-Translator\TranslationServiceLlama"
-uv run test_llama_vision_ocr.py `
-  --image ".\test.png" `
-  --model ".\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf" `
-  --device gpu `
+uv run test_llama_vision_ocr.py --image ".\test.png" --model ".\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf" --device gpu --mode ocr --mmproj ".\LlamaCpp\Models\<mmproj>.gguf"
   --json-out ".\out\vision_raw.json" `
   --text-out ".\out\vision_text.txt"
   --mode ocr|translate
@@ -104,4 +101,16 @@ uv run test_llama_vision_ocr.py `
   --device gpu
 ```
 
+cd "G:\Local App\Hotkey-Translator\OcrServiceVisionLlm"
+
+uv run test_vision_llama_engine.py `
+  --image ".\test.png" `
+  --llama-server "..\TranslationServiceLlama\LlamaCpp\llama-server.exe" `
+  --model "..\TranslationServiceLlama\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf" `
+  --mmproj "..\TranslationServiceLlama\LlamaCpp\Models\mmproj-F16.gguf" `
+  --device gpu `
+  --warmup 1 `
+  --repeat 3 `
+  --json-out ".\out\vision_ocr_perf.json" `
+  --text-out ".\out\vision_ocr_text.txt"
   

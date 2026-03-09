@@ -17634,3 +17634,63 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj`
+**2026-03-09 18:10 (Asia/Taipei) — VisionLlamaEngine OCR 単体テストを追加**
+
+### Summary
+- `vision_llama_engine.py` を gRPC 経由なしで直接叩ける OCR 単体テスト `test_vision_llama_engine.py` を追加した。
+
+### Context / Goal
+- アプリ経由だと VisionLLM OCR がテストコードより数倍遅く見えるため、まず engine 単体の OCR 実行時間を比較したい。
+- gRPC や pipeline を介さず、`LlamaServerHost + VisionLlamaEngine` の組だけで startup 時間と OCR 時間を測れるスクリプトが必要。
+
+### Changes
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` を新規追加した。
+- `llama-server` / model / mmproj / image を指定して local server を起動し、`VisionLlamaEngine.recognize()` を直接実行する形にした。
+- `--warmup` と `--repeat` を追加し、ウォームアップ回数、各回の OCR ms、平均・最小・最大を出力するようにした。
+- `--text-out` と `--json-out` で最終 OCR テキストと timing summary を保存できるようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — Vision OCR 単体性能比較用の direct engine テストを追加。
+
+### Behavioral Impact
+- `OcrServiceVisionLlm` 単体で startup 時間と OCR 実行時間を測定できるようになる。
+
+### Risk & Mitigation
+- Risk: 常に local `llama-server` を起動するため、既に同ポートを使っているプロセスがあると衝突する。
+- Mitigation: `--port` を明示指定できるようにし、用途を単体比較に限定した。
+
+### Tests / Verification
+- `python -m compileall OcrServiceVisionLlm\test_vision_llama_engine.py`
+**2026-03-09 18:58 (Asia/Taipei) — VisionLLM Python 診断ファイルログを追加**
+
+### Summary
+- VisionLLM OCR/翻訳の Python 側に、`settings.json` から有効化できるファイル診断ログを追加した。
+
+### Context / Goal
+- アプリ経路の VisionLLM OCR が直打ちテストより大幅に遅く見えるため、Python 層で実画像サイズ・リサイズ後サイズ・HTTP 時間・総時間を確認したい。
+- アプリからスイッチを ON にして OCR 実行すれば、関連ログをファイルへ追記できる状態が必要。
+
+### Changes
+- `AppSettings` に `EnableVisionLlmDiagFileLog` と `VisionLlmDiagLogPath` を追加した。
+- `VisionLlmGrpcHost` が診断ログ有効時のみ `--diag-log-file` を `server.py` へ渡すようにした。
+- `server.py` に `--diag-log-file` を追加し、`VisionLlamaEngine` へログ出力先を設定するようにした。
+- `vision_llama_engine.py` に UTF-8 append の診断ロガーを追加し、OCR/翻訳の開始・完了・失敗時にメタデータと処理時間を書き出すようにした。
+- OCR 診断には入力画像サイズ、アップロード後サイズ、アップロード PNG バイト数、sampling 条件、prepare_ms、http_ms、total_ms を含めるようにした。
+
+### Files Touched
+- `Models/AppSettings.cs` — VisionLLM 診断ログの ON/OFF と出力先パス設定を追加。
+- `Services/VisionLlmGrpcHost.cs` — 診断ログ有効時に `server.py` へ `--diag-log-file` を渡す処理と既定パス解決を追加。
+- `OcrServiceVisionLlm/server.py` — `--diag-log-file` 引数を追加し、engine へ診断ログ設定を流すようにした。
+- `OcrServiceVisionLlm/vision_llama_engine.py` — UTF-8 append 形式の診断ロガーと OCR/翻訳 timing ログを追加。
+
+### Behavioral Impact
+- `settings.json` で `EnableVisionLlmDiagFileLog=true` にして VisionLLM host を再起動すると、Python 側の OCR/翻訳診断ログがファイルへ追記される。
+- `VisionLlmDiagLogPath` が空のときは `%TEMP%\\HotkeyTranslator\\vision_llm_diag.log` を既定出力先に使う。
+
+### Risk & Mitigation
+- Risk: 診断ログを常時 ON にすると I/O が増えて OCR をわずかに遅くする。
+- Mitigation: 既定 OFF とし、必要時だけ `settings.json` で有効化する。ログは 1 リクエスト数行のサマリ中心に絞る。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`
+- `python -m compileall OcrServiceVisionLlm\\server.py OcrServiceVisionLlm\\vision_llama_engine.py`

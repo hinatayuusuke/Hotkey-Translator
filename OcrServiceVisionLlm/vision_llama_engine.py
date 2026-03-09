@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import json
 import logging
@@ -7,6 +8,7 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -68,6 +70,47 @@ class VisionLlamaRequestConfig:
     repeat_penalty: float
     http_timeout_seconds: float
     disable_thinking: bool
+
+
+@dataclass(frozen=True)
+class PreparedImageUpload:
+    data_url: str
+    input_width: int
+    input_height: int
+    upload_width: int
+    upload_height: int
+    upload_bytes: int
+
+
+class VisionDiagLogger:
+    def __init__(self, path: str) -> None:
+        self._path = path
+        self._lock = threading.Lock()
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+    def write(self, event: str, **fields: object) -> None:
+        parts = [f"ts={datetime.now(timezone.utc).astimezone().isoformat(timespec='milliseconds')}", f"event={event}"]
+        for key, value in fields.items():
+            parts.append(f"{key}={self._format(value)}")
+        line = " ".join(parts)
+        with self._lock:
+            with open(self._path, "a", encoding="utf-8") as handle:
+                handle.write(line + "\n")
+
+    @staticmethod
+    def _format(value: object) -> str:
+        if value is None:
+            return "null"
+        if isinstance(value, bool):
+            return "1" if value else "0"
+        if isinstance(value, float):
+            return f"{value:.2f}"
+        text = str(value)
+        if any(ch.isspace() for ch in text) or "=" in text:
+            return json.dumps(text, ensure_ascii=False)
+        return text
 
 
 class LlamaServerHost:
@@ -241,6 +284,10 @@ class VisionLlamaEngine:
         self._max_image_side = max(0, max_image_side)
         self._lock = threading.Lock()
         self._client = httpx.Client(base_url=host.base_url, timeout=request.http_timeout_seconds)
+        self._diag_logger: VisionDiagLogger | None = None
+
+    def set_diag_log_file(self, path: str) -> None:
+        self._diag_logger = VisionDiagLogger(path)
 
     @property
     def model_name(self) -> str:
@@ -255,26 +302,65 @@ class VisionLlamaEngine:
         if not self._lock.acquire(blocking=False):
             raise VisionLlamaBusyError("Vision OCR busy")
         try:
-            data_url = prepare_image_for_upload(image_bytes, self._max_image_side)
+            request_id = self._build_request_id(image_bytes)
+            total_start = time.perf_counter()
+            prepare_start = time.perf_counter()
+            prepared = prepare_image_for_upload(image_bytes, self._max_image_side)
+            prepare_ms = (time.perf_counter() - prepare_start) * 1000.0
             prompt = DEFAULT_OCR_PROMPT
             if language:
                 prompt = f"{DEFAULT_OCR_PROMPT} The primary OCR language hint is {language}."
+            self._write_diag(
+                "ocr_begin",
+                request_id=request_id,
+                image_bytes_in=len(image_bytes),
+                image_sha256_8=hashlib.sha256(image_bytes).hexdigest()[:8],
+                image_width_in=prepared.input_width,
+                image_height_in=prepared.input_height,
+                image_width_upload=prepared.upload_width,
+                image_height_upload=prepared.upload_height,
+                upload_bytes=prepared.upload_bytes,
+                max_image_side=self._max_image_side,
+                language=language or "",
+                max_tokens=self._request.max_tokens,
+                temperature=self._request.temperature,
+                top_p=self._request.top_p,
+                top_k=self._request.top_k,
+                repeat_penalty=self._request.repeat_penalty,
+                prepare_ms=prepare_ms,
+            )
             payload = self._build_payload(
                 messages=[
                     {
                         "role": "user",
                         "content": [
                             {"type": "text", "text": prompt},
-                            {"type": "image_url", "image_url": {"url": data_url}},
+                            {"type": "image_url", "image_url": {"url": prepared.data_url}},
                         ],
                     }
                 ],
                 max_tokens=self._request.max_tokens,
             )
+            http_start = time.perf_counter()
             response = self._client.post("/v1/chat/completions", json=payload)
             response.raise_for_status()
+            http_ms = (time.perf_counter() - http_start) * 1000.0
             message = extract_message_content(response.json())
-            return message.strip()
+            text = message.strip()
+            total_ms = (time.perf_counter() - total_start) * 1000.0
+            self._write_diag(
+                "ocr_done",
+                request_id=request_id,
+                prompt_chars=len(prompt),
+                response_chars=len(text),
+                response_lines=len([line for line in text.splitlines() if line.strip()]),
+                http_ms=http_ms,
+                total_ms=total_ms,
+            )
+            return text
+        except Exception as exc:
+            self._write_diag("ocr_failed", error=str(exc))
+            raise
         finally:
             self._lock.release()
 
@@ -286,9 +372,20 @@ class VisionLlamaEngine:
             if not normalized:
                 return []
 
+            total_start = time.perf_counter()
             request_json = json.dumps(
                 [{"i": index, "text": value} for index, value in enumerate(normalized)],
                 ensure_ascii=False,
+            )
+            request_id = self._build_request_id(request_json.encode("utf-8"))
+            self._write_diag(
+                "translate_begin",
+                request_id=request_id,
+                items=len(normalized),
+                source_lang=source_lang or "",
+                target_lang=target_lang or "",
+                request_chars=len(request_json),
+                max_tokens=self._request.max_tokens,
             )
             payload = self._build_payload(
                 messages=[
@@ -307,14 +404,29 @@ class VisionLlamaEngine:
                 max_tokens=self._request.max_tokens,
                 response_format={"type": "json_object"},
             )
+            http_start = time.perf_counter()
             response = self._client.post("/v1/chat/completions", json=payload)
             response.raise_for_status()
+            http_ms = (time.perf_counter() - http_start) * 1000.0
             message = extract_message_content(response.json())
             parsed = json.loads(message)
             translations = parsed.get("translations")
             if not isinstance(translations, list):
                 raise VisionLlamaError("Vision translation response is missing translations list.")
-            return [str(item) for item in translations[: len(normalized)]]
+            outputs = [str(item) for item in translations[: len(normalized)]]
+            total_ms = (time.perf_counter() - total_start) * 1000.0
+            self._write_diag(
+                "translate_done",
+                request_id=request_id,
+                items=len(outputs),
+                response_chars=sum(len(item) for item in outputs),
+                http_ms=http_ms,
+                total_ms=total_ms,
+            )
+            return outputs
+        except Exception as exc:
+            self._write_diag("translate_failed", error=str(exc))
+            raise
         finally:
             self._lock.release()
 
@@ -337,10 +449,29 @@ class VisionLlamaEngine:
             payload["response_format"] = response_format
         return payload
 
+    def _write_diag(self, event: str, **fields: object) -> None:
+        logger = self._diag_logger
+        if logger is None:
+            return
+        logger.write(event, **fields)
 
-def prepare_image_for_upload(image_bytes: bytes, max_image_side: int) -> str:
+    @staticmethod
+    def _build_request_id(seed: bytes) -> str:
+        return hashlib.sha256(seed).hexdigest()[:12]
+
+
+def prepare_image_for_upload(image_bytes: bytes, max_image_side: int) -> PreparedImageUpload:
     if max_image_side <= 0:
-        return to_data_url(image_bytes, "image/png")
+        with Image.open(io.BytesIO(image_bytes)) as image:
+            width, height = image.size
+        return PreparedImageUpload(
+            data_url=to_data_url(image_bytes, "image/png"),
+            input_width=width,
+            input_height=height,
+            upload_width=width,
+            upload_height=height,
+            upload_bytes=len(image_bytes),
+        )
 
     with Image.open(io.BytesIO(image_bytes)) as image:
         converted = image.convert("RGB")
@@ -357,7 +488,15 @@ def prepare_image_for_upload(image_bytes: bytes, max_image_side: int) -> str:
 
         output = io.BytesIO()
         resized.save(output, format="PNG")
-        return to_data_url(output.getvalue(), "image/png")
+        upload_bytes = output.getvalue()
+        return PreparedImageUpload(
+            data_url=to_data_url(upload_bytes, "image/png"),
+            input_width=width,
+            input_height=height,
+            upload_width=resized.width,
+            upload_height=resized.height,
+            upload_bytes=len(upload_bytes),
+        )
 
 
 def to_data_url(data: bytes, mime_type: str) -> str:

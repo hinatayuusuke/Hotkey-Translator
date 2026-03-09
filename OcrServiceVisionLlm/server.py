@@ -162,6 +162,7 @@ def main() -> int:
     parser.add_argument("--ready-timeout-ms", type=int, default=120000)
     parser.add_argument("--restart-max", type=int, default=3)
     parser.add_argument("--restart-window-seconds", type=int, default=30)
+    parser.add_argument("--diag-log-file", default="", help="Optional UTF-8 append-only diagnostic log path")
     parser.add_argument(
         "--disable-thinking",
         dest="disable_thinking",
@@ -216,6 +217,8 @@ def main() -> int:
         raise
 
     engine = VisionLlamaEngine(host, request_config, args.max_image_side)
+    if args.diag_log_file:
+        engine.set_diag_log_file(args.diag_log_file)
 
     grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))
     ocr_pb2_grpc.add_OcrServiceServicer_to_server(OcrService(engine), grpc_server)
