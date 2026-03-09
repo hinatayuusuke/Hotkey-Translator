@@ -17840,3 +17840,38 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。
+**2026-03-09 22:05 (Asia/Taipei) — ROIスロット実行ホットキーを設定UIへ追加**
+
+### Summary
+- 追加した ROI スロット実行 hotkey 4項目を Hotkey 設定 UI と SettingsViewModel へ反映した。
+
+### Context / Goal
+- Shift/Ctrl + F8/F10 で追加した ROI スロット一時実行 hotkey を、固定キーのままにせずユーザ設定可能にしたい。
+- 既存 Hotkey タブの構成に揃え、保存・読込・再登録経路へ自然に統合したい。
+
+### Changes
+- Hotkey タブの Grid に 4 行追加し、以下の設定項目を露出した。
+  - Run next ROI slot
+  - Run next+1 ROI slot
+  - Force run next ROI slot
+  - Force run next+1 ROI slot
+- SettingsViewModel に対応する key / ctrl / alt / shift プロパティを追加した。
+- LoadFrom / ApplyHotkeySettings に新 hotkey 4項目の読込・保存を追加した。
+- PopulateHotkeyKeyBoxes() で新 ComboBox 4件へキー候補を供給するようにした。
+- Force Gemini (strict) の ViewModel 初期値も Alt+F10 に合わせた。
+
+### Files Touched
+- MainWindow.xaml — Hotkey タブへ ROI スロット実行 hotkey 4項目を追加し、既存行番号を後ろへ調整。
+- ViewModels/SettingsViewModel.cs — 新 hotkey 4項目の ObservableProperty と読込/保存/変更通知を追加。
+- MainWindow.xaml.cs — 新 ComboBox 4件にキー候補を設定するよう更新。
+
+### Behavioral Impact
+- 追加 hotkey を UI から変更・保存できるようになる。
+- アプリ再起動後も、ROI スロット一時実行 hotkey のカスタム設定が保持される。
+
+### Risk & Mitigation
+- Risk: Hotkey タブの行追加でバインディング名や row 番号の崩れが起きる可能性。
+- Mitigation: ビルドで XAML / ViewModel バインディングの整合を確認した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

@@ -123,6 +123,14 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyRunOnceCtrl;
     [ObservableProperty] private bool _hotkeyRunOnceAlt;
     [ObservableProperty] private bool _hotkeyRunOnceShift;
+    [ObservableProperty] private string _hotkeyRunNextRoiKey = "F8";
+    [ObservableProperty] private bool _hotkeyRunNextRoiCtrl;
+    [ObservableProperty] private bool _hotkeyRunNextRoiAlt;
+    [ObservableProperty] private bool _hotkeyRunNextRoiShift = true;
+    [ObservableProperty] private string _hotkeyRunNextNextRoiKey = "F8";
+    [ObservableProperty] private bool _hotkeyRunNextNextRoiCtrl = true;
+    [ObservableProperty] private bool _hotkeyRunNextNextRoiAlt;
+    [ObservableProperty] private bool _hotkeyRunNextNextRoiShift;
     [ObservableProperty] private string _hotkeyToggleOverlayKey = "F9";
     [ObservableProperty] private bool _hotkeyToggleOverlayCtrl;
     [ObservableProperty] private bool _hotkeyToggleOverlayAlt;
@@ -131,10 +139,18 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyForceRunCtrl;
     [ObservableProperty] private bool _hotkeyForceRunAlt;
     [ObservableProperty] private bool _hotkeyForceRunShift;
+    [ObservableProperty] private string _hotkeyForceRunNextRoiKey = "F10";
+    [ObservableProperty] private bool _hotkeyForceRunNextRoiCtrl;
+    [ObservableProperty] private bool _hotkeyForceRunNextRoiAlt;
+    [ObservableProperty] private bool _hotkeyForceRunNextRoiShift = true;
+    [ObservableProperty] private string _hotkeyForceRunNextNextRoiKey = "F10";
+    [ObservableProperty] private bool _hotkeyForceRunNextNextRoiCtrl = true;
+    [ObservableProperty] private bool _hotkeyForceRunNextNextRoiAlt;
+    [ObservableProperty] private bool _hotkeyForceRunNextNextRoiShift;
     [ObservableProperty] private string _hotkeyForceGeminiStrictKey = "F10";
     [ObservableProperty] private bool _hotkeyForceGeminiStrictCtrl;
-    [ObservableProperty] private bool _hotkeyForceGeminiStrictAlt;
-    [ObservableProperty] private bool _hotkeyForceGeminiStrictShift = true;
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictAlt = true;
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictShift;
     [ObservableProperty] private string _hotkeyOcrOnlyKey = "F11";
     [ObservableProperty] private bool _hotkeyOcrOnlyCtrl;
     [ObservableProperty] private bool _hotkeyOcrOnlyAlt;
@@ -619,6 +635,14 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyRunOnceCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyRunOnceAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyRunOnceShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunNextNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleOverlayKeyChanged(string value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleOverlayCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyToggleOverlayAltChanged(bool value) => RequestSaveOnValueChange();
@@ -627,6 +651,14 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyForceRunCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyForceRunAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyForceRunShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyForceRunNextNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyForceGeminiStrictKeyChanged(string value) => RequestSaveOnValueChange();
     partial void OnHotkeyForceGeminiStrictCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyForceGeminiStrictAltChanged(bool value) => RequestSaveOnValueChange();
@@ -774,6 +806,18 @@ internal sealed partial class SettingsViewModel : ObservableObject
         HotkeyRunOnceAlt = runOnceAlt;
         HotkeyRunOnceShift = runOnceShift;
 
+        HotkeyRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextRoiKey, "F8");
+        AssignHotkeyModifiers(settings.HotkeyRunNextRoiModifiers, out var runNextRoiCtrl, out var runNextRoiAlt, out var runNextRoiShift);
+        HotkeyRunNextRoiCtrl = runNextRoiCtrl;
+        HotkeyRunNextRoiAlt = runNextRoiAlt;
+        HotkeyRunNextRoiShift = runNextRoiShift;
+
+        HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextNextRoiKey, "F8");
+        AssignHotkeyModifiers(settings.HotkeyRunNextNextRoiModifiers, out var runNextNextRoiCtrl, out var runNextNextRoiAlt, out var runNextNextRoiShift);
+        HotkeyRunNextNextRoiCtrl = runNextNextRoiCtrl;
+        HotkeyRunNextNextRoiAlt = runNextNextRoiAlt;
+        HotkeyRunNextNextRoiShift = runNextNextRoiShift;
+
         HotkeyToggleOverlayKey = NormalizeHotkeyKey(settings.HotkeyToggleOverlayKey, "F9");
         AssignHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, out var toggleOverlayCtrl, out var toggleOverlayAlt,
             out var toggleOverlayShift);
@@ -786,6 +830,18 @@ internal sealed partial class SettingsViewModel : ObservableObject
         HotkeyForceRunCtrl = forceRunCtrl;
         HotkeyForceRunAlt = forceRunAlt;
         HotkeyForceRunShift = forceRunShift;
+
+        HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextRoiKey, "F10");
+        AssignHotkeyModifiers(settings.HotkeyForceRunNextRoiModifiers, out var forceRunNextRoiCtrl, out var forceRunNextRoiAlt, out var forceRunNextRoiShift);
+        HotkeyForceRunNextRoiCtrl = forceRunNextRoiCtrl;
+        HotkeyForceRunNextRoiAlt = forceRunNextRoiAlt;
+        HotkeyForceRunNextRoiShift = forceRunNextRoiShift;
+
+        HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextNextRoiKey, "F10");
+        AssignHotkeyModifiers(settings.HotkeyForceRunNextNextRoiModifiers, out var forceRunNextNextRoiCtrl, out var forceRunNextNextRoiAlt, out var forceRunNextNextRoiShift);
+        HotkeyForceRunNextNextRoiCtrl = forceRunNextNextRoiCtrl;
+        HotkeyForceRunNextNextRoiAlt = forceRunNextNextRoiAlt;
+        HotkeyForceRunNextNextRoiShift = forceRunNextNextRoiShift;
 
         HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(settings.HotkeyForceGeminiStrictKey, "F10");
         AssignHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, out var forceGeminiCtrl, out var forceGeminiAlt,
@@ -839,11 +895,20 @@ internal sealed partial class SettingsViewModel : ObservableObject
     {
         settings.HotkeyRunOnceKey = NormalizeHotkeyKey(HotkeyRunOnceKey, "F8");
         settings.HotkeyRunOnceModifiers = BuildHotkeyModifiers(HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        settings.HotkeyRunNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextRoiKey, "F8");
+        settings.HotkeyRunNextRoiModifiers = BuildHotkeyModifiers(HotkeyRunNextRoiCtrl, HotkeyRunNextRoiAlt, HotkeyRunNextRoiShift);
+        settings.HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextNextRoiKey, "F8");
+        settings.HotkeyRunNextNextRoiModifiers = BuildHotkeyModifiers(HotkeyRunNextNextRoiCtrl, HotkeyRunNextNextRoiAlt, HotkeyRunNextNextRoiShift);
         settings.HotkeyToggleOverlayKey = NormalizeHotkeyKey(HotkeyToggleOverlayKey, "F9");
         settings.HotkeyToggleOverlayModifiers = BuildHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt,
             HotkeyToggleOverlayShift);
         settings.HotkeyForceRunKey = NormalizeHotkeyKey(HotkeyForceRunKey, "F10");
         settings.HotkeyForceRunModifiers = BuildHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        settings.HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextRoiKey, "F10");
+        settings.HotkeyForceRunNextRoiModifiers = BuildHotkeyModifiers(HotkeyForceRunNextRoiCtrl, HotkeyForceRunNextRoiAlt, HotkeyForceRunNextRoiShift);
+        settings.HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextNextRoiKey, "F10");
+        settings.HotkeyForceRunNextNextRoiModifiers =
+            BuildHotkeyModifiers(HotkeyForceRunNextNextRoiCtrl, HotkeyForceRunNextNextRoiAlt, HotkeyForceRunNextNextRoiShift);
         settings.HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(HotkeyForceGeminiStrictKey, "F10");
         settings.HotkeyForceGeminiStrictModifiers = BuildHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt,
             HotkeyForceGeminiStrictShift);

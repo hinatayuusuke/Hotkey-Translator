@@ -1722,8 +1722,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         var keys = BuildHotkeyKeyOptions();
         HotkeyRunOnceKeyBox.ItemsSource = keys;
+        HotkeyRunNextRoiKeyBox.ItemsSource = keys;
+        HotkeyRunNextNextRoiKeyBox.ItemsSource = keys;
         HotkeyToggleOverlayKeyBox.ItemsSource = keys;
         HotkeyForceRunKeyBox.ItemsSource = keys;
+        HotkeyForceRunNextRoiKeyBox.ItemsSource = keys;
+        HotkeyForceRunNextNextRoiKeyBox.ItemsSource = keys;
         HotkeyForceGeminiStrictKeyBox.ItemsSource = keys;
         HotkeyOcrOnlyKeyBox.ItemsSource = keys;
         HotkeyToggleSceneAutoTranslateKeyBox.ItemsSource = keys;
