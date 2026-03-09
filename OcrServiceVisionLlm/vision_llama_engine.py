@@ -33,7 +33,7 @@ DEFAULT_OCR_PROMPT = (
 
 DEFAULT_TRANSLATE_PROMPT = (
     "Translate the following text list from {source_lang} to {target_lang}. "
-    'Return JSON only with this schema: {{"translations":["..."]}}. '
+    'Return JSON only with this schema: {{"t":["..."]}}. '
     "Preserve order and preserve line breaks inside each item. Do not explain."
 )
 
@@ -376,7 +376,7 @@ class VisionLlamaEngine:
 
             total_start = time.perf_counter()
             request_json = json.dumps(
-                [{"i": index, "text": value} for index, value in enumerate(normalized)],
+                [{"i": index, "s": value} for index, value in enumerate(normalized)],
                 ensure_ascii=False,
             )
             request_id = self._build_request_id(request_json.encode("utf-8"))
@@ -411,8 +411,12 @@ class VisionLlamaEngine:
             response.raise_for_status()
             http_ms = (time.perf_counter() - http_start) * 1000.0
             message = extract_message_content(response.json())
-            parsed = json.loads(message)
-            translations = parsed.get("translations")
+            parsed, rescued = parse_json_object_from_text_resilient(message)
+            if parsed is None:
+                raise VisionLlamaError("Vision translation response is not valid JSON.")
+            translations = parsed.get("t")
+            if not isinstance(translations, list):
+                translations = parsed.get("translations")
             if not isinstance(translations, list):
                 raise VisionLlamaError("Vision translation response is missing translations list.")
             outputs = [str(item) for item in translations[: len(normalized)]]
@@ -424,6 +428,7 @@ class VisionLlamaEngine:
                 response_chars=sum(len(item) for item in outputs),
                 http_ms=http_ms,
                 total_ms=total_ms,
+                parser_rescued=rescued,
             )
             return outputs
         except Exception as exc:
@@ -523,6 +528,129 @@ def extract_message_content(payload: dict) -> str:
             item.get("text", "") for item in content if isinstance(item, dict)
         )
     raise VisionLlamaError("Unsupported llama-server content format.")
+
+
+def parse_json_object_from_text_resilient(content: str) -> tuple[dict | None, bool]:
+    if not content:
+        return None, False
+
+    cleaned = strip_markdown_code_fence(content.strip())
+    if not cleaned:
+        return None, False
+
+    candidates: list[tuple[str, bool]] = []
+    seen: set[str] = set()
+
+    def add_candidate(text: str, rescued: bool) -> None:
+        candidate = text.strip()
+        if not candidate or candidate in seen:
+            return
+        seen.add(candidate)
+        candidates.append((candidate, rescued))
+
+    add_candidate(cleaned, False)
+
+    bounded = extract_first_balanced_json_object(cleaned)
+    if bounded:
+        add_candidate(bounded, True)
+
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start >= 0 and end > start:
+        add_candidate(cleaned[start : end + 1], True)
+
+    for candidate, rescued in list(candidates):
+        normalized_lines = candidate.replace("\r\n", "\n").replace("\r", "\n")
+        add_candidate(normalized_lines, rescued or normalized_lines != candidate)
+        escaped_line_breaks = normalized_lines.replace("\\r\\n", "\\n").replace("\\r", "\\n")
+        add_candidate(escaped_line_breaks, rescued or escaped_line_breaks != candidate)
+        trimmed = trim_trailing_extra_closing_braces(normalized_lines)
+        add_candidate(trimmed, rescued or trimmed != candidate)
+        repaired = repair_swapped_array_object_closer(normalized_lines)
+        add_candidate(repaired, True)
+
+    for candidate, rescued in candidates:
+        parsed = parse_json_object_candidate(candidate)
+        if parsed is not None:
+            return parsed, rescued
+
+    return None, False
+
+
+def parse_json_object_candidate(candidate: str) -> dict | None:
+    value: object = candidate
+    for _ in range(3):
+        if not isinstance(value, str):
+            return None
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            value = value.strip()
+            continue
+        return None
+    return None
+
+
+def strip_markdown_code_fence(text: str) -> str:
+    if not text.startswith("```"):
+        return text
+    lines = text.splitlines()
+    if len(lines) >= 3:
+        return "\n".join(lines[1:-1]).strip()
+    return text
+
+
+def extract_first_balanced_json_object(text: str) -> str | None:
+    start = text.find("{")
+    if start < 0:
+        return None
+
+    depth = 0
+    in_string = False
+    escape = False
+    for idx in range(start, len(text)):
+        ch = text[idx]
+        if in_string:
+            if escape:
+                escape = False
+                continue
+            if ch == "\\":
+                escape = True
+                continue
+            if ch == '"':
+                in_string = False
+            continue
+
+        if ch == '"':
+            in_string = True
+            continue
+        if ch == "{":
+            depth += 1
+            continue
+        if ch == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : idx + 1]
+    return None
+
+
+def trim_trailing_extra_closing_braces(text: str) -> str:
+    candidate = text.strip()
+    while len(candidate) >= 2 and candidate.endswith("}}"):
+        candidate = candidate[:-1]
+    return candidate
+
+
+def repair_swapped_array_object_closer(text: str) -> str:
+    candidate = text.strip()
+    # WHY: Vision translation sometimes ends with `..."}]` instead of `..."]}` for a string-array payload.
+    if candidate.endswith("}]") and ('"t"' in candidate or '"translations"' in candidate):
+        return candidate[:-2] + "]}"
+    return candidate
 
 
 def build_process_path(base_dir: Path, current_path: str) -> str:

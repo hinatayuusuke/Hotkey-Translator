@@ -18037,3 +18037,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - python -m py_compile OcrServiceVisionLlm\\test_vision_llama_engine.py 実行成功。
+**2026-03-09 23:38 (Asia/Taipei) — VisionLLM翻訳に救済JSONパーサと短縮schemaを導入**
+
+### Summary
+- VisionLLM 翻訳経路で message.content に救済 JSON パーサを通し、出力 schema を短いキーへ簡素化した。
+
+### Context / Goal
+- VisionLLM 翻訳で message.content が {"translations":["..."]} のように末尾を少し壊した JSON を返し、json.loads(message) が失敗していた。
+- モデルに複雑な JSON を要求しすぎないようにしつつ、軽微な JSON 破損を救済したい。
+
+### Changes
+- Vision 翻訳プロンプトの期待 schema を {"translations":[...]} から {"t":[...]} へ短縮した。
+- 翻訳入力 JSON のキーも 	ext から s へ短縮した。
+- 	ranslate() で json.loads(message) を直接呼ぶ実装をやめ、parse_json_object_from_text_resilient() を通すようにした。
+- 応答キーはまず 	 を見て、旧 	ranslations も fallback で受けるようにした。
+- Vision 用の救済パーサ群を追加した。
+  - markdown code fence 除去
+  - 最初の balanced JSON object 抽出
+  - 行末余計な brace の軽微補正
+  - ..."}] を ..."]} へ直す Vision 翻訳特有の末尾補正
+- diag ログに parser_rescued を追加し、救済パースが効いたか追えるようにした。
+
+### Files Touched
+- OcrServiceVisionLlm/vision_llama_engine.py — 翻訳プロンプト簡素化、救済 JSON パーサ追加、translate() の JSON 解釈を堅牢化した。
+
+### Behavioral Impact
+- VisionLLM 翻訳で、軽微に壊れた JSON でも成功する可能性が上がる。
+- モデルが返す JSON schema は短い 	 キーを優先するが、旧 	ranslations も受理する。
+- 完全に壊れた JSON は引き続き明示的に失敗する。
+
+### Risk & Mitigation
+- Risk: 救済補正が別の壊れ方に誤適用される可能性。
+- Mitigation: 補正は 	 / 	ranslations を含む payload に限定し、候補が JSON として成立した場合だけ採用する。
+- Risk: プロンプト変更でモデル出力が変わる可能性。
+- Mitigation: 旧 	ranslations も fallback 受理し、diag に parser_rescued を残して挙動追跡しやすくした。
+
+### Tests / Verification
+- python -m py_compile OcrServiceVisionLlm\\vision_llama_engine.py 実行成功。
