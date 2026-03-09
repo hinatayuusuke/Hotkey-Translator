@@ -26,7 +26,9 @@ class VisionLlamaBusyError(RuntimeError):
 
 DEFAULT_OCR_PROMPT = (
     "Extract all visible text from this image. Output plain text only. "
-    "Preserve line breaks. Do not translate."
+    "Do not translate or explain. "
+    "For dialogue or subtitle text that belongs to the same text box, merge visual line breaks into one natural sentence. "
+    "Keep line breaks only for menus, lists, clearly separate UI items, or distinct text boxes."
 )
 
 DEFAULT_TRANSLATE_PROMPT = (

@@ -17776,3 +17776,30 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj`
+**2026-03-09 21:43 (Asia/Taipei) — VisionLLM OCR プロンプトを字幕連結寄りに調整**
+
+### Summary
+- VisionLLM OCR の既定プロンプトを、字幕/会話文は自然文として連結し、メニュー/一覧だけ改行維持する方針へ更新した。
+
+### Context / Goal
+- VisionLLM の OCR 出力は現状 改行 = 1 item として後段へ渡るため、不必要な改行がそのまま翻訳 item 分割に直結していた。
+- 後段で特例マージを増やす前に、VisionLLM 自身の OCR 出力方針を字幕向けへ寄せたい。
+
+### Changes
+- DEFAULT_OCR_PROMPT を、plain text only のままにしつつ dialogue/subtitle text は同一 text box 内で自然文へ連結するよう変更した。
+- 同時に、menus/lists/clearly separate UI items/distinct text boxes だけ改行を維持する条件を追加した。
+- Do not translate or explain. を明示し、OCR 出力専用の指示を強めた。
+
+### Files Touched
+- OcrServiceVisionLlm/vision_llama_engine.py — VisionLLM OCR の既定プロンプトを字幕連結寄りに変更。
+
+### Behavioral Impact
+- VisionLLM OCR は、同一字幕枠の視覚的改行を減らし、1つの自然な文として返す傾向が強くなる。
+- メニューや一覧のような明確な別項目は、引き続き改行維持を期待する仕様になる。
+
+### Risk & Mitigation
+- Risk: モデルがメニュー/字幕の判定を誤り、必要な改行を潰す、または逆に残す可能性。
+- Mitigation: 後段ロジックはまだ変更せず、まずプロンプト改善だけを適用して挙動を観察できるようにした。
+
+### Tests / Verification
+- python -m py_compile OcrServiceVisionLlm/vision_llama_engine.py 実行成功。
