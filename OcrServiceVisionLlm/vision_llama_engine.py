@@ -14,6 +14,7 @@ from typing import Iterable
 
 import httpx
 from PIL import Image
+from chinese_script_postprocess import ChineseScriptPostProcessor
 
 
 class VisionLlamaError(RuntimeError):
@@ -287,6 +288,7 @@ class VisionLlamaEngine:
         self._lock = threading.Lock()
         self._client = httpx.Client(base_url=host.base_url, timeout=request.http_timeout_seconds)
         self._diag_logger: VisionDiagLogger | None = None
+        self._chinese_script_post_processor = ChineseScriptPostProcessor()
 
     def set_diag_log_file(self, path: str) -> None:
         self._diag_logger = VisionDiagLogger(path)
@@ -311,7 +313,7 @@ class VisionLlamaEngine:
             prepare_ms = (time.perf_counter() - prepare_start) * 1000.0
             prompt = DEFAULT_OCR_PROMPT
             if language:
-                prompt = f"{DEFAULT_OCR_PROMPT} The primary OCR language hint is {language}."
+                prompt = f"{DEFAULT_OCR_PROMPT} The primary OCR language hint is {resolve_language_label(language)}."
             self._write_diag(
                 "ocr_begin",
                 request_id=request_id,
@@ -395,8 +397,8 @@ class VisionLlamaEngine:
                         "role": "user",
                         "content": (
                             DEFAULT_TRANSLATE_PROMPT.format(
-                                source_lang=source_lang or "auto",
-                                target_lang=target_lang or "en",
+                                source_lang=resolve_language_label(source_lang),
+                                target_lang=resolve_language_label(target_lang),
                             )
                             + "\n\n"
                             + request_json
@@ -420,6 +422,18 @@ class VisionLlamaEngine:
             if not isinstance(translations, list):
                 raise VisionLlamaError("Vision translation response is missing translations list.")
             outputs = [str(item) for item in translations[: len(normalized)]]
+            outputs, variant, applied_count, error_count = self._chinese_script_post_processor.postprocess_translations(
+                outputs,
+                target_lang,
+            )
+            if variant is not None:
+                logging.info(
+                    "Vision Chinese script postprocess: target=%s mode=%s applied=%d errors=%d",
+                    target_lang,
+                    variant,
+                    applied_count,
+                    error_count,
+                )
             total_ms = (time.perf_counter() - total_start) * 1000.0
             self._write_diag(
                 "translate_done",
@@ -429,6 +443,9 @@ class VisionLlamaEngine:
                 http_ms=http_ms,
                 total_ms=total_ms,
                 parser_rescued=rescued,
+                chinese_variant=variant or "",
+                chinese_applied=applied_count,
+                chinese_errors=error_count,
             )
             return outputs
         except Exception as exc:
@@ -651,6 +668,30 @@ def repair_swapped_array_object_closer(text: str) -> str:
     if candidate.endswith("}]") and ('"t"' in candidate or '"translations"' in candidate):
         return candidate[:-2] + "]}"
     return candidate
+
+
+def resolve_language_label(language: str) -> str:
+    if not language:
+        return "English"
+    key = language.strip().lower().replace("_", "-")
+    if key.startswith("ja") or key.startswith("jpn"):
+        return "Japanese"
+    if key.startswith("en") or key.startswith("eng"):
+        return "English"
+    # WHY: Keep Traditional/Simplified hints explicit so OCR and translation prompts do not collapse both variants to generic Chinese.
+    if key.startswith("zh-hant") or key.startswith("zh-tw") or key.startswith("zh-hk"):
+        return "Traditional Chinese"
+    if key.startswith("zh-hans") or key.startswith("zh-cn"):
+        return "Simplified Chinese"
+    if key.startswith("zh") or key.startswith("zho") or key.startswith("chi"):
+        return "Chinese"
+    if key.startswith("ko") or key.startswith("kor"):
+        return "Korean"
+    if key.startswith("ru") or key.startswith("rus"):
+        return "Russian"
+    if "-" in key:
+        return key.split("-")[0]
+    return language
 
 
 def build_process_path(base_dir: Path, current_path: str) -> str:

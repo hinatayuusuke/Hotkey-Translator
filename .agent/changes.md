@@ -18138,3 +18138,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。
+**2026-03-10 00:00 (Asia/Taipei) — VisionLLM に繁體字後処理と言語名正規化を追加**
+
+### Summary
+- VisionLLM 翻訳結果に繁體字後処理を追加し、OCR/翻訳プロンプトの言語指定を ID から表示名へ正規化した。
+
+### Context / Goal
+- VisionLLM 側は TranslationServiceLlama と違い、繁體字ターゲットでも翻訳後の script postprocess を持っていなかった。
+- 併せて、ja / zh-Hant / ko のような言語 ID をそのままプロンプトへ渡すより、Japanese / Traditional Chinese / Korean のような表示名へ正規化した方がモデル解釈が安定する。
+
+### Changes
+- `OcrServiceVisionLlm/chinese_script_postprocess.py` を追加し、OpenCC ベースの繁體字後処理を VisionLLM 側でも使えるようにした。
+- `OcrServiceVisionLlm/pyproject.toml` に `opencc-python-reimplemented` を追加した。
+- `OcrServiceVisionLlm/vision_llama_engine.py` で `ChineseScriptPostProcessor` を初期化し、translate() の返却直前に target_lang ベースの繁體字後処理を追加した。
+- VisionLLM の OCR language hint と翻訳プロンプトの source/target language を `resolve_language_label()` 経由の表示名へ正規化した。
+- diag に Chinese postprocess の適用状況を残す項目を追加した。
+
+### Files Touched
+- `OcrServiceVisionLlm/vision_llama_engine.py` — 翻訳後の繁體字後処理、言語名正規化、diag 追加を実装した。
+- `OcrServiceVisionLlm/chinese_script_postprocess.py` — OpenCC を使う Chinese script postprocess helper を追加した。
+- `OcrServiceVisionLlm/pyproject.toml` — VisionLLM 環境へ OpenCC 依存を追加した。
+
+### Behavioral Impact
+- `target_lang` が `zh-Hant` / `zh-TW` / `zh-HK` 系の時、VisionLLM 翻訳結果は OpenCC による繁體字後処理が掛かる。
+- OCR と翻訳のプロンプトでは、言語 ID の代わりに人間向けの言語名が使われる。
+- OpenCC 未導入環境では、後処理は warning を出して無効化されるが、翻訳自体は継続する。
+
+### Risk & Mitigation
+- Risk: OpenCC 依存が未同期の環境では繁體字後処理が有効にならない。
+- Mitigation: import failure は warning のみで処理継続し、pyproject に依存を追加した。
+- Risk: 言語ラベルの変更で一部モデルの挙動が変わる可能性。
+- Mitigation: マッピングは TranslationServiceLlama と同系統に揃え、未対応タグは元値か language prefix へ落とす。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py OcrServiceVisionLlm\chinese_script_postprocess.py` 実行成功。
