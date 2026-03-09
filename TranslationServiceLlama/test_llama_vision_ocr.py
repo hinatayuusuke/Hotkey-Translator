@@ -22,9 +22,11 @@ REQUIRED_CUDA_DLLS = (
 
 DEFAULT_PROMPT = "Extract all visible text from this image. Output plain text only. Preserve line breaks. Do not translate."
 DEFAULT_BOXES_PROMPT = (
-    "Extract all visible text blocks from this image. "
-    'Return JSON only with this schema: {"blocks":[{"text":"...","x":0.0,"y":0.0,"w":0.0,"h":0.0}]}. '
+    "Extract visible text regions from this image. "
+    "Group neighboring characters into larger text regions. Prefer one region per line or dialogue segment, not per character or per word. "
+    'Return JSON only with this schema: {{"regions":[{{"text":"...","x":0.0,"y":0.0,"w":0.0,"h":0.0}}]}}. '
     "x, y, w, h must be normalized to the full image size and stay between 0 and 1. "
+    "Return at most {max_regions} regions. If text is dense, merge nearby text into a larger region. "
     "Do not translate. Do not include explanation."
 )
 DEFAULT_TRANSLATE_PROMPT = (
@@ -71,6 +73,12 @@ def parse_args() -> argparse.Namespace:
         choices=["text", "boxes-json"],
         default="text",
         help="OCR output format. boxes-json is intended for OCR mode experiments.",
+    )
+    parser.add_argument(
+        "--boxes-max-regions",
+        type=int,
+        default=4,
+        help="Maximum number of coarse OCR regions requested in boxes-json mode.",
     )
     parser.add_argument("--source-lang", default="ja", help="Source language for translate mode")
     parser.add_argument("--target-lang", default="en", help="Target language for translate mode")
@@ -365,25 +373,25 @@ def parse_boxes_payload(raw_text: str) -> Optional[dict]:
         return None
     if not isinstance(payload, dict):
         return None
-    blocks = payload.get("blocks")
-    if not isinstance(blocks, list):
+    regions = payload.get("regions")
+    if not isinstance(regions, list):
         return None
     return payload
 
 
 def summarize_boxes(blocks_payload: dict) -> str:
-    blocks = blocks_payload.get("blocks", [])
-    if not isinstance(blocks, list):
+    regions = blocks_payload.get("regions", [])
+    if not isinstance(regions, list):
         return ""
     lines: list[str] = []
-    for idx, block in enumerate(blocks):
-        if not isinstance(block, dict):
+    for idx, region in enumerate(regions):
+        if not isinstance(region, dict):
             continue
-        text = block.get("text", "")
-        x = block.get("x", "")
-        y = block.get("y", "")
-        w = block.get("w", "")
-        h = block.get("h", "")
+        text = region.get("text", "")
+        x = region.get("x", "")
+        y = region.get("y", "")
+        w = region.get("w", "")
+        h = region.get("h", "")
         lines.append(f"[{idx}] x={x} y={y} w={w} h={h} text={text}")
     return "\n".join(lines)
 
@@ -392,7 +400,7 @@ def build_user_prompt(args: argparse.Namespace) -> str:
     if args.prompt:
         return args.prompt
     if args.mode == "ocr" and args.output_format == "boxes-json":
-        return DEFAULT_BOXES_PROMPT
+        return DEFAULT_BOXES_PROMPT.format(max_regions=max(1, args.boxes_max_regions))
     if args.mode == "translate":
         return DEFAULT_TRANSLATE_PROMPT.format(source_lang=args.source_lang, target_lang=args.target_lang)
     return DEFAULT_PROMPT
@@ -508,10 +516,10 @@ def main() -> int:
         print("--- Vision Output ---")
         print(text)
         if boxes_payload is not None:
-            blocks = boxes_payload.get("blocks", [])
-            block_count = len(blocks) if isinstance(blocks, list) else 0
+            regions = boxes_payload.get("regions", [])
+            block_count = len(regions) if isinstance(regions, list) else 0
             print("--- Parsed Boxes ---")
-            print(f"blocks={block_count}")
+            print(f"regions={block_count}")
             summary = summarize_boxes(boxes_payload)
             if summary:
                 print(summary)

@@ -17390,3 +17390,160 @@ ew(2, 1, 2, 1) に変更。
 - `uv sync`（`TranslationServiceLlama` 作業ディレクトリ）
 - `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
 - `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 15:54 (Asia/Taipei) — VisionLLM OCR共有翻訳の実装案を追加**
+
+### Summary
+- VisionLLM を OCR エンジンとして追加し、ローカル翻訳時は同一モデル/同一サービスを共有する実装案を新規ドキュメント化した。
+
+### Context / Goal
+- VisionLLM OCR の品質と性能が実用域にあるため、本番導入時の構成を整理したい。
+- VRAM 重複を避けるため、VisionLLM OCR 選択時のローカル翻訳は既存純粋翻訳サービスではなく同じ VisionLLM モデルを共有する方針を明文化する。
+
+### Changes
+- VisionLLM OCR を `OcrEngineKind` に追加する前提で、Host/Provider/translation provider の構成案を書いた。
+- ROI 必須、shared local translation の有効条件、非 VisionLLM 時の既存挙動維持を明記した。
+
+### Files Touched
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` — VisionLLM OCR と共有ローカル翻訳の最小実装方針を新規追加。
+
+### Behavioral Impact
+- コード挙動への影響はない。実装前提と影響範囲が整理される。
+
+### Risk & Mitigation
+- Risk: VisionLLM の text translation 品質を過大評価した前提になる可能性。
+- Mitigation: shared translation は設定で切れる前提とし、既存 LlamaCpp 翻訳を残す方針をドキュメントへ明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）。
+**2026-03-09 15:58 (Asia/Taipei) — VisionLLM共有翻訳案を座標保持・ROI任意前提へ更新**
+
+### Summary
+- VisionLLM OCR 共有翻訳の実装案を、座標保持あり・ROI非強制の前提へ更新した。
+
+### Context / Goal
+- VisionLLM OCR では将来的に座標も使う想定だが、まずは保持だけを入れたい。
+- ROI は推奨に留め、未設定でも実行可能な前提にしたい。
+
+### Changes
+- ROI 必須・未設定時停止の記述を削除し、既存 ROI 解決フローに乗せる方針へ変更した。
+- VisionLLM OCR のレスポンスにテキストと座標を含め、`OcrResultModel` へ保持する前提を追加した。
+- ログ、リスク、DoD を returned box count / 座標保持 前提へ更新した。
+
+### Files Touched
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` — 座標保持あり、ROI任意の前提に実装案を更新。
+
+### Behavioral Impact
+- コード挙動への影響はない。VisionLLM 導入時の前提条件が ROI必須から ROI任意へ変わる。
+
+### Risk & Mitigation
+- Risk: ROI未設定時に処理範囲が広がり性能低下しやすい。
+- Mitigation: ドキュメント上で `VisionLlmMaxImageSide` とログ可視化を前提にし、描画利用は別タスクへ分離した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-03-09 16:04 (Asia/Taipei) — VisionLLM共有翻訳案へ排他OCRと通常オーバーレイルート方針を追記**
+
+### Summary
+- VisionLLM 実装案に、Paddle系OCRとの排他運用と、将来の座標接続時は通常OCRと同じ overlay ルートへ乗せる方針を追記した。
+
+### Context / Goal
+- VisionLLM は他OCRと同時運用せず、専用OCRとして扱いたい。
+- 座標実装後も専用描画分岐を増やさず、既存の WPF / Hook overlay ルートを再利用したい。
+
+### Changes
+- VisionLLM と Paddle / PaddleVL / NDL の排他運用を前提へ追加した。
+- `ResourceHostFacade` / 設定 / DoD に、他OCR Hostを起動しない要件を追記した。
+- 座標接続後は `ReadingUnit -> OverlayItem` の既存ルートを再利用する方針を追加した。
+
+### Files Touched
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` — 排他OCR方針と通常 overlay ルート再利用方針を追記。
+
+### Behavioral Impact
+- コード挙動への影響はない。VisionLLM 導入時の運用前提がより明確になる。
+
+### Risk & Mitigation
+- Risk: VisionLLM と既存 OCR の共存可否に対する期待値が変わる。
+- Mitigation: ドキュメント上で排他運用を明示し、既存 overlay の再利用条件も合わせて整理した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）。
+**2026-03-09 16:12 (Asia/Taipei) — Vision bbox実験を粗い領域優先プロンプトへ調整**
+
+### Summary
+- `test_llama_vision_ocr.py` の `boxes-json` モードを、細かい box ではなく粗い text region を返しやすいプロンプトへ調整した。
+
+### Context / Goal
+- Vision モデルが細かい box を大量出力すると、後処理前に推論コスト自体が増える。
+- まずはモデルへの指示だけで、行/台詞単位の粗い region を返させる方向を試したい。
+
+### Changes
+- bbox 用既定プロンプトを、character/word 単位ではなく line/dialogue segment 単位を優先する文言へ変更した。
+- schema 名を `blocks` から `regions` に変更し、粗い単位の意図をプロンプトと JSON の両方で明示した。
+- `--boxes-max-regions` を追加し、プロンプト上で最大返却数を制限できるようにした。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — boxes-json 用の粗粒度プロンプト、schema 名変更、最大 region 数指定を追加。
+
+### Behavioral Impact
+- `boxes-json` モードでは、従来より少ない大きめ region を返すようモデルへ指示する。
+- raw OCR text / translate モードの挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: モデルが schema 名変更に追従せず、JSON を壊す可能性がある。
+- Mitigation: 依然として raw 応答は `json-out` / `text-out` に残せるため、失敗時にプロンプト調整を継続できる。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 16:16 (Asia/Taipei) — Vision bboxプロンプトの format 例外を修正**
+
+### Summary
+- `test_llama_vision_ocr.py` の bbox 用プロンプトで `str.format()` が JSON 波括弧を誤解釈する問題を修正した。
+
+### Context / Goal
+- `boxes-json` モードで `DEFAULT_BOXES_PROMPT.format(...)` 実行時に `KeyError: '"regions"'` が発生していた。
+- 最大 region 数を埋め込める状態を維持したまま、JSON schema 文字列を安全に扱いたい。
+
+### Changes
+- bbox 用プロンプト内の JSON schema 部分を `{{ ... }}` へエスケープし、`max_regions` だけを `format` 対象にした。
+
+### Files Touched
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — bbox 用プロンプトの JSON 波括弧をエスケープして `KeyError` を修正。
+
+### Behavioral Impact
+- `boxes-json` モードでプロンプト生成時に例外が出なくなる。
+
+### Risk & Mitigation
+- Risk: なし（文字列フォーマット修正のみ）。
+- Mitigation: `compileall` と `--help` で基本確認を行った。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\test_llama_vision_ocr.py`
+- `uv run test_llama_vision_ocr.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+**2026-03-09 16:19 (Asia/Taipei) — VisionLLM共有翻訳案を text-only OCR 前提へ再整理**
+
+### Summary
+- `VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` から座標前提を外し、VisionLLM を text-only OCR と共有ローカル翻訳に絞る形へ再整理した。
+
+### Context / Goal
+- VisionLLM の座標出力は性能面で不利なため、本段階では実装対象から外したい。
+- ドキュメント内に残っていた座標保持・overlay 接続前提を削除し、text-only OCR の一貫した方針へ揃える。
+
+### Changes
+- ゴール / 前提 / アーキテクチャ / gRPC 契約 / 実装手順 / DoD から座標関連の記述を削除した。
+- VisionLLM OCR の返り値を `text` に統一し、既存 OCR と同じ grouping / diff / overlay ルートへ流す方針に整理した。
+- 排他OCR、shared local translation、ROI任意、既存 `TranslationServiceLlama` 維持の方針はそのまま保持した。
+
+### Files Touched
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` — 座標前提を削除し、text-only OCR 前提へ全体整合を取り直した。
+
+### Behavioral Impact
+- コード挙動への影響はない。VisionLLM 導入時の前提が text-only OCR に明確化される。
+
+### Risk & Mitigation
+- Risk: 将来座標が再度必要になった場合、別計画が必要になる。
+- Mitigation: 今回は性能優先でスコープを絞り、座標は別タスクとして再定義する前提にした。
+
+### Tests / Verification
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` 全文確認
+- `rg -n "座標|boxes|OverlayStage|ReadingUnit.Rect|returned box|line/box|width|height|x|y" Doc\VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` で座標前提の残存確認
