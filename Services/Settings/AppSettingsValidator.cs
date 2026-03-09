@@ -19,6 +19,7 @@ internal sealed class AppSettingsValidator
             new SmallBoxReadabilitySettingsRule(),
             new PaddleOcrSettingsRule(),
             new NdlOcrSettingsRule(),
+            new VisionLlmSettingsRule(),
             new LlamaHostSettingsRule(),
             new GraphicsHookSettingsRule(),
             new MirrorModeSettingsRule()

@@ -108,6 +108,20 @@ public sealed class LlamaGrpcTranslationProvider : ITranslationProvider
 
     private static string ResolveEndpoint(AppSettings settings)
     {
+        if (settings.OcrEngine == OcrEngineKind.VisionLlm &&
+            settings.EnableVisionLlmGrpcHost &&
+            settings.EnableVisionLlmSharedLocalTranslation)
+        {
+            if (!string.IsNullOrWhiteSpace(settings.VisionLlmGrpcEndpoint))
+            {
+                return settings.VisionLlmGrpcEndpoint.Trim();
+            }
+
+            var visionHost = string.IsNullOrWhiteSpace(settings.VisionLlmGrpcHost) ? "127.0.0.1" : settings.VisionLlmGrpcHost.Trim();
+            var visionPort = settings.VisionLlmGrpcPort <= 0 ? 50074 : settings.VisionLlmGrpcPort;
+            return $"http://{visionHost}:{visionPort}";
+        }
+
         if (!string.IsNullOrWhiteSpace(settings.LlamaGrpcEndpoint))
         {
             return settings.LlamaGrpcEndpoint.Trim();

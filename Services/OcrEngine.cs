@@ -13,6 +13,7 @@ public sealed class OcrEngine : IDisposable
     private readonly IOcrProvider _paddleProvider;
     private readonly IOcrProvider _paddleVlProvider;
     private readonly IOcrProvider _ndlProvider;
+    private readonly IOcrProvider _visionLlmProvider;
     private readonly AppLogger? _logger;
 
     public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
@@ -22,6 +23,7 @@ public sealed class OcrEngine : IDisposable
         _paddleProvider = new PaddleGrpcOcrProvider(logger);
         _paddleVlProvider = new PaddleVlGrpcOcrProvider(logger);
         _ndlProvider = new NdlGrpcOcrProvider(logger);
+        _visionLlmProvider = new VisionLlmGrpcOcrProvider(logger);
     }
 
     public async Task<OcrResultModel> RecognizeAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
@@ -76,6 +78,22 @@ public sealed class OcrEngine : IDisposable
                 _logger?.Error(ex, "NDLOCR-Lite failed; falling back to WinRT.");
             }
         }
+        else if (settings.OcrEngine == OcrEngineKind.VisionLlm)
+        {
+            try
+            {
+                _logger?.Info("OCR engine: VisionLLM.");
+                return await _visionLlmProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "VisionLLM OCR failed; falling back to WinRT.");
+            }
+        }
 
         _logger?.Info("OCR engine: WinRT.");
         return await _winRtProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
@@ -96,6 +114,11 @@ public sealed class OcrEngine : IDisposable
         if (_ndlProvider is IDisposable ndlDisposable)
         {
             ndlDisposable.Dispose();
+        }
+
+        if (_visionLlmProvider is IDisposable visionDisposable)
+        {
+            visionDisposable.Dispose();
         }
     }
 }

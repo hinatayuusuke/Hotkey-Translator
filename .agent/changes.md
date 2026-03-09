@@ -17547,3 +17547,64 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` 全文確認
 - `rg -n "座標|boxes|OverlayStage|ReadingUnit.Rect|returned box|line/box|width|height|x|y" Doc\VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` で座標前提の残存確認
+**2026-03-09 17:14 (Asia/Taipei) — VisionLLM OCR と共有ローカル翻訳を本体へ統合**
+
+### Summary
+- VisionLLM OCR を別 Python 環境 `OcrServiceVisionLlm` として追加し、Vision 選択時のローカル翻訳を同一 gRPC サービスへ共有する配線を入れた。
+
+### Context / Goal
+- VisionLLM OCR を既存の `OCR -> grouping -> diff -> translate -> overlay` パイプラインへ乗せたい。
+- `TranslationServiceLlama` と別環境にしつつ、Vision OCR 選択時は同一モデルを OCR とローカル翻訳で共有して VRAM 重複を避けたい。
+- 排他対象は PaddleOCR / PaddleOCR-VL のみに絞り、NDL は共存可能なままにしたい。
+
+### Changes
+- `OcrEngineKind` と `AppSettings` に VisionLLM OCR 用の設定を追加し、UI の OCR エンジン選択へ `VisionLLM (gRPC)` を追加した。
+- `VisionLlmGrpcHost` と `VisionLlmGrpcOcrProvider` を追加し、`ResourceHostFacade` で Paddle / PaddleVL と双方向排他になるよう host 管理を拡張した。
+- 既存 `LlamaGrpcTranslationProvider` に Vision shared translation 時の endpoint 切替を追加し、標準 Llama host を起動せず Vision gRPC 側へ接続するようにした。
+- `OcrAndGroupStage` で VisionLLM の coarse text を既存 overlay へ流せるよう、追加マージを抑止した。
+- 別 Python プロジェクト `OcrServiceVisionLlm` を新設し、OCR RPC と text translation RPC を同一 `llama-server`/同一モデルで提供する gRPC サーバを実装した。
+- `Doc\VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` を現実装に合わせて更新し、座標未実装・別環境・Llama provider 再利用・Paddle/PaddleVL のみ排他へ整合を取った。
+
+### Files Touched
+- `Models/OcrEngineKind.cs` — `VisionLlm = 5` を追加。
+- `Models/AppSettings.cs` — VisionLLM host/model/shared-translation 設定を追加。
+- `Services/OcrEngine.cs` — VisionLLM OCR provider 分岐と dispose を追加。
+- `Services/VisionLlmGrpcOcrProvider.cs` — VisionLLM OCR gRPC provider を新設し、text-only OCR を既存 pipeline 用の合成矩形へ変換。
+- `Services/VisionLlmGrpcHost.cs` — 別環境 `OcrServiceVisionLlm` を起動する VisionLLM host を新設。
+- `Services/LlamaGrpcTranslationProvider.cs` — Vision shared translation 時に Vision gRPC endpoint を使うよう分岐追加。
+- `Services/Application/ResourceHostFacade.cs` — Vision host 登録、Paddle/PaddleVL との双方向排他、shared translation 時の標準 Llama host 停止を追加。
+- `Services/Application/ResourceHostCommandController.cs` — VisionLLM 選択時の OCR host restart 分岐を追加。
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — VisionLLM で追加 merge を抑止。
+- `Services/Settings/SettingsHostNormalizer.cs` — VisionLLM 設定の正規化と既定 model/mmproj 名を追加。
+- `Services/Settings/Rules/VisionLlmSettingsRule.cs` — VisionLLM 設定ルールを新設。
+- `Services/Settings/AppSettingsValidator.cs` — VisionLLM 設定ルールを追加。
+- `Services/Settings/FeatureSettings/HostFeatureSettings.cs` — VisionLLM host flag を追加。
+- `Services/Settings/FeatureSettings/FeatureSettingsProvider.cs` — VisionLLM host flag を返すよう更新。
+- `ViewModels/SettingsViewModel.cs` — `OcrEngineTag` の VisionLLM マッピングを追加。
+- `MainWindow.xaml` — OCR エンジン一覧に VisionLLM を追加。
+- `MainWindow.xaml.cs` — VisionLLM の uv 必須判定と llama-server 前提チェックを追加。
+- `OcrServiceVisionLlm/pyproject.toml` — VisionLLM 用の別 Python 環境依存を追加。
+- `OcrServiceVisionLlm/ocr.proto` — OCR gRPC 契約を配置。
+- `OcrServiceVisionLlm/translation.proto` — translation gRPC 契約を配置。
+- `OcrServiceVisionLlm/vision_llama_engine.py` — Vision OCR / text translation を同一 `llama-server` へ送る共有エンジンを追加。
+- `OcrServiceVisionLlm/server.py` — OCR と translation を同居させる gRPC サーバを追加。
+- `Doc/VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md` — 実装に合わせて整合を更新。
+
+### Behavioral Impact
+- OCR エンジンに `VisionLLM` を選べるようになり、Vision OCR の結果を既存 overlay パイプラインへ流せる。
+- `OcrEngine == VisionLlm` かつ `EnableVisionLlmSharedLocalTranslation == true` かつ `EnableLlamaCppTranslation == true` のとき、ローカル翻訳は標準 `TranslationServiceLlama` ではなく VisionLLM gRPC サービスを使う。
+- VisionLLM host は PaddleOCR / PaddleOCR-VL と排他的に起動するが、NDL は自動停止しない。
+- VisionLLM の矩形は暫定的に text line 数から合成しているため、overlay の位置精度は厳密ではない。
+
+### Risk & Mitigation
+- Risk: VisionLLM の text-only OCR は座標を返さないため、overlay 矩形が粗い。
+- Mitigation: provider 側で安定した full-width strip を合成し、merge を抑止して text-first で破綻しにくくした。
+- Risk: shared translation 用に標準 Llama host を止める条件が広すぎると既存翻訳動線を壊す。
+- Mitigation: `VisionLlm + EnableVisionLlmGrpcHost + EnableVisionLlmSharedLocalTranslation + EnableLlamaCppTranslation` のときだけ切り替える。
+- Risk: VisionLLM Python 環境の初回 `uv run` は依存導入で起動が遅い。
+- Mitigation: gRPC ready timeout を Vision 専用設定で持ち、別プロジェクトとして環境を分離した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`
+- `python -m compileall OcrServiceVisionLlm`
+- `Get-Content -Encoding UTF8 Doc\VisionLlm_Ocr_SharedLocalTranslation_Implementation_Plan.md`

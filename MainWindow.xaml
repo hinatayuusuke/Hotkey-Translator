@@ -130,6 +130,7 @@
                                 <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                                 <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
                                 <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
+                                <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
                             </ComboBox>
                         </Grid>
                         <StackPanel Orientation="Horizontal" Margin="120,6,0,0">

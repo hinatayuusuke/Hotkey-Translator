@@ -1582,6 +1582,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             ShowMissingBinaryDialogIfNeeded("bin_llamaserver_missing", FixedLlamaServerRelativePath, "Llama.cpp translation");
         }
+
+        if (settings.OcrEngine == OcrEngineKind.VisionLlm && settings.EnableVisionLlmGrpcHost)
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_llamaserver_vision_missing", FixedLlamaServerRelativePath, "VisionLLM OCR");
+        }
     }
 
     private static bool IsUvRequired(AppSettings settings)
@@ -1601,7 +1606,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return true;
         }
 
-        return settings.OcrEngine == OcrEngineKind.Ndl && settings.EnableNdlGrpcHost;
+        if (settings.OcrEngine == OcrEngineKind.Ndl && settings.EnableNdlGrpcHost)
+        {
+            return true;
+        }
+
+        return settings.OcrEngine == OcrEngineKind.VisionLlm && settings.EnableVisionLlmGrpcHost;
     }
 
     private void ShowMissingBinaryDialogIfNeeded(string key, string relativePath, string featureName)

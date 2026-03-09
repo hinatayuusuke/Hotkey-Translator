@@ -1,0 +1,19 @@
+[project]
+name = "ocrservice-visionllm"
+version = "0.1.0"
+description = "VisionLLM OCR gRPC service with shared local translation"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "grpcio>=1.76.0",
+    "grpcio-tools>=1.76.0",
+    "httpx>=0.27.0",
+    "pillow>=11.0.0",
+
+    "nvidia-cuda-runtime-cu12; sys_platform == 'win32'",
+    "nvidia-cublas-cu12; sys_platform == 'win32'",
+    "nvidia-cudnn-cu12; sys_platform == 'win32'",
+    "nvidia-nvjitlink-cu12; sys_platform == 'win32'",
+]
+
+[tool.uv]
+environments = ["sys_platform == 'win32'"]

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package ocr;
+
+service OcrService {
+  rpc Health(HealthRequest) returns (HealthResponse);
+  rpc Recognize(OcrRequest) returns (OcrResponse);
+}
+
+message HealthRequest {
+}
+
+message HealthResponse {
+  bool ready = 1;
+  string message = 2;
+}
+
+message OcrRequest {
+  bytes image = 1;
+  string language = 2;
+  string text_detection_model_name = 3;
+  string text_recognition_model_name = 4;
+}
+
+message OcrResponse {
+  string json = 1;
+}

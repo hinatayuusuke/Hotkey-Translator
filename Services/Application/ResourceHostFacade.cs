@@ -15,6 +15,7 @@ internal sealed class ResourceHostFacade : IDisposable
     private const string HostIdPaddle = "paddle_grpc";
     private const string HostIdPaddleVl = "paddle_vl_grpc";
     private const string HostIdNdl = "ndl_grpc";
+    private const string HostIdVisionLlm = "vision_llm_grpc";
     private const string HostIdLlama = "llama_grpc";
 
     private readonly Func<AppLogger?> _loggerAccessor;
@@ -26,6 +27,7 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly PaddleGrpcHost _paddleGrpcHost;
     private readonly PaddleVlGrpcHost _paddleVlGrpcHost;
     private readonly NdlGrpcHost _ndlGrpcHost;
+    private readonly VisionLlmGrpcHost _visionLlmGrpcHost;
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
     private readonly FeatureSettingsProvider _featureSettingsProvider = new();
@@ -48,6 +50,7 @@ internal sealed class ResourceHostFacade : IDisposable
         _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor);
         _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor);
         _ndlGrpcHost = new NdlGrpcHost(_loggerAccessor);
+        _visionLlmGrpcHost = new VisionLlmGrpcHost(_loggerAccessor);
         _llamaGrpcHost = new LlamaGrpcHost(_loggerAccessor);
         _hostRegistry = new GrpcHostRegistry(BuildHostDescriptors());
     }
@@ -57,6 +60,7 @@ internal sealed class ResourceHostFacade : IDisposable
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
         if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
+            !ShouldLoadVisionLlm(settings) &&
             !ShouldLoadLlama(settings))
         {
             return false;
@@ -65,6 +69,13 @@ internal sealed class ResourceHostFacade : IDisposable
         await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
         try
         {
+            if (ShouldLoadVisionLlm(settings) && UseVisionSharedLocalTranslation(settings))
+            {
+                // WHY: Shared VisionLLM translation must not keep the pure-translation llama host resident,
+                // otherwise the same family of models occupies VRAM twice.
+                StopLlama();
+            }
+
             return await _hostOrchestrator
                 .EnsureHostsAsync(settings, _hostRegistry, CancellationToken.None)
                 .ConfigureAwait(true);
@@ -90,6 +101,11 @@ internal sealed class ResourceHostFacade : IDisposable
         _ndlGrpcHost.Stop();
     }
 
+    public void StopVisionLlm()
+    {
+        _visionLlmGrpcHost.Stop();
+    }
+
     public void StopLlama()
     {
         _llamaGrpcHost.Stop();
@@ -101,6 +117,7 @@ internal sealed class ResourceHostFacade : IDisposable
         StopPaddle();
         StopPaddleVl();
         StopNdl();
+        StopVisionLlm();
         StopLlama();
     }
 
@@ -125,8 +142,8 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.",
-                // WHY: Allow Paddle + NDL to coexist (hot-switch ready). Keep PaddleVL exclusive.
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+                // WHY: Allow Paddle + NDL to coexist (hot-switch ready). Keep PaddleVL and VisionLLM exclusive.
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl, HostIdVisionLlm }
             },
             new()
             {
@@ -139,7 +156,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleVlOcr,
                 FailureLogMessage = "PaddleOCR-VL gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdNdl }
+                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdNdl, HostIdVisionLlm }
             },
             new()
             {
@@ -154,6 +171,19 @@ internal sealed class ResourceHostFacade : IDisposable
                 FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.",
                 // WHY: Allow NDL + Paddle to coexist (hot-switch ready). Keep PaddleVL exclusive.
                 StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+            },
+            new()
+            {
+                HostId = HostIdVisionLlm,
+                ShouldLoad = ShouldLoadVisionLlm,
+                IsRunning = () => _visionLlmGrpcHost.IsRunning,
+                StartAsync = (settings, token) => _visionLlmGrpcHost.StartAsync(settings, token),
+                Stop = () => _visionLlmGrpcHost.Stop(),
+                BusyMessage = _ => "Loading VisionLLM OCR...",
+                DisableOnFailure = DisableVisionLlmOcr,
+                FailureLogMessage = "VisionLLM gRPC host failed to start.",
+                FailureUserMessage = "Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details.",
+                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdPaddleVl }
             },
             new()
             {
@@ -194,10 +224,16 @@ internal sealed class ResourceHostFacade : IDisposable
         return host.OcrEngine == OcrEngineKind.Ndl && host.EnableNdlGrpcHost;
     }
 
+    private bool ShouldLoadVisionLlm(AppSettings settings)
+    {
+        var host = _featureSettingsProvider.GetHost(settings);
+        return host.OcrEngine == OcrEngineKind.VisionLlm && host.EnableVisionLlmGrpcHost;
+    }
+
     private bool ShouldLoadLlama(AppSettings settings)
     {
         var host = _featureSettingsProvider.GetHost(settings);
-        return host.EnableLlamaCppTranslation;
+        return host.EnableLlamaCppTranslation && !UseVisionSharedLocalTranslation(settings);
     }
 
     private void DisablePaddleOcr(AppSettings settings)
@@ -218,10 +254,24 @@ internal sealed class ResourceHostFacade : IDisposable
         _syncSettingsToView(settings, false);
     }
 
+    private void DisableVisionLlmOcr(AppSettings settings)
+    {
+        settings.OcrEngine = OcrEngineKind.WinRt;
+        _syncSettingsToView(settings, false);
+    }
+
     private void DisableLlamaTranslation(AppSettings settings)
     {
         settings.EnableLlamaCppTranslation = false;
         _syncSettingsToView(settings, true);
+    }
+
+    private static bool UseVisionSharedLocalTranslation(AppSettings settings)
+    {
+        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
+               settings.EnableVisionLlmGrpcHost &&
+               settings.EnableVisionLlmSharedLocalTranslation &&
+               settings.EnableLlamaCppTranslation;
     }
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
