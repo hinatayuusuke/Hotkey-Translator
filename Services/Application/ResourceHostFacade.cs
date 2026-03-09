@@ -59,16 +59,18 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
-        if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
-            !ShouldLoadVisionLlm(settings) &&
-            !ShouldLoadLlama(settings))
-        {
-            return false;
-        }
-
         await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
         try
         {
+            StopHostsNoLongerNeeded(settings);
+
+            if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
+                !ShouldLoadVisionLlm(settings) &&
+                !ShouldLoadLlama(settings))
+            {
+                return false;
+            }
+
             if (ShouldLoadVisionLlm(settings) && UseVisionSharedLocalTranslation(settings))
             {
                 // WHY: Shared VisionLLM translation must not keep the pure-translation llama host resident,
@@ -264,6 +266,39 @@ internal sealed class ResourceHostFacade : IDisposable
     {
         settings.EnableLlamaCppTranslation = false;
         _syncSettingsToView(settings, true);
+    }
+
+    private void StopHostsNoLongerNeeded(AppSettings settings)
+    {
+        if (_paddleGrpcHost.IsRunning && !ShouldLoadPaddle(settings))
+        {
+            _loggerAccessor()?.Info("stage=grpc_host host=paddle_grpc event=stop_unused.");
+            StopPaddle();
+        }
+
+        if (_paddleVlGrpcHost.IsRunning && !ShouldLoadPaddleVl(settings))
+        {
+            _loggerAccessor()?.Info("stage=grpc_host host=paddle_vl_grpc event=stop_unused.");
+            StopPaddleVl();
+        }
+
+        if (_ndlGrpcHost.IsRunning && !ShouldLoadNdl(settings))
+        {
+            _loggerAccessor()?.Info("stage=grpc_host host=ndl_grpc event=stop_unused.");
+            StopNdl();
+        }
+
+        if (_visionLlmGrpcHost.IsRunning && !ShouldLoadVisionLlm(settings))
+        {
+            _loggerAccessor()?.Info("stage=grpc_host host=vision_llm_grpc event=stop_unused.");
+            StopVisionLlm();
+        }
+
+        if (_llamaGrpcHost.IsRunning && !ShouldLoadLlama(settings))
+        {
+            _loggerAccessor()?.Info("stage=grpc_host host=llama_grpc event=stop_unused.");
+            StopLlama();
+        }
     }
 
     private static bool UseVisionSharedLocalTranslation(AppSettings settings)

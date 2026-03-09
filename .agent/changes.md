@@ -17694,3 +17694,30 @@ ew(2, 1, 2, 1) に変更。
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj`
 - `python -m compileall OcrServiceVisionLlm\\server.py OcrServiceVisionLlm\\vision_llama_engine.py`
+**2026-03-09 19:34 (Asia/Taipei) — 不要な gRPC host の自動停止を追加**
+
+### Summary
+- OCR/翻訳設定の切替時に、不要になった gRPC host を `EnsureResourceHostsAsync()` の先頭で自動停止するようにした。
+
+### Context / Goal
+- VisionLLM から WinRT や NDL に切り替え、かつローカル翻訳を有効にすると、Llama host は起動するが VisionLLM host が残る穴があった。
+- 不要 host を一貫して止め、GPU/VRAM の二重占有を防ぎたい。
+
+### Changes
+- `ResourceHostFacade.EnsureResourceHostsAsync()` の先頭で `StopHostsNoLongerNeeded(settings)` を呼ぶようにした。
+- `ShouldLoad*` 判定に基づいて、現在不要な Paddle / PaddleVL / NDL / VisionLLM / Llama host を明示停止する処理を追加した。
+- 不要停止時に `stage=grpc_host ... event=stop_unused` を記録するようにした。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — 不要 host の自動停止処理を追加。
+
+### Behavioral Impact
+- VisionLLM から WinRT / NDL / 他 OCR へ切替えた際、VisionLLM host が残留せず停止する。
+- `EnableLlamaCppTranslation=false` にした際、不要な純翻訳 Llama host も停止する。
+
+### Risk & Mitigation
+- Risk: 設定切替直後に host が再起動し、短時間だけ切替コストが増える。
+- Mitigation: `ShouldLoad*` が false の host だけを停止し、必要 host の起動は既存 orchestrator に委ねる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`
