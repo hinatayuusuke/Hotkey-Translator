@@ -241,6 +241,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SelectRoiAsync,
             () => ChangeRoiPresetByOffsetAsync(1, "hotkey"),
             () => ChangeRoiPresetByOffsetAsync(-1, "hotkey"),
+            (offset, options) => RunRoiPresetWithOffsetAsync(offset, options),
             () => _overlayPresenter,
             () => _overlayEnabled,
             enabled => _overlayEnabled = enabled,
@@ -762,6 +763,26 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleForceRunHotkeyAsync().ConfigureAwait(true);
     }
 
+    private async void OnRunNextRoiHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleRunRoiPresetHotkeyAsync(1).ConfigureAwait(true);
+    }
+
+    private async void OnRunNextNextRoiHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleRunRoiPresetHotkeyAsync(2).ConfigureAwait(true);
+    }
+
+    private async void OnForceRunNextRoiHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleForceRunRoiPresetHotkeyAsync(1).ConfigureAwait(true);
+    }
+
+    private async void OnForceRunNextNextRoiHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleForceRunRoiPresetHotkeyAsync(2).ConfigureAwait(true);
+    }
+
     private async void OnForceGeminiStrictHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleForceGeminiStrictHotkeyAsync().ConfigureAwait(true);
@@ -1087,6 +1108,55 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
         CheckAndShowPrerequisiteDialogs(_settingsService.Settings);
         await _runCoordinator.RunOnceAsync(options).ConfigureAwait(true);
+    }
+
+    private async Task RunRoiPresetWithOffsetAsync(int offset, ForceRunOptions options)
+    {
+        await FlushPendingSettingsSaveAsync().ConfigureAwait(true);
+
+        var settings = _settingsService.Settings;
+        EnsureRoiPresetSlots(settings);
+        var currentIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+        var targetIndex = (currentIndex + offset + RoiPresetSlotCount) % RoiPresetSlotCount;
+        var preset = settings.RoiPresets[targetIndex];
+        if (preset.NormalizedRoi is not { } normalized || normalized.IsEmpty)
+        {
+            AppendLog($"ROI slot {targetIndex + 1} run skipped: slot is empty.");
+            return;
+        }
+
+        var originalEnableRoi = settings.EnableRoi;
+        var originalNormalizedRoi = settings.NormalizedRoi;
+        var originalRoi = settings.Roi;
+        try
+        {
+            // WHY: Slot hotkeys should target a saved ROI for one run without changing the user's active slot/UI state.
+            settings.EnableRoi = true;
+            settings.NormalizedRoi = normalized.Clamp();
+            Rect previewRectScreen = Rect.Empty;
+            if (_captureManager != null)
+            {
+                var frameBounds = _captureManager.GetCaptureBounds(settings);
+                previewRectScreen = settings.NormalizedRoi.Value.ToAbsolute(frameBounds);
+                settings.Roi = previewRectScreen.IsEmpty ? null : SerializableRect.FromRect(previewRectScreen);
+            }
+            else
+            {
+                settings.Roi = null;
+            }
+
+            ShowTransientRoiPreview(previewRectScreen);
+            var modeLabel = options.IsEnabled ? "force run" : "run once";
+            AppendLog($"ROI slot {targetIndex + 1}: {modeLabel}.");
+            CheckAndShowPrerequisiteDialogs(settings);
+            await _runCoordinator.RunOnceAsync(options).ConfigureAwait(true);
+        }
+        finally
+        {
+            settings.EnableRoi = originalEnableRoi;
+            settings.NormalizedRoi = originalNormalizedRoi;
+            settings.Roi = originalRoi;
+        }
     }
 
     private void SetBusyOverlay(bool visible, string? message)
@@ -1712,8 +1782,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _currentHotkeyRawInput = useRawInput;
             var backend = useRawInput ? "RawInput" : "RegisterHotKey";
             AppendLog($"Hotkey updated: RunOnce={FormatHotkey(config.RunOnceKey, config.RunOnceModifiers)}, " +
+                      $"RunNextRoi={FormatHotkey(config.RunNextRoiKey, config.RunNextRoiModifiers)}, " +
+                      $"RunNextNextRoi={FormatHotkey(config.RunNextNextRoiKey, config.RunNextNextRoiModifiers)}, " +
                       $"Toggle={FormatHotkey(config.ToggleOverlayKey, config.ToggleOverlayModifiers)}, " +
                       $"ForceRun={FormatHotkey(config.ForceRunKey, config.ForceRunModifiers)}, " +
+                      $"ForceRunNextRoi={FormatHotkey(config.ForceRunNextRoiKey, config.ForceRunNextRoiModifiers)}, " +
+                      $"ForceRunNextNextRoi={FormatHotkey(config.ForceRunNextNextRoiKey, config.ForceRunNextNextRoiModifiers)}, " +
                       $"ForceGeminiStrict={FormatHotkey(config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers)}, " +
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
                       $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
@@ -1741,8 +1815,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return new List<HotkeyBindingRegistration>
         {
             new("RunOnce", config.RunOnceKey, config.RunOnceModifiers, 1, OnHotkeyPressed),
+            new("RunNextRoi", config.RunNextRoiKey, config.RunNextRoiModifiers, 13, OnRunNextRoiHotkeyPressed),
+            new("RunNextNextRoi", config.RunNextNextRoiKey, config.RunNextNextRoiModifiers, 14, OnRunNextNextRoiHotkeyPressed),
             new("ToggleOverlay", config.ToggleOverlayKey, config.ToggleOverlayModifiers, 2, OnToggleOverlayHotkeyPressed),
             new("ForceRun", config.ForceRunKey, config.ForceRunModifiers, 3, OnForceRunHotkeyPressed),
+            new("ForceRunNextRoi", config.ForceRunNextRoiKey, config.ForceRunNextRoiModifiers, 15, OnForceRunNextRoiHotkeyPressed),
+            new("ForceRunNextNextRoi", config.ForceRunNextNextRoiKey, config.ForceRunNextNextRoiModifiers, 16, OnForceRunNextNextRoiHotkeyPressed),
             new("ForceGeminiStrict", config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, 4,
                 OnForceGeminiStrictHotkeyPressed),
             new("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed),
@@ -1765,10 +1843,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return new HotkeyConfig(
             ParseKey(settings.HotkeyRunOnceKey, Key.F8),
             ParseModifiers(settings.HotkeyRunOnceModifiers),
+            ParseKey(settings.HotkeyRunNextRoiKey, Key.F8),
+            ParseModifiers(settings.HotkeyRunNextRoiModifiers),
+            ParseKey(settings.HotkeyRunNextNextRoiKey, Key.F8),
+            ParseModifiers(settings.HotkeyRunNextNextRoiModifiers),
             ParseKey(settings.HotkeyToggleOverlayKey, Key.F9),
             ParseModifiers(settings.HotkeyToggleOverlayModifiers),
             ParseKey(settings.HotkeyForceRunKey, Key.F10),
             ParseModifiers(settings.HotkeyForceRunModifiers),
+            ParseKey(settings.HotkeyForceRunNextRoiKey, Key.F10),
+            ParseModifiers(settings.HotkeyForceRunNextRoiModifiers),
+            ParseKey(settings.HotkeyForceRunNextNextRoiKey, Key.F10),
+            ParseModifiers(settings.HotkeyForceRunNextNextRoiModifiers),
             ParseKey(settings.HotkeyForceGeminiStrictKey, Key.F10),
             ParseModifiers(settings.HotkeyForceGeminiStrictModifiers),
             ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
@@ -2012,10 +2098,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly record struct HotkeyConfig(
         Key RunOnceKey,
         ModifierKeys RunOnceModifiers,
+        Key RunNextRoiKey,
+        ModifierKeys RunNextRoiModifiers,
+        Key RunNextNextRoiKey,
+        ModifierKeys RunNextNextRoiModifiers,
         Key ToggleOverlayKey,
         ModifierKeys ToggleOverlayModifiers,
         Key ForceRunKey,
         ModifierKeys ForceRunModifiers,
+        Key ForceRunNextRoiKey,
+        ModifierKeys ForceRunNextRoiModifiers,
+        Key ForceRunNextNextRoiKey,
+        ModifierKeys ForceRunNextNextRoiModifiers,
         Key ForceGeminiStrictKey,
         ModifierKeys ForceGeminiStrictModifiers,
         Key OcrOnlyKey,
@@ -2038,8 +2132,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         public readonly IEnumerable<(string Name, Key Key, ModifierKeys Modifiers)> GetBindings()
         {
             yield return ("Run once", RunOnceKey, RunOnceModifiers);
+            yield return ("Run next ROI slot", RunNextRoiKey, RunNextRoiModifiers);
+            yield return ("Run next+1 ROI slot", RunNextNextRoiKey, RunNextNextRoiModifiers);
             yield return ("Toggle overlay", ToggleOverlayKey, ToggleOverlayModifiers);
             yield return ("Force run", ForceRunKey, ForceRunModifiers);
+            yield return ("Force run next ROI slot", ForceRunNextRoiKey, ForceRunNextRoiModifiers);
+            yield return ("Force run next+1 ROI slot", ForceRunNextNextRoiKey, ForceRunNextNextRoiModifiers);
             yield return ("Force Gemini (strict)", ForceGeminiStrictKey, ForceGeminiStrictModifiers);
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
@@ -2054,12 +2152,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         public static HotkeyConfig Default => new(
             Key.F8,
             ModifierKeys.None,
+            Key.F8,
+            ModifierKeys.Shift,
+            Key.F8,
+            ModifierKeys.Control,
             Key.F9,
             ModifierKeys.None,
             Key.F10,
             ModifierKeys.None,
             Key.F10,
             ModifierKeys.Shift,
+            Key.F10,
+            ModifierKeys.Control,
+            Key.F10,
+            ModifierKeys.Alt,
             Key.F11,
             ModifierKeys.None,
             Key.F5,

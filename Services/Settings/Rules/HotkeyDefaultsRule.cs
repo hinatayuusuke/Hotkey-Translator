@@ -17,7 +17,63 @@ internal sealed class HotkeyDefaultsRule : ISettingsRule
 
         if (string.IsNullOrWhiteSpace(settings.HotkeyForceGeminiStrictModifiers))
         {
-            settings.HotkeyForceGeminiStrictModifiers = "Shift";
+            settings.HotkeyForceGeminiStrictModifiers = "Alt";
+            changed = true;
+        }
+
+        if (string.Equals(settings.HotkeyForceGeminiStrictKey, "F10", StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(settings.HotkeyForceGeminiStrictModifiers, "Shift", StringComparison.OrdinalIgnoreCase))
+        {
+            // WHY: Shift+F10 is reserved for ROI-slot force runs, so move the legacy strict shortcut aside.
+            settings.HotkeyForceGeminiStrictModifiers = "Alt";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyRunNextRoiKey))
+        {
+            settings.HotkeyRunNextRoiKey = "F8";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyRunNextRoiModifiers))
+        {
+            settings.HotkeyRunNextRoiModifiers = "Shift";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyRunNextNextRoiKey))
+        {
+            settings.HotkeyRunNextNextRoiKey = "F8";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyRunNextNextRoiModifiers))
+        {
+            settings.HotkeyRunNextNextRoiModifiers = "Control";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyForceRunNextRoiKey))
+        {
+            settings.HotkeyForceRunNextRoiKey = "F10";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyForceRunNextRoiModifiers))
+        {
+            settings.HotkeyForceRunNextRoiModifiers = "Shift";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyForceRunNextNextRoiKey))
+        {
+            settings.HotkeyForceRunNextNextRoiKey = "F10";
+            changed = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.HotkeyForceRunNextNextRoiModifiers))
+        {
+            settings.HotkeyForceRunNextNextRoiModifiers = "Control";
             changed = true;
         }
 

@@ -17803,3 +17803,40 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - python -m py_compile OcrServiceVisionLlm/vision_llama_engine.py 実行成功。
+**2026-03-09 22:00 (Asia/Taipei) — ROIスロット一時実行ホットキーを追加**
+
+### Summary
+- Shift/Ctrl + F8/F10 で、次 / 次の次の ROI スロットを一時対象に OCR/翻訳実行できるようにした。
+
+### Context / Goal
+- 既存の F8/F10 は ROI 無効時に全体対象のまま維持しつつ、保存済み ROI スロットをホットキーだけで順番に実行したい。
+- UI のアクティブ ROI スロットや設定保存状態は変えず、今回の実行だけ一時 ROI を差し替える方式にしたい。
+
+### Changes
+- AppSettings に ROI スロット一時実行用 hotkey 設定を追加した。
+- Shift+F10 / Ctrl+F10 と衝突していた ForceGeminiStrict の既定値を Alt+F10 へ移した。
+- HotkeyCommandController に ROI スロット一時実行のハンドラを追加した。
+- MainWindow.xaml.cs に、次 / 次の次の ROI スロットを一時 ROI として適用して実行し、終了後に元の ROI 設定へ戻す処理を追加した。
+- Hotkey 登録・ログ出力へ新しい binding を追加した。
+
+### Files Touched
+- Models/AppSettings.cs — ROI スロット一時実行用 hotkey 設定を追加し、ForceGeminiStrict の既定 modifier を Alt に変更。
+- Services/Settings/Rules/HotkeyDefaultsRule.cs — 新 hotkey 既定値を追加し、旧 Shift+F10 の Gemini strict を Alt+F10 へ補正。
+- Services/Application/HotkeyCommandController.cs — ROI スロット一時実行 / force 実行の hotkey ハンドラを追加。
+- MainWindow.xaml.cs — 新 hotkey event と、一時 ROI 差し替え実行 + 復元処理を追加。
+
+### Behavioral Impact
+- F8/F10 は従来どおり。ROI 無効時は全体対象、ROI 有効時は現在 ROI 対象。
+- Shift+F8 / Ctrl+F8 は、それぞれ次 / 次の次の ROI スロットを通常実行する。
+- Shift+F10 / Ctrl+F10 は、それぞれ次 / 次の次の ROI スロットを force 実行する。
+- ROI スロット実行は UI のアクティブスロットを変更せず、実行後に元の ROI 設定へ戻る。
+- 空スロットはログを出してスキップする。
+
+### Risk & Mitigation
+- Risk: 旧設定で ForceGeminiStrict=Shift+F10 のままだと新 hotkey と衝突する。
+- Mitigation: デフォルト補正ルールで旧既定値を Alt+F10 へ移すようにした。
+- Risk: 一時 ROI 実行中に設定が保存されると本来の UI 状態と混ざる可能性。
+- Mitigation: 実行前に保存を flush し、一時 ROI は保存せず 	ry/finally で必ず元の設定へ戻すようにした。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal 実行成功（0 warnings, 0 errors）。

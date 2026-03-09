@@ -22,6 +22,7 @@ internal sealed class HotkeyCommandController
     private readonly Func<Task> _selectRoiAsync;
     private readonly Func<Task> _selectNextRoiPresetAsync;
     private readonly Func<Task> _selectPreviousRoiPresetAsync;
+    private readonly Func<int, ForceRunOptions, Task> _runRoiPresetWithOffsetAsync;
     private readonly Func<OverlayPresenter?> _overlayPresenterAccessor;
     private readonly Func<bool> _overlayEnabledAccessor;
     private readonly Action<bool> _setOverlayEnabled;
@@ -44,6 +45,7 @@ internal sealed class HotkeyCommandController
         Func<Task> selectRoiAsync,
         Func<Task> selectNextRoiPresetAsync,
         Func<Task> selectPreviousRoiPresetAsync,
+        Func<int, ForceRunOptions, Task> runRoiPresetWithOffsetAsync,
         Func<OverlayPresenter?> overlayPresenterAccessor,
         Func<bool> overlayEnabledAccessor,
         Action<bool> setOverlayEnabled,
@@ -65,6 +67,7 @@ internal sealed class HotkeyCommandController
         _selectRoiAsync = selectRoiAsync;
         _selectNextRoiPresetAsync = selectNextRoiPresetAsync;
         _selectPreviousRoiPresetAsync = selectPreviousRoiPresetAsync;
+        _runRoiPresetWithOffsetAsync = runRoiPresetWithOffsetAsync;
         _overlayPresenterAccessor = overlayPresenterAccessor;
         _overlayEnabledAccessor = overlayEnabledAccessor;
         _setOverlayEnabled = setOverlayEnabled;
@@ -198,6 +201,20 @@ internal sealed class HotkeyCommandController
     public Task HandleSelectRoiHotkeyAsync()
     {
         return _selectRoiAsync();
+    }
+
+    public Task HandleRunRoiPresetHotkeyAsync(int offset)
+    {
+        EnsureTranslatedOverlayForRunHotkeys();
+        return _runRoiPresetWithOffsetAsync(offset, ForceRunOptions.None);
+    }
+
+    public Task HandleForceRunRoiPresetHotkeyAsync(int offset)
+    {
+        EnsureTranslatedOverlayForRunHotkeys();
+        return _runRoiPresetWithOffsetAsync(
+            offset,
+            new ForceRunOptions(SkipPhash: true, SkipOcrDiff: true, SkipTranslationCache: true, SkipTranslation: false));
     }
 
     public Task HandleNextRoiPresetHotkeyAsync()
