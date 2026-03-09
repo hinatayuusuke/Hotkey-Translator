@@ -17721,3 +17721,29 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj`
+**2026-03-09 19:47 (Asia/Taipei) — Llama host の自動停止条件を調整**
+
+### Summary
+- `EnableLlamaCppTranslation` の ON/OFF だけでは純翻訳 Llama host を自動停止しないように調整した。
+
+### Context / Goal
+- Llama translation の有効/無効は provider 使用可否の設定であり、UI には別途停止ボタンがある。
+- `EnableLlamaCppTranslation=false` にしただけで host まで止まるのは不自然なので、プロセス寿命と provider 有効化を分離したい。
+
+### Changes
+- `StopHostsNoLongerNeeded(settings)` の Llama 停止条件を `ShouldLoadLlama(settings)` 依存から切り離した。
+- `ShouldStopLlamaAsUnused(settings)` を追加し、Vision shared local translation が VRAM 競合回避のために純 Llama host 停止を必要とする場合だけ自動停止するようにした。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — Llama host の自動停止条件を、単純な ON/OFF ではなく Vision shared translation 時だけに限定。
+
+### Behavioral Impact
+- `EnableLlamaCppTranslation=false` にしても、純翻訳 Llama host は自動停止しない。
+- VisionLLM shared translation が有効なときだけ、純翻訳 Llama host は引き続き自動停止される。
+
+### Risk & Mitigation
+- Risk: 使っていない純翻訳 Llama host が残り続けて VRAM を保持する。
+- Mitigation: 明示停止ボタンを維持し、Vision shared translation 競合時は自動停止を継続する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj`

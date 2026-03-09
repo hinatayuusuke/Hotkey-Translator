@@ -294,7 +294,7 @@ internal sealed class ResourceHostFacade : IDisposable
             StopVisionLlm();
         }
 
-        if (_llamaGrpcHost.IsRunning && !ShouldLoadLlama(settings))
+        if (_llamaGrpcHost.IsRunning && ShouldStopLlamaAsUnused(settings))
         {
             _loggerAccessor()?.Info("stage=grpc_host host=llama_grpc event=stop_unused.");
             StopLlama();
@@ -307,6 +307,14 @@ internal sealed class ResourceHostFacade : IDisposable
                settings.EnableVisionLlmGrpcHost &&
                settings.EnableVisionLlmSharedLocalTranslation &&
                settings.EnableLlamaCppTranslation;
+    }
+
+    private static bool ShouldStopLlamaAsUnused(AppSettings settings)
+    {
+        // WHY: The translation enable toggle controls provider usage, not process lifetime.
+        // Keep the pure translation host resident until the user explicitly stops it, unless
+        // Vision shared translation needs the VRAM back for its own llama-server instance.
+        return UseVisionSharedLocalTranslation(settings);
     }
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
