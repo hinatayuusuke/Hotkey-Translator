@@ -17213,3 +17213,38 @@ ew(2, 1, 2, 1) に変更。
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）。
+**2026-03-09 13:48 (Asia/Taipei) — Llama Think Mode無効化を本番とテストへ反映**
+
+### Summary
+- TranslationServiceLlama で think mode を既定で無効化し、起動引数とHTTP payloadの両方に反映した。
+
+### Context / Goal
+- Qwen系モデルが内部推論を有効にしたまま応答すると、翻訳専用サービスで不要な思考出力や遅延が混ざる。
+- 本番のgRPCサービスとテストスクリプトの両方で、translation-only の挙動を明示的に固定したい。
+
+### Changes
+- llama-server 起動時に `--reasoning-budget 0`、`--reasoning-format none`、`--chat-template-kwargs {"enable_thinking":false}` を付与する設定を追加した。
+- chat completions の payload にも `reasoning_budget=0` と `chat_template_kwargs.enable_thinking=false` を追加した。
+- `server.py` と `test_translation_engine.py` に `--disable-thinking` / `--enable-thinking` を追加し、既定を無効化側にした。
+
+### Files Touched
+- `TranslationServiceLlama/llama_engine.py` — think mode 無効化の起動引数とHTTP payload生成を追加。
+- `TranslationServiceLlama/server.py` — think mode 制御CLIを追加し、設定オブジェクトへ配線。
+- `TranslationServiceLlama/test_translation_engine.py` — テスト起動と llama-json-batch 呼び出しでも think mode 無効化を反映。
+
+### Behavioral Impact
+- TranslationServiceLlama は既定で think mode を使わず、翻訳のみを返す前提が強化される。
+- 比較検証したい場合だけ `--enable-thinking` を付けて旧挙動を再現できる。
+
+### Risk & Mitigation
+- Risk: 一部モデルや llama.cpp ビルドで起動時指定とリクエスト時指定の解釈が異なる可能性。
+- Mitigation: 起動引数とHTTP payloadの両方に同じ設定を入れ、どちらか片方しか効かない実装差分を吸収した。
+
+### Tests / Verification
+- `python -m compileall TranslationServiceLlama\llama_engine.py TranslationServiceLlama\server.py TranslationServiceLlama\test_translation_engine.py`
+- `uv run test_translation_engine.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+- `uv run server.py --help`（`TranslationServiceLlama` 作業ディレクトリ）
+- `uv run test_translation_engine.py --auto-start-server --device gpu --text "Hello world." --model ".\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf"`
+  - 起動ログで `--reasoning-budget 0` を確認
+  - llama-server ログで `thinking = 0` を確認
+  - 翻訳結果 `こんにちは、世界。` を確認

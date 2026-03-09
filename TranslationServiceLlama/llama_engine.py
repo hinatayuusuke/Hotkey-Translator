@@ -34,6 +34,7 @@ class LlamaServerConfig:
     ready_timeout_ms: int
     restart_max: int
     restart_window_seconds: int
+    disable_thinking: bool
 
 
 @dataclass
@@ -44,9 +45,17 @@ class LlamaRequestConfig:
     top_k: int
     repeat_penalty: float
     http_timeout_seconds: float
+    disable_thinking: bool
 
 
 DEFAULT_SYSTEM_PROMPT = "Translate the following segment into {target}. Output translation only."
+
+
+def build_chat_template_kwargs(disable_thinking: bool) -> dict[str, bool] | None:
+    if not disable_thinking:
+        return None
+    # WHY: Qwen-family templates may emit internal reasoning unless the template flag is disabled explicitly.
+    return {"enable_thinking": False}
 
 
 class LlamaServerHost:
@@ -111,6 +120,18 @@ class LlamaServerHost:
             "--batch-size",
             str(config.batch_size),
         ]
+        if config.disable_thinking:
+            # WHY: Startup-side disable keeps the server in terse translation mode even before the first request arrives.
+            args.extend(
+                [
+                    "--reasoning-budget",
+                    "0",
+                    "--reasoning-format",
+                    "none",
+                    "--chat-template-kwargs",
+                    json.dumps(build_chat_template_kwargs(True), ensure_ascii=True, separators=(",", ":")),
+                ]
+            )
 
         logging.info("Starting llama-server: %s", " ".join(args))
         proc = subprocess.Popen(
@@ -322,6 +343,10 @@ class LlamaTranslator:
             "max_tokens": self._request.max_tokens,
             "stream": False,
         }
+        if self._request.disable_thinking:
+            base_payload["reasoning_budget"] = 0
+            base_payload["reasoning_format"] = "none"
+            base_payload["chat_template_kwargs"] = build_chat_template_kwargs(True)
         schema_error: Exception | None = None
         schema_payload = {
             **base_payload,
@@ -369,6 +394,10 @@ class LlamaTranslator:
             "max_tokens": self._request.max_tokens,
             "stream": False,
         }
+        if self._request.disable_thinking:
+            payload["reasoning_budget"] = 0
+            payload["reasoning_format"] = "none"
+            payload["chat_template_kwargs"] = build_chat_template_kwargs(True)
         content = self._post_chat_completion(payload, stats)
         logging.info("plain_single_success: chars=%d", len(content))
         return [content]

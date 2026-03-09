@@ -68,6 +68,19 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--llama-host", default="127.0.0.1", help="llama-server HTTP host")
     parser.add_argument("--llama-port", type=int, default=8088, help="llama-server HTTP port")
+    parser.add_argument(
+        "--disable-thinking",
+        dest="disable_thinking",
+        action="store_true",
+        default=True,
+        help="Disable model reasoning/think mode for translation-focused tests.",
+    )
+    parser.add_argument(
+        "--enable-thinking",
+        dest="disable_thinking",
+        action="store_false",
+        help="Allow model reasoning/think mode for comparison tests.",
+    )
     parser.add_argument("--http-timeout-sec", type=float, default=120.0, help="HTTP timeout for llama-json-batch mode")
     parser.add_argument(
         "--startup-timeout-sec",
@@ -188,6 +201,10 @@ def start_local_server(args: argparse.Namespace) -> subprocess.Popen[str]:
         "--gpu-layers",
         str(gpu_layers),
     ]
+    if args.disable_thinking:
+        cmd.append("--disable-thinking")
+    else:
+        cmd.append("--enable-thinking")
 
     print(
         "Starting local server "
@@ -336,6 +353,7 @@ def translate_via_llama_json_batch(
     source_lang: str,
     target_lang: str,
     max_tokens: int,
+    disable_thinking: bool,
     texts: list[str],
 ) -> list[str]:
     user_input = json.dumps(texts, ensure_ascii=False)
@@ -364,6 +382,10 @@ def translate_via_llama_json_batch(
         "max_tokens": max_tokens,
         "stream": False,
     }
+    if disable_thinking:
+        body["reasoning_budget"] = 0
+        body["reasoning_format"] = "none"
+        body["chat_template_kwargs"] = {"enable_thinking": False}
 
     response = http_client.post("/v1/chat/completions", json=body)
     response.raise_for_status()
@@ -513,6 +535,7 @@ def main() -> int:
                         args.source_lang,
                         args.target_lang,
                         max_tokens,
+                        args.disable_thinking,
                         texts,
                     )
                     grpc_latency_ms = -1

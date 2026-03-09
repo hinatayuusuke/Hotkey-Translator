@@ -119,6 +119,19 @@ def main() -> int:
     parser.add_argument("--ready-timeout-ms", type=int, default=60000)
     parser.add_argument("--restart-max", type=int, default=3)
     parser.add_argument("--restart-window-seconds", type=int, default=30)
+    parser.add_argument(
+        "--disable-thinking",
+        dest="disable_thinking",
+        action="store_true",
+        default=True,
+        help="Disable model reasoning/think mode for translation-only output.",
+    )
+    parser.add_argument(
+        "--enable-thinking",
+        dest="disable_thinking",
+        action="store_false",
+        help="Allow model reasoning/think mode for diagnostics.",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(
@@ -142,6 +155,7 @@ def main() -> int:
         ready_timeout_ms=args.ready_timeout_ms,
         restart_max=args.restart_max,
         restart_window_seconds=args.restart_window_seconds,
+        disable_thinking=args.disable_thinking,
     )
 
     request_config = LlamaRequestConfig(
@@ -151,6 +165,7 @@ def main() -> int:
         top_k=args.top_k,
         repeat_penalty=args.repeat_penalty,
         http_timeout_seconds=args.http_timeout,
+        disable_thinking=args.disable_thinking,
     )
 
     host = LlamaServerHost(server_config)
