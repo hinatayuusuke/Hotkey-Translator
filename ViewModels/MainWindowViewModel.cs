@@ -47,6 +47,9 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         Func<Task> reloadLlamaModelsAsync,
         Func<Task> restartLlamaCppAsync,
         Func<Task> stopLlamaServerAsync,
+        Func<Task> reloadVisionLlmModelsAsync,
+        Func<Task> restartVisionLlmAsync,
+        Func<Task> stopVisionLlmAsync,
         Func<Task> restartPaddleOcrHostsAsync,
         Action stopPaddleVlHost,
         Func<Task> saveSettingsAsync)
@@ -55,6 +58,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         Settings = settings;
         RuntimeStatus = runtimeStatus;
         LlamaModelOptions = new ObservableCollection<LlamaModelOption>();
+        VisionLlmModelOptions = new ObservableCollection<LlamaModelOption>();
+        VisionLlmMmprojOptions = new ObservableCollection<LlamaModelOption>();
         TranslationPriority = new ObservableCollection<string>();
         RunOnceCommand = new AsyncRelayCommand(runOnceAsync);
         SelectRoiCommand = new AsyncRelayCommand(selectRoiAsync);
@@ -64,6 +69,9 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         ReloadLlamaModelsCommand = new AsyncRelayCommand(reloadLlamaModelsAsync);
         RestartLlamaCppCommand = new AsyncRelayCommand(restartLlamaCppAsync);
         StopLlamaServerCommand = new AsyncRelayCommand(stopLlamaServerAsync);
+        ReloadVisionLlmModelsCommand = new AsyncRelayCommand(reloadVisionLlmModelsAsync);
+        RestartVisionLlmCommand = new AsyncRelayCommand(restartVisionLlmAsync);
+        StopVisionLlmCommand = new AsyncRelayCommand(stopVisionLlmAsync);
         RestartPaddleOcrHostsCommand = new AsyncRelayCommand(restartPaddleOcrHostsAsync);
         StopPaddleVlHostCommand = new RelayCommand(stopPaddleVlHost);
         TogglePreviewPaneCommand = new RelayCommand(TogglePreviewPane);
@@ -79,6 +87,10 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public RuntimeStatusViewModel RuntimeStatus { get; }
 
     public ObservableCollection<LlamaModelOption> LlamaModelOptions { get; }
+
+    public ObservableCollection<LlamaModelOption> VisionLlmModelOptions { get; }
+
+    public ObservableCollection<LlamaModelOption> VisionLlmMmprojOptions { get; }
 
     public ObservableCollection<string> TranslationPriority { get; }
 
@@ -97,6 +109,12 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public IAsyncRelayCommand RestartLlamaCppCommand { get; }
 
     public IAsyncRelayCommand StopLlamaServerCommand { get; }
+
+    public IAsyncRelayCommand ReloadVisionLlmModelsCommand { get; }
+
+    public IAsyncRelayCommand RestartVisionLlmCommand { get; }
+
+    public IAsyncRelayCommand StopVisionLlmCommand { get; }
 
     public IAsyncRelayCommand RestartPaddleOcrHostsCommand { get; }
 
@@ -135,6 +153,24 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         foreach (var value in values)
         {
             LlamaModelOptions.Add(value);
+        }
+    }
+
+    public void ResetVisionLlmModelOptions(IEnumerable<LlamaModelOption> values)
+    {
+        VisionLlmModelOptions.Clear();
+        foreach (var value in values)
+        {
+            VisionLlmModelOptions.Add(value);
+        }
+    }
+
+    public void ResetVisionLlmMmprojOptions(IEnumerable<LlamaModelOption> values)
+    {
+        VisionLlmMmprojOptions.Clear();
+        foreach (var value in values)
+        {
+            VisionLlmMmprojOptions.Add(value);
         }
     }
 

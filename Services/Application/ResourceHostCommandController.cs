@@ -99,6 +99,72 @@ internal sealed class ResourceHostCommandController
         }
     }
 
+    public async Task RestartVisionLlmAsync()
+    {
+        if (!_isLoaded())
+        {
+            return;
+        }
+
+        if (_isRunInProgress())
+        {
+            _appendLog("Restart skipped: OCR is running.");
+            return;
+        }
+
+        try
+        {
+            _setBusyOverlay(true, "Restarting VisionLLM...");
+            await _saveSettingsImmediatelyAsync().ConfigureAwait(true);
+
+            var settings = _settingsAccessor();
+            _resourceHostFacade.StopVisionLlm();
+            await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            _appendLog("VisionLLM restarted.");
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, "Failed to restart VisionLLM host.");
+            _showLoadFailure("Failed to restart VisionLLM. See the logs for details.");
+        }
+        finally
+        {
+            _setBusyOverlay(false, null);
+        }
+    }
+
+    public void StopVisionLlmHost()
+    {
+        if (!_isLoaded())
+        {
+            return;
+        }
+
+        if (_isRunInProgress())
+        {
+            _appendLog("Stop skipped: OCR is running.");
+            return;
+        }
+
+        if (!_resourceHostFacade.IsVisionLlmRunning)
+        {
+            _appendLog("VisionLLM host stop skipped: host is not running.");
+            return;
+        }
+
+        try
+        {
+            // NOTE: OCR engine selection still controls auto-start. This stop is intentionally temporary.
+            _resourceHostFacade.StopVisionLlm();
+            _appendLog("VisionLLM host stopped.");
+        }
+        catch (Exception ex)
+        {
+            _loggerAccessor()?.Error(ex, "Failed to stop VisionLLM host.");
+            _showLoadFailure("Failed to stop VisionLLM. See the logs for details.");
+        }
+    }
+
     public async Task RestartPaddleOcrHostsAsync()
     {
         if (!_isLoaded())

@@ -57,6 +57,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enablePaddleConfidenceFilter;
     [ObservableProperty] private bool _enableLlamaCppTranslation;
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
+    [ObservableProperty] private string _visionLlmSelectedModelFileName = string.Empty;
+    [ObservableProperty] private string _visionLlmSelectedMmprojFileName = string.Empty;
     [ObservableProperty] private bool _enableDeepL;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
@@ -116,6 +118,15 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaTopPText = string.Empty;
     [ObservableProperty] private string _llamaTopKText = string.Empty;
     [ObservableProperty] private string _llamaRepeatPenaltyText = string.Empty;
+    [ObservableProperty] private string _visionLlmHostText = string.Empty;
+    [ObservableProperty] private string _visionLlmPortText = string.Empty;
+    [ObservableProperty] private string _visionLlmContextSizeText = string.Empty;
+    [ObservableProperty] private string _visionLlmGpuLayersText = string.Empty;
+    [ObservableProperty] private string _visionLlmThreadsText = string.Empty;
+    [ObservableProperty] private string _visionLlmParallelText = string.Empty;
+    [ObservableProperty] private string _visionLlmBatchSizeText = string.Empty;
+    [ObservableProperty] private string _visionLlmMaxTokensText = string.Empty;
+    [ObservableProperty] private string _visionLlmMaxImageSideText = string.Empty;
     [ObservableProperty] private string _deepLEndpointText = string.Empty;
     [ObservableProperty] private string _deepLApiKeyText = string.Empty;
     [ObservableProperty] private string _apiKeyText = string.Empty;
@@ -202,6 +213,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
             EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
+            VisionLlmSelectedModelFileName = settings.VisionLlmSelectedModelFileName;
+            VisionLlmSelectedMmprojFileName = settings.VisionLlmSelectedMmprojFileName;
             EnableDeepL = settings.EnableDeepL;
             EnableGemini = settings.EnableGemini;
             VerticalModeOverrideTag = settings.VerticalModeOverride switch
@@ -271,6 +284,15 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaTopPText = settings.LlamaTopP.ToString("0.###");
             LlamaTopKText = settings.LlamaTopK.ToString();
             LlamaRepeatPenaltyText = settings.LlamaRepeatPenalty.ToString("0.###");
+            VisionLlmHostText = settings.VisionLlmHost;
+            VisionLlmPortText = settings.VisionLlmPort.ToString();
+            VisionLlmContextSizeText = settings.VisionLlmContextSize.ToString();
+            VisionLlmGpuLayersText = settings.VisionLlmGpuLayers.ToString();
+            VisionLlmThreadsText = settings.VisionLlmThreads.ToString();
+            VisionLlmParallelText = settings.VisionLlmParallel.ToString();
+            VisionLlmBatchSizeText = settings.VisionLlmBatchSize.ToString();
+            VisionLlmMaxTokensText = settings.VisionLlmMaxTokens.ToString();
+            VisionLlmMaxImageSideText = settings.VisionLlmMaxImageSide.ToString();
             DeepLEndpointText = settings.DeepLEndpoint;
             DeepLApiKeyText = settings.DeepLApiKey ?? string.Empty;
             ApiKeyText = settings.ApiKey ?? string.Empty;
@@ -330,6 +352,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnablePaddleConfidenceFilter = EnablePaddleConfidenceFilter;
         settings.EnableLlamaCppTranslation = EnableLlamaCppTranslation;
         settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
+        settings.VisionLlmSelectedModelFileName = (VisionLlmSelectedModelFileName ?? string.Empty).Trim();
+        settings.VisionLlmSelectedMmprojFileName = (VisionLlmSelectedMmprojFileName ?? string.Empty).Trim();
         settings.EnableDeepL = EnableDeepL;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
@@ -521,6 +545,47 @@ internal sealed partial class SettingsViewModel : ObservableObject
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
 
+        settings.VisionLlmHost = (VisionLlmHostText ?? string.Empty).Trim();
+        if (int.TryParse(VisionLlmPortText.Trim(), out var visionLlmPort))
+        {
+            settings.VisionLlmPort = visionLlmPort;
+        }
+
+        if (int.TryParse(VisionLlmContextSizeText.Trim(), out var visionLlmContext))
+        {
+            settings.VisionLlmContextSize = visionLlmContext;
+        }
+
+        if (int.TryParse(VisionLlmGpuLayersText.Trim(), out var visionLlmGpuLayers))
+        {
+            settings.VisionLlmGpuLayers = visionLlmGpuLayers;
+        }
+
+        if (int.TryParse(VisionLlmThreadsText.Trim(), out var visionLlmThreads))
+        {
+            settings.VisionLlmThreads = visionLlmThreads;
+        }
+
+        if (int.TryParse(VisionLlmParallelText.Trim(), out var visionLlmParallel))
+        {
+            settings.VisionLlmParallel = visionLlmParallel;
+        }
+
+        if (int.TryParse(VisionLlmBatchSizeText.Trim(), out var visionLlmBatchSize))
+        {
+            settings.VisionLlmBatchSize = visionLlmBatchSize;
+        }
+
+        if (int.TryParse(VisionLlmMaxTokensText.Trim(), out var visionLlmMaxTokens))
+        {
+            settings.VisionLlmMaxTokens = visionLlmMaxTokens;
+        }
+
+        if (int.TryParse(VisionLlmMaxImageSideText.Trim(), out var visionLlmMaxImageSide))
+        {
+            settings.VisionLlmMaxImageSide = visionLlmMaxImageSide;
+        }
+
         settings.DeepLEndpoint = (DeepLEndpointText ?? string.Empty).Trim();
         settings.DeepLApiKey = DeepLApiKeyText ?? string.Empty;
         settings.ApiKey = ApiKeyText ?? string.Empty;
@@ -587,6 +652,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnablePaddleConfidenceFilterChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableLlamaCppTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnLlamaSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmSelectedMmprojFileNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();
@@ -628,6 +695,15 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnLlamaTopPTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaTopKTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaRepeatPenaltyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmHostTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmPortTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmContextSizeTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmGpuLayersTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmThreadsTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmParallelTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmMaxImageSideTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLApiKeyTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnApiKeyTextChanged(string value) => RequestSaveOnValueChange();

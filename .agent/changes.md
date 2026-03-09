@@ -18102,3 +18102,39 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。
+**2026-03-10 00:00 (Asia/Taipei) — VisionLLM 設定サイドパネルを追加**
+
+### Summary
+- Settings に VisionLLM 専用サイドパネルを追加し、モデル選択・Runtime control・主要実行パラメータを UI から編集できるようにした。
+
+### Context / Goal
+- VisionLLM 関連設定が UI 上にまとまっておらず、OCR エンジンとして使う際のモデル切替や runtime 調整がしづらかった。
+- Translation の `Local Llama.cpp (GGUF)` に近い操作感で、VisionLLM 用の設定面を独立させたい。
+
+### Changes
+- サイドバーと Settings category に `VisionLLM` を追加し、独立パネルを新設した。
+- VisionLLM 用の UI 項目として、model / mmproj / reload / runtime control / host / port / context / GPU layers / threads / parallel / batch size / max tokens / max image side を追加した。
+- VisionLLM 用の model options と mmproj options のロード処理を追加した。
+- VisionLLM 用の restart / stop command を追加した。
+- SettingsViewModel に VisionLLM 関連の text/property バインディングを追加し、LoadFrom / ApplyTo / autosave 対応を行った。
+
+### Files Touched
+- `MainWindow.xaml` — VisionLLM サイドパネルとカテゴリ項目を追加し、既存カテゴリ index を後ろへ調整した。
+- `MainWindow.xaml.cs` — VisionLLM model/mmproj option のロード処理、reload/restart/stop メソッド、UI 初期化連携を追加した。
+- `ViewModels/MainWindowViewModel.cs` — VisionLLM 用 options collection と command を追加した。
+- `ViewModels/SettingsViewModel.cs` — VisionLLM 設定のバインド用プロパティ、LoadFrom / ApplyTo、autosave フックを追加した。
+- `Services/Application/ResourceHostCommandController.cs` — VisionLLM host の restart / stop 操作を追加した。
+- `Services/Application/ResourceHostFacade.cs` — VisionLLM host の稼働状態参照プロパティを追加した。
+
+### Behavioral Impact
+- VisionLLM を OCR エンジンにした時、UI からモデルと mmproj を選び、host 再起動や主要 runtime パラメータ調整ができるようになった。
+- `Stop VisionLLM` は一時停止のみで、OCR engine が VisionLLM のままなら後続の host ensure で再起動し得る。
+
+### Risk & Mitigation
+- Risk: Translation の Llama.cpp 設定と VisionLLM 設定の粒度差で、利用者が shared parameter の有無を誤解する可能性。
+- Mitigation: VisionLLM パネルは Vision 専用値だけを露出し、説明文で自動起動前提を明示した。
+- Risk: mmproj ファイル一覧が空の環境では missing 表示が出る可能性。
+- Mitigation: missing 選択肢を保持して、壊れた選択を UI 上から復旧できるようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。

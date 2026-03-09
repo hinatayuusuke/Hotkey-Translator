@@ -86,6 +86,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const double DrawerAutoResizeTolerance = 12.0;
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
+    private const string DefaultVisionLlmModelFileName = "Qwen3.5-4B-Q4_K_M.gguf";
+    private const string DefaultVisionLlmMmprojFileName = "4Bmmproj-F16.gguf";
     private const int MirrorOverlayTopmostResyncIntervalMs = 500;
     private const int RoiPresetSlotCount = 10;
     private const int RoiPresetPreviewDurationMs = 1000;
@@ -128,6 +130,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ReloadLlamaModelsAsync,
             RestartLlamaCppAsync,
             StopLlamaServerAsync,
+            ReloadVisionLlmModelsAsync,
+            RestartVisionLlmAsync,
+            StopVisionLlmAsync,
             RestartPaddleOcrHostsAsync,
             StopPaddleVlHost,
             SaveSettingsImmediatelyAsync);
@@ -1407,6 +1412,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _isApplyingSettings = true;
         EnsureRoiPresetSlots(settings);
         ReloadLlamaModelOptions(settings);
+        ReloadVisionLlmModelOptions(settings);
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
@@ -1523,6 +1529,77 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
+    private void ReloadVisionLlmModelOptions(AppSettings settings)
+    {
+        var modelFallback = SettingsHostNormalizer.NormalizeVisionLlmModelFileName(DefaultVisionLlmModelFileName);
+        var mmprojFallback = SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(DefaultVisionLlmMmprojFileName);
+        var selectedModel = string.IsNullOrWhiteSpace(_mainWindowViewModel.Settings.VisionLlmSelectedModelFileName)
+            ? settings.VisionLlmSelectedModelFileName
+            : _mainWindowViewModel.Settings.VisionLlmSelectedModelFileName;
+        var selectedMmproj = string.IsNullOrWhiteSpace(_mainWindowViewModel.Settings.VisionLlmSelectedMmprojFileName)
+            ? settings.VisionLlmSelectedMmprojFileName
+            : _mainWindowViewModel.Settings.VisionLlmSelectedMmprojFileName;
+        var normalizedModel = SettingsHostNormalizer.NormalizeVisionLlmModelFileName(selectedModel);
+        var normalizedMmproj = SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(selectedMmproj);
+        var fileNames = _llamaModelCatalog.GetAvailableModelFileNames();
+        var modelOptions = fileNames
+            .Where(fileName => !fileName.Contains("mmproj", StringComparison.OrdinalIgnoreCase))
+            .Select(fileName => new LlamaModelOption(fileName, fileName))
+            .ToList();
+        var mmprojOptions = fileNames
+            .Where(fileName => fileName.Contains("mmproj", StringComparison.OrdinalIgnoreCase))
+            .Select(fileName => new LlamaModelOption(fileName, fileName))
+            .ToList();
+        if (!string.IsNullOrWhiteSpace(normalizedModel) &&
+            !modelOptions.Any(option => string.Equals(option.Value, normalizedModel, StringComparison.OrdinalIgnoreCase)))
+        {
+            // WHY: Keep missing selections visible so users can repair broken model setups from the UI.
+            modelOptions.Add(new LlamaModelOption(normalizedModel, $"{normalizedModel} (missing)"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedMmproj) &&
+            !mmprojOptions.Any(option => string.Equals(option.Value, normalizedMmproj, StringComparison.OrdinalIgnoreCase)))
+        {
+            // WHY: mmproj pairs can go missing independently of the GGUF model file.
+            mmprojOptions.Add(new LlamaModelOption(normalizedMmproj, $"{normalizedMmproj} (missing)"));
+        }
+
+        var previousApplyingState = _isApplyingSettings;
+        _isApplyingSettings = true;
+        try
+        {
+            _mainWindowViewModel.ResetVisionLlmModelOptions(modelOptions);
+            _mainWindowViewModel.ResetVisionLlmMmprojOptions(mmprojOptions);
+
+            var resolvedModel = modelOptions.Count == 0
+                ? modelFallback
+                : normalizedModel;
+            if (modelOptions.Count > 0 &&
+                !modelOptions.Any(option => string.Equals(option.Value, normalizedModel, StringComparison.OrdinalIgnoreCase)))
+            {
+                resolvedModel = modelOptions[0].Value;
+            }
+
+            var resolvedMmproj = mmprojOptions.Count == 0
+                ? mmprojFallback
+                : normalizedMmproj;
+            if (mmprojOptions.Count > 0 &&
+                !mmprojOptions.Any(option => string.Equals(option.Value, normalizedMmproj, StringComparison.OrdinalIgnoreCase)))
+            {
+                resolvedMmproj = mmprojOptions[0].Value;
+            }
+
+            _mainWindowViewModel.Settings.VisionLlmSelectedModelFileName = resolvedModel;
+            _mainWindowViewModel.Settings.VisionLlmSelectedMmprojFileName = resolvedMmproj;
+            settings.VisionLlmSelectedModelFileName = resolvedModel;
+            settings.VisionLlmSelectedMmprojFileName = resolvedMmproj;
+        }
+        finally
+        {
+            _isApplyingSettings = previousApplyingState;
+        }
+    }
+
     private void SwapLanguages()
     {
         var settingsViewModel = _mainWindowViewModel.Settings;
@@ -1558,6 +1635,21 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private Task RestartLlamaCppAsync() => _resourceHostCommandController.RestartLlamaCppAsync();
 
     private Task StopLlamaServerAsync() => _resourceHostCommandController.StopLlamaServerAsync();
+
+    private async Task ReloadVisionLlmModelsAsync()
+    {
+        var settings = _settingsService.Settings;
+        ReloadVisionLlmModelOptions(settings);
+        await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
+    }
+
+    private Task RestartVisionLlmAsync() => _resourceHostCommandController.RestartVisionLlmAsync();
+
+    private Task StopVisionLlmAsync()
+    {
+        _resourceHostCommandController.StopVisionLlmHost();
+        return Task.CompletedTask;
+    }
 
     private Task RestartPaddleOcrHostsAsync() => _resourceHostCommandController.RestartPaddleOcrHostsAsync();
 

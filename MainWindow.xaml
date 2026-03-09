@@ -47,6 +47,7 @@
                     <ListBoxItem Content="Home" />
                     <ListBoxItem Content="OCR Settings" />
                     <ListBoxItem Content="OCREngines" />
+                    <ListBoxItem Content="VisionLLM" />
                     <ListBoxItem Content="Auto Translate" />
                     <ListBoxItem Content="Hook" />
                     <ListBoxItem Content="Translation" />
@@ -362,6 +363,7 @@
                                          SelectedIndex="{Binding SelectedSettingsCategoryIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <ListBoxItem Content="OCR Settings" />
                                     <ListBoxItem Content="OCREngines" />
+                                    <ListBoxItem Content="VisionLLM" />
                                     <ListBoxItem Content="Auto Translate" />
                                     <ListBoxItem Content="Hook" />
                                     <ListBoxItem Content="Translation" />
@@ -794,9 +796,81 @@
                                   </StackPanel>
                               </StackPanel>
 
-                              <StackPanel x:Name="SettingsPanelAutoTranslate"
+                              <StackPanel x:Name="SettingsPanelVisionLlm"
                                           Margin="0,12,0,0"
                                           Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=2}">
+                                  <TextBlock Text="VisionLLM (Local VLM)" FontWeight="SemiBold" />
+                                  <TextBlock Text="VisionLLM starts automatically when OCR engine is set to VisionLLM."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
+                                  <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
+                                             Foreground="DimGray"
+                                             Margin="0,6,0,0" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="VisionLlmModelBox" Width="320"
+                                                ItemsSource="{Binding VisionLlmModelOptions}"
+                                                DisplayMemberPath="Display"
+                                                SelectedValuePath="Value"
+                                                SelectedValue="{Binding Settings.VisionLlmSelectedModelFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="MMProj" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="VisionLlmMmprojBox" Width="320"
+                                                ItemsSource="{Binding VisionLlmMmprojOptions}"
+                                                DisplayMemberPath="Display"
+                                                SelectedValuePath="Value"
+                                                SelectedValue="{Binding Settings.VisionLlmSelectedMmprojFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadVisionLlmModelsCommand}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <Button Content="Apply &amp; Restart" Width="150" Command="{Binding RestartVisionLlmCommand}" />
+                                      <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopVisionLlmCommand}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmHostBox" Width="120"
+                                               Text="{Binding Settings.VisionLlmHostText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Port" Width="40" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmPortBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmPortText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Context size" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmContextSizeBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmContextSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="GPU layers" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmGpuLayersBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Threads" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmThreadsBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmThreadsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Parallel" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmParallelBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmParallelText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Batch size" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmBatchSizeBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Max tokens" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmMaxTokensBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Max image side" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
+                                               Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                              </StackPanel>
+
+                              <StackPanel x:Name="SettingsPanelAutoTranslate"
+                                          Margin="0,12,0,0"
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=3}">
                                   <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
                                   <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
                                             IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -934,7 +1008,7 @@
 
                               <StackPanel x:Name="SettingsPanelHook"
                                           Margin="0,12,0,0"
-                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=3}">
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=4}">
                                   <TextBlock Text="Graphics Hook (Experimental)" FontWeight="SemiBold" />
                                   <CheckBox x:Name="EnableGraphicsHookPipelineCheck"
                                             Content="Enable Graphics hook pipeline"
@@ -1050,7 +1124,7 @@
 
                               <StackPanel x:Name="SettingsPanelTranslation"
                                           Margin="0,12,0,0"
-                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=4}">
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
                                   <TextBlock Text="Translation priority" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <ListBox x:Name="TranslationPriorityList"
@@ -1156,7 +1230,7 @@
 
                             <StackPanel x:Name="SettingsPanelHotkeys"
                                         Margin="0,12,0,0"
-                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=6}">
                                 <TextBlock Text="Hotkey" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableRawInputHotkeysCheck"
                                           Content="Use RawInput hotkey backend (experimental)"
@@ -1362,7 +1436,7 @@
 
                             <StackPanel x:Name="SettingsPanelSystem"
                                         Margin="0,12,0,0"
-                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=6}">
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=7}">
                                 <TextBlock Text="Performance" FontWeight="SemiBold" />
                                 <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

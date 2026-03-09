@@ -57,6 +57,8 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public bool IsPaddleVlRunning => _paddleVlGrpcHost.IsRunning;
 
+    public bool IsVisionLlmRunning => _visionLlmGrpcHost.IsRunning;
+
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
         await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
