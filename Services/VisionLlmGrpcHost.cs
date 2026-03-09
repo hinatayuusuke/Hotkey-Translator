@@ -278,19 +278,17 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
     private void TryKillTrackedLlamaServer()
     {
         int? trackedPid;
-        string? trackedPath;
         lock (_lock)
         {
             trackedPid = _trackedLlamaServerPid;
-            trackedPath = _trackedLlamaServerPath;
         }
 
-        if (trackedPid.HasValue && TryKillLlamaProcessByPid(trackedPid.Value, trackedPath))
+        // WHY: VisionLLM and local translation share the same llama-server.exe binary.
+        // Path-based residual cleanup can therefore terminate the other host's child process.
+        if (trackedPid.HasValue)
         {
-            return;
+            TryKillLlamaProcessByPid(trackedPid.Value, _trackedLlamaServerPath);
         }
-
-        TryKillLlamaProcessByPath(trackedPath);
     }
 
     private bool TryKillLlamaProcessByPid(int pid, string? trackedPath)
@@ -322,38 +320,6 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         {
             Logger?.Info($"Failed to kill tracked VisionLLM llama-server PID {pid}: {ex.Message}");
             return false;
-        }
-    }
-
-    private void TryKillLlamaProcessByPath(string? trackedPath)
-    {
-        if (string.IsNullOrWhiteSpace(trackedPath))
-        {
-            return;
-        }
-
-        var name = Path.GetFileNameWithoutExtension(trackedPath);
-        foreach (var process in Process.GetProcessesByName(name))
-        {
-            var pid = process.Id;
-            try
-            {
-                using (process)
-                {
-                    if (process.HasExited || !IsExpectedLlamaServerProcess(process, trackedPath))
-                    {
-                        continue;
-                    }
-
-                    Logger?.Info($"Force-killing residual VisionLLM llama-server PID {process.Id}.");
-                    process.Kill(true);
-                    process.WaitForExit(2000);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger?.Info($"Failed to kill residual VisionLLM llama-server PID {pid}: {ex.Message}");
-            }
         }
     }
 

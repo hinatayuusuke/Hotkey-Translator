@@ -662,19 +662,18 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private void TryKillTrackedLlamaServer()
     {
         int? trackedPid;
-        string? trackedPath;
         lock (_lock)
         {
             trackedPid = _trackedLlamaServerPid;
-            trackedPath = _trackedLlamaServerPath;
         }
 
-        if (trackedPid.HasValue && TryKillLlamaProcessByPid(trackedPid.Value, trackedPath))
+        // WHY: Translation and VisionLLM currently share the same llama-server.exe path.
+        // Path-based residual cleanup can therefore kill the other live service.
+        // Fail fast to PID-only cleanup until we have a stronger ownership check.
+        if (trackedPid.HasValue)
         {
-            return;
+            TryKillLlamaProcessByPid(trackedPid.Value, _trackedLlamaServerPath);
         }
-
-        TryKillLlamaProcessByPath(trackedPath);
     }
 
     private bool TryKillLlamaProcessByPid(int pid, string? trackedPath)
@@ -707,38 +706,6 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         {
             _logger?.Info($"Failed to kill tracked llama-server PID {pid}: {ex.Message}");
             return false;
-        }
-    }
-
-    private void TryKillLlamaProcessByPath(string? trackedPath)
-    {
-        if (string.IsNullOrWhiteSpace(trackedPath))
-        {
-            return;
-        }
-
-        var name = Path.GetFileNameWithoutExtension(trackedPath);
-        foreach (var process in Process.GetProcessesByName(name))
-        {
-            var pid = process.Id;
-            try
-            {
-                using (process)
-                {
-                    if (process.HasExited || !IsExpectedLlamaServerProcess(process, trackedPath))
-                    {
-                        continue;
-                    }
-
-                    _logger?.Info($"Force-killing residual llama-server PID {process.Id}.");
-                    process.Kill(true);
-                    process.WaitForExit(2000);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger?.Info($"Failed to kill residual llama-server PID {pid}: {ex.Message}");
-            }
         }
     }
 

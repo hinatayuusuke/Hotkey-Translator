@@ -271,7 +271,7 @@ public sealed class AppSettings
     public string StyleId { get; set; } = "default";
     public string GlossaryVersion { get; set; } = "v1";
     public bool EnableGemini { get; set; } = false;
-    public string GeminiModel { get; set; } = "gemini-3.1-flash-lite-preview";
+    public string GeminiModel { get; set; } = "gemini-2.5Flash lite";
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";

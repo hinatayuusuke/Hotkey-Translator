@@ -18074,3 +18074,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - python -m py_compile OcrServiceVisionLlm\\vision_llama_engine.py 実行成功。
+**2026-03-10 00:00 (Asia/Taipei) — 共有 llama-server の停止誤爆を防止**
+
+### Summary
+- LlamaGrpcHost と VisionLlmGrpcHost の停止後クリーンアップを PID 限定に変更し、共有 llama-server.exe への path 総当たり kill を削除した。
+
+### Context / Goal
+- ROI 無効化で設定保存が走ると llama_grpc が stop され、その後始末で VisionLLM 側の llama-server まで巻き込んで再起動していた。
+- Translation と VisionLLM が同じ llama-server.exe を共有しているため、path ベース kill をやめて誤爆を防ぎたい。
+
+### Changes
+- LlamaGrpcHost の TryKillTrackedLlamaServer() を PID ベースの kill のみに変更した。
+- VisionLlmGrpcHost の TryKillTrackedLlamaServer() も同様に PID ベースの kill のみに変更した。
+- path ベース residual cleanup を両ホストから削除し、共有 exe 誤爆を防ぐ WHY コメントを追加した。
+
+### Files Touched
+- `Services/LlamaGrpcHost.cs` — 停止後の residual cleanup から path fallback を削除し、PID-only cleanup に変更した。
+- `Services/VisionLlmGrpcHost.cs` — 停止後の residual cleanup から path fallback を削除し、PID-only cleanup に変更した。
+
+### Behavioral Impact
+- `llama_grpc` 停止時に VisionLLM 側の llama-server を誤って kill して再起動させる挙動は解消される。
+- 一方で、親だけ落ちて子 llama-server が孤児化したケースでは、path 掃除をしない分だけ残骸プロセスが残る可能性がある。
+
+### Risk & Mitigation
+- Risk: 予期せぬ親プロセス終了時に orphaned llama-server が残る可能性。
+- Mitigation: まずは誤爆防止を優先し、必要なら将来 parent pid / command line / port で所有確認付き cleanup を追加する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal` 実行成功。
