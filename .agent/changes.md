@@ -18686,3 +18686,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
 - NOTE: 通常の `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\` は、既存の WPF 生成物/参照プロジェクト側 `obj` 破損により別件で失敗した。
 
+**2026-03-10 19:09 (Asia/Taipei) — VisionLLM synthetic の通常枠吸収をより積極化**
+
+### Summary
+- VisionLLM hybrid の synthetic fallback が通常枠へ吸収されやすいよう、重なり・距離の閾値を緩めた。
+
+### Context / Goal
+- 現状の通常枠吸収は保守的で、独立 synthetic が残りやすかった。
+- ROI 内で高重なりになるケースは helper OCR の 1 block 判定に VisionLLM text を寄せた方が自然なので、吸収統合を起こしやすくしたかった。
+
+### Changes
+- high penalty synthetic を通常枠へ吸収する閾値を `0.45` から `0.30` へ下げた。
+- merge target の overlap 最低条件を `0.08` から `0.04` へ下げた。
+- fallback 距離許容を `1.75x` から `2.50x` へ広げ、近傍通常枠へ寄せやすくした。
+
+### Files Touched
+- `Services\VisionGeometryHybridAligner.cs` — synthetic の通常枠吸収判定をより積極的な閾値へ調整。
+
+### Behavioral Impact
+- ROI 内で重なりやすい synthetic fallback は、これまでより独立 panel になりにくく、通常枠へ吸収されやすくなる。
+- helper OCR が 1 block、VisionLLM が複数 line と判断したケースで text 統合優先の挙動が強くなる。
+
+### Risk & Mitigation
+- Risk: 離れた通常枠へ誤吸収される可能性が少し上がる。
+- Mitigation: overlap 優先は維持し、距離 fallback にも上限を残した。
+- Risk: 独立 synthetic panel が減り、fallback の見え方が変わる。
+- Mitigation: しきい値だけの調整に留め、ロジック自体は変えていないため必要なら容易に再調整できる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+

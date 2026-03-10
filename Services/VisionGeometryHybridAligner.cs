@@ -8,6 +8,9 @@ namespace Hotkey_Translator.Services;
 
 public sealed class VisionGeometryHybridAligner
 {
+    private const double SyntheticMergePenaltyThreshold = 0.30;
+    private const double SyntheticMergeOverlapMin = 0.04;
+    private const double SyntheticMergeMaxDistanceMultiplier = 2.50;
     private readonly NormalizationService _normalizationService = new();
     private readonly AppLogger? _logger;
 
@@ -144,7 +147,7 @@ public sealed class VisionGeometryHybridAligner
             var overlapPenalty = ComputeOverlapPenalty(syntheticLine.Rect, occupiedRects);
             // WHY: If the fallback panel still collides heavily after readability-first placement,
             // the safer choice is to fold the text back into the nearest matched geometry block.
-            if (overlapPenalty >= 0.45 &&
+            if (overlapPenalty >= SyntheticMergePenaltyThreshold &&
                 TryFindMergeTargetVisionIndex(syntheticLine.Rect, matchedSlots, out var mergeTargetVisionIndex))
             {
                 if (!mergedTextByMatchedVisionIndex.TryGetValue(mergeTargetVisionIndex, out var contributions))
@@ -416,7 +419,7 @@ public sealed class VisionGeometryHybridAligner
             bestOverlapVisionIndex = slot.VisionIndex;
         }
 
-        if (bestOverlapVisionIndex >= 0 && bestOverlap >= 0.08)
+        if (bestOverlapVisionIndex >= 0 && bestOverlap >= SyntheticMergeOverlapMin)
         {
             visionIndex = bestOverlapVisionIndex;
             return true;
@@ -445,7 +448,7 @@ public sealed class VisionGeometryHybridAligner
             return false;
         }
 
-        var maxAllowedDistance = Math.Max(candidateRect.Width, candidateRect.Height) * 1.75;
+        var maxAllowedDistance = Math.Max(candidateRect.Width, candidateRect.Height) * SyntheticMergeMaxDistanceMultiplier;
         if (bestDistance > maxAllowedDistance)
         {
             return false;
