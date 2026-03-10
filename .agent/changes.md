@@ -18592,3 +18592,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-10 16:49 (Asia/Taipei) — VisionLLM synthetic 高重なり時の通常枠吸収統合**
+
+### Summary
+- VisionLLM hybrid の synthetic fallback が高重なりになる場合、独立枠ではなく近傍通常枠へ吸収して VisionLLM 順で text を再構成するようにした。
+
+### Context / Goal
+- readability-first な synthetic panel にしても、ROI 内で通常枠との重なり penalty が高いケースが残っていた。
+- この状況は helper OCR が 1 block と判断し、VisionLLM だけが複数 line を返したケースである可能性が高く、独立枠より通常枠への統合が自然だった。
+
+### Changes
+- high penalty synthetic の merge target を、重なり優先・距離 fallback で近傍 matched rect から選ぶロジックを追加した。
+- matched 通常枠ごとに VisionLLM text contribution を保持し、最終出力時に Vision index 順で text を再構成するようにした。
+- 吸収統合された synthetic group は独立 `OcrLine` を返さず、standalone synthetic は従来どおり readability-first panel として残すように分岐した。
+- hybrid summary log に `merged=` を追加し、高 penalty synthetic の吸収件数を観測できるようにした。
+
+### Files Touched
+- `Services\\VisionGeometryHybridAligner.cs` — high penalty synthetic を近傍通常枠へ吸収し、VisionLLM 順で text を再構成するロジックを追加。
+
+### Behavioral Impact
+- 通常枠と強く衝突する synthetic fallback は独立枠で出ず、近傍通常枠の text として吸収される。
+- helper OCR が 1 block、VisionLLM が複数 line と判断したケースで、表示は通常枠 1 つのまま text 完全性を優先する挙動になる。
+
+### Risk & Mitigation
+- Risk: 誤った通常枠へ吸収されると text が混ざる可能性がある。
+- Mitigation: merge target は overlap 優先、fallback でも距離上限を設けて極端に遠い通常枠への吸収を避けた。
+- Risk: standalone synthetic が減ることで fallback の見え方が変わる可能性がある。
+- Mitigation: high penalty 条件を満たさない synthetic は従来どおり独立 panel として残す。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\\_agent_verify\\`
+

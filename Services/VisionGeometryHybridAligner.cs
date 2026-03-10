@@ -98,15 +98,24 @@ public sealed class VisionGeometryHybridAligner
             .Select(slot => slot!)
             .ToList();
         var occupiedRects = matchedSlots.Select(slot => slot.Rect).ToList();
-        var lines = new List<OcrLine>(visionLines.Count);
+        var mergedTextByMatchedVisionIndex = new Dictionary<int, List<VisionTextContribution>>();
+        foreach (var matchedSlot in matchedSlots)
+        {
+            var matchedLine = matchedOutputs[matchedSlot.VisionIndex]!;
+            mergedTextByMatchedVisionIndex[matchedSlot.VisionIndex] =
+            [
+                new VisionTextContribution(matchedSlot.VisionIndex, matchedLine.Text)
+            ];
+        }
+
+        var standaloneSyntheticByStartIndex = new Dictionary<int, OcrLine>();
         var syntheticCount = 0;
+        var syntheticMergedCount = 0;
 
         for (var visionIndex = 0; visionIndex < visionLines.Count;)
         {
-            var matchedLine = matchedOutputs[visionIndex];
-            if (matchedLine is not null)
+            if (matchedOutputs[visionIndex] is not null)
             {
-                lines.Add(matchedLine);
                 visionIndex++;
                 continue;
             }
@@ -124,22 +133,80 @@ public sealed class VisionGeometryHybridAligner
                 groupEnd++;
             }
 
-            lines.Add(BuildSyntheticLineForGroup(
+            var syntheticLine = BuildSyntheticLineForGroup(
                 visionLines,
                 groupStart,
                 groupEnd,
                 matchedSlots,
                 occupiedRects,
-                geometryLines,
                 imageWidth,
-                imageHeight));
-            syntheticCount++;
-            occupiedRects.Add(lines[^1].Rect);
+                imageHeight);
+            var overlapPenalty = ComputeOverlapPenalty(syntheticLine.Rect, occupiedRects);
+            // WHY: If the fallback panel still collides heavily after readability-first placement,
+            // the safer choice is to fold the text back into the nearest matched geometry block.
+            if (overlapPenalty >= 0.45 &&
+                TryFindMergeTargetVisionIndex(syntheticLine.Rect, matchedSlots, out var mergeTargetVisionIndex))
+            {
+                if (!mergedTextByMatchedVisionIndex.TryGetValue(mergeTargetVisionIndex, out var contributions))
+                {
+                    contributions = new List<VisionTextContribution>();
+                    mergedTextByMatchedVisionIndex[mergeTargetVisionIndex] = contributions;
+                }
+
+                for (var groupIndex = groupStart; groupIndex <= groupEnd; groupIndex++)
+                {
+                    var text = visionLines[groupIndex].Text.Trim();
+                    if (string.IsNullOrWhiteSpace(text))
+                    {
+                        continue;
+                    }
+
+                    contributions.Add(new VisionTextContribution(groupIndex, text));
+                }
+
+                syntheticMergedCount++;
+            }
+            else
+            {
+                standaloneSyntheticByStartIndex[groupStart] = syntheticLine;
+                syntheticCount++;
+                occupiedRects.Add(syntheticLine.Rect);
+            }
+
             visionIndex = groupEnd + 1;
         }
 
+        var lines = new List<OcrLine>(visionLines.Count);
+        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        {
+            if (matchedOutputs[visionIndex] is OcrLine matchedLine)
+            {
+                if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var contributions))
+                {
+                    var mergedText = string.Join(
+                        " ",
+                        contributions
+                            .OrderBy(item => item.VisionIndex)
+                            .Select(item => item.Text.Trim())
+                            .Where(text => !string.IsNullOrWhiteSpace(text)));
+                    if (!string.IsNullOrWhiteSpace(mergedText))
+                    {
+                        matchedLine = matchedLine with { Text = mergedText };
+                    }
+                }
+
+                lines.Add(matchedLine);
+                continue;
+            }
+
+            if (standaloneSyntheticByStartIndex.TryGetValue(visionIndex, out var syntheticLine))
+            {
+                lines.Add(syntheticLine);
+            }
+        }
+
         _logger?.Info(
-            $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} synthetic={syntheticCount} output={lines.Count}.");
+            $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
         return new HybridOcrAlignmentResult(lines, geometryLines.Count, visionLines.Count, matchedCount, syntheticCount);
     }
 
@@ -300,7 +367,6 @@ public sealed class VisionGeometryHybridAligner
         int groupEnd,
         IReadOnlyList<MatchedSlot> matchedSlots,
         IReadOnlyList<Rect> occupiedRects,
-        IReadOnlyList<OcrLine> geometryLines,
         int imageWidth,
         int imageHeight)
     {
@@ -323,6 +389,70 @@ public sealed class VisionGeometryHybridAligner
             imageWidth,
             imageHeight);
         return new OcrLine(mergedText, syntheticRect, confidence, lineCount, syntheticRect.Height / Math.Max(1, lineCount));
+    }
+
+    private static bool TryFindMergeTargetVisionIndex(
+        Rect candidateRect,
+        IReadOnlyList<MatchedSlot> matchedSlots,
+        out int visionIndex)
+    {
+        visionIndex = -1;
+        if (matchedSlots.Count == 0)
+        {
+            return false;
+        }
+
+        var bestOverlap = 0.0;
+        var bestOverlapVisionIndex = -1;
+        foreach (var slot in matchedSlots)
+        {
+            var overlap = ComputePairOverlapPenalty(candidateRect, slot.Rect);
+            if (overlap <= bestOverlap)
+            {
+                continue;
+            }
+
+            bestOverlap = overlap;
+            bestOverlapVisionIndex = slot.VisionIndex;
+        }
+
+        if (bestOverlapVisionIndex >= 0 && bestOverlap >= 0.08)
+        {
+            visionIndex = bestOverlapVisionIndex;
+            return true;
+        }
+
+        var candidateCenterX = candidateRect.Left + (candidateRect.Width / 2.0);
+        var candidateCenterY = candidateRect.Top + (candidateRect.Height / 2.0);
+        var bestDistance = double.MaxValue;
+        var bestDistanceVisionIndex = -1;
+        foreach (var slot in matchedSlots)
+        {
+            var slotCenterX = slot.Rect.Left + (slot.Rect.Width / 2.0);
+            var slotCenterY = slot.Rect.Top + (slot.Rect.Height / 2.0);
+            var distance = Math.Sqrt(Math.Pow(candidateCenterX - slotCenterX, 2.0) + Math.Pow(candidateCenterY - slotCenterY, 2.0));
+            if (distance >= bestDistance)
+            {
+                continue;
+            }
+
+            bestDistance = distance;
+            bestDistanceVisionIndex = slot.VisionIndex;
+        }
+
+        if (bestDistanceVisionIndex < 0)
+        {
+            return false;
+        }
+
+        var maxAllowedDistance = Math.Max(candidateRect.Width, candidateRect.Height) * 1.75;
+        if (bestDistance > maxAllowedDistance)
+        {
+            return false;
+        }
+
+        visionIndex = bestDistanceVisionIndex;
+        return true;
     }
 
     private static Rect BuildReadableSyntheticRect(
@@ -466,6 +596,23 @@ public sealed class VisionGeometryHybridAligner
         return worstPenalty;
     }
 
+    private static double ComputePairOverlapPenalty(Rect leftRect, Rect rightRect)
+    {
+        var left = Math.Max(leftRect.Left, rightRect.Left);
+        var top = Math.Max(leftRect.Top, rightRect.Top);
+        var right = Math.Min(leftRect.Right, rightRect.Right);
+        var bottom = Math.Min(leftRect.Bottom, rightRect.Bottom);
+        if (right <= left || bottom <= top)
+        {
+            return 0.0;
+        }
+
+        var intersectionArea = (right - left) * (bottom - top);
+        var leftArea = Math.Max(1.0, leftRect.Width * leftRect.Height);
+        var rightArea = Math.Max(1.0, rightRect.Width * rightRect.Height);
+        return intersectionArea / Math.Min(leftArea, rightArea);
+    }
+
     private static Rect ClampRect(Rect rect, int imageWidth, int imageHeight)
     {
         var width = Math.Max(1.0, Math.Min(rect.Width, imageWidth));
@@ -483,6 +630,8 @@ public sealed class VisionGeometryHybridAligner
     private sealed record GeometryCandidate(OcrLine Line, int Index, string NormalizedText);
 
     private sealed record MatchedSlot(int VisionIndex, Rect Rect);
+
+    private sealed record VisionTextContribution(int VisionIndex, string Text);
 
     private sealed class ScriptProfile
     {
