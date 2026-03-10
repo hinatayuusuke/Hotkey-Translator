@@ -97,6 +97,7 @@ public sealed class VisionGeometryHybridAligner
             .Where(slot => slot is not null)
             .Select(slot => slot!)
             .ToList();
+        var occupiedRects = matchedSlots.Select(slot => slot.Rect).ToList();
         var lines = new List<OcrLine>(visionLines.Count);
         var syntheticCount = 0;
 
@@ -128,10 +129,12 @@ public sealed class VisionGeometryHybridAligner
                 groupStart,
                 groupEnd,
                 matchedSlots,
+                occupiedRects,
                 geometryLines,
                 imageWidth,
                 imageHeight));
             syntheticCount++;
+            occupiedRects.Add(lines[^1].Rect);
             visionIndex = groupEnd + 1;
         }
 
@@ -296,6 +299,7 @@ public sealed class VisionGeometryHybridAligner
         int groupStart,
         int groupEnd,
         IReadOnlyList<MatchedSlot> matchedSlots,
+        IReadOnlyList<Rect> occupiedRects,
         IReadOnlyList<OcrLine> geometryLines,
         int imageWidth,
         int imageHeight)
@@ -304,83 +308,162 @@ public sealed class VisionGeometryHybridAligner
         var next = matchedSlots.Where(slot => slot.VisionIndex > groupEnd).OrderBy(slot => slot.VisionIndex).FirstOrDefault();
         var groupLines = visionLines.Skip(groupStart).Take(groupEnd - groupStart + 1).ToList();
         var fallbackRect = groupLines[0].Rect;
-        var mergedText = string.Join("\n", groupLines.Select(line => line.Text));
+        // WHY: Synthetic fallback prioritizes readability over geometry fidelity. Collapsing into one
+        // space-separated sentence avoids stacked boxes when helper OCR cannot provide matching geometry.
+        var mergedText = string.Join(" ", groupLines.Select(line => line.Text.Trim()).Where(text => !string.IsNullOrWhiteSpace(text)));
         var confidence = groupLines.Max(line => line.Confidence);
         var lineCount = groupLines.Sum(line => Math.Max(1, line.LineCount));
-        var baseHeight = Math.Max(
-            groupLines.Max(line => Math.Max(1.0, line.LineHeight > 0 ? line.LineHeight : line.Rect.Height)),
-            Math.Max(1.0, fallbackRect.Height));
-        var targetHeight = Math.Max(baseHeight, baseHeight * lineCount);
-
-        Rect syntheticRect;
-
-        if (previous != default && next != default)
-        {
-            syntheticRect = InterpolateBetweenGroup(
-                previous.Rect,
-                next.Rect,
-                previous.VisionIndex,
-                next.VisionIndex,
-                groupStart,
-                groupEnd,
-                targetHeight,
-                imageWidth,
-                imageHeight);
-        }
-        else if (previous != default)
-        {
-            syntheticRect = AttachAfterGroup(previous.Rect, targetHeight, imageWidth, imageHeight);
-        }
-        else if (next != default)
-        {
-            syntheticRect = AttachBeforeGroup(next.Rect, targetHeight, imageWidth, imageHeight);
-        }
-        else if (geometryLines.Count > 0)
-        {
-            var anchor = geometryLines[Math.Min(groupStart, geometryLines.Count - 1)].Rect;
-            syntheticRect = ClampRect(new Rect(anchor.X, anchor.Y, anchor.Width, targetHeight), imageWidth, imageHeight);
-        }
-        else
-        {
-            syntheticRect = ClampRect(new Rect(fallbackRect.X, fallbackRect.Y, fallbackRect.Width, targetHeight), imageWidth, imageHeight);
-        }
-
+        var syntheticRect = BuildReadableSyntheticRect(
+            mergedText,
+            lineCount,
+            previous,
+            next,
+            occupiedRects,
+            fallbackRect,
+            imageWidth,
+            imageHeight);
         return new OcrLine(mergedText, syntheticRect, confidence, lineCount, syntheticRect.Height / Math.Max(1, lineCount));
     }
 
-    private static Rect InterpolateBetweenGroup(
-        Rect previous,
-        Rect next,
-        int previousIndex,
-        int nextIndex,
-        int groupStart,
-        int groupEnd,
-        double targetHeight,
+    private static Rect BuildReadableSyntheticRect(
+        string text,
+        int lineCount,
+        MatchedSlot? previous,
+        MatchedSlot? next,
+        IReadOnlyList<Rect> occupiedRects,
+        Rect fallbackRect,
         int imageWidth,
         int imageHeight)
     {
-        var span = Math.Max(1, nextIndex - previousIndex);
-        var centerIndex = (groupStart + groupEnd) / 2.0;
-        var ratio = (centerIndex - previousIndex) / span;
-        var x = Lerp(previous.X, next.X, ratio);
-        var width = Lerp(previous.Width, next.Width, ratio);
-        var height = Math.Max(targetHeight, Lerp(previous.Height, next.Height, ratio));
-        var previousBottom = previous.Y + previous.Height;
-        var nextTop = next.Y;
-        var y = previousBottom + ((nextTop - previousBottom - height) * ratio);
-        return ClampRect(new Rect(x, y, width, height), imageWidth, imageHeight);
+        var normalizedText = string.IsNullOrWhiteSpace(text) ? "..." : text;
+        var charCount = Math.Max(1, normalizedText.Length);
+        var approxLineHeight = Math.Clamp(imageHeight * 0.055, 24.0, 54.0);
+        var preferredWidthRatio = Math.Clamp(0.34 + (charCount / 220.0), 0.34, 0.72);
+        var targetWidth = Math.Clamp(imageWidth * preferredWidthRatio, 180.0, imageWidth * 0.80);
+        var charsPerLine = Math.Max(8, (int)Math.Floor(targetWidth / Math.Max(10.0, approxLineHeight * 0.62)));
+        var estimatedLineCount = Math.Max(1, (int)Math.Ceiling(charCount / (double)charsPerLine));
+        estimatedLineCount = Math.Max(estimatedLineCount, Math.Max(1, lineCount));
+        var targetHeight = Math.Clamp((estimatedLineCount * approxLineHeight * 1.28) + 16.0, 40.0, imageHeight * 0.60);
+
+        var preferredAnchor = previous?.Rect ?? next?.Rect ?? fallbackRect;
+        var preferredRect = ClampRect(new Rect(preferredAnchor.X, preferredAnchor.Y, targetWidth, targetHeight), imageWidth, imageHeight);
+        return ResolveReadablePlacement(preferredRect, occupiedRects, imageWidth, imageHeight);
     }
 
-    private static Rect AttachAfterGroup(Rect anchor, double targetHeight, int imageWidth, int imageHeight)
+    private static Rect ResolveReadablePlacement(
+        Rect preferredRect,
+        IReadOnlyList<Rect> occupiedRects,
+        int imageWidth,
+        int imageHeight)
     {
-        var gap = Math.Max(2.0, anchor.Height * 0.20);
-        return ClampRect(new Rect(anchor.X, anchor.Y + anchor.Height + gap, anchor.Width, targetHeight), imageWidth, imageHeight);
+        if (occupiedRects.Count == 0)
+        {
+            return preferredRect;
+        }
+
+        var candidates = BuildReadablePlacementCandidates(preferredRect, occupiedRects, imageWidth, imageHeight);
+
+        Rect bestRect = preferredRect;
+        var bestPenalty = double.MaxValue;
+        foreach (var candidate in candidates)
+        {
+            var penalty = ComputeOverlapPenalty(candidate, occupiedRects);
+            if (penalty < 0.12)
+            {
+                return candidate;
+            }
+
+            if (penalty < bestPenalty)
+            {
+                bestPenalty = penalty;
+                bestRect = candidate;
+            }
+        }
+
+        return bestRect;
     }
 
-    private static Rect AttachBeforeGroup(Rect anchor, double targetHeight, int imageWidth, int imageHeight)
+    private static List<Rect> BuildReadablePlacementCandidates(
+        Rect preferredRect,
+        IReadOnlyList<Rect> occupiedRects,
+        int imageWidth,
+        int imageHeight)
     {
-        var gap = Math.Max(2.0, anchor.Height * 0.20);
-        return ClampRect(new Rect(anchor.X, anchor.Y - targetHeight - gap, anchor.Width, targetHeight), imageWidth, imageHeight);
+        var margin = Math.Max(10.0, Math.Min(imageWidth, imageHeight) * 0.02);
+        var candidates = new List<Rect>();
+        var union = BuildUnionRect(occupiedRects);
+
+        candidates.Add(preferredRect);
+
+        if (union is not null)
+        {
+            candidates.Add(ClampRect(new Rect(union.Value.Left, union.Value.Bottom + margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+            candidates.Add(ClampRect(new Rect(union.Value.Right - preferredRect.Width, union.Value.Bottom + margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+            candidates.Add(ClampRect(new Rect(union.Value.Left, union.Value.Top - preferredRect.Height - margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+            candidates.Add(ClampRect(new Rect(union.Value.Right - preferredRect.Width, union.Value.Top - preferredRect.Height - margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+            candidates.Add(ClampRect(new Rect(union.Value.Right + margin, union.Value.Top, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+            candidates.Add(ClampRect(new Rect(union.Value.Left - preferredRect.Width - margin, union.Value.Top, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        }
+
+        candidates.Add(ClampRect(new Rect(margin, imageHeight - preferredRect.Height - margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        candidates.Add(ClampRect(new Rect(imageWidth - preferredRect.Width - margin, imageHeight - preferredRect.Height - margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        candidates.Add(ClampRect(new Rect(margin, margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        candidates.Add(ClampRect(new Rect(imageWidth - preferredRect.Width - margin, margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        candidates.Add(ClampRect(new Rect((imageWidth - preferredRect.Width) / 2.0, imageHeight - preferredRect.Height - margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+        candidates.Add(ClampRect(new Rect((imageWidth - preferredRect.Width) / 2.0, margin, preferredRect.Width, preferredRect.Height), imageWidth, imageHeight));
+
+        var stepX = Math.Max(24.0, preferredRect.Width * 0.35);
+        var stepY = Math.Max(24.0, preferredRect.Height * 0.35);
+        for (var y = margin; y <= imageHeight - preferredRect.Height - margin; y += stepY)
+        {
+            for (var x = margin; x <= imageWidth - preferredRect.Width - margin; x += stepX)
+            {
+                candidates.Add(new Rect(x, y, preferredRect.Width, preferredRect.Height));
+            }
+        }
+
+        return candidates;
+    }
+
+    private static Rect? BuildUnionRect(IReadOnlyList<Rect> rects)
+    {
+        if (rects.Count == 0)
+        {
+            return null;
+        }
+
+        var left = rects.Min(rect => rect.Left);
+        var top = rects.Min(rect => rect.Top);
+        var right = rects.Max(rect => rect.Right);
+        var bottom = rects.Max(rect => rect.Bottom);
+        return new Rect(left, top, Math.Max(1.0, right - left), Math.Max(1.0, bottom - top));
+    }
+
+    private static double ComputeOverlapPenalty(Rect candidate, IReadOnlyList<Rect> occupiedRects)
+    {
+        var candidateArea = Math.Max(1.0, candidate.Width * candidate.Height);
+        var worstPenalty = 0.0;
+        foreach (var occupied in occupiedRects)
+        {
+            var left = Math.Max(candidate.Left, occupied.Left);
+            var top = Math.Max(candidate.Top, occupied.Top);
+            var right = Math.Min(candidate.Right, occupied.Right);
+            var bottom = Math.Min(candidate.Bottom, occupied.Bottom);
+            if (right <= left || bottom <= top)
+            {
+                continue;
+            }
+
+            var intersectionArea = (right - left) * (bottom - top);
+            var occupiedArea = Math.Max(1.0, occupied.Width * occupied.Height);
+            var penalty = intersectionArea / Math.Min(candidateArea, occupiedArea);
+            if (penalty > worstPenalty)
+            {
+                worstPenalty = penalty;
+            }
+        }
+
+        return worstPenalty;
     }
 
     private static Rect ClampRect(Rect rect, int imageWidth, int imageHeight)

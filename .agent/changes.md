@@ -18530,3 +18530,65 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-10 14:49 (Asia/Taipei) — VisionLLM synthetic のサイズ補正と重なり回避を追加**
+
+### Summary
+- VisionLLM hybrid の synthetic fallback に対して、グループ化した枠のサイズ補正と occupied rect 回避配置を追加した。
+
+### Context / Goal
+- 連続 unmatched 区間を 1 synthetic box にまとめても、通常の matched box と重なると可読性が落ちる。
+- synthetic box を適度なサイズへ補正した上で、既存表示枠を避けて配置したかった。
+
+### Changes
+- synthetic group 幅を前後 anchor / geometry 幅ヒントから算出し、行数に応じて少し絞るロジックを追加した。
+- synthetic group 高さを行数ベースで伸ばしつつ、画像内で clamp するようにした。
+- matched rect と既配置 synthetic rect を `occupiedRects` として保持し、synthetic 配置前に重なり量を評価するようにした。
+- preferred / 下 / 上 / 右 / 左の候補位置を順に試し、重なりが閾値未満の最初の候補を採用する placement を追加した。
+- すべて重なる場合でも、最小 penalty の候補を選ぶようにして全面重なりを避ける方向へ寄せた。
+
+### Files Touched
+- `Services\VisionGeometryHybridAligner.cs` — synthetic group の width/height 調整と occupied rect 回避配置を追加。
+
+### Behavioral Impact
+- synthetic fallback box は従来より通常表示枠に被りにくくなる。
+- 複数行 synthetic は anchor 幅の丸コピーではなく、やや絞った幅で配置される。
+
+### Risk & Mitigation
+- Risk: 回避配置で synthetic box が想定位置から少し離れる可能性がある。
+- Mitigation: preferred 位置を最優先し、上下左右の近傍候補だけを試す最小探索に留めた。
+- Risk: 幅を絞りすぎると長文 text が窮屈になる可能性がある。
+- Mitigation: 幅は anchor 平均幅を基準にしつつ、最低幅と最大幅 clamp を設けた。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-10 14:58 (Asia/Taipei) — VisionLLM synthetic を独立読取パネル方式へ変更**
+
+### Summary
+- VisionLLM hybrid の synthetic fallback を、元枠追従ではなく空き領域へ置く readability-first パネル方式へ切り替えた。
+
+### Context / Goal
+- 既存の synthetic は通常枠との被りを完全には避けられず、geometry 追従を続けても改善が限定的だった。
+- synthetic は補助 OCR に対応しなかった text なので、geometry fidelity より読みやすさを優先した独立配置に寄せたかった。
+
+### Changes
+- synthetic group text は改行ではなくスペース連結に変更した。CJK も暫定で同じ連結方式にした。
+- synthetic panel サイズを画面サイズと文字数から推定するロジックを追加した。
+- panel 幅は画面幅比と文字数から決め、高さは推定行数と line count の大きい方を使って決めるようにした。
+- 配置は元 bbox をほぼ使わず、occupied rect の union 周辺、四隅、上下中央、最後に coarse grid を候補として評価する readability-first 配置へ変更した。
+- overlap penalty の閾値を厳しめにし、通常枠との重なりを避けやすくした。
+
+### Files Touched
+- `Services\VisionGeometryHybridAligner.cs` — synthetic fallback を独立パネル配置へ変更。
+
+### Behavioral Impact
+- synthetic fallback は通常枠の近傍 geometry へ追従しにくくなる代わりに、通常枠と被りにくい独立した読取パネルとして表示される。
+- synthetic text は 1 box 内でスペース連結される。
+
+### Risk & Mitigation
+- Risk: 元の台詞位置から離れた場所へ synthetic が出る可能性がある。
+- Mitigation: occupied rect の union 周辺候補を先に試し、それでも無理な時だけ corners / grid へ広げるようにした。
+- Risk: CJK をスペース連結すると不自然な文になる可能性がある。
+- Mitigation: 今回はテスト要件に合わせて統一し、必要なら後続で CJK だけ無スペース連結へ分岐できるよう text 結合点を一箇所にまとめた。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
