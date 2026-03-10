@@ -18321,3 +18321,84 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `python -m compileall OcrServiceVisionLlm\server.py OcrServiceVisionLlm\vision_llama_engine.py`
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-10 13:31 (Asia/Taipei) — VisionLLM engine テストスクリプトに preserve-visual-lines を追加**
+
+### Summary
+- `OcrServiceVisionLlm\test_vision_llama_engine.py` から hybrid OCR 用 prompt を試せるようにした。
+
+### Context / Goal
+- 本番側では hybrid OCR 時だけ VisionLLM に visible line preserve prompt を送るようにした。
+- 同じ挙動をテストスクリプトでも再現して、prompt 粒度の差を単体で比較したい。
+
+### Changes
+- `--preserve-visual-lines` オプションを追加した。
+- OCR / OCR-translate モードで `engine.recognize(..., preserve_visual_lines=...)` を渡すようにした。
+- summary JSON に `preserve_visual_lines` を含めるようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — hybrid OCR prompt を試せる CLI フラグと recognize 引数を追加。
+
+### Behavioral Impact
+- テストスクリプトで通常 OCR prompt と hybrid OCR prompt を比較できる。
+- 本番コードの hybrid OCR 挙動を、テストスクリプトでほぼ同条件に再現できる。
+
+### Risk & Mitigation
+- Risk: テスト時に prompt 切替を忘れると、本番 hybrid と違う結果で比較してしまう。
+- Mitigation: summary JSON に `preserve_visual_lines` を残し、実行条件を記録する。
+
+### Tests / Verification
+- `python -m compileall OcrServiceVisionLlm\test_vision_llama_engine.py`
+**2026-03-10 13:32 (Asia/Taipei) — VisionLLM engine テストの既定回数を 1 回実行へ変更**
+
+### Summary
+- `test_vision_llama_engine.py` の既定 `warmup` と `repeat` を 1 回実行向けに変更した。
+
+### Context / Goal
+- テストコードの既定が warmup 1 回 + repeat 3 回で、日常確認には重い。
+- デフォルトでは 1 回だけ実行し、必要時だけ回数を増やせるようにしたい。
+
+### Changes
+- `--warmup` の既定値を `1 -> 0` に変更した。
+- `--repeat` の既定値を `3 -> 1` に変更した。
+
+### Files Touched
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — warmup / repeat の既定値を軽量化。
+
+### Behavioral Impact
+- オプション未指定時は warmup なし + 計測 1 回だけ実行する。
+- 複数回測定したい場合は従来どおり `--warmup` と `--repeat` を明示指定すればよい。
+
+### Risk & Mitigation
+- Risk: 平均値比較の前提で使っていた場合、既定値だけではブレを拾いやすい。
+- Mitigation: 繰り返し測定が必要なケースでは `--repeat` を明示指定する運用を前提にする。
+
+### Tests / Verification
+- `python -m compileall OcrServiceVisionLlm\test_vision_llama_engine.py`
+**2026-03-10 13:46 (Asia/Taipei) — VisionLLM テストスクリプトの表示を本番寄りに整理**
+
+### Summary
+- `test_vision_llama_engine.py` で request JSON の base64 ノイズを既定で隠し、本番相当の OCR 最終文字列と line split を見やすくした。
+
+### Context / Goal
+- テストスクリプトでは request JSON の data URL が大きく表示され、本番で実際に使う OCR 最終文字列が見えにくい。
+- `recognize()` の戻り値、gRPC JSON、line split を中心に確認できるようにしたい。
+
+### Changes
+- `--show-request-json`, `--show-response-json`, `--show-grpc-json` を追加した。
+- HTTP request / response のコンソール出力を既定で OFF にし、必要時のみ表示するようにした。
+- `print_app_final_ocr()` を追加し、本番相当の OCR 最終文字列、gRPC JSON、line split を表示するようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — コンソール表示と trace dump の制御を追加。
+
+### Behavioral Impact
+- デフォルトでは request JSON の base64 が大量表示されなくなる。
+- 代わりに、本番で使う OCR 最終文字列と行分割結果が見やすく表示される。
+- 生の request / response が必要なときだけ CLI フラグで明示表示できる。
+
+### Risk & Mitigation
+- Risk: 既存の request / response デバッグを前提にしていた場合、既定表示が変わる。
+- Mitigation: `--show-request-json` / `--show-response-json` を追加し、必要時に従来情報を再表示できるようにした。
+
+### Tests / Verification
+- `python -m compileall OcrServiceVisionLlm\test_vision_llama_engine.py`

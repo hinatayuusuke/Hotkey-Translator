@@ -46,8 +46,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=20, help="Top-k")
     parser.add_argument("--repeat-penalty", type=float, default=1.05, help="Repeat penalty")
     parser.add_argument("--language", default="ja", help="OCR language hint")
-    parser.add_argument("--warmup", type=int, default=1, help="Warmup OCR runs before timing")
-    parser.add_argument("--repeat", type=int, default=3, help="Measured OCR runs")
+    parser.add_argument(
+        "--preserve-visual-lines",
+        action="store_true",
+        help="Use the hybrid OCR prompt that preserves visible lines instead of merging them for translation readability.",
+    )
+    parser.add_argument("--warmup", type=int, default=0, help="Warmup OCR runs before timing")
+    parser.add_argument("--repeat", type=int, default=1, help="Measured OCR runs")
     parser.add_argument(
         "--disable-thinking",
         dest="disable_thinking",
@@ -68,6 +73,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--target-lang", default="en", help="Translation target language")
     parser.add_argument("--raw-response-out", default=None, help="Optional path to write the last raw HTTP response body")
     parser.add_argument("--raw-request-out", default=None, help="Optional path to write the last HTTP JSON request body")
+    parser.add_argument(
+        "--show-request-json",
+        action="store_true",
+        help="Print the last HTTP request JSON. Disabled by default because image data URLs are noisy.",
+    )
+    parser.add_argument(
+        "--show-response-json",
+        action="store_true",
+        help="Print the last HTTP response body.",
+    )
+    parser.add_argument(
+        "--show-grpc-json",
+        action="store_true",
+        help="Print the gRPC-style OCR JSON payload ({\"text\": ...}) that the app would receive.",
+    )
     return parser.parse_args()
 
 
@@ -124,17 +144,45 @@ def install_http_trace(client: httpx.Client, capture: HttpTraceCapture):
     return restore
 
 
-def dump_http_trace(capture: HttpTraceCapture, raw_request_out: str | None, raw_response_out: str | None) -> None:
-    if capture.last_request_json is not None:
+def dump_http_trace(
+    capture: HttpTraceCapture,
+    raw_request_out: str | None,
+    raw_response_out: str | None,
+    show_request_json: bool,
+    show_response_json: bool,
+) -> None:
+    if capture.last_request_json is not None and show_request_json:
         request_text = json.dumps(capture.last_request_json, ensure_ascii=False, indent=2)
         print("--- Last HTTP Request JSON ---")
         print(request_text)
         write_text(raw_request_out, request_text)
+    elif capture.last_request_json is not None and raw_request_out:
+        request_text = json.dumps(capture.last_request_json, ensure_ascii=False, indent=2)
+        write_text(raw_request_out, request_text)
 
-    if capture.last_response_text:
+    if capture.last_response_text and show_response_json:
         print("--- Last HTTP Response Body ---")
         print(capture.last_response_text)
         write_text(raw_response_out, capture.last_response_text)
+    elif capture.last_response_text and raw_response_out:
+        write_text(raw_response_out, capture.last_response_text)
+
+
+def build_grpc_ocr_json(text: str) -> str:
+    return json.dumps({"text": text}, ensure_ascii=False, indent=2)
+
+
+def print_app_final_ocr(text: str, show_grpc_json: bool) -> None:
+    print("--- App Final OCR Text ---")
+    print(text)
+    if show_grpc_json:
+        print("--- App gRPC OCR JSON ---")
+        print(build_grpc_ocr_json(text))
+
+    lines = [line for line in text.splitlines() if line.strip()]
+    print(f"--- App Final OCR Lines ({len(lines)}) ---")
+    for index, line in enumerate(lines):
+        print(f"[{index}] {line}")
 
 
 def main() -> int:
@@ -210,13 +258,13 @@ def main() -> int:
             if args.mode == "ocr":
                 for index in range(warmup):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language)
+                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     print(f"warmup[{index + 1}/{warmup}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
 
                 for index in range(repeat):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language)
+                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     timings_ms.append(elapsed_ms)
                     final_text = text
@@ -238,7 +286,7 @@ def main() -> int:
             else:
                 for index in range(warmup):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language)
+                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
                     # WHY: Match the app's current VisionLLM path where OCR text is forwarded as-is.
                     translations = engine.translate([text], args.source_lang, args.target_lang)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
@@ -249,7 +297,7 @@ def main() -> int:
 
                 for index in range(repeat):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language)
+                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
                     translations = engine.translate([text], args.source_lang, args.target_lang)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     timings_ms.append(elapsed_ms)
@@ -261,7 +309,13 @@ def main() -> int:
                     )
         except Exception as exc:
             print(f"ERROR: {exc}")
-            dump_http_trace(trace_capture, args.raw_request_out, args.raw_response_out)
+            dump_http_trace(
+                trace_capture,
+                args.raw_request_out,
+                args.raw_response_out,
+                args.show_request_json,
+                args.show_response_json,
+            )
             return 1
 
         summary = {
@@ -281,6 +335,7 @@ def main() -> int:
             "gpu_layers": resolve_gpu_layers(args),
             "max_image_side": args.max_image_side,
             "disable_thinking": args.disable_thinking,
+            "preserve_visual_lines": args.preserve_visual_lines,
             "language": args.language,
             "source_lang": args.source_lang,
             "target_lang": args.target_lang,
@@ -290,18 +345,22 @@ def main() -> int:
         }
 
         if args.mode == "ocr":
-            print("--- OCR Text ---")
-            print(final_text)
+            print_app_final_ocr(final_text, args.show_grpc_json)
         else:
             if final_text:
-                print("--- OCR Text ---")
-                print(final_text)
+                print_app_final_ocr(final_text, args.show_grpc_json)
             print("--- Translations ---")
             for idx, item in enumerate(final_translations):
                 print(f"[{idx}] {item}")
         print("--- Summary ---")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
-        dump_http_trace(trace_capture, args.raw_request_out, args.raw_response_out)
+        dump_http_trace(
+            trace_capture,
+            args.raw_request_out,
+            args.raw_response_out,
+            args.show_request_json,
+            args.show_response_json,
+        )
 
         if args.mode == "ocr":
             write_text(args.text_out, final_text)
