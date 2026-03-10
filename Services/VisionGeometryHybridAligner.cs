@@ -8,9 +8,9 @@ namespace Hotkey_Translator.Services;
 
 public sealed class VisionGeometryHybridAligner
 {
-    private const double SyntheticMergePenaltyThreshold = 0.30;
-    private const double SyntheticMergeOverlapMin = 0.04;
-    private const double SyntheticMergeMaxDistanceMultiplier = 2.50;
+    private const double SyntheticMergePenaltyThreshold = 0.18;
+    private const double SyntheticMergeOverlapMin = 0.02;
+    private const double SyntheticMergeMaxDistanceMultiplier = 3.50;
     private const double SplitGeometryRunMinTextSimilarity = 0.62;
     private const double SplitGeometrySegmentMinSimilarity = 0.38;
     private const int SplitGeometryRunMaxSegments = 3;
