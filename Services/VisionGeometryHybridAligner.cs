@@ -11,6 +11,9 @@ public sealed class VisionGeometryHybridAligner
     private const double SyntheticMergePenaltyThreshold = 0.30;
     private const double SyntheticMergeOverlapMin = 0.04;
     private const double SyntheticMergeMaxDistanceMultiplier = 2.50;
+    private const double SplitGeometryRunMinTextSimilarity = 0.62;
+    private const double SplitGeometrySegmentMinSimilarity = 0.38;
+    private const int SplitGeometryRunMaxSegments = 3;
     private readonly NormalizationService _normalizationService = new();
     private readonly AppLogger? _logger;
 
@@ -46,6 +49,7 @@ public sealed class VisionGeometryHybridAligner
             .ToList();
         var threshold = Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0);
         var matchedOutputs = new OcrLine?[visionLines.Count];
+        var matchedGeometryByVisionIndex = new GeometryCandidate?[visionLines.Count];
         var matchedGeometryIndexes = new HashSet<int>();
         var matchedCount = 0;
 
@@ -85,6 +89,7 @@ public sealed class VisionGeometryHybridAligner
             {
                 matchedGeometryIndexes.Add(best.Index);
                 matchedCount++;
+                matchedGeometryByVisionIndex[visionIndex] = best;
                 matchedOutputs[visionIndex] = visionLine with
                 {
                     Rect = best.Line.Rect,
@@ -95,15 +100,51 @@ public sealed class VisionGeometryHybridAligner
             }
         }
 
-        var matchedSlots = matchedOutputs
-            .Select((line, index) => line is null ? null : new MatchedSlot(index, line.Rect))
-            .Where(slot => slot is not null)
-            .Select(slot => slot!)
-            .ToList();
+        var splitOutputsByVisionIndex = new Dictionary<int, List<OcrLine>>();
+        var splitCount = 0;
+        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        {
+            if (matchedOutputs[visionIndex] is null || matchedGeometryByVisionIndex[visionIndex] is null)
+            {
+                continue;
+            }
+
+            if (TryBuildSplitOutputsForVision(
+                    geometry,
+                    visionLines[visionIndex],
+                    matchedGeometryByVisionIndex[visionIndex]!,
+                    matchedGeometryIndexes,
+                    splitOutputsByVisionIndex,
+                    out var splitOutputs))
+            {
+                splitOutputsByVisionIndex[visionIndex] = splitOutputs;
+                splitCount++;
+            }
+        }
+
+        var matchedSlots = new List<MatchedSlot>();
+        foreach (var visionIndex in Enumerable.Range(0, visionLines.Count))
+        {
+            if (splitOutputsByVisionIndex.TryGetValue(visionIndex, out var splitOutputs))
+            {
+                matchedSlots.AddRange(splitOutputs.Select(line => new MatchedSlot(visionIndex, line.Rect)));
+                continue;
+            }
+
+            if (matchedOutputs[visionIndex] is OcrLine matchedLine)
+            {
+                matchedSlots.Add(new MatchedSlot(visionIndex, matchedLine.Rect));
+            }
+        }
         var occupiedRects = matchedSlots.Select(slot => slot.Rect).ToList();
         var mergedTextByMatchedVisionIndex = new Dictionary<int, List<VisionTextContribution>>();
         foreach (var matchedSlot in matchedSlots)
         {
+            if (splitOutputsByVisionIndex.ContainsKey(matchedSlot.VisionIndex))
+            {
+                continue;
+            }
+
             var matchedLine = matchedOutputs[matchedSlot.VisionIndex]!;
             mergedTextByMatchedVisionIndex[matchedSlot.VisionIndex] =
             [
@@ -182,6 +223,30 @@ public sealed class VisionGeometryHybridAligner
         var lines = new List<OcrLine>(visionLines.Count);
         for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
         {
+            if (splitOutputsByVisionIndex.TryGetValue(visionIndex, out var splitOutputs))
+            {
+                if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var extraContributions))
+                {
+                    var extraText = string.Join(
+                        " ",
+                        extraContributions
+                            .OrderBy(item => item.VisionIndex)
+                            .Select(item => item.Text.Trim())
+                            .Where(text => !string.IsNullOrWhiteSpace(text)));
+                    if (!string.IsNullOrWhiteSpace(extraText))
+                    {
+                        var lastIndex = splitOutputs.Count - 1;
+                        splitOutputs[lastIndex] = splitOutputs[lastIndex] with
+                        {
+                            Text = $"{splitOutputs[lastIndex].Text} {extraText}".Trim()
+                        };
+                    }
+                }
+
+                lines.AddRange(splitOutputs);
+                continue;
+            }
+
             if (matchedOutputs[visionIndex] is OcrLine matchedLine)
             {
                 if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var contributions))
@@ -209,8 +274,315 @@ public sealed class VisionGeometryHybridAligner
         }
 
         _logger?.Info(
-            $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
+            $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} split={splitCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
         return new HybridOcrAlignmentResult(lines, geometryLines.Count, visionLines.Count, matchedCount, syntheticCount);
+    }
+
+    private bool TryBuildSplitOutputsForVision(
+        IReadOnlyList<GeometryCandidate> geometry,
+        OcrLine visionLine,
+        GeometryCandidate anchor,
+        IReadOnlySet<int> matchedGeometryIndexes,
+        IReadOnlyDictionary<int, List<OcrLine>> existingSplitOutputs,
+        out List<OcrLine> splitOutputs)
+    {
+        splitOutputs = [];
+        if (string.IsNullOrWhiteSpace(visionLine.Text))
+        {
+            return false;
+        }
+
+        var normalizedVision = _normalizationService.Normalize(visionLine.Text);
+        if (normalizedVision.Length < 6)
+        {
+            return false;
+        }
+
+        var anchorTextSimilarity = ComputeTextSimilarity(normalizedVision, anchor.NormalizedText, visionLine.Text, anchor.Line.Text);
+        var anchorLengthScore = ComputeLengthScore(normalizedVision, anchor.NormalizedText, visionLine.Text, anchor.Line.Text);
+        GeometryRunCandidate? bestRun = null;
+        var bestRunScore = double.MinValue;
+
+        foreach (var run in BuildSplitRunCandidates(geometry, anchor.Index, matchedGeometryIndexes, existingSplitOutputs))
+        {
+            if (!TryScoreGeometryRun(run, visionLine, normalizedVision, anchorTextSimilarity, anchorLengthScore, out var runScore))
+            {
+                continue;
+            }
+
+            if (runScore <= bestRunScore)
+            {
+                continue;
+            }
+
+            bestRunScore = runScore;
+            bestRun = run;
+        }
+
+        if (bestRun is null)
+        {
+            return false;
+        }
+
+        return TrySplitVisionTextAcrossGeometryRun(visionLine, bestRun, out splitOutputs);
+    }
+
+    private IEnumerable<GeometryRunCandidate> BuildSplitRunCandidates(
+        IReadOnlyList<GeometryCandidate> geometry,
+        int anchorIndex,
+        IReadOnlySet<int> matchedGeometryIndexes,
+        IReadOnlyDictionary<int, List<OcrLine>> existingSplitOutputs)
+    {
+        var alreadySplitRects = existingSplitOutputs.Values.SelectMany(lines => lines).Select(line => line.Rect).ToList();
+        for (var length = 2; length <= SplitGeometryRunMaxSegments; length++)
+        {
+            for (var start = anchorIndex - (length - 1); start <= anchorIndex; start++)
+            {
+                if (start < 0 || start + length > geometry.Count)
+                {
+                    continue;
+                }
+
+                if (anchorIndex < start || anchorIndex >= start + length)
+                {
+                    continue;
+                }
+
+                var segmentCandidates = new List<GeometryCandidate>(length);
+                var valid = true;
+                for (var index = start; index < start + length; index++)
+                {
+                    var candidate = geometry[index];
+                    if (candidate.Index != anchorIndex && matchedGeometryIndexes.Contains(candidate.Index))
+                    {
+                        valid = false;
+                        break;
+                    }
+
+                    if (alreadySplitRects.Any(rect => rect == candidate.Line.Rect))
+                    {
+                        valid = false;
+                        break;
+                    }
+
+                    segmentCandidates.Add(candidate);
+                }
+
+                if (!valid || !IsGeometryRunCompatible(segmentCandidates))
+                {
+                    continue;
+                }
+
+                var combinedText = string.Join(" ", segmentCandidates.Select(item => item.Line.Text));
+                yield return new GeometryRunCandidate(
+                    segmentCandidates,
+                    _normalizationService.Normalize(combinedText),
+                    combinedText);
+            }
+        }
+    }
+
+    private static bool IsGeometryRunCompatible(IReadOnlyList<GeometryCandidate> run)
+    {
+        if (run.Count <= 1)
+        {
+            return false;
+        }
+
+        for (var index = 1; index < run.Count; index++)
+        {
+            if (!AreNeighborRectsCompatible(run[index - 1].Line.Rect, run[index].Line.Rect))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool AreNeighborRectsCompatible(Rect left, Rect right)
+    {
+        var horizontalOverlap = Math.Max(0.0, Math.Min(left.Right, right.Right) - Math.Max(left.Left, right.Left));
+        var verticalOverlap = Math.Max(0.0, Math.Min(left.Bottom, right.Bottom) - Math.Max(left.Top, right.Top));
+        var horizontalOverlapRatio = horizontalOverlap / Math.Max(1.0, Math.Min(left.Width, right.Width));
+        var verticalOverlapRatio = verticalOverlap / Math.Max(1.0, Math.Min(left.Height, right.Height));
+        var verticalGap = Math.Max(0.0, Math.Max(left.Top, right.Top) - Math.Min(left.Bottom, right.Bottom));
+        var horizontalGap = Math.Max(0.0, Math.Max(left.Left, right.Left) - Math.Min(left.Right, right.Right));
+        var maxHeight = Math.Max(left.Height, right.Height);
+        var maxWidth = Math.Max(left.Width, right.Width);
+
+        if (verticalGap <= maxHeight * 1.30 && horizontalOverlapRatio >= 0.18)
+        {
+            return true;
+        }
+
+        return horizontalGap <= maxWidth * 0.25 && verticalOverlapRatio >= 0.45;
+    }
+
+    private static bool TryScoreGeometryRun(
+        GeometryRunCandidate run,
+        OcrLine visionLine,
+        string normalizedVision,
+        double anchorTextSimilarity,
+        double anchorLengthScore,
+        out double runScore)
+    {
+        runScore = double.MinValue;
+        if (run.NormalizedText.Length <= 0)
+        {
+            return false;
+        }
+
+        var runTextSimilarity = ComputeTextSimilarity(normalizedVision, run.NormalizedText, visionLine.Text, run.RawText);
+        var runLengthScore = ComputeLengthScore(normalizedVision, run.NormalizedText, visionLine.Text, run.RawText);
+        if (runTextSimilarity < SplitGeometryRunMinTextSimilarity)
+        {
+            return false;
+        }
+
+        // WHY: Split is only useful when the multi-box geometry covers meaningfully more of the Vision line
+        // than the single anchor box. Otherwise the current 1:1 mapping is more stable.
+        if (runTextSimilarity + 0.05 < anchorTextSimilarity || runLengthScore <= anchorLengthScore + 0.12)
+        {
+            return false;
+        }
+
+        runScore = (runTextSimilarity * 0.70) + (runLengthScore * 0.30);
+        return true;
+    }
+
+    private bool TrySplitVisionTextAcrossGeometryRun(
+        OcrLine visionLine,
+        GeometryRunCandidate run,
+        out List<OcrLine> splitOutputs)
+    {
+        splitOutputs = [];
+        var projection = BuildNormalizedProjection(visionLine.Text);
+        if (projection.NormalizedText.Length < run.Segments.Count)
+        {
+            return false;
+        }
+
+        if (!TryFindBestNormalizedSplit(projection, run, out var splitPoints))
+        {
+            return false;
+        }
+
+        var segmentOutputs = new List<OcrLine>(run.Segments.Count);
+        var start = 0;
+        for (var segmentIndex = 0; segmentIndex < run.Segments.Count; segmentIndex++)
+        {
+            var end = splitPoints[segmentIndex];
+            var rawSegment = projection.ExtractRawSegment(start, end);
+            if (string.IsNullOrWhiteSpace(rawSegment))
+            {
+                return false;
+            }
+
+            var geometrySegment = run.Segments[segmentIndex];
+            segmentOutputs.Add(new OcrLine(
+                rawSegment,
+                geometrySegment.Line.Rect,
+                Math.Max(visionLine.Confidence, geometrySegment.Line.Confidence),
+                Math.Max(1, geometrySegment.Line.LineCount),
+                geometrySegment.Line.Rect.Height));
+            start = end;
+        }
+
+        splitOutputs = segmentOutputs;
+        return true;
+    }
+
+    private bool TryFindBestNormalizedSplit(
+        NormalizedProjection projection,
+        GeometryRunCandidate run,
+        out int[] splitPoints)
+    {
+        splitPoints = [];
+        var normalizedLength = projection.NormalizedText.Length;
+        var segmentCount = run.Segments.Count;
+        var boundaries = new int[segmentCount];
+        var bestAverageScore = double.MinValue;
+        var bestBoundaries = Array.Empty<int>();
+
+        void Search(int segmentIndex, int start)
+        {
+            if (segmentIndex == segmentCount - 1)
+            {
+                if (start >= normalizedLength)
+                {
+                    return;
+                }
+
+                boundaries[segmentIndex] = normalizedLength;
+                if (TryScoreNormalizedSplit(projection, run, boundaries, out var averageScore) &&
+                    averageScore > bestAverageScore)
+                {
+                    bestAverageScore = averageScore;
+                    bestBoundaries = boundaries.ToArray();
+                }
+
+                return;
+            }
+
+            var remainingSegments = segmentCount - segmentIndex;
+            var maxBoundary = normalizedLength - (remainingSegments - 1);
+            for (var boundary = start + 1; boundary <= maxBoundary; boundary++)
+            {
+                boundaries[segmentIndex] = boundary;
+                Search(segmentIndex + 1, boundary);
+            }
+        }
+
+        Search(0, 0);
+        if (bestBoundaries.Length != segmentCount)
+        {
+            return false;
+        }
+
+        splitPoints = bestBoundaries;
+        return true;
+    }
+
+    private static bool TryScoreNormalizedSplit(
+        NormalizedProjection projection,
+        GeometryRunCandidate run,
+        IReadOnlyList<int> boundaries,
+        out double averageScore)
+    {
+        averageScore = 0.0;
+        var start = 0;
+        var totalScore = 0.0;
+        for (var segmentIndex = 0; segmentIndex < run.Segments.Count; segmentIndex++)
+        {
+            var end = boundaries[segmentIndex];
+            if (end <= start || end > projection.NormalizedText.Length)
+            {
+                return false;
+            }
+
+            var normalizedSegment = projection.NormalizedText[start..end];
+            var rawSegment = projection.ExtractRawSegment(start, end);
+            if (string.IsNullOrWhiteSpace(rawSegment))
+            {
+                return false;
+            }
+
+            var geometrySegment = run.Segments[segmentIndex];
+            var textScore = ComputeTextSimilarity(normalizedSegment, geometrySegment.NormalizedText, rawSegment, geometrySegment.Line.Text);
+            var lengthScore = ComputeLengthScore(normalizedSegment, geometrySegment.NormalizedText, rawSegment, geometrySegment.Line.Text);
+            var segmentScore = (textScore * 0.70) + (lengthScore * 0.30);
+            if (segmentScore < SplitGeometrySegmentMinSimilarity)
+            {
+                return false;
+            }
+
+            totalScore += segmentScore;
+            start = end;
+        }
+
+        averageScore = totalScore / run.Segments.Count;
+        return true;
     }
 
     private static double ScoreCandidate(
@@ -630,11 +1002,91 @@ public sealed class VisionGeometryHybridAligner
         return start + ((end - start) * ratio);
     }
 
+    private static NormalizedProjection BuildNormalizedProjection(string rawText)
+    {
+        var normalizedBuilder = new System.Text.StringBuilder(rawText.Length);
+        var rawIndexes = new List<int>(rawText.Length);
+        var lastWasSpace = false;
+        for (var rawIndex = 0; rawIndex < rawText.Length; rawIndex++)
+        {
+            var normalizedChunk = rawText[rawIndex].ToString().Normalize(System.Text.NormalizationForm.FormKC);
+            foreach (var normalizedChar in normalizedChunk)
+            {
+                if (char.IsWhiteSpace(normalizedChar))
+                {
+                    if (!lastWasSpace)
+                    {
+                        normalizedBuilder.Append(' ');
+                        rawIndexes.Add(rawIndex);
+                        lastWasSpace = true;
+                    }
+
+                    continue;
+                }
+
+                lastWasSpace = false;
+                if (char.IsPunctuation(normalizedChar) || char.IsSymbol(normalizedChar))
+                {
+                    continue;
+                }
+
+                normalizedBuilder.Append(char.ToLowerInvariant(normalizedChar));
+                rawIndexes.Add(rawIndex);
+            }
+        }
+
+        var normalized = normalizedBuilder.ToString();
+        var trimStart = 0;
+        while (trimStart < normalized.Length && normalized[trimStart] == ' ')
+        {
+            trimStart++;
+        }
+
+        var trimEnd = normalized.Length;
+        while (trimEnd > trimStart && normalized[trimEnd - 1] == ' ')
+        {
+            trimEnd--;
+        }
+
+        if (trimStart > 0 || trimEnd < normalized.Length)
+        {
+            normalized = normalized[trimStart..trimEnd];
+            rawIndexes = rawIndexes.Skip(trimStart).Take(trimEnd - trimStart).ToList();
+        }
+
+        return new NormalizedProjection(rawText, normalized, rawIndexes);
+    }
+
     private sealed record GeometryCandidate(OcrLine Line, int Index, string NormalizedText);
 
     private sealed record MatchedSlot(int VisionIndex, Rect Rect);
 
     private sealed record VisionTextContribution(int VisionIndex, string Text);
+
+    private sealed record GeometryRunCandidate(
+        IReadOnlyList<GeometryCandidate> Segments,
+        string NormalizedText,
+        string RawText);
+
+    private sealed class NormalizedProjection(string rawText, string normalizedText, IReadOnlyList<int> normalizedCharRawIndexes)
+    {
+        public string RawText { get; } = rawText;
+        public string NormalizedText { get; } = normalizedText;
+
+        public string ExtractRawSegment(int start, int end)
+        {
+            if (start < 0 || end > NormalizedText.Length || end <= start || start >= normalizedCharRawIndexes.Count)
+            {
+                return string.Empty;
+            }
+
+            var rawStart = normalizedCharRawIndexes[start];
+            var rawEnd = end < normalizedCharRawIndexes.Count ? normalizedCharRawIndexes[end] : RawText.Length;
+            rawStart = Math.Clamp(rawStart, 0, RawText.Length);
+            rawEnd = Math.Clamp(rawEnd, rawStart, RawText.Length);
+            return RawText[rawStart..rawEnd].Trim();
+        }
+    }
 
     private sealed class ScriptProfile
     {

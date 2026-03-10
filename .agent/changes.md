@@ -18830,3 +18830,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py` 実行成功。
 - `OcrServiceVisionLlm\test_vision_llama_engine.py` を同一入力で `--repeat 5` 実行し、`parser_rescued=true` で成功することを確認。
+**2026-03-10 22:08 (Asia/Taipei) — VisionLLM hybrid の geometry 部分整列分割を追加**
+
+### Summary
+- VisionLLM hybrid で 1 本の Vision 行を連続する 2〜3 個の geometry 枠へ分配する補助経路を追加した。
+
+### Context / Goal
+- 既存の Vision/Paddle hybrid は `1 Vision line -> 1 geometry rect` 前提で、geometry 枠が Vision 行より多いケースでは余った枠を活用できなかった。
+- geometry 枠は結合せずに維持したまま、Vision 行を geometry 側テキストに合わせて分割し、より自然なオーバーレイ配置にしたい。
+
+### Changes
+- `VisionGeometryHybridAligner` に、単独 geometry 枠だけでなく連続 2〜3 枠の候補を作り、Vision 行全文との適合度を評価する経路を追加した。
+- multi-box 候補が単独 anchor より明確に本文を多く覆う場合だけ、Vision 行を正規化文字列ベースで部分整列し、各 geometry 枠へ raw text を再分配するようにした。
+- 分割に失敗した場合は既存の 1:1 マッチまたは synthetic fallback に戻すようにし、既存経路を壊さないようにした。
+- summary ログに `split=` を追加し、分割が発生したか追跡できるようにした。
+
+### Files Touched
+- `Services/VisionGeometryHybridAligner.cs` — geometry run 候補生成、正規化射影、部分整列分割、split-aware 出力組み立てを追加した。
+
+### Behavioral Impact
+- VisionLLM hybrid 有効時、helper geometry OCR が細かく複数枠を返し、VisionLLM が 1 行にまとめたケースで、枠結合せずに Vision テキストを複数枠へ割り当てられる可能性が上がる。
+- 分割条件を満たさないケースでは従来どおりの 1:1 / synthetic fallback 挙動のまま。
+
+### Risk & Mitigation
+- Risk: geometry OCR の誤字が強いケースでは、分割境界を誤る可能性がある。
+- Mitigation: 連続 2〜3 枠のみを対象にし、anchor 単独より本文カバーが明確に改善する場合に限定した。分割スコアが弱い場合は既存経路へ戻す。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `rg -n "stage=vision_geometry_hybrid event=summary|TryBuildSplitOutputsForVision|GeometryRunCandidate|NormalizedProjection" .\Services\VisionGeometryHybridAligner.cs`
