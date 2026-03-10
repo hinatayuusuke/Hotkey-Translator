@@ -34,8 +34,9 @@ DEFAULT_OCR_PROMPT = (
 
 DEFAULT_TRANSLATE_PROMPT = (
     "Translate the following text list from {source_lang} to {target_lang}. "
-    'Return JSON only with this schema: {{"t":["..."]}}. '
-    "Preserve order and preserve line breaks inside each item. Do not explain."
+    'Return JSON only. Use exactly this format: {{"t":["TEXT_0","TEXT_1"]}}. '
+    "Return exactly one translated string for each input item, in the same order. "
+    "Preserve line breaks inside each item."
 )
 
 

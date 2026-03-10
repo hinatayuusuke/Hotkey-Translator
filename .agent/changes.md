@@ -18716,3 +18716,61 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
 
+**2026-03-10 19:22 (Asia/Taipei) — VisionLlama テストスクリプトに翻訳専用診断を追加**
+
+### Summary
+- `test_vision_llama_engine.py` を翻訳専用実行と parser 診断に対応させ、raw response から翻訳 parser の崩れ方を確認できるようにした。
+
+### Context / Goal
+- VisionLlama の translation path で、OCR を介さずに複数 item バッチの raw response / parser 結果を観測したかった。
+- 既存 `translate` mode はあったが、image 必須で parser 診断が見えず、出力先ディレクトリも自動作成しなかった。
+
+### Changes
+- `translate` mode では `--image` を不要にした。
+- raw HTTP response から `extract_message_content` と `parse_json_object_from_text_resilient` を再適用し、parser 診断を出す `--show-translation-parse` を追加した。
+- `outer_json_invalid` / `message_extract_failed` / `inner_json_invalid` / `translations_missing` を区別できる解析を追加した。
+- `write_text` / `write_json` で出力先ディレクトリを自動作成するようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm\test_vision_llama_engine.py` — 翻訳専用実行、parser 診断、出力先自動作成を追加。
+
+### Behavioral Impact
+- `translate` mode 単独で VisionLlama translation path を直接テストできる。
+- raw response の parser 状態をコンソールと summary JSON で確認できる。
+
+### Risk & Mitigation
+- Risk: テストスクリプトが内部 parser 実装へ依存する。
+- Mitigation: 本番と同じ `vision_llama_engine.py` の helper を直接使い、診断専用に留めた。
+
+### Tests / Verification
+- `python -m compileall .\OcrServiceVisionLlm\test_vision_llama_engine.py`
+- `uv run test_vision_llama_engine.py --help`
+- `uv run test_vision_llama_engine.py --mode translate ...` で 10 item バッチを 5 回実行し、summary/raw response を保存して parser 診断を確認した。
+
+**2026-03-10 19:32 (Asia/Taipei) — VisionLlama 翻訳 prompt の構造化出力例を簡素化**
+
+### Summary
+- VisionLlama translation prompt から `...` の schema 例を外し、固定フォーマットだけを明示する最小構成へ変更した。
+
+### Context / Goal
+- 小型モデルが `{"t":["..."]}` の例示に引っ張られ、実際の翻訳でも `...` をそのまま返す退化が観測された。
+- 制約を増やしすぎずに、悪い例だけ取り除いて構造化出力を安定させたかった。
+
+### Changes
+- `DEFAULT_TRANSLATE_PROMPT` を、`...` を含む schema 例から `TEXT_0/TEXT_1` の固定フォーマット例へ変更した。
+- 「input item ごとに 1 translated string を同順序で返す」だけを明示し、余計な禁止事項は追加しなかった。
+
+### Files Touched
+- `OcrServiceVisionLlm\vision_llama_engine.py` — translation prompt を最小制約版へ変更。
+
+### Behavioral Impact
+- VisionLlama translation path で `...` placeholder に引っ張られるリスクが下がる。
+- 制約は最小限なので、小型モデルへの負荷は増やさない。
+
+### Risk & Mitigation
+- Risk: 依然として quoting や JSON 揺れは残る可能性がある。
+- Mitigation: 今回は `...` 退化の主因候補だけを除去し、必要なら次段で postprocess 側を補強する。
+
+### Tests / Verification
+- `python -m compileall .\OcrServiceVisionLlm\vision_llama_engine.py`
+

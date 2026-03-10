@@ -12,6 +12,9 @@ from vision_llama_engine import (
     VisionLlamaEngine,
     VisionLlamaRequestConfig,
     VisionLlamaServerConfig,
+    VisionLlamaError,
+    extract_message_content,
+    parse_json_object_from_text_resilient,
 )
 
 
@@ -23,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         default="ocr",
         help="Run OCR only, translate only, or OCR-then-translate path",
     )
-    parser.add_argument("--image", required=True, help="Input image path")
+    parser.add_argument("--image", help="Input image path")
     parser.add_argument("--llama-server", default=r"..\TranslationServiceLlama\LlamaCpp\llama-server.exe", help="llama-server path")
     parser.add_argument("--model", default=r"..\TranslationServiceLlama\LlamaCpp\Models\Qwen3.5-9B-Q4_K_M.gguf", help="GGUF model path")
     parser.add_argument("--mmproj", default=r"..\TranslationServiceLlama\LlamaCpp\Models\mmproj-F16.gguf", help="mmproj path")
@@ -83,6 +86,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print the gRPC-style OCR JSON payload ({\"text\": ...}) that the app would receive.",
     )
+    parser.add_argument(
+        "--show-translation-parse",
+        action="store_true",
+        help="Print translation parser diagnostics from the last raw HTTP response.",
+    )
     return parser.parse_args()
 
 
@@ -104,13 +112,17 @@ def resolve_gpu_layers(args: argparse.Namespace) -> int:
 def write_text(path: str | None, content: str) -> None:
     if not path:
         return
-    Path(path).write_text(content, encoding="utf-8")
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(content, encoding="utf-8")
 
 
 def write_json(path: str | None, payload: dict) -> None:
     if not path:
         return
-    Path(path).write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 class HttpTraceCapture:
@@ -163,6 +175,69 @@ def dump_http_trace(
         write_text(raw_response_out, capture.last_response_text)
 
 
+def analyze_translation_response(capture: HttpTraceCapture) -> dict[str, Any]:
+    analysis: dict[str, Any] = {
+        "status": "not_available",
+        "raw_response_chars": len(capture.last_response_text or ""),
+    }
+    if not capture.last_response_text:
+        return analysis
+
+    try:
+        payload = json.loads(capture.last_response_text)
+    except json.JSONDecodeError as exc:
+        analysis.update(
+            {
+                "status": "outer_json_invalid",
+                "error": str(exc),
+            }
+        )
+        return analysis
+
+    try:
+        content = extract_message_content(payload)
+    except VisionLlamaError as exc:
+        analysis.update(
+            {
+                "status": "message_extract_failed",
+                "error": str(exc),
+            }
+        )
+        return analysis
+
+    parsed, rescued = parse_json_object_from_text_resilient(content)
+    analysis.update(
+        {
+            "status": "ok" if parsed is not None else "inner_json_invalid",
+            "content_chars": len(content),
+            "content_preview": content[:240],
+            "parser_rescued": rescued,
+        }
+    )
+    if parsed is None:
+        return analysis
+
+    translations = parsed.get("t")
+    if not isinstance(translations, list):
+        translations = parsed.get("translations")
+    if not isinstance(translations, list):
+        analysis.update(
+            {
+                "status": "translations_missing",
+                "parsed_keys": sorted(parsed.keys()),
+            }
+        )
+        return analysis
+
+    analysis.update(
+        {
+            "translation_item_count": len(translations),
+            "parsed_keys": sorted(parsed.keys()),
+        }
+    )
+    return analysis
+
+
 def build_grpc_ocr_json(text: str) -> str:
     return json.dumps({"text": text}, ensure_ascii=False, indent=2)
 
@@ -183,13 +258,14 @@ def print_app_final_ocr(text: str, show_grpc_json: bool) -> None:
 def main() -> int:
     args = parse_args()
     base_dir = Path(__file__).resolve().parent
-    image_path = resolve_path(base_dir, args.image)
+    image_path = resolve_path(base_dir, args.image) if args.image else None
     llama_server_path = resolve_path(base_dir, args.llama_server)
     model_path = resolve_path(base_dir, args.model)
     mmproj_path = resolve_path(base_dir, args.mmproj)
 
-    if not image_path.is_file():
-        raise FileNotFoundError(f"image not found: {image_path}")
+    if args.mode != "translate":
+        if image_path is None or not image_path.is_file():
+            raise FileNotFoundError(f"image not found: {image_path}")
     if not llama_server_path.is_file():
         raise FileNotFoundError(f"llama-server not found: {llama_server_path}")
     if not model_path.is_file():
@@ -197,7 +273,7 @@ def main() -> int:
     if not mmproj_path.is_file():
         raise FileNotFoundError(f"mmproj not found: {mmproj_path}")
 
-    image_bytes = image_path.read_bytes()
+    image_bytes = image_path.read_bytes() if image_path is not None else b""
     server_config = VisionLlamaServerConfig(
         llama_server_path=str(llama_server_path),
         model_path=str(model_path),
@@ -322,7 +398,7 @@ def main() -> int:
             "run_ms_avg": statistics.mean(timings_ms),
             "run_ms_min": min(timings_ms),
             "run_ms_max": max(timings_ms),
-            "image_path": str(image_path),
+            "image_path": str(image_path) if image_path is not None else "",
             "image_bytes": len(image_bytes),
             "model_path": str(model_path),
             "mmproj_path": str(mmproj_path),
@@ -337,6 +413,9 @@ def main() -> int:
             "translations": final_translations,
             "last_status_code": trace_capture.last_status_code,
         }
+        translation_parse = analyze_translation_response(trace_capture) if args.mode != "ocr" else None
+        if translation_parse is not None:
+            summary["translation_parse"] = translation_parse
 
         if args.mode == "ocr":
             print_app_final_ocr(final_text, args.show_grpc_json)
@@ -346,6 +425,9 @@ def main() -> int:
             print("--- Translations ---")
             for idx, item in enumerate(final_translations):
                 print(f"[{idx}] {item}")
+            if args.show_translation_parse:
+                print("--- Translation Parse Analysis ---")
+                print(json.dumps(translation_parse, ensure_ascii=False, indent=2))
         print("--- Summary ---")
         print(json.dumps(summary, ensure_ascii=False, indent=2))
         dump_http_trace(
