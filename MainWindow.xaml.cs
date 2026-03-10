@@ -1138,11 +1138,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             // WHY: Slot hotkeys should target a saved ROI for one run without changing the user's active slot/UI state.
             settings.EnableRoi = true;
             settings.NormalizedRoi = normalized.Clamp();
-            Rect previewRectScreen = Rect.Empty;
             if (_captureManager != null)
             {
                 var frameBounds = _captureManager.GetCaptureBounds(settings);
-                previewRectScreen = settings.NormalizedRoi.Value.ToAbsolute(frameBounds);
+                var previewRectScreen = settings.NormalizedRoi.Value.ToAbsolute(frameBounds);
                 settings.Roi = previewRectScreen.IsEmpty ? null : SerializableRect.FromRect(previewRectScreen);
             }
             else
@@ -1150,7 +1149,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 settings.Roi = null;
             }
 
-            ShowTransientRoiPreview(previewRectScreen);
+            // WHY: Run-next-slot hotkeys are execution shortcuts, not ROI editing actions. Re-showing
+            // the saved ROI frame here adds flicker without helping target selection.
             var modeLabel = options.IsEnabled ? "force run" : "run once";
             AppendLog($"ROI slot {targetIndex + 1}: {modeLabel}.");
             CheckAndShowPrerequisiteDialogs(settings);

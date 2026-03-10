@@ -18948,3 +18948,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `rg -n "SimpleHorizontalStrengthGamma|SimpleVerticalStrengthGamma|NormalizeSimpleMergeStrengthRatio" .\Services\OcrLineGrouper.cs`
 
+**2026-03-10 23:53 (Asia/Taipei) — ROI スロット実行 hotkey のプレビュー抑止**
+
+### Summary
+- Shift/Ctrl + F8/F10 の ROI スロット実行時に ROI プレビューを再表示しないようにした。
+
+### Context / Goal
+- 保存済み ROI スロットを一時実行する hotkey は ROI 編集ではなく実行ショートカットであり、毎回のプレビュー再表示はちらつき要因になっていた。
+- UI 選択時のプレビューは維持しつつ、実行 hotkey だけは ROI フレーム再表示を抑止したい。
+
+### Changes
+- `RunRoiPresetWithOffsetAsync()` から `ShowTransientRoiPreview(...)` 呼び出しを削除した。
+- WHY コメントを追加し、実行 hotkey と ROI 編集操作の責務を分けた。
+
+### Files Touched
+- `MainWindow.xaml.cs` — ROI スロット一時実行時の ROI プレビュー再表示を抑止した。
+
+### Behavioral Impact
+- `Shift+F8`, `Ctrl+F8`, `Shift+F10`, `Ctrl+F10` では保存済み ROI を使って実行するが、ROI 枠線の 1 秒プレビューは出なくなる。
+- UI で ROI スロットを選択した時のプレビューは従来どおり維持される。
+
+### Risk & Mitigation
+- Risk: 実行対象 ROI の視覚確認がなくなる。
+- Mitigation: ログに `ROI slot N: run once/force run.` を残し、UI 選択時のプレビュー経路はそのまま維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `rg -n "Run-next-slot hotkeys|ShowTransientRoiPreview\(|ROI slot .*: .*run" .\MainWindow.xaml.cs`
+
