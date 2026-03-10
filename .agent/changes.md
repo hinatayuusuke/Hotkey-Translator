@@ -18887,3 +18887,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 
+**2026-03-10 22:50 (Asia/Taipei) — Simple Merge Tuning の極端値を強化**
+
+### Summary
+- Simple Merge Tuning の `0` と `100` を特別扱いし、`0=ほぼ結合なし / 100=かなり結合` に寄せた。
+
+### Context / Goal
+- 既存の simple merge tuning は 0..100 が連続補間のみで、`0` 側でも結合が残りやすく、体感が弱かった。
+- スライダーの意味を直感に合わせ、極端値で明確に効き目が変わるようにしたい。
+
+### Changes
+- `Services/OcrLineGrouper.cs` に horizontal / vertical の disabled/aggressive preset 定数を追加した。
+- `ApplySimpleMergeTuning()` を分解し、`0` と `100` は special case で厳しめ/強めの閾値を返すようにした。
+- 中間の `1..99` は既存どおりの滑らかな補間を維持した。
+- WHY コメントを追加し、極端値だけ特別扱いする理由を明記した。
+
+### Files Touched
+- `Services/OcrLineGrouper.cs` — simple merge tuning の数値マッピングを再設計し、極端値専用 preset を追加した。
+
+### Behavioral Impact
+- `Horizontal/Vertical Merge Strength = 0` では merge 判定がかなり通りにくくなる。
+- `Horizontal/Vertical Merge Strength = 100` では gap / threshold / hard break の許容が広がり、merge がかなり起きやすくなる。
+- 中間値の調整感は従来に近い。
+
+### Risk & Mitigation
+- Risk: `100` 側で近い別ブロックまで誤結合しやすくなる。
+- Mitigation: special case は 0/100 に限定し、中間値ユーザの挙動は変えない。必要なら 99 を実用上限に使えば従来寄りの挙動を維持できる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `rg -n "SimpleHorizontalOverlapDisabled|SimpleHorizontalThresholdAggressive|ResolveHorizontalOverlap|ResolveVerticalGap|ApplySimpleMergeTuning" .\Services\OcrLineGrouper.cs`
+

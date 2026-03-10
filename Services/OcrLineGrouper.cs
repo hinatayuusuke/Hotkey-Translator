@@ -33,6 +33,14 @@ public sealed class OcrLineGrouper
     private const double SimpleHorizontalRowMaxGapMax = 2.40;
     private const double SimpleHorizontalRowHardBreakMin = 1.20;
     private const double SimpleHorizontalRowHardBreakMax = 3.00;
+    private const double SimpleHorizontalOverlapDisabled = 0.95;
+    private const double SimpleHorizontalThresholdDisabled = 0.10;
+    private const double SimpleHorizontalRowMaxGapDisabled = 0.05;
+    private const double SimpleHorizontalRowHardBreakDisabled = 0.05;
+    private const double SimpleHorizontalOverlapAggressive = 0.05;
+    private const double SimpleHorizontalThresholdAggressive = 1.80;
+    private const double SimpleHorizontalRowMaxGapAggressive = 3.20;
+    private const double SimpleHorizontalRowHardBreakAggressive = 4.50;
     private const double HorizontalHeadingWidthRatioMax = 0.72;
     private const double HorizontalHeadingCenterToleranceRatio = 0.30;
     private const double HorizontalHeadingGapRatio = 0.60;
@@ -50,6 +58,20 @@ public sealed class OcrLineGrouper
     private const double SimpleVerticalStageAWidthRatioMinMax = 0.80;
     private const double SimpleVerticalStageAOverlapRatioMinMin = 0.05;
     private const double SimpleVerticalStageAOverlapRatioMinMax = 0.30;
+    private const double SimpleVerticalGapDisabled = 0.05;
+    private const double SimpleVerticalColumnOverlapDisabled = 0.95;
+    private const double SimpleVerticalColumnThresholdDisabled = 0.10;
+    private const double SimpleVerticalColumnHardBreakDisabled = 0.05;
+    private const double SimpleVerticalStageACenterToleranceDisabled = 0.05;
+    private const double SimpleVerticalStageAWidthRatioMinDisabled = 0.98;
+    private const double SimpleVerticalStageAOverlapRatioMinDisabled = 0.95;
+    private const double SimpleVerticalGapAggressive = 3.20;
+    private const double SimpleVerticalColumnOverlapAggressive = 0.05;
+    private const double SimpleVerticalColumnThresholdAggressive = 1.80;
+    private const double SimpleVerticalColumnHardBreakAggressive = 4.50;
+    private const double SimpleVerticalStageACenterToleranceAggressive = 1.00;
+    private const double SimpleVerticalStageAWidthRatioMinAggressive = 0.12;
+    private const double SimpleVerticalStageAOverlapRatioMinAggressive = 0.01;
     private readonly AppLogger? _logger;
     private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
     private bool _hasAutoSelectedMode;
@@ -967,64 +989,17 @@ public sealed class OcrLineGrouper
             return current;
         }
 
-        var horizontal = Clamp01(settings.HorizontalMergeStrength / 100.0);
-        var vertical = Clamp01(settings.VerticalMergeStrength / 100.0);
-
-        var tunedHorizontalOverlap = ClampScaled(
-            Lerp(SimpleHorizontalOverlapMax, SimpleHorizontalOverlapMin, horizontal),
-            1.0,
-            OverlapClampMin,
-            OverlapClampMax);
-        var tunedHorizontalThreshold = ClampScaled(
-            Lerp(SimpleHorizontalThresholdMin, SimpleHorizontalThresholdMax, horizontal),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedHorizontalRowMaxGap = ClampScaled(
-            Lerp(SimpleHorizontalRowMaxGapMin, SimpleHorizontalRowMaxGapMax, horizontal),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedHorizontalRowHardBreak = ClampScaled(
-            Lerp(SimpleHorizontalRowHardBreakMin, SimpleHorizontalRowHardBreakMax, horizontal),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedVerticalGap = ClampScaled(
-            Lerp(SimpleVerticalGapMin, SimpleVerticalGapMax, vertical),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedVerticalColumnOverlap = ClampScaled(
-            Lerp(SimpleVerticalColumnOverlapMax, SimpleVerticalColumnOverlapMin, vertical),
-            1.0,
-            OverlapClampMin,
-            OverlapClampMax);
-        var tunedVerticalColumnThreshold = ClampScaled(
-            Lerp(SimpleVerticalColumnThresholdMin, SimpleVerticalColumnThresholdMax, vertical),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedVerticalColumnHardBreak = ClampScaled(
-            Lerp(SimpleVerticalColumnHardBreakMin, SimpleVerticalColumnHardBreakMax, vertical),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedVerticalStageACenterTolerance = ClampScaled(
-            Lerp(SimpleVerticalStageACenterToleranceMin, SimpleVerticalStageACenterToleranceMax, vertical),
-            1.0,
-            RatioClampMin,
-            RatioClampMax);
-        var tunedVerticalStageAWidthRatioMin = ClampScaled(
-            Lerp(SimpleVerticalStageAWidthRatioMinMax, SimpleVerticalStageAWidthRatioMinMin, vertical),
-            1.0,
-            OverlapClampMin,
-            OverlapClampMax);
-        var tunedVerticalStageAOverlapRatioMin = ClampScaled(
-            Lerp(SimpleVerticalStageAOverlapRatioMinMax, SimpleVerticalStageAOverlapRatioMinMin, vertical),
-            1.0,
-            OverlapClampMin,
-            OverlapClampMax);
+        var tunedHorizontalOverlap = ResolveHorizontalOverlap(settings.HorizontalMergeStrength);
+        var tunedHorizontalThreshold = ResolveHorizontalThreshold(settings.HorizontalMergeStrength);
+        var tunedHorizontalRowMaxGap = ResolveHorizontalRowMaxGap(settings.HorizontalMergeStrength);
+        var tunedHorizontalRowHardBreak = ResolveHorizontalRowHardBreak(settings.HorizontalMergeStrength);
+        var tunedVerticalGap = ResolveVerticalGap(settings.VerticalMergeStrength);
+        var tunedVerticalColumnOverlap = ResolveVerticalColumnOverlap(settings.VerticalMergeStrength);
+        var tunedVerticalColumnThreshold = ResolveVerticalColumnThreshold(settings.VerticalMergeStrength);
+        var tunedVerticalColumnHardBreak = ResolveVerticalColumnHardBreak(settings.VerticalMergeStrength);
+        var tunedVerticalStageACenterTolerance = ResolveVerticalStageACenterTolerance(settings.VerticalMergeStrength);
+        var tunedVerticalStageAWidthRatioMin = ResolveVerticalStageAWidthRatioMin(settings.VerticalMergeStrength);
+        var tunedVerticalStageAOverlapRatioMin = ResolveVerticalStageAOverlapRatioMin(settings.VerticalMergeStrength);
 
         return current with
         {
@@ -1040,6 +1015,217 @@ public sealed class OcrLineGrouper
             VerticalColumnMergeThresholdRatio = tunedVerticalColumnThreshold,
             VerticalColumnMergeHardBreakRatio = tunedVerticalColumnHardBreak
         };
+    }
+
+    private static double ResolveHorizontalOverlap(int strength)
+    {
+        // WHY: Users expect 0 to be effectively "off" and 100 to be "very eager". The midpoint range
+        // stays on the old continuous curve so existing tuning remains familiar.
+        if (strength <= 0)
+        {
+            return SimpleHorizontalOverlapDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleHorizontalOverlapAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleHorizontalOverlapMax, SimpleHorizontalOverlapMin, Clamp01(strength / 100.0)),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+    }
+
+    private static double ResolveHorizontalThreshold(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleHorizontalThresholdDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleHorizontalThresholdAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleHorizontalThresholdMin, SimpleHorizontalThresholdMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveHorizontalRowMaxGap(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleHorizontalRowMaxGapDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleHorizontalRowMaxGapAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleHorizontalRowMaxGapMin, SimpleHorizontalRowMaxGapMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveHorizontalRowHardBreak(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleHorizontalRowHardBreakDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleHorizontalRowHardBreakAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleHorizontalRowHardBreakMin, SimpleHorizontalRowHardBreakMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveVerticalGap(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalGapDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalGapAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalGapMin, SimpleVerticalGapMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveVerticalColumnOverlap(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalColumnOverlapDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalColumnOverlapAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalColumnOverlapMax, SimpleVerticalColumnOverlapMin, Clamp01(strength / 100.0)),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+    }
+
+    private static double ResolveVerticalColumnThreshold(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalColumnThresholdDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalColumnThresholdAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalColumnThresholdMin, SimpleVerticalColumnThresholdMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveVerticalColumnHardBreak(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalColumnHardBreakDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalColumnHardBreakAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalColumnHardBreakMin, SimpleVerticalColumnHardBreakMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveVerticalStageACenterTolerance(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalStageACenterToleranceDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalStageACenterToleranceAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalStageACenterToleranceMin, SimpleVerticalStageACenterToleranceMax, Clamp01(strength / 100.0)),
+            1.0,
+            RatioClampMin,
+            RatioClampMax);
+    }
+
+    private static double ResolveVerticalStageAWidthRatioMin(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalStageAWidthRatioMinDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalStageAWidthRatioMinAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalStageAWidthRatioMinMax, SimpleVerticalStageAWidthRatioMinMin, Clamp01(strength / 100.0)),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
+    }
+
+    private static double ResolveVerticalStageAOverlapRatioMin(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleVerticalStageAOverlapRatioMinDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleVerticalStageAOverlapRatioMinAggressive;
+        }
+
+        return ClampScaled(
+            Lerp(SimpleVerticalStageAOverlapRatioMinMax, SimpleVerticalStageAOverlapRatioMinMin, Clamp01(strength / 100.0)),
+            1.0,
+            OverlapClampMin,
+            OverlapClampMax);
     }
 
     private static double ClampScaled(double baseValue, double scale, double minValue, double maxValue)
