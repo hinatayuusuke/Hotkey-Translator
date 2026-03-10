@@ -18502,3 +18502,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `uv run server.py --help` in `OcrServiceVisionLlm`
 - `uv run test_vision_llama_engine.py --help` in `OcrServiceVisionLlm`
 - `python -m compileall .` in `OcrServiceVisionLlm`
+**2026-03-10 14:43 (Asia/Taipei) — VisionLLM synthetic fallback を連続未対応グループ単位へ変更**
+
+### Summary
+- VisionLLM hybrid の synthetic fallback を 1行ごとではなく、連続 unmatched 区間ごとに 1 枠へまとめるようにした。
+
+### Context / Goal
+- 現状は geometry helper に対応しない VisionLLM 行が複数あると、同じ anchor 位置へ個別 synthetic 枠が重なって表示されていた。
+- 可読性を維持するため、連続する unmatched Vision text は 1 つの synthetic box に合成したかった。
+
+### Changes
+- `VisionGeometryHybridAligner.Align(...)` を二段化し、先に matched 行を確定した後で連続 unmatched 区間を synthetic 化するように変更した。
+- unmatched 区間ごとに改行連結した `OcrLine` を 1 件だけ返すようにした。
+- synthetic rect 計算を単一行向けからグループ向けに差し替え、前後 matched bbox がある場合の補間、前後片側 attach、anchor fallback をグループ高さ前提で再計算するようにした。
+- `syntheticCount` は synthetic line 数ではなく、synthetic box 数として集計されるようになった。
+
+### Files Touched
+- `Services\VisionGeometryHybridAligner.cs` — 連続 unmatched グループ単位の synthetic fallback へ変更。
+
+### Behavioral Impact
+- geometry helper に未対応な VisionLLM 行が複数連続した場合、オーバーレイは同座標に複数重ねず、1つの複合枠として表示される。
+- synthetic fallback の text は改行連結され、1 box にまとまる。
+
+### Risk & Mitigation
+- Risk: まとめすぎると本来分けたい unmatched 行まで 1 box に入る可能性がある。
+- Mitigation: grouped synthetic は matched 行で必ず区切り、連続 unmatched 区間だけを合成対象に限定した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`

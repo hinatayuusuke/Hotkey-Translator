@@ -42,11 +42,9 @@ public sealed class VisionGeometryHybridAligner
             .Select((line, index) => new GeometryCandidate(line, index, _normalizationService.Normalize(line.Text)))
             .ToList();
         var threshold = Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0);
-        var outputs = new OcrLine[visionLines.Count];
+        var matchedOutputs = new OcrLine?[visionLines.Count];
         var matchedGeometryIndexes = new HashSet<int>();
-        var matchedSlots = new List<MatchedSlot>(visionLines.Count);
         var matchedCount = 0;
-        var syntheticCount = 0;
 
         for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
         {
@@ -84,39 +82,59 @@ public sealed class VisionGeometryHybridAligner
             {
                 matchedGeometryIndexes.Add(best.Index);
                 matchedCount++;
-                outputs[visionIndex] = visionLine with
+                matchedOutputs[visionIndex] = visionLine with
                 {
                     Rect = best.Line.Rect,
                     Confidence = Math.Max(visionLine.Confidence, best.Line.Confidence),
                     LineHeight = best.Line.Rect.Height,
                     LineCount = Math.Max(visionLine.LineCount, best.Line.LineCount)
                 };
-                matchedSlots.Add(new MatchedSlot(visionIndex, best.Line.Rect));
+            }
+        }
+
+        var matchedSlots = matchedOutputs
+            .Select((line, index) => line is null ? null : new MatchedSlot(index, line.Rect))
+            .Where(slot => slot is not null)
+            .Select(slot => slot!)
+            .ToList();
+        var lines = new List<OcrLine>(visionLines.Count);
+        var syntheticCount = 0;
+
+        for (var visionIndex = 0; visionIndex < visionLines.Count;)
+        {
+            var matchedLine = matchedOutputs[visionIndex];
+            if (matchedLine is not null)
+            {
+                lines.Add(matchedLine);
+                visionIndex++;
                 continue;
             }
 
             if (!settings.VisionGeometryAllowSyntheticFallback)
             {
+                visionIndex++;
                 continue;
             }
 
-            syntheticCount++;
-            var syntheticRect = BuildSyntheticRect(
-                visionIndex,
-                visionLines.Count,
-                visionLine.Rect,
+            var groupStart = visionIndex;
+            var groupEnd = visionIndex;
+            while (groupEnd + 1 < visionLines.Count && matchedOutputs[groupEnd + 1] is null)
+            {
+                groupEnd++;
+            }
+
+            lines.Add(BuildSyntheticLineForGroup(
+                visionLines,
+                groupStart,
+                groupEnd,
                 matchedSlots,
                 geometryLines,
                 imageWidth,
-                imageHeight);
-            outputs[visionIndex] = visionLine with
-            {
-                Rect = syntheticRect,
-                LineHeight = syntheticRect.Height
-            };
+                imageHeight));
+            syntheticCount++;
+            visionIndex = groupEnd + 1;
         }
 
-        var lines = outputs.Where(line => line is not null).Select(line => line!).ToList();
         _logger?.Info(
             $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} synthetic={syntheticCount} output={lines.Count}.");
         return new HybridOcrAlignmentResult(lines, geometryLines.Count, visionLines.Count, matchedCount, syntheticCount);
@@ -273,72 +291,96 @@ public sealed class VisionGeometryHybridAligner
         return profile;
     }
 
-    private static Rect BuildSyntheticRect(
-        int visionIndex,
-        int visionCount,
-        Rect fallbackRect,
+    private static OcrLine BuildSyntheticLineForGroup(
+        IReadOnlyList<OcrLine> visionLines,
+        int groupStart,
+        int groupEnd,
         IReadOnlyList<MatchedSlot> matchedSlots,
         IReadOnlyList<OcrLine> geometryLines,
         int imageWidth,
         int imageHeight)
     {
-        var previous = matchedSlots.Where(slot => slot.VisionIndex < visionIndex).OrderBy(slot => slot.VisionIndex).LastOrDefault();
-        var next = matchedSlots.Where(slot => slot.VisionIndex > visionIndex).OrderBy(slot => slot.VisionIndex).FirstOrDefault();
+        var previous = matchedSlots.Where(slot => slot.VisionIndex < groupStart).OrderBy(slot => slot.VisionIndex).LastOrDefault();
+        var next = matchedSlots.Where(slot => slot.VisionIndex > groupEnd).OrderBy(slot => slot.VisionIndex).FirstOrDefault();
+        var groupLines = visionLines.Skip(groupStart).Take(groupEnd - groupStart + 1).ToList();
+        var fallbackRect = groupLines[0].Rect;
+        var mergedText = string.Join("\n", groupLines.Select(line => line.Text));
+        var confidence = groupLines.Max(line => line.Confidence);
+        var lineCount = groupLines.Sum(line => Math.Max(1, line.LineCount));
+        var baseHeight = Math.Max(
+            groupLines.Max(line => Math.Max(1.0, line.LineHeight > 0 ? line.LineHeight : line.Rect.Height)),
+            Math.Max(1.0, fallbackRect.Height));
+        var targetHeight = Math.Max(baseHeight, baseHeight * lineCount);
+
+        Rect syntheticRect;
 
         if (previous != default && next != default)
         {
-            return InterpolateBetween(previous.Rect, next.Rect, previous.VisionIndex, next.VisionIndex, visionIndex, imageWidth, imageHeight);
+            syntheticRect = InterpolateBetweenGroup(
+                previous.Rect,
+                next.Rect,
+                previous.VisionIndex,
+                next.VisionIndex,
+                groupStart,
+                groupEnd,
+                targetHeight,
+                imageWidth,
+                imageHeight);
         }
-
-        if (previous != default)
+        else if (previous != default)
         {
-            return AttachAfter(previous.Rect, imageWidth, imageHeight);
+            syntheticRect = AttachAfterGroup(previous.Rect, targetHeight, imageWidth, imageHeight);
         }
-
-        if (next != default)
+        else if (next != default)
         {
-            return AttachBefore(next.Rect, imageWidth, imageHeight);
+            syntheticRect = AttachBeforeGroup(next.Rect, targetHeight, imageWidth, imageHeight);
         }
-
-        if (geometryLines.Count > 0)
+        else if (geometryLines.Count > 0)
         {
-            var anchor = geometryLines[Math.Min(visionIndex, geometryLines.Count - 1)].Rect;
-            return ClampRect(anchor, imageWidth, imageHeight);
+            var anchor = geometryLines[Math.Min(groupStart, geometryLines.Count - 1)].Rect;
+            syntheticRect = ClampRect(new Rect(anchor.X, anchor.Y, anchor.Width, targetHeight), imageWidth, imageHeight);
+        }
+        else
+        {
+            syntheticRect = ClampRect(new Rect(fallbackRect.X, fallbackRect.Y, fallbackRect.Width, targetHeight), imageWidth, imageHeight);
         }
 
-        return ClampRect(fallbackRect, imageWidth, imageHeight);
+        return new OcrLine(mergedText, syntheticRect, confidence, lineCount, syntheticRect.Height / Math.Max(1, lineCount));
     }
 
-    private static Rect InterpolateBetween(
+    private static Rect InterpolateBetweenGroup(
         Rect previous,
         Rect next,
         int previousIndex,
         int nextIndex,
-        int targetIndex,
+        int groupStart,
+        int groupEnd,
+        double targetHeight,
         int imageWidth,
         int imageHeight)
     {
         var span = Math.Max(1, nextIndex - previousIndex);
-        var ratio = (targetIndex - previousIndex) / (double)span;
+        var centerIndex = (groupStart + groupEnd) / 2.0;
+        var ratio = (centerIndex - previousIndex) / span;
         var x = Lerp(previous.X, next.X, ratio);
         var width = Lerp(previous.Width, next.Width, ratio);
-        var height = Lerp(previous.Height, next.Height, ratio);
+        var height = Math.Max(targetHeight, Lerp(previous.Height, next.Height, ratio));
         var previousBottom = previous.Y + previous.Height;
         var nextTop = next.Y;
         var y = previousBottom + ((nextTop - previousBottom - height) * ratio);
         return ClampRect(new Rect(x, y, width, height), imageWidth, imageHeight);
     }
 
-    private static Rect AttachAfter(Rect anchor, int imageWidth, int imageHeight)
+    private static Rect AttachAfterGroup(Rect anchor, double targetHeight, int imageWidth, int imageHeight)
     {
         var gap = Math.Max(2.0, anchor.Height * 0.20);
-        return ClampRect(new Rect(anchor.X, anchor.Y + anchor.Height + gap, anchor.Width, anchor.Height), imageWidth, imageHeight);
+        return ClampRect(new Rect(anchor.X, anchor.Y + anchor.Height + gap, anchor.Width, targetHeight), imageWidth, imageHeight);
     }
 
-    private static Rect AttachBefore(Rect anchor, int imageWidth, int imageHeight)
+    private static Rect AttachBeforeGroup(Rect anchor, double targetHeight, int imageWidth, int imageHeight)
     {
         var gap = Math.Max(2.0, anchor.Height * 0.20);
-        return ClampRect(new Rect(anchor.X, anchor.Y - anchor.Height - gap, anchor.Width, anchor.Height), imageWidth, imageHeight);
+        return ClampRect(new Rect(anchor.X, anchor.Y - targetHeight - gap, anchor.Width, targetHeight), imageWidth, imageHeight);
     }
 
     private static Rect ClampRect(Rect rect, int imageWidth, int imageHeight)
