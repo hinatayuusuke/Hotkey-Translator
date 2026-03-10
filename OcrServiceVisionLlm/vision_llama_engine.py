@@ -586,6 +586,8 @@ def parse_json_object_from_text_resilient(content: str) -> tuple[dict | None, bo
         add_candidate(trimmed, rescued or trimmed != candidate)
         repaired = repair_swapped_array_object_closer(normalized_lines)
         add_candidate(repaired, True)
+        repaired_missing_closer = repair_missing_array_closer(normalized_lines)
+        add_candidate(repaired_missing_closer, True)
 
     for candidate, rescued in candidates:
         parsed = parse_json_object_candidate(candidate)
@@ -669,6 +671,25 @@ def repair_swapped_array_object_closer(text: str) -> str:
     if candidate.endswith("}]") and ('"t"' in candidate or '"translations"' in candidate):
         return candidate[:-2] + "]}"
     return candidate
+
+
+def repair_missing_array_closer(text: str) -> str:
+    candidate = text.strip()
+    if ('"t"' not in candidate and '"translations"' not in candidate):
+        return candidate
+
+    if candidate.endswith("]}") or not candidate.endswith("}"):
+        return candidate
+
+    open_arrays = candidate.count("[")
+    close_arrays = candidate.count("]")
+    if open_arrays != close_arrays + 1:
+        return candidate
+
+    # WHY: Dialogue-heavy responses sometimes drop the final array closer and end with `..."}`
+    # even though the surrounding object is otherwise valid. Insert the missing `]` before the
+    # last object closer and let the normal JSON parser validate the repaired candidate.
+    return candidate[:-1] + "]}"
 
 
 def resolve_language_label(language: str) -> str:

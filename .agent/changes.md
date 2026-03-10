@@ -18774,3 +18774,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `python -m compileall .\OcrServiceVisionLlm\vision_llama_engine.py`
 
+**2026-03-10 19:45 (Asia/Taipei) — VisionLlama translation parser に配列閉じ欠落の rescue を追加**
+
+### Summary
+- Dialogue-heavy な translation response で末尾の `]` が欠ける JSON 崩れを救済する parser rescue を追加した。
+
+### Context / Goal
+- VisionLlama translation で、`{"t":["...")"}` のように配列閉じ `]` が欠けた JSON が実際に発生した。
+- 既存 rescue ではこの壊れ方を拾えず、`Vision translation response is not valid JSON.` で失敗していた。
+
+### Changes
+- `parse_json_object_from_text_resilient()` に `repair_missing_array_closer()` を追加した。
+- `"t"` / `"translations"` を含み、`[` と `]` の数が 1 個だけずれており、末尾が `}` で終わる候補に対して、最後の `}` の前へ `]` を補う rescue を追加した。
+- 補正後は通常の JSON parser に通して妥当性確認するため、対象外パターンへは過剰適用しない。
+
+### Files Touched
+- `OcrServiceVisionLlm\vision_llama_engine.py` — translation JSON rescue に missing array closer repair を追加。
+
+### Behavioral Impact
+- 末尾の配列閉じ欠落だけが原因の translation response は、fatal error ではなく rescued parse として扱える。
+- 既存の正常 JSON や他の rescue パターンには影響しない。
+
+### Risk & Mitigation
+- Risk: 本来別種の壊れ方にも `]` を補ってしまう可能性がある。
+- Mitigation: `t/translations` キー、配列数の差分、末尾 `}` の条件を全て満たす場合だけに限定した。
+
+### Tests / Verification
+- `python -m compileall .\OcrServiceVisionLlm\vision_llama_engine.py`
+- `uv run python -` で実際の壊れた response 文字列を `parse_json_object_from_text_resilient()` に通し、`parsed != None` かつ `rescued=True` を確認。
+
