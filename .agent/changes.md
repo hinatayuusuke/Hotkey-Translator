@@ -18859,3 +18859,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `rg -n "stage=vision_geometry_hybrid event=summary|TryBuildSplitOutputsForVision|GeometryRunCandidate|NormalizedProjection" .\Services\VisionGeometryHybridAligner.cs`
+**2026-03-10 22:39 (Asia/Taipei) — VisionLLM hybrid の synthetic 改行維持**
+
+### Summary
+- VisionGeometry hybrid の synthetic text 結合で改行を保持するように変更した。
+
+### Context / Goal
+- Synthetic standalone 枠や synthetic->matched merge で VisionLLM の改行が空白へ潰れており、複数行の意味がオーバーレイへ伝わらなかった。
+- Hybrid aligner 側では改行を保持し、最終的な折り畳みは OverlayStage の既存制御へ委譲したい。
+
+### Changes
+- `BuildSyntheticLineForGroup()` の text 結合を空白連結から `Environment.NewLine` 連結へ変更した。
+- `mergedTextByMatchedVisionIndex` の最終結合を空白連結から改行連結へ変更した。
+- split 済み枠へ追加 text を足す処理も改行区切りへ変更し、WHY コメントを追加した。
+
+### Files Touched
+- `Services/VisionGeometryHybridAligner.cs` — synthetic text 結合と merged text 再構成で改行を保持するよう調整した。
+
+### Behavioral Impact
+- VisionLLM hybrid で synthetic fallback や synthetic merge が発生しても、VisionLLM が返した複数行構造をオーバーレイまで持ち越せるようになった。
+- 最終的な行数制御や overflow 抑制は引き続き `OverlayStage.NormalizeOverlayText()` が担当する。
+
+### Risk & Mitigation
+- Risk: 改行保持により一部の小さい枠で text overflow が増える可能性がある。
+- Mitigation: OverlayStage 側の既存 line clamp / collapse ロジックを維持し、aligner 側では意味のある改行だけ保持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+

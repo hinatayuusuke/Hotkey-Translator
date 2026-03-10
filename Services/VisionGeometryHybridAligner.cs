@@ -228,7 +228,7 @@ public sealed class VisionGeometryHybridAligner
                 if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var extraContributions))
                 {
                     var extraText = string.Join(
-                        " ",
+                        Environment.NewLine,
                         extraContributions
                             .OrderBy(item => item.VisionIndex)
                             .Select(item => item.Text.Trim())
@@ -236,9 +236,14 @@ public sealed class VisionGeometryHybridAligner
                     if (!string.IsNullOrWhiteSpace(extraText))
                     {
                         var lastIndex = splitOutputs.Count - 1;
+                        var mergedSplitText = string.IsNullOrWhiteSpace(splitOutputs[lastIndex].Text)
+                            ? extraText
+                            : $"{splitOutputs[lastIndex].Text}{Environment.NewLine}{extraText}";
                         splitOutputs[lastIndex] = splitOutputs[lastIndex] with
                         {
-                            Text = $"{splitOutputs[lastIndex].Text} {extraText}".Trim()
+                            // WHY: Preserve the Vision-side line structure here and let OverlayStage
+                            // decide later whether the final box needs to collapse or clamp line breaks.
+                            Text = mergedSplitText.Trim()
                         };
                     }
                 }
@@ -252,7 +257,7 @@ public sealed class VisionGeometryHybridAligner
                 if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var contributions))
                 {
                     var mergedText = string.Join(
-                        " ",
+                        Environment.NewLine,
                         contributions
                             .OrderBy(item => item.VisionIndex)
                             .Select(item => item.Text.Trim())
@@ -749,9 +754,9 @@ public sealed class VisionGeometryHybridAligner
         var next = matchedSlots.Where(slot => slot.VisionIndex > groupEnd).OrderBy(slot => slot.VisionIndex).FirstOrDefault();
         var groupLines = visionLines.Skip(groupStart).Take(groupEnd - groupStart + 1).ToList();
         var fallbackRect = groupLines[0].Rect;
-        // WHY: Synthetic fallback prioritizes readability over geometry fidelity. Collapsing into one
-        // space-separated sentence avoids stacked boxes when helper OCR cannot provide matching geometry.
-        var mergedText = string.Join(" ", groupLines.Select(line => line.Text.Trim()).Where(text => !string.IsNullOrWhiteSpace(text)));
+        // WHY: Synthetic fallback still represents the same VisionLLM content, so line boundaries
+        // should survive here. OverlayStage remains responsible for any later clamping or collapsing.
+        var mergedText = string.Join(Environment.NewLine, groupLines.Select(line => line.Text.Trim()).Where(text => !string.IsNullOrWhiteSpace(text)));
         var confidence = groupLines.Max(line => line.Confidence);
         var lineCount = groupLines.Sum(line => Math.Max(1, line.LineCount));
         var syntheticRect = BuildReadableSyntheticRect(
