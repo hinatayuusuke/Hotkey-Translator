@@ -72,6 +72,8 @@ public sealed class OcrLineGrouper
     private const double SimpleVerticalStageACenterToleranceAggressive = 1.00;
     private const double SimpleVerticalStageAWidthRatioMinAggressive = 0.12;
     private const double SimpleVerticalStageAOverlapRatioMinAggressive = 0.01;
+    private const double SimpleHorizontalStrengthGamma = 0.72;
+    private const double SimpleVerticalStrengthGamma = 0.72;
     private readonly AppLogger? _logger;
     private WritingMode _lastAutoSelectedMode = WritingMode.Horizontal;
     private bool _hasAutoSelectedMode;
@@ -1031,8 +1033,9 @@ public sealed class OcrLineGrouper
             return SimpleHorizontalOverlapAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleHorizontalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleHorizontalOverlapMax, SimpleHorizontalOverlapMin, Clamp01(strength / 100.0)),
+            Lerp(SimpleHorizontalOverlapMax, SimpleHorizontalOverlapMin, ratio),
             1.0,
             OverlapClampMin,
             OverlapClampMax);
@@ -1050,8 +1053,9 @@ public sealed class OcrLineGrouper
             return SimpleHorizontalThresholdAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleHorizontalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleHorizontalThresholdMin, SimpleHorizontalThresholdMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleHorizontalThresholdMin, SimpleHorizontalThresholdMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1069,8 +1073,9 @@ public sealed class OcrLineGrouper
             return SimpleHorizontalRowMaxGapAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleHorizontalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleHorizontalRowMaxGapMin, SimpleHorizontalRowMaxGapMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleHorizontalRowMaxGapMin, SimpleHorizontalRowMaxGapMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1088,8 +1093,9 @@ public sealed class OcrLineGrouper
             return SimpleHorizontalRowHardBreakAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleHorizontalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleHorizontalRowHardBreakMin, SimpleHorizontalRowHardBreakMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleHorizontalRowHardBreakMin, SimpleHorizontalRowHardBreakMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1107,8 +1113,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalGapAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalGapMin, SimpleVerticalGapMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalGapMin, SimpleVerticalGapMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1126,8 +1133,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalColumnOverlapAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalColumnOverlapMax, SimpleVerticalColumnOverlapMin, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalColumnOverlapMax, SimpleVerticalColumnOverlapMin, ratio),
             1.0,
             OverlapClampMin,
             OverlapClampMax);
@@ -1145,8 +1153,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalColumnThresholdAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalColumnThresholdMin, SimpleVerticalColumnThresholdMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalColumnThresholdMin, SimpleVerticalColumnThresholdMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1164,8 +1173,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalColumnHardBreakAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalColumnHardBreakMin, SimpleVerticalColumnHardBreakMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalColumnHardBreakMin, SimpleVerticalColumnHardBreakMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1183,8 +1193,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalStageACenterToleranceAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalStageACenterToleranceMin, SimpleVerticalStageACenterToleranceMax, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalStageACenterToleranceMin, SimpleVerticalStageACenterToleranceMax, ratio),
             1.0,
             RatioClampMin,
             RatioClampMax);
@@ -1202,8 +1213,9 @@ public sealed class OcrLineGrouper
             return SimpleVerticalStageAWidthRatioMinAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalStageAWidthRatioMinMax, SimpleVerticalStageAWidthRatioMinMin, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalStageAWidthRatioMinMax, SimpleVerticalStageAWidthRatioMinMin, ratio),
             1.0,
             OverlapClampMin,
             OverlapClampMax);
@@ -1221,11 +1233,21 @@ public sealed class OcrLineGrouper
             return SimpleVerticalStageAOverlapRatioMinAggressive;
         }
 
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleVerticalStrengthGamma);
         return ClampScaled(
-            Lerp(SimpleVerticalStageAOverlapRatioMinMax, SimpleVerticalStageAOverlapRatioMinMin, Clamp01(strength / 100.0)),
+            Lerp(SimpleVerticalStageAOverlapRatioMinMax, SimpleVerticalStageAOverlapRatioMinMin, ratio),
             1.0,
             OverlapClampMin,
             OverlapClampMax);
+    }
+
+    private static double NormalizeSimpleMergeStrengthRatio(int strength, double gamma)
+    {
+        var clamped = Clamp01(strength / 100.0);
+        // WHY: Linear slider motion produced long "flat" regions in practice because multiple downstream
+        // gates only start reacting after thresholds move far enough. A sub-linear curve gives the mid-band
+        // more effective travel without changing the 0/100 special cases.
+        return Math.Pow(clamped, gamma);
     }
 
     private static double ClampScaled(double baseValue, double scale, double minValue, double maxValue)

@@ -18918,3 +18918,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `rg -n "SimpleHorizontalOverlapDisabled|SimpleHorizontalThresholdAggressive|ResolveHorizontalOverlap|ResolveVerticalGap|ApplySimpleMergeTuning" .\Services\OcrLineGrouper.cs`
 
+**2026-03-10 23:06 (Asia/Taipei) — Simple Merge Tuning の中間域を非線形化**
+
+### Summary
+- Simple Merge Tuning の 1..99 を線形補間から sub-linear カーブへ変更し、中間域の変化量を増やした。
+
+### Context / Goal
+- 現状は 0/100 の special case を除くと 1..99 が線形補間のため、実際の merge 体感が 0-10 / 11-80 / 81-100 のような段階変化に見えやすかった。
+- スライダー中間域でももう少し差が出るようにしたい。
+
+### Changes
+- `Services/OcrLineGrouper.cs` に `SimpleHorizontalStrengthGamma` と `SimpleVerticalStrengthGamma` を追加した。
+- `NormalizeSimpleMergeStrengthRatio()` を追加し、1..99 の ratio を `Math.Pow(ratio, 0.72)` へ変換するようにした。
+- horizontal / vertical の simple tuning 解決関数で、線形 `strength/100` の代わりに非線形 ratio を使うように変更した。
+- WHY コメントを追加し、実運用で flat region が出やすい理由を明記した。
+
+### Files Touched
+- `Services/OcrLineGrouper.cs` — simple merge tuning の中間域 ratio を非線形化した。
+
+### Behavioral Impact
+- `0` と `100` の special case はそのまま。
+- `1..99` は同じ数値差でも中間域の効きが強くなり、従来より merge 調整の差が出やすくなる。
+
+### Risk & Mitigation
+- Risk: 既存ユーザの中間値が、以前より merge 寄りに感じられる可能性がある。
+- Mitigation: 変更は 1..99 のカーブだけに限定し、0/100 の意味は維持した。必要なら gamma を 0.80 付近へ戻して影響を弱められる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `rg -n "SimpleHorizontalStrengthGamma|SimpleVerticalStrengthGamma|NormalizeSimpleMergeStrengthRatio" .\Services\OcrLineGrouper.cs`
+
