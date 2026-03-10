@@ -32,6 +32,14 @@ DEFAULT_OCR_PROMPT = (
     "Keep line breaks only for menus, lists, clearly separate UI items, or distinct text boxes."
 )
 
+DEFAULT_HYBRID_OCR_PROMPT = (
+    "Extract all visible text from this image. Output plain text only. "
+    "Do not translate or explain. "
+    "Preserve visible text lines as they appear on screen. "
+    "Do not merge adjacent visual lines into one sentence unless they are already rendered as one line. "
+    "Prefer one output line per visible line or per clearly separated UI item."
+)
+
 DEFAULT_TRANSLATE_PROMPT = (
     "Translate the following text list from {source_lang} to {target_lang}. "
     'Return JSON only with this schema: {{"t":["..."]}}. '
@@ -302,7 +310,7 @@ class VisionLlamaEngine:
             return False, "vision llama-server not running"
         return True, "ready"
 
-    def recognize(self, image_bytes: bytes, language: str) -> str:
+    def recognize(self, image_bytes: bytes, language: str, preserve_visual_lines: bool = False) -> str:
         if not self._lock.acquire(blocking=False):
             raise VisionLlamaBusyError("Vision OCR busy")
         try:
@@ -311,9 +319,9 @@ class VisionLlamaEngine:
             prepare_start = time.perf_counter()
             prepared = prepare_image_for_upload(image_bytes, self._max_image_side)
             prepare_ms = (time.perf_counter() - prepare_start) * 1000.0
-            prompt = DEFAULT_OCR_PROMPT
+            prompt = DEFAULT_HYBRID_OCR_PROMPT if preserve_visual_lines else DEFAULT_OCR_PROMPT
             if language:
-                prompt = f"{DEFAULT_OCR_PROMPT} The primary OCR language hint is {resolve_language_label(language)}."
+                prompt = f"{prompt} The primary OCR language hint is {resolve_language_label(language)}."
             self._write_diag(
                 "ocr_begin",
                 request_id=request_id,
@@ -331,6 +339,7 @@ class VisionLlamaEngine:
                 top_p=self._request.top_p,
                 top_k=self._request.top_k,
                 repeat_penalty=self._request.repeat_penalty,
+                preserve_visual_lines=preserve_visual_lines,
                 prepare_ms=prepare_ms,
             )
             payload = self._build_payload(

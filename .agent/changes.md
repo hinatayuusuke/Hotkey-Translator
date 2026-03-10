@@ -18286,3 +18286,38 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\ でビルド成功。
 - 通常の dotnet build Hotkey-Translator.csproj は実行中の Hotkey-Translator.exe により in\Debug がロックされ失敗することを確認。
+**2026-03-10 13:19 (Asia/Taipei) — VisionLLM hybrid OCR 用に visual-line preserve prompt を追加**
+
+### Summary
+- VisionLLM hybrid OCR 時だけ、結合寄り OCR prompt ではなく visible line preserve prompt を使うようにした。
+
+### Context / Goal
+- 現行 VisionLLM OCR prompt は翻訳しやすさ優先で行を自然文に結合するため、geometry-assist の line matching と相性が悪い。
+- hybrid 時だけ個別ライン寄りの出力へ切り替え、bbox 対応付け精度を上げたい。
+
+### Changes
+- OCR gRPC request に `preserve_visual_lines` を追加した。
+- VisionLLM Python server が request フラグを受け取り、engine へ渡すようにした。
+- `vision_llama_engine.py` に hybrid 用 `DEFAULT_HYBRID_OCR_PROMPT` を追加し、hybrid 時だけそれを使うようにした。
+- C# の VisionLLM provider が `EnableVisionGeometryHybridOcr` 時に `PreserveVisualLines=true` を送るようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm/ocr.proto` — OCR request に `preserve_visual_lines` を追加。
+- `Protos/OcrGrpc.proto` — C# client 側の proto 契約を同期。
+- `OcrServiceVisionLlm/server.py` — request フラグを engine 呼び出しへ中継。
+- `OcrServiceVisionLlm/vision_llama_engine.py` — hybrid 用 prompt を追加し、recognize で切替。
+- `Services/VisionLlmGrpcOcrProvider.cs` — hybrid 時に `PreserveVisualLines` を送信。
+
+### Behavioral Impact
+- 通常 VisionLLM OCR は従来どおり結合寄り prompt を使う。
+- `EnableVisionGeometryHybridOcr=true` のときだけ、VisionLLM OCR は visible line を保持しやすい prompt に切り替わる。
+
+### Risk & Mitigation
+- Risk: hybrid prompt により VisionLLM の text-only OCR 品質評価と出力粒度が分岐する。
+- Mitigation: 切替は `EnableVisionGeometryHybridOcr` 時だけに限定し、通常 OCR の prompt は保持した。
+- Risk: proto 契約差分で C# / Python 間の request がずれる。
+- Mitigation: `OcrServiceVisionLlm/ocr.proto` と `Protos/OcrGrpc.proto` を同時更新し、一時出力先ビルドで確認した。
+
+### Tests / Verification
+- `python -m compileall OcrServiceVisionLlm\server.py OcrServiceVisionLlm\vision_llama_engine.py`
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`

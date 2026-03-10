@@ -44,7 +44,10 @@ public sealed class VisionLlmGrpcOcrProvider : IOcrProvider, IDisposable
         var request = new OcrRequest
         {
             Image = Google.Protobuf.ByteString.CopyFrom(stream.ToArray()),
-            Language = settings.SourceLanguage ?? string.Empty
+            Language = settings.SourceLanguage ?? string.Empty,
+            // WHY: Hybrid mode needs VisionLLM to preserve visible lines so geometry matching can
+            // align line-by-line instead of fighting the text-only sentence merge prompt.
+            PreserveVisualLines = settings.EnableVisionGeometryHybridOcr
         };
 
         var response = await client.RecognizeAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
