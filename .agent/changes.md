@@ -18655,3 +18655,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
 
+**2026-03-10 18:45 (Asia/Taipei) — 横書き line merge に見出し幅差ガードを追加**
+
+### Summary
+- 横書き Stage B の line merge で、短い見出し行が広い本文段落へ吸い込まれるのを防ぐ幅差ガードを追加した。
+
+### Context / Goal
+- 現状の横書き最終 merge は縦 gap と高さ差を主に見ており、幅差が大きい見出しと本文でも結合し得た。
+- 見出しや段落境界が明らかなケースでは merge を止め、段落構造を保ちたかった。
+
+### Changes
+- `MergeHorizontalLines()` に、幅差が大きく中央寄せで近接している行対を hard break とみなす判定を追加した。
+- `IsLikelyHorizontalHeadingBreak(...)` を追加し、width ratio・center 差・vertical gap を組み合わせて見出しっぽい配置だけを弾くようにした。
+- Stage A の token merge には触れず、横書き Stage B の縦結合だけに適用した。
+
+### Files Touched
+- `Services\OcrLineGrouper.cs` — 横書き Stage B merge に見出し/段落境界ガードを追加。
+
+### Behavioral Impact
+- 短い見出し行がすぐ下の広い本文ブロックへ結合されにくくなる。
+- 同一行 token merge はそのままなので、単語結合や名前欄の行内結合には影響しない。
+
+### Risk & Mitigation
+- Risk: 短い本文行も見出し扱いされて merge されにくくなる可能性がある。
+- Mitigation: 幅差だけでなく、中央寄せと近接条件も同時に満たすケースだけを hard break にした。
+- Risk: しきい値が厳しすぎると段落分断が増える可能性がある。
+- Mitigation: まずは定数の最小実装に留め、必要なら後続で settings 化できるよう判定を一箇所にまとめた。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- NOTE: 通常の `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\` は、既存の WPF 生成物/参照プロジェクト側 `obj` 破損により別件で失敗した。
+

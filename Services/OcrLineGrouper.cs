@@ -33,6 +33,9 @@ public sealed class OcrLineGrouper
     private const double SimpleHorizontalRowMaxGapMax = 2.40;
     private const double SimpleHorizontalRowHardBreakMin = 1.20;
     private const double SimpleHorizontalRowHardBreakMax = 3.00;
+    private const double HorizontalHeadingWidthRatioMax = 0.72;
+    private const double HorizontalHeadingCenterToleranceRatio = 0.30;
+    private const double HorizontalHeadingGapRatio = 0.60;
     private const double SimpleVerticalGapMin = 0.80;
     private const double SimpleVerticalGapMax = 2.00;
     private const double SimpleVerticalColumnOverlapMin = 0.08;
@@ -272,6 +275,13 @@ public sealed class OcrLineGrouper
             {
                 var b = ordered[i + offset];
                 if (!PassesAlignmentGate(a.Rect, b.Rect, thresholds.MergeOverlapRatioThreshold))
+                {
+                    continue;
+                }
+
+                // WHY: A narrow, centered heading line above a much wider paragraph should remain
+                // a separate block even if the vertical merge cost is otherwise low.
+                if (IsLikelyHorizontalHeadingBreak(a.Rect, b.Rect))
                 {
                     continue;
                 }
@@ -1113,6 +1123,49 @@ public sealed class OcrLineGrouper
         var cost = (thresholds.MergeVerticalWeight * verticalGap) + sizePenalty;
         var threshold = Math.Min(a.Height, b.Height) * thresholds.MergeThresholdRatio;
         return cost <= threshold;
+    }
+
+    private static bool IsLikelyHorizontalHeadingBreak(Rect top, Rect bottom)
+    {
+        if (bottom.Top < top.Top)
+        {
+            (top, bottom) = (bottom, top);
+        }
+
+        var minWidth = Math.Min(top.Width, bottom.Width);
+        var maxWidth = Math.Max(top.Width, bottom.Width);
+        if (minWidth <= 0 || maxWidth <= 0)
+        {
+            return false;
+        }
+
+        var widthRatio = minWidth / maxWidth;
+        if (widthRatio > HorizontalHeadingWidthRatioMax)
+        {
+            return false;
+        }
+
+        var narrow = top.Width <= bottom.Width ? top : bottom;
+        var wide = top.Width <= bottom.Width ? bottom : top;
+        if (narrow.Top > wide.Top)
+        {
+            return false;
+        }
+
+        var minHeight = Math.Min(top.Height, bottom.Height);
+        if (minHeight <= 0)
+        {
+            return false;
+        }
+
+        var verticalGap = Math.Max(0, bottom.Top - top.Bottom);
+        if (verticalGap > minHeight * HorizontalHeadingGapRatio)
+        {
+            return false;
+        }
+
+        var centerDiff = Math.Abs(GetCenterX(narrow) - GetCenterX(wide));
+        return centerDiff <= wide.Width * HorizontalHeadingCenterToleranceRatio;
     }
 
     private static bool IsVerticalColumnMergeableByCost(
