@@ -18803,3 +18803,30 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `python -m compileall .\OcrServiceVisionLlm\vision_llama_engine.py`
 - `uv run python -` で実際の壊れた response 文字列を `parse_json_object_from_text_resilient()` に通し、`parsed != None` かつ `rescued=True` を確認。
 
+**2026-03-10 00:00 (Asia/Taipei) — VisionLLM の二重引用符 JSON 崩れを救済**
+
+### Summary
+- VisionLLM 翻訳で `{"t":[""..."]}` のような二重引用符崩れを救済する parser 補正を追加した。
+
+### Context / Goal
+- 同じ入力でも VisionLLM が JSON 配列要素の先頭/末尾に生の二重引用符を出し、`Vision translation response is not valid JSON.` が発生していた。
+- 典型形は `{"t":[""The ...""]}` で、引用符のエスケープ不足だけを補正して通したい。
+
+### Changes
+- `parse_json_object_from_text_resilient()` の候補生成に `repair_doubled_string_quotes()` を追加した。
+- `repair_doubled_string_quotes()` で、`t/translations` payload に限定して `[")` / `("]` のような壊れを `\"` 付きへ補正するようにした。
+
+### Files Touched
+- `OcrServiceVisionLlm/vision_llama_engine.py` — 二重引用符の JSON 崩れを補正する rescue path を追加した。
+
+### Behavioral Impact
+- VisionLLM が `{"t":[""..."]}` 型で壊れた場合でも、救済 parser で通る可能性が上がる。
+- 補正は `t/translations` を含む payload に限定しており、他の JSON 断片には適用しない。
+
+### Risk & Mitigation
+- Risk: 別の正当な文字列に対して過剰補正する可能性。
+- Mitigation: `t/translations` payload のみ対象にし、補正後も通常の JSON parser で成立した場合だけ採用する。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py` 実行成功。
+- `OcrServiceVisionLlm\test_vision_llama_engine.py` を同一入力で `--repeat 5` 実行し、`parser_rescued=true` で成功することを確認。

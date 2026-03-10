@@ -588,6 +588,8 @@ def parse_json_object_from_text_resilient(content: str) -> tuple[dict | None, bo
         add_candidate(repaired, True)
         repaired_missing_closer = repair_missing_array_closer(normalized_lines)
         add_candidate(repaired_missing_closer, True)
+        repaired_doubled_quotes = repair_doubled_string_quotes(normalized_lines)
+        add_candidate(repaired_doubled_quotes, True)
 
     for candidate, rescued in candidates:
         parsed = parse_json_object_candidate(candidate)
@@ -690,6 +692,16 @@ def repair_missing_array_closer(text: str) -> str:
     # even though the surrounding object is otherwise valid. Insert the missing `]` before the
     # last object closer and let the normal JSON parser validate the repaired candidate.
     return candidate[:-1] + "]}"
+
+
+def repair_doubled_string_quotes(text: str) -> str:
+    candidate = text.strip()
+    if '"t"' not in candidate and '"translations"' not in candidate:
+        return candidate
+
+    # WHY: Small models sometimes emit ["\"...\""] as [""...""] and break JSON escaping.
+    repaired = candidate.replace('[""', '["\\"').replace('""]', '\\""]')
+    return repaired
 
 
 def resolve_language_label(language: str) -> str:
