@@ -46,11 +46,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--top-k", type=int, default=20, help="Top-k")
     parser.add_argument("--repeat-penalty", type=float, default=1.05, help="Repeat penalty")
     parser.add_argument("--language", default="ja", help="OCR language hint")
-    parser.add_argument(
-        "--preserve-visual-lines",
-        action="store_true",
-        help="Use the hybrid OCR prompt that preserves visible lines instead of merging them for translation readability.",
-    )
     parser.add_argument("--warmup", type=int, default=0, help="Warmup OCR runs before timing")
     parser.add_argument("--repeat", type=int, default=1, help="Measured OCR runs")
     parser.add_argument(
@@ -258,13 +253,13 @@ def main() -> int:
             if args.mode == "ocr":
                 for index in range(warmup):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
+                    text = engine.recognize(image_bytes, args.language)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     print(f"warmup[{index + 1}/{warmup}] ocr_ms={elapsed_ms:.2f} chars={len(text)}")
 
                 for index in range(repeat):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
+                    text = engine.recognize(image_bytes, args.language)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     timings_ms.append(elapsed_ms)
                     final_text = text
@@ -286,7 +281,7 @@ def main() -> int:
             else:
                 for index in range(warmup):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
+                    text = engine.recognize(image_bytes, args.language)
                     # WHY: Match the app's current VisionLLM path where OCR text is forwarded as-is.
                     translations = engine.translate([text], args.source_lang, args.target_lang)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
@@ -297,7 +292,7 @@ def main() -> int:
 
                 for index in range(repeat):
                     began = time.perf_counter()
-                    text = engine.recognize(image_bytes, args.language, preserve_visual_lines=args.preserve_visual_lines)
+                    text = engine.recognize(image_bytes, args.language)
                     translations = engine.translate([text], args.source_lang, args.target_lang)
                     elapsed_ms = (time.perf_counter() - began) * 1000.0
                     timings_ms.append(elapsed_ms)
@@ -335,7 +330,6 @@ def main() -> int:
             "gpu_layers": resolve_gpu_layers(args),
             "max_image_side": args.max_image_side,
             "disable_thinking": args.disable_thinking,
-            "preserve_visual_lines": args.preserve_visual_lines,
             "language": args.language,
             "source_lang": args.source_lang,
             "target_lang": args.target_lang,

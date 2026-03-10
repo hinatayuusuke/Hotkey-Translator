@@ -19,13 +19,18 @@
 - VisionLLM の文字認識精度は他 OCR より高く、最終表示文字として優先する価値がある。
 - 他 OCR の bbox は VisionLLM より安定しており、表示位置の近似に使える。
 - 他 OCR の text は誤認識を含むため、最終表示には使わず、bbox 割当の参考情報としてのみ使う。
-- 初期段階では reading order ベースの行単位アラインで十分な改善が見込める。
+- VisionLLM は特性上、語意でつながるテキストを 1 行にまとめる傾向があり、これをプロンプトで物理行へ矯正するのは不安定である。
+- そのため hybrid は geometry OCR の line merge 後の粒度に合わせる前提で設計する。
 - 設定は初期段階では `settings.json` のみへ追加し、UI 露出は後回しにする。
 
 ## 4. 現状整理
 - VisionLLM は現状 text-only OCR として統合されており、`VisionLlmGrpcOcrProvider` は合成の全幅行 bbox を作っている。
 - WinRT / NDL / Paddle は `OcrLine(text, bbox, confidence, ...)` を返し、既存 overlay 経路へそのまま載る。
 - そのため現状の VisionLLM overlay は「全文字は良いが geometry が粗い」、他 OCR は「geometry はあるが text が弱い」という分離状態になっている。
+- VisionLLM に hybrid 専用 prompt を入れて line 単位出力へ寄せる案は試す価値が低い。
+  - VisionLLM の強みである意味単位の再構成を崩しやすい
+  - モデル差分への耐性が低い
+  - geometry 側を merge 後に使う方が、既存 pipeline と整合する
 
 ## 5. 提案アーキテクチャ
 ### 5.1 基本方針
@@ -38,15 +43,16 @@
 ### 5.2 データフロー
 1. 同じ Bitmap に対して geometry OCR を実行する。
 2. 同じ Bitmap に対して VisionLLM OCR を実行する。
-3. geometry OCR から `geometryLines(text, bbox, confidence, order)` を得る。
+3. geometry OCR の raw line に既存の line merge / grouping を適用し、`groupedGeometryLines(text, bbox, confidence, order)` を得る。
 4. VisionLLM OCR から `visionLines(text, order)` を得る。
-5. 両者を行単位でアラインし、`visionText -> geometryBbox` の対応表を作る。
-6. 最終出力 `hybridLines(text=visionText, bbox=geometryBbox)` を組み立てる。
+5. `visionLines` と `groupedGeometryLines` をアラインし、`visionText -> groupedGeometryBbox` の対応表を作る。
+6. 最終出力 `hybridLines(text=visionText, bbox=groupedGeometryBbox)` を組み立てる。
 7. 対応不能な Vision 行は synthetic bbox fallback を使う。
 
 ### 5.3 既存パターンとの整合
-- 既存 pipeline は `OCR -> grouping -> diff -> translate -> overlay` なので、追加位置は OCR 直後が自然。
-- 実装位置は `OcrEngine` 内ではなく、OCR 後に両結果を受けて統合する専用 stage / service がよい。
+- 既存 pipeline は `OCR -> grouping -> diff -> translate -> overlay` なので、hybrid 判定は grouping 後へ寄せる方が自然。
+- 実装位置は `OcrEngine` 内よりも `OcrAndGroupStage` 以降が適切である。
+- geometry 側だけ既存 `_lineGrouper.MergeLines(...)` を通し、その結果を Vision text と対応付ける。
 
 ## 6. インターフェース設計
 ### 6.1 新規モデル
@@ -64,7 +70,7 @@
 
 ### 6.2 新規サービス候補
 - `VisionGeometryHybridAligner`
-  - 入力: `IReadOnlyList<OcrLine> geometryLines`, `IReadOnlyList<OcrLine> visionLines`, `int imageWidth`, `int imageHeight`
+  - 入力: `IReadOnlyList<OcrLine> groupedGeometryLines`, `IReadOnlyList<OcrLine> visionLines`, `int imageWidth`, `int imageHeight`
   - 出力: `HybridOcrAlignmentResult`
 
 ### 6.3 設定候補
@@ -107,6 +113,7 @@
 ### 8.1 基本原則
 - 最終表示テキストは常に VisionLLM を優先する。
 - geometry OCR text は bbox 割当の参考にのみ使う。
+- geometry 側は raw line ではなく merge 後の grouped line を基本単位にする。
 
 ### 8.2 スコア要素
 - Reading order の近さ
@@ -124,7 +131,7 @@
 
 ### 8.4 マッチ方式
 - 初期実装は greedy matching で十分。
-- `visionLine[i]` に対して、近傍の `geometryLine[j]` 候補の中で最高スコアを採用する。
+- `visionLine[i]` に対して、近傍の `groupedGeometryLine[j]` 候補の中で最高スコアを採用する。
 - 閾値未満なら未対応として synthetic fallback へ回す。
 
 ### 8.5 geometry text の役割
@@ -155,16 +162,20 @@
 ### Step 1: 実験経路
 - `settings.json` に `EnableVisionGeometryHybridOcr=false` と `VisionGeometryHybridBaseEngine=WinRt` を追加する。
 - `VisionGeometryHybridAligner` を追加する。
+- VisionLLM 側の hybrid 専用 prompt 分岐は削除し、通常 OCR prompt を共通利用する。
 - `VisionLLM + WinRT` だけを対象に、手動 Run 時のみ有効化する。
+- geometry 側は merge 後の grouped line を hybrid 判定へ渡す。
 - ログで matched / unmatched / synthetic count を確認できるようにする。
 
 ### Step 2: NDL 対応
 - geometry source に NDL を追加する。
 - NDL の bbox 特性に合わせて matching score の重みを微調整する。
+- NDL 側も raw line ではなく grouped line を入力にする。
 
 ### Step 3: Paddle 対応
 - geometry source に Paddle を追加する。
-- 行分割の差を吸収するため bbox 結合ルールを追加する。
+- Paddle 側も grouped line を hybrid 入力に使う。
+- Paddle の merge profile 差分が大きい場合だけ追加調整する。
 
 ### Step 4: UI / 設定
 - hybrid mode の ON/OFF
@@ -174,6 +185,7 @@
 ## 11. 非機能要件チェック
 ### 性能
 - OCR を 2 系統走らせるためコストは増える。
+- geometry 側を merge 後に使うことで、matching 候補数を減らしやすい。
 - 初期段階は manual run 中心で導入し、常時監視系にはすぐ乗せない。
 
 ### 可観測性
@@ -187,17 +199,20 @@
 ## 12. リスクと緩和策
 - Risk: reading order が崩れる画面で誤対応する。
 - Mitigation: score 閾値を厳しめにし、合わない場合は synthetic fallback に倒す。
+- Risk: VisionLLM の行粒度が geometry grouped line よりまだ粗すぎる場合、1 対多対応が残る。
+- Mitigation: まずは grouped line 単位で対応し、必要なら将来 multi-match / cluster attach を追加する。
 - Risk: geometry OCR の誤認識に text matching が引っ張られる。
 - Mitigation: text similarity の重みを中程度に抑え、reading order と line size を優先する。
 - Risk: OCR コストが重くなる。
 - Mitigation: 初期段階は VisionLLM + 1 geometry engine だけに限定し、手動実行中心で評価する。
 - Risk: host 排他の既存ポリシーと hybrid helper 起動が衝突する。
 - Mitigation: 主 OCR 排他と geometry helper 例外を分け、helper として許可する engine を `WinRt`, `Ndl`, `Paddle` に限定する。
+- Risk: hybrid 専用 prompt 分岐を持つとモデル更新時に維持コストが増える。
+- Mitigation: hybrid 用 prompt パイプラインは持たず、geometry 側の merge 後粒度で吸収する。
 
 ## 13. 影響範囲
-- `Services/OcrEngine.cs`
 - `Services/Orchestration/Stages/OcrAndGroupStage.cs` または新規 hybrid stage
-- `Services/VisionLlmGrpcOcrProvider.cs`
+- `Services/OcrEngine.cs`（geometry helper 呼び出しのみに縮小する可能性あり）
 - `Models/AppSettings.cs`
 - `ViewModels/SettingsViewModel.cs`
 - `MainWindow.xaml` / `MainWindow.xaml.cs`

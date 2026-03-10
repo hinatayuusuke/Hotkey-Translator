@@ -14,7 +14,6 @@ public sealed class OcrEngine : IDisposable
     private readonly IOcrProvider _paddleVlProvider;
     private readonly IOcrProvider _ndlProvider;
     private readonly IOcrProvider _visionLlmProvider;
-    private readonly VisionGeometryHybridAligner _visionGeometryHybridAligner;
     private readonly AppLogger? _logger;
 
     public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
@@ -25,7 +24,6 @@ public sealed class OcrEngine : IDisposable
         _paddleVlProvider = new PaddleVlGrpcOcrProvider(logger);
         _ndlProvider = new NdlGrpcOcrProvider(logger);
         _visionLlmProvider = new VisionLlmGrpcOcrProvider(logger);
-        _visionGeometryHybridAligner = new VisionGeometryHybridAligner(logger);
     }
 
     public async Task<OcrResultModel> RecognizeAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
@@ -84,45 +82,7 @@ public sealed class OcrEngine : IDisposable
         {
             try
             {
-                _logger?.Info("OCR engine: VisionLLM.");
-                var visionResult = await _visionLlmProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
-                if (!settings.EnableVisionGeometryHybridOcr)
-                {
-                    return visionResult;
-                }
-
-                try
-                {
-                    var geometryResult = await RecognizeVisionGeometryAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
-                    if (geometryResult is null)
-                    {
-                        _logger?.Info("stage=vision_geometry_hybrid event=geometry_skip reason=not_configured.");
-                        return visionResult;
-                    }
-
-                    var aligned = _visionGeometryHybridAligner.Align(
-                        geometryResult.Lines,
-                        visionResult.Lines,
-                        bitmap.Width,
-                        bitmap.Height,
-                        settings);
-                    if (aligned.Lines.Count > 0)
-                    {
-                        return new OcrResultModel(aligned.Lines, bitmap.Width, bitmap.Height);
-                    }
-
-                    _logger?.Info("stage=vision_geometry_hybrid event=fallback reason=no_output.");
-                    return geometryResult.Lines.Count > 0 ? geometryResult : visionResult;
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception geometryEx)
-                {
-                    _logger?.Error(geometryEx, "Vision geometry helper failed; using VisionLLM synthetic lines.");
-                    return visionResult;
-                }
+                return await RecognizeVisionTextAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -130,33 +90,11 @@ public sealed class OcrEngine : IDisposable
             }
             catch (Exception ex)
             {
-                try
-                {
-                    if (settings.EnableVisionGeometryHybridOcr)
-                    {
-                        var geometryResult = await RecognizeVisionGeometryAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
-                        if (geometryResult is not null && geometryResult.Lines.Count > 0)
-                        {
-                            _logger?.Error(ex, "VisionLLM OCR failed; using geometry OCR fallback.");
-                            return geometryResult;
-                        }
-                    }
-                }
-                catch (OperationCanceledException)
-                {
-                    throw;
-                }
-                catch (Exception geometryEx)
-                {
-                    _logger?.Error(geometryEx, "Geometry fallback after VisionLLM failure also failed.");
-                }
-
                 _logger?.Error(ex, "VisionLLM OCR failed; falling back to WinRT.");
             }
         }
 
-        _logger?.Info("OCR engine: WinRT.");
-        return await _winRtProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+        return await RecognizeWinRtAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
     }
 
     public void Dispose()
@@ -182,7 +120,19 @@ public sealed class OcrEngine : IDisposable
         }
     }
 
-    private async Task<OcrResultModel?> RecognizeVisionGeometryAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
+    public async Task<OcrResultModel> RecognizeVisionTextAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
+    {
+        _logger?.Info("OCR engine: VisionLLM.");
+        return await _visionLlmProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<OcrResultModel> RecognizeWinRtAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
+    {
+        _logger?.Info("OCR engine: WinRT.");
+        return await _winRtProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task<OcrResultModel?> RecognizeVisionGeometryAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
     {
         var provider = ResolveVisionGeometryProvider(settings);
         if (provider is null)

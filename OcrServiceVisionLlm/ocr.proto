@@ -20,7 +20,6 @@ message OcrRequest {
   string language = 2;
   string text_detection_model_name = 3;
   string text_recognition_model_name = 4;
-  bool preserve_visual_lines = 5;
 }
 
 message OcrResponse {

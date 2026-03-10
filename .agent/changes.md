@@ -18402,3 +18402,103 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `python -m compileall OcrServiceVisionLlm\test_vision_llama_engine.py`
+**2026-03-10 14:00 (Asia/Taipei) — VisionLLM hybrid 方針を merge 後判定へ更新**
+
+### Summary
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` を、VisionLLM hybrid を line merge 後の geometry 判定へ寄せる方針に更新した。
+
+### Context / Goal
+- VisionLLM は特性上、語意をつなげて 1 行化する傾向が強く、hybrid 用 prompt で物理行へ矯正するのは不安定。
+- geometry 側の merge 後粒度に合わせて hybrid 判定する方が、既存 pipeline と整合するため、方針を明文化したい。
+
+### Changes
+- 前提・現状整理に、VisionLLM の 1 行化傾向と hybrid prompt 分岐を採らない理由を追記した。
+- データフローを `geometry OCR -> line merge -> Vision text とアライン` に更新した。
+- 実装位置を `OcrEngine` 直後ではなく `OcrAndGroupStage` 以降へ寄せる方針に更新した。
+- 実装手順・性能・リスク節を、merge 後判定前提に合わせて整合させた。
+
+### Files Touched
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` — merge 後判定と hybrid prompt 削除方針へ更新。
+
+### Behavioral Impact
+- 実行挙動は未変更。設計方針ドキュメントのみ更新。
+
+### Risk & Mitigation
+- Risk: 現行実装がドキュメント方針と一時的にズレる。
+- Mitigation: 今後の実装修正は `groupedGeometryLines` 基準に寄せ、prompt 分岐は削減する前提を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+**2026-03-10 14:02 (Asia/Taipei) — VisionLLM hybrid の移行計画書を追加**
+
+### Summary
+- 現実装から `merge 後判定` 方針へ移すための段階移行案を `Doc\VisionLlm_TextMain_GeometryAssist_Migration_Plan.md` に追加した。
+
+### Context / Goal
+- 現実装は `OcrEngine` 内で raw line 同士を hybrid 合成しているが、VisionLLM の 1 行化傾向と整合しにくい。
+- `groupedGeometryLines` 基準へ安全に移行するため、責務移動・ロールバック・削除順を整理したい。
+
+### Changes
+- 現実装の課題、移行後アーキテクチャ、ステップ分割、ロールバック方針を文書化した。
+- `OcrEngine` 側合成から `OcrAndGroupStage` 側合成へ移す順序を定義した。
+- hybrid 専用 prompt 分岐と proto フラグを最終的に撤去する手順を明記した。
+
+### Files Touched
+- `Doc\VisionLlm_TextMain_GeometryAssist_Migration_Plan.md` — 現実装から merge 後判定へ移るための段階移行計画を新規追加。
+
+### Behavioral Impact
+- 実行挙動は未変更。移行計画ドキュメントのみ追加。
+
+### Risk & Mitigation
+- Risk: 実装と移行計画の間に一時的な差分が残る。
+- Mitigation: Step ごとに責務移動と削除順を固定し、ロールバック点を先に明示した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+**2026-03-10 14:36 (Asia/Taipei) — VisionLLM hybrid を merge 後判定へ移行**
+
+### Summary
+- VisionLLM hybrid の責務を `OcrEngine` から `OcrAndGroupStage` へ移し、geometry helper を merge 後にアラインする形へ変更した。
+
+### Context / Goal
+- 現実装は `VisionLLM` と geometry helper の raw line を `OcrEngine` 内で直接合成しており、VisionLLM の意味単位結合と噛み合いにくかった。
+- `Doc\VisionLlm_TextMain_GeometryAssist_Migration_Plan.md` に沿って、判定場所を `groupedGeometryLines` 基準へ移し、hybrid 専用 prompt 分岐も撤去したかった。
+
+### Changes
+- `OcrEngine` から hybrid 合成を削除し、Vision text / WinRT / geometry helper 呼び出しを stage から再利用できる形に分離した。
+- `OcrPreprocessCoordinator` に Vision text / geometry helper / WinRT の単一 pass 実行経路を追加し、前処理と縮尺補正を共有した。
+- `OcrAndGroupStage` に `VisionGeometryHybridAligner` を持たせ、geometry helper 側を `_lineGrouper.MergeLines(...)` 後に Vision text へ対応付けるように変更した。
+- helper が `Paddle` のときも engine-scaled merge profile を正しく使えるよう、`OcrLineGrouper.MergeLines(...)` に effective engine override を追加した。
+- Vision primary 失敗時の fallback は stage 側に移し、geometry helper fallback、その後 WinRT fallback の順に整理した。
+- `preserve_visual_lines` の proto / client / server / test / Python prompt 分岐を削除し、VisionLLM OCR prompt を通常系へ一本化した。
+
+### Files Touched
+- `Services\OcrEngine.cs` — VisionLLM branch を text-only に戻し、WinRT / Vision text / geometry helper 呼び出しを公開メソッドへ分離。
+- `Services\OcrPreprocessCoordinator.cs` — Vision text / geometry helper / WinRT 向けの単一 pass 実行ヘルパーを追加。
+- `Services\OcrLineGrouper.cs` — merge 計算に effective engine override を受け取れるよう拡張。
+- `Services\Orchestration\Stages\OcrAndGroupStage.cs` — hybrid 合成を merge 後判定へ移し、fallback も stage 側へ集約。
+- `Services\PipelineOrchestrator.cs` — stage へ logger を渡すよう更新。
+- `Services\SceneTextSnapshotService.cs` — stage へ logger を渡すよう更新。
+- `Services\VisionLlmGrpcOcrProvider.cs` — hybrid 専用 gRPC フラグ送信を削除。
+- `OcrServiceVisionLlm\vision_llama_engine.py` — hybrid 専用 prompt と `preserve_visual_lines` 経路を削除。
+- `OcrServiceVisionLlm\server.py` — OCR request の `preserve_visual_lines` 依存を削除。
+- `OcrServiceVisionLlm\test_vision_llama_engine.py` — hybrid 専用 CLI フラグと summary 項目を削除。
+- `OcrServiceVisionLlm\ocr.proto` — `preserve_visual_lines` を削除。
+- `Protos\OcrGrpc.proto` — C# 側 proto からも `preserve_visual_lines` を削除。
+
+### Behavioral Impact
+- VisionLLM hybrid は raw line ではなく `groupedGeometryLines` 基準で bbox を借りるようになった。
+- VisionLLM OCR prompt は text-only 系に一本化され、hybrid 有無で Vision 出力を変えなくなった。
+- Vision primary 失敗時は `geometry helper -> WinRT` の順で stage 側 fallback を試す。
+
+### Risk & Mitigation
+- Risk: stage 側の責務が増え、Vision fallback と geometry input dispose の不整合が起きる可能性がある。
+- Mitigation: geometry helper input は stage 内で明示 dispose し、`dotnet build` でコンパイル確認した。
+- Risk: helper engine override によって merge profile が想定とズレる可能性がある。
+- Mitigation: `OcrLineGrouper` に engine override を明示追加し、Paddle helper 時だけ既存 engine-scaled profile を適用する形にした。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- `uv run server.py --help` in `OcrServiceVisionLlm`
+- `uv run test_vision_llama_engine.py --help` in `OcrServiceVisionLlm`
+- `python -m compileall .` in `OcrServiceVisionLlm`

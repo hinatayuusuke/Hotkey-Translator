@@ -79,11 +79,7 @@ class OcrService(ocr_pb2_grpc.OcrServiceServicer):
 
         try:
             start = time.monotonic()
-            text = self._engine.recognize(
-                bytes(request.image),
-                request.language,
-                preserve_visual_lines=bool(request.preserve_visual_lines),
-            )
+            text = self._engine.recognize(bytes(request.image), request.language)
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logging.info("stage=ocr_grpc host=vision_llm event=completed latency_ms=%s chars=%s", elapsed_ms, len(text))
             return ocr_pb2.OcrResponse(json=json.dumps({"text": text}, ensure_ascii=False))

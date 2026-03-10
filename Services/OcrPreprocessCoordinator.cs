@@ -44,6 +44,39 @@ public sealed class OcrPreprocessCoordinator
         return await RunSinglePassAsync(roiBitmap, settings, cancellationToken).ConfigureAwait(false);
     }
 
+    public async Task<OcrPassResult> RunVisionTextAsync(Bitmap roiBitmap, AppSettings settings, CancellationToken cancellationToken)
+    {
+        return await RunSinglePassOverrideAsync(
+                "Single",
+                roiBitmap,
+                settings,
+                (input, activeSettings, token) => _ocrEngine.RecognizeVisionTextAsync(input, activeSettings, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<OcrPassResult?> RunVisionGeometryAsync(Bitmap roiBitmap, AppSettings settings, CancellationToken cancellationToken)
+    {
+        return await RunSinglePassOptionalOverrideAsync(
+                "Single",
+                roiBitmap,
+                settings,
+                (input, activeSettings, token) => _ocrEngine.RecognizeVisionGeometryAsync(input, activeSettings, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<OcrPassResult> RunWinRtAsync(Bitmap roiBitmap, AppSettings settings, CancellationToken cancellationToken)
+    {
+        return await RunSinglePassOverrideAsync(
+                "Single",
+                roiBitmap,
+                settings,
+                (input, activeSettings, token) => _ocrEngine.RecognizeWinRtAsync(input, activeSettings, token),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     private async Task<OcrPassResult> RunSinglePassAsync(
         Bitmap roiBitmap,
         AppSettings settings,
@@ -52,6 +85,72 @@ public sealed class OcrPreprocessCoordinator
         var inputState = PrepareOcrInput(roiBitmap, settings);
         var pass = await RunOcrPassAsync("Single", inputState, roiBitmap.Width, roiBitmap.Height, settings, null, null, cancellationToken)
             .ConfigureAwait(false);
+
+        if (inputState.ShouldDispose && !ReferenceEquals(pass.Input, inputState.Bitmap))
+        {
+            inputState.Bitmap.Dispose();
+        }
+
+        return pass;
+    }
+
+    private async Task<OcrPassResult> RunSinglePassOverrideAsync(
+        string label,
+        Bitmap roiBitmap,
+        AppSettings settings,
+        Func<Bitmap, AppSettings, CancellationToken, Task<OcrResultModel>> recognizeAsync,
+        CancellationToken cancellationToken)
+    {
+        var inputState = PrepareOcrInput(roiBitmap, settings);
+        var pass = await RunOcrPassOverrideAsync(
+                label,
+                inputState,
+                roiBitmap.Width,
+                roiBitmap.Height,
+                settings,
+                null,
+                null,
+                recognizeAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (inputState.ShouldDispose && !ReferenceEquals(pass.Input, inputState.Bitmap))
+        {
+            inputState.Bitmap.Dispose();
+        }
+
+        return pass;
+    }
+
+    private async Task<OcrPassResult?> RunSinglePassOptionalOverrideAsync(
+        string label,
+        Bitmap roiBitmap,
+        AppSettings settings,
+        Func<Bitmap, AppSettings, CancellationToken, Task<OcrResultModel?>> recognizeAsync,
+        CancellationToken cancellationToken)
+    {
+        var inputState = PrepareOcrInput(roiBitmap, settings);
+        var pass = await RunOcrPassOptionalOverrideAsync(
+                label,
+                inputState,
+                roiBitmap.Width,
+                roiBitmap.Height,
+                settings,
+                null,
+                null,
+                recognizeAsync,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        if (pass is null)
+        {
+            if (inputState.ShouldDispose)
+            {
+                inputState.Bitmap.Dispose();
+            }
+
+            return null;
+        }
 
         if (inputState.ShouldDispose && !ReferenceEquals(pass.Input, inputState.Bitmap))
         {
@@ -147,6 +246,73 @@ public sealed class OcrPreprocessCoordinator
         var ocrStopwatch = Stopwatch.StartNew();
         var result = await _ocrEngine.RecognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
         ocrStopwatch.Stop();
+
+        result = ScaleOcrResult(result, originalWidth, originalHeight, inputState.ScaleX, inputState.ScaleY);
+        var stats = _scorer.GetStats(result);
+        _logger?.Info($"OCR pass {label}: threshold={threshold} auto={useAutoThreshold} " +
+                      $"lines={stats.LineCount}, chars={stats.CharCount}, symbols={stats.SymbolCount}, " +
+                      $"preprocess={preprocessStopwatch.ElapsedMilliseconds} ms, ocr={ocrStopwatch.ElapsedMilliseconds} ms.");
+
+        return new OcrPassResult(label, result, input, stats);
+    }
+
+    private async Task<OcrPassResult> RunOcrPassOverrideAsync(
+        string label,
+        OcrInputState inputState,
+        int originalWidth,
+        int originalHeight,
+        AppSettings settings,
+        int? threshold,
+        bool? useAutoThreshold,
+        Func<Bitmap, AppSettings, CancellationToken, Task<OcrResultModel>> recognizeAsync,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var preprocessStopwatch = Stopwatch.StartNew();
+        var input = _preprocessService.Apply(inputState.Bitmap, settings, threshold, useAutoThreshold);
+        preprocessStopwatch.Stop();
+
+        var ocrStopwatch = Stopwatch.StartNew();
+        var result = await recognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
+        ocrStopwatch.Stop();
+
+        result = ScaleOcrResult(result, originalWidth, originalHeight, inputState.ScaleX, inputState.ScaleY);
+        var stats = _scorer.GetStats(result);
+        _logger?.Info($"OCR pass {label}: threshold={threshold} auto={useAutoThreshold} " +
+                      $"lines={stats.LineCount}, chars={stats.CharCount}, symbols={stats.SymbolCount}, " +
+                      $"preprocess={preprocessStopwatch.ElapsedMilliseconds} ms, ocr={ocrStopwatch.ElapsedMilliseconds} ms.");
+
+        return new OcrPassResult(label, result, input, stats);
+    }
+
+    private async Task<OcrPassResult?> RunOcrPassOptionalOverrideAsync(
+        string label,
+        OcrInputState inputState,
+        int originalWidth,
+        int originalHeight,
+        AppSettings settings,
+        int? threshold,
+        bool? useAutoThreshold,
+        Func<Bitmap, AppSettings, CancellationToken, Task<OcrResultModel?>> recognizeAsync,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var preprocessStopwatch = Stopwatch.StartNew();
+        var input = _preprocessService.Apply(inputState.Bitmap, settings, threshold, useAutoThreshold);
+        preprocessStopwatch.Stop();
+
+        var ocrStopwatch = Stopwatch.StartNew();
+        var result = await recognizeAsync(input, settings, cancellationToken).ConfigureAwait(false);
+        ocrStopwatch.Stop();
+        if (result is null)
+        {
+            if (!ReferenceEquals(input, inputState.Bitmap))
+            {
+                input.Dispose();
+            }
+
+            return null;
+        }
 
         result = ScaleOcrResult(result, originalWidth, originalHeight, inputState.ScaleX, inputState.ScaleY);
         var stats = _scorer.GetStats(result);

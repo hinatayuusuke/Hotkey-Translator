@@ -46,7 +46,7 @@ public sealed class SceneTextSnapshotService
             new OcrCandidateScorer(),
             logger);
         _lineGrouper = lineGrouper;
-        _ocrAndGroupStage = new OcrAndGroupStage(_ocrPreprocessCoordinator, _lineGrouper, _readingUnitBuilder);
+        _ocrAndGroupStage = new OcrAndGroupStage(_ocrPreprocessCoordinator, _lineGrouper, _readingUnitBuilder, logger);
         _logger = logger;
     }
 

@@ -90,14 +90,14 @@ public sealed class OcrLineGrouper
         _logger = logger;
     }
 
-    public IReadOnlyList<OcrLine> MergeLines(IReadOnlyList<OcrLine> lines, AppSettings settings)
+    public IReadOnlyList<OcrLine> MergeLines(IReadOnlyList<OcrLine> lines, AppSettings settings, OcrEngineKind? effectiveEngineOverride = null)
     {
         if (!settings.EnableLineMerge || lines.Count <= 1)
         {
             return lines;
         }
 
-        var thresholds = ResolveEffectiveThresholds(settings);
+        var thresholds = ResolveEffectiveThresholds(settings, effectiveEngineOverride);
         LogEffectiveThresholdsIfChanged(thresholds, settings);
         LogSimpleMergeTuningIfChanged(thresholds, settings);
 
@@ -846,9 +846,9 @@ public sealed class OcrLineGrouper
         return Math.Max(0.0, Math.Min(1.0, value));
     }
 
-    private EffectiveMergeThresholds ResolveEffectiveThresholds(AppSettings settings)
+    private EffectiveMergeThresholds ResolveEffectiveThresholds(AppSettings settings, OcrEngineKind? effectiveEngineOverride = null)
     {
-        var engineKind = settings.OcrEngine;
+        var engineKind = effectiveEngineOverride ?? settings.OcrEngine;
         var applyPaddleScale = settings.EnableEngineScaledLineMergeProfile &&
                                engineKind == OcrEngineKind.Paddle;
 
