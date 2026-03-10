@@ -18172,3 +18172,117 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py OcrServiceVisionLlm\chinese_script_postprocess.py` 実行成功。
+**2026-03-10 11:27 (Asia/Taipei) — VisionLLM text-main / geometry-assist 方針書を追加**
+
+### Summary
+- VisionLLM を文字認識の正本、他 OCR を geometry 補助とするハイブリッド OCR の実装方針書を `Doc\` に新規追加した。
+
+### Context / Goal
+- VisionLLM の text 精度を主に使いつつ、WinRT / NDL / Paddle の bbox を使って既存 overlay へ自然に載せる構成を整理したい。
+- 単純な text 置換ではなく、`Vision text -> geometry projection` を前提にした段階実装方針を明文化する。
+
+### Changes
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` を新規作成した。
+- text source / geometry source の役割分離、matching strategy、fallback、段階実装手順、影響範囲、DoD を記述した。
+
+### Files Touched
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` — VisionLLM text-main / geometry-assist hybrid OCR の実装方針を新規追加。
+
+### Behavioral Impact
+- 実行挙動は未変更。設計方針ドキュメントのみ追加。
+
+### Risk & Mitigation
+- Risk: 方針段階のため、実装時に一部の前提が変わる可能性。
+- Mitigation: 初期段階を WinRT geometry 限定の小さな実験経路として切り、評価しながら NDL/Paddle へ拡張する方針を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+**2026-03-10 11:53 (Asia/Taipei) — VisionLLM geometry-assist 方針書へ synthetic fallback 配置方針を追記**
+
+### Summary
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` に synthetic fallback の表示位置方針を追記した。
+
+### Context / Goal
+- VisionLLM text-main / geometry-assist 方針で、bbox 不足時に synthetic fallback をどこへ表示するかの考え方を明文化したい。
+- 全幅 strip を常用せず、近傍 geometry 文脈へ寄せる優先順位を整理する。
+
+### Changes
+- fallback 章に `synthetic fallback の表示位置` 節を追加した。
+- 配置優先順位として、前後 bbox 補間 -> 近傍 cluster 吸着 -> ROI 下寄せ -> full-width strip を定義した。
+- 単一 unmatched 行と連続 unmatched 行で配置基準を分ける方針を追記した。
+
+### Files Touched
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` — synthetic fallback の配置優先順位と運用方針を追記。
+
+### Behavioral Impact
+- 実行挙動は未変更。設計方針ドキュメントのみ更新。
+
+### Risk & Mitigation
+- Risk: 実装時に cluster 定義や補間ルールの詳細が変わる可能性。
+- Mitigation: 段階実装前提で、まずは優先順位と fallback の基本原則だけを固定した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+**2026-03-10 12:03 (Asia/Taipei) — VisionLLM hybrid 方針書へ排他方針と settings.json 先行導入方針を反映**
+
+### Summary
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` に、settings.json 先行導入方針と主 OCR / geometry helper の排他方針を追記し、全文の整合性を取り直した。
+
+### Context / Goal
+- VisionLLM hybrid を settings.json 先行で導入し、将来 geometry source を選べる形にしたい。
+- 併せて、Paddle / PaddleVL / VisionLLM の排他と、NDL 共存、Vision helper 例外を設計方針として明文化したい。
+
+### Changes
+- `EnableVisionGeometryHybridOcr` と `VisionGeometryHybridBaseEngine` を settings.json 先行導入する方針を追記した。
+- `PaddleOCR`, `PaddleOCR-VL`, `VisionLLM` の主 OCR 排他と、`Paddle` / `NDL` 共存、Vision helper 例外を host / resident 方針として追記した。
+- 章番号を繰り下げ、fallback 節の Vision 失敗時戻り先も含めて全文の整合性を調整した。
+
+### Files Touched
+- `Doc\VisionLlm_TextMain_GeometryAssist_Implementation_Plan.md` — settings.json 先行導入、排他方針、resident / stop 方針を追記して全文を整理。
+
+### Behavioral Impact
+- 実行挙動は未変更。設計方針ドキュメントのみ更新。
+
+### Risk & Mitigation
+- Risk: 実装時に host 管理の詳細が変わる可能性。
+- Mitigation: 主 OCR 排他と geometry helper 例外を分けて記述し、許可範囲を `WinRt`, `Ndl`, `Paddle` に限定した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+**2026-03-10 12:23 (Asia/Taipei) — VisionLLM text-main / geometry-assist hybrid OCR を実装**
+
+### Summary
+- VisionLLM の文字列を主、WinRT / NDL / Paddle の bbox を補助に使う hybrid OCR 経路を実装した。
+
+### Context / Goal
+- VisionLLM の文字認識精度を活かしつつ、他 OCR の bbox を既存 overlay 経路へ載せたい。
+- settings.json だけで切り替えられる最小実装として、host 管理と OCR アラインを先に入れる。
+
+### Changes
+- Vision hybrid 用 settings を追加した（有効フラグ、geometry base engine、match score、synthetic fallback）。
+- Vision helper として Paddle / NDL host を起動できるようにし、primary OCR の排他と helper 例外を分離した。
+- VisionGeometryHybridAligner を追加し、VisionLLM text と geometry OCR line を順序 + 類似度で greedy に対応付けるようにした。
+- VisionLLM OCR 実行時に hybrid が有効なら geometry OCR を追加実行し、失敗時は Vision synthetic または geometry 単独へ戻すフォールバックを入れた。
+
+### Files Touched
+- Models/AppSettings.cs — Vision hybrid OCR 用 settings を追加。
+- Models/VisionGeometryHybridBaseEngineKind.cs — geometry helper engine の永続 enum を追加。
+- Services/Settings/SettingsHostNormalizer.cs — Vision hybrid settings の正規化を追加。
+- Services/Application/ResourceHostFacade.cs — Paddle / NDL helper 起動と resident 判定、Vision との stop 条件を調整。
+- Services/OcrEngine.cs — VisionLLM + geometry helper の実行経路と fallback を追加。
+- Services/VisionGeometryHybridAligner.cs — text-main / geometry-assist の行対応付けと synthetic bbox 補間を実装。
+
+### Behavioral Impact
+- settings.json で EnableVisionGeometryHybridOcr=true にすると、OcrEngine=VisionLlm 時に geometry helper OCR を併用する。
+- VisionGeometryHybridBaseEngine=Paddle|Ndl のときは、その host が VisionLLM の補助として同時常駐しうる。
+- hybrid 無効時の既存 VisionLLM text-only 挙動は維持される。
+
+### Risk & Mitigation
+- Risk: 行対応付けが崩れる画面で誤った bbox へ載る可能性がある。
+- Mitigation: match score 閾値を settings 化し、閾値未満は synthetic fallback に倒す。
+- Risk: helper host と primary OCR の排他が再度壊れる可能性がある。
+- Mitigation: stop_unused と ShouldLoad*Resident を helper 例外前提で揃え、PaddleVL だけは引き続き排他にした。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\ でビルド成功。
+- 通常の dotnet build Hotkey-Translator.csproj は実行中の Hotkey-Translator.exe により in\Debug がロックされ失敗することを確認。

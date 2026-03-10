@@ -188,6 +188,10 @@ public sealed class AppSettings
     public string VisionLlmSelectedMmprojFileName { get; set; } = "4Bmmproj-F16.gguf";
     public int VisionLlmMaxImageSide { get; set; } = 768;
     public bool EnableVisionLlmSharedLocalTranslation { get; set; } = true;
+    public bool EnableVisionGeometryHybridOcr { get; set; } = false;
+    public VisionGeometryHybridBaseEngineKind VisionGeometryHybridBaseEngine { get; set; } = VisionGeometryHybridBaseEngineKind.WinRt;
+    public double VisionGeometryMatchMinScore { get; set; } = 0.45;
+    public bool VisionGeometryAllowSyntheticFallback { get; set; } = true;
     public bool EnableVisionLlmDiagFileLog { get; set; } = false;
     public string VisionLlmDiagLogPath { get; set; } = string.Empty;
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";

@@ -103,6 +103,17 @@ internal static class SettingsHostNormalizer
             NormalizeVisionLlmMmprojFileName(settings.VisionLlmSelectedMmprojFileName),
             settings.VisionLlmSelectedMmprojFileName,
             value => settings.VisionLlmSelectedMmprojFileName = value);
+        var hybridBaseEngine = Enum.IsDefined(typeof(VisionGeometryHybridBaseEngineKind), settings.VisionGeometryHybridBaseEngine)
+            ? settings.VisionGeometryHybridBaseEngine
+            : VisionGeometryHybridBaseEngineKind.WinRt;
+        changed |= SetIfDifferent(
+            hybridBaseEngine,
+            settings.VisionGeometryHybridBaseEngine,
+            value => settings.VisionGeometryHybridBaseEngine = value);
+        changed |= SetIfDifferent(
+            Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0),
+            settings.VisionGeometryMatchMinScore,
+            value => settings.VisionGeometryMatchMinScore = value);
         return changed;
     }
 

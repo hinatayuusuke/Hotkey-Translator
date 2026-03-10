@@ -146,8 +146,9 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
                 FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.",
-                // WHY: Allow Paddle + NDL to coexist (hot-switch ready). Keep PaddleVL and VisionLLM exclusive.
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl, HostIdVisionLlm }
+                // WHY: stop_unused handles Paddle <-> Vision primary exclusivity so Paddle can stay available
+                // as a geometry helper when VisionLLM hybrid OCR is enabled.
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
             },
             new()
             {
@@ -187,7 +188,9 @@ internal sealed class ResourceHostFacade : IDisposable
                 DisableOnFailure = DisableVisionLlmOcr,
                 FailureLogMessage = "VisionLLM gRPC host failed to start.",
                 FailureUserMessage = "Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdPaddleVl }
+                // WHY: stop_unused handles primary OCR exclusivity so VisionLLM can coexist with Paddle/NDL
+                // only when they are explicitly used as geometry helpers.
+                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
             },
             new()
             {
@@ -213,7 +216,8 @@ internal sealed class ResourceHostFacade : IDisposable
     private bool ShouldLoadPaddle(AppSettings settings)
     {
         var host = _featureSettingsProvider.GetHost(settings);
-        return host.OcrEngine == OcrEngineKind.Paddle && host.EnablePaddleGrpcHost;
+        return host.EnablePaddleGrpcHost &&
+               (host.OcrEngine == OcrEngineKind.Paddle || ShouldUsePaddleAsVisionGeometryHelper(settings));
     }
 
     private bool ShouldLoadPaddleVl(AppSettings settings)
@@ -225,7 +229,8 @@ internal sealed class ResourceHostFacade : IDisposable
     private bool ShouldLoadNdl(AppSettings settings)
     {
         var host = _featureSettingsProvider.GetHost(settings);
-        return host.OcrEngine == OcrEngineKind.Ndl && host.EnableNdlGrpcHost;
+        return host.EnableNdlGrpcHost &&
+               (host.OcrEngine == OcrEngineKind.Ndl || ShouldUseNdlAsVisionGeometryHelper(settings));
     }
 
     private bool ShouldLoadVisionLlm(AppSettings settings)
@@ -317,7 +322,8 @@ internal sealed class ResourceHostFacade : IDisposable
         // keeps both hosts resident. VisionLLM and PaddleOCR-VL stay exclusive because they carry
         // their own heavier pipelines.
         return settings.EnablePaddleGrpcHost &&
-               settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl;
+               (settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl ||
+                ShouldUsePaddleAsVisionGeometryHelper(settings));
     }
 
     private static bool ShouldKeepPaddleVlResident(AppSettings settings)
@@ -329,7 +335,8 @@ internal sealed class ResourceHostFacade : IDisposable
     private static bool ShouldKeepNdlResident(AppSettings settings)
     {
         return settings.EnableNdlGrpcHost &&
-               settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl;
+               (settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl ||
+                ShouldUseNdlAsVisionGeometryHelper(settings));
     }
 
     private static bool ShouldKeepVisionLlmResident(AppSettings settings)
@@ -348,6 +355,22 @@ internal sealed class ResourceHostFacade : IDisposable
         // switches because it is no longer competing with the pure-translation llama host for VRAM.
         return !settings.EnableLlamaCppTranslation &&
                settings.OcrEngine is OcrEngineKind.WinRt or OcrEngineKind.Ndl;
+    }
+
+    private static bool ShouldUsePaddleAsVisionGeometryHelper(AppSettings settings)
+    {
+        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
+               settings.EnableVisionLlmGrpcHost &&
+               settings.EnableVisionGeometryHybridOcr &&
+               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Paddle;
+    }
+
+    private static bool ShouldUseNdlAsVisionGeometryHelper(AppSettings settings)
+    {
+        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
+               settings.EnableVisionLlmGrpcHost &&
+               settings.EnableVisionGeometryHybridOcr &&
+               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Ndl;
     }
 
     private static bool ShouldStopLlamaAsUnused(AppSettings settings)
