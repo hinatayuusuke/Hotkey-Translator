@@ -116,7 +116,13 @@ public sealed class PipelineOrchestrator
         var preprocessCoordinator = new OcrPreprocessCoordinator(ocrEngine, ocrPreprocessService, new OcrCandidateScorer(), _logger);
         _ocrAndGroupStage = new OcrAndGroupStage(preprocessCoordinator, lineGrouper, new ReadingUnitBuilder(), _logger);
         _diffStage = new DiffStage(_ocrDiffService);
-        _translateStage = new TranslateStage(normalizationService, cacheRepository, cacheKeyBuilder, translationService, _logger);
+        _translateStage = new TranslateStage(
+            normalizationService,
+            new TranslationTextNormalizer(),
+            cacheRepository,
+            cacheKeyBuilder,
+            translationService,
+            _logger);
         _overlayPresenter = overlayPresenter;
         _overlayStage = new OverlayStage(_overlayPresenter);
         _settingsService = settingsService;

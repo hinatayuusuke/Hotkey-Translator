@@ -18623,3 +18623,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\\_agent_verify\\`
 
+**2026-03-10 17:08 (Asia/Taipei) — 翻訳送信前の共通 CJK 空白正規化を追加**
+
+### Summary
+- VisionLLM や hybrid synthetic の無駄な空白がローカル翻訳へそのまま流れないよう、翻訳送信直前に共通の CJK 空白正規化を追加した。
+
+### Context / Goal
+- WinRT OCR には CJK spacing fix がある一方、VisionLLM と TranslateStage には翻訳送信用の空白補正が無かった。
+- 表示 text は維持したまま、翻訳送信・cache・重複判定だけを CJK 向けに正規化したかった。
+
+### Changes
+- `TranslationTextNormalizer` を追加し、CJK-CJK / CJK-数字 / 数字-CJK の空白と句読点前の空白を翻訳送信前だけ除去するようにした。
+- `TranslateStage` で pending 作成、cache key、重複判定、last translation 再利用を正規化後 text 基準に変更した。
+- `PipelineOrchestrator` で `TranslateStage` に `TranslationTextNormalizer` を注入するようにした。
+
+### Files Touched
+- `Services\TranslationTextNormalizer.cs` — 翻訳送信用の共通 CJK 空白正規化ヘルパーを追加。
+- `Services\Orchestration\Stages\TranslateStage.cs` — 翻訳送信・cache・重複判定を正規化後 text 基準へ変更。
+- `Services\PipelineOrchestrator.cs` — `TranslateStage` へ `TranslationTextNormalizer` を渡すように変更。
+
+### Behavioral Impact
+- VisionLLM や hybrid synthetic の表示 text は変わらないが、翻訳 provider へ送る text から CJK 近傍の不要空白が落ちる。
+- 同一文でも空白揺れだけが違うケースは、翻訳 cache と重複判定で同一扱いされやすくなる。
+
+### Risk & Mitigation
+- Risk: CJK 混在 text の空白を落としすぎると本来必要な区切りが失われる可能性がある。
+- Mitigation: Latin-Latin の空白は維持し、CJK 近傍と句読点前だけを対象にした。
+- Risk: 既存 cache key と一致しなくなる可能性がある。
+- Mitigation: 変更は翻訳送信品質優先で、同一内容の空白揺れを統合する方向に限定した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+

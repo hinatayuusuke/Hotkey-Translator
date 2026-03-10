@@ -11,6 +11,7 @@ namespace Hotkey_Translator.Services.Orchestration.Stages;
 internal sealed class TranslateStage
 {
     private readonly NormalizationService _normalizationService;
+    private readonly TranslationTextNormalizer _translationTextNormalizer;
     private readonly CacheRepository _cacheRepository;
     private readonly CacheKeyBuilder _cacheKeyBuilder;
     private readonly TranslationFallbackService _translationService;
@@ -19,12 +20,14 @@ internal sealed class TranslateStage
 
     public TranslateStage(
         NormalizationService normalizationService,
+        TranslationTextNormalizer translationTextNormalizer,
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         TranslationFallbackService translationService,
         AppLogger logger)
     {
         _normalizationService = normalizationService;
+        _translationTextNormalizer = translationTextNormalizer;
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
         _translationService = translationService;
@@ -51,7 +54,8 @@ internal sealed class TranslateStage
 
         foreach (var unit in units)
         {
-            var normalized = _normalizationService.Normalize(unit.Text);
+            var translationSourceText = _translationTextNormalizer.NormalizeForTranslation(unit.Text, settings.SourceLanguage);
+            var normalized = _normalizationService.Normalize(translationSourceText);
             if (string.IsNullOrWhiteSpace(normalized))
             {
                 continue;
@@ -77,7 +81,7 @@ internal sealed class TranslateStage
 
             if (changedUnitIds.Contains(unit.Id) && pendingNormalized.Add(normalized))
             {
-                pending.Add(new PendingTranslation(unit.Id, unit.Text, normalized, key));
+                pending.Add(new PendingTranslation(unit.Id, translationSourceText, normalized, key));
             }
         }
 
@@ -120,7 +124,8 @@ internal sealed class TranslateStage
 
         foreach (var unit in units)
         {
-            var normalized = _normalizationService.Normalize(unit.Text);
+            var translationSourceText = _translationTextNormalizer.NormalizeForTranslation(unit.Text, settings.SourceLanguage);
+            var normalized = _normalizationService.Normalize(translationSourceText);
             if (_lastTranslations.TryGetValue(normalized, out var translated))
             {
                 translations[unit.Id] = translated;
