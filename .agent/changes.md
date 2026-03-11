@@ -19072,3 +19072,60 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `cmake -S Native -B Native/build_x86 -A Win32`
 - `cmake --build Native/build --config Debug --target HookAgentDx9`
 - `cmake --build Native/build_x86 --config Debug --target HookAgentDx9`
+**2026-03-11 14:37 (Asia/Taipei) — Llama previous-source context assist plan doc**
+
+### Summary
+- 前回原文 1 item を先頭に追加して Llama 翻訳の短文会話文脈を補う実装案を Doc に追加した。
+
+### Context / Goal
+- ローカル LlamaCpp 翻訳で、短い会話文は前後文脈不足により主語や口調がぶれやすい。
+- 前回原文だけを先頭 item として混ぜ、JSON 解析後はその翻訳を捨てる前提の実装案を整理したい。
+
+### Changes
+- 現行の `TranslateStage`, `TranslationFallbackService`, `LlamaGrpcTranslationProvider` の責務を確認した。
+- `Doc/Llama_PreviousSourceContextAssist_Plan.md` に feature flag、適用条件、cache key、実装手順を整理した。
+
+### Files Touched
+- `Doc/Llama_PreviousSourceContextAssist_Plan.md` — Llama previous-source context assist の実装案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 実装時に考慮すべき制約と段階導入方針を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 実装案だけでは parser/count mismatch や cache 汚染の対策が抜け落ちる可能性がある。
+- Mitigation: Doc 内で cache key 連動、JSON strict 無効、count mismatch fail fast を明示した。
+
+### Tests / Verification
+- `rg -n "lastTranslations|TranslateAsync\(|TranslationFallbackService|LlamaGrpcTranslationProvider|cache|SourceText" Services Models -g "!Doc/**"`
+- `Get-Content Services\Orchestration\Stages\TranslateStage.cs`
+- `Get-Content Services\TranslationFallbackService.cs`
+- `Get-Content Services\LlamaGrpcTranslationProvider.cs`
+**2026-03-11 14:47 (Asia/Taipei) — VisionLLM previous-source context assist doc revision**
+
+### Summary
+- 前回原文 context assist の実装案を通常 Llama ではなく VisionLLM translation path 専用の方針へ修正した。
+
+### Context / Goal
+- 既存の doc は `LlamaGrpcTranslationProvider` 前提だったが、実際に必要なのは VisionLLM translation path 側だった。
+- そのため対象経路、設定名、影響範囲、cache key 方針を VisionLLM 専用に揃えたい。
+
+### Changes
+- `Doc/Llama_PreviousSourceContextAssist_Plan.md` を VisionLLM translation path 専用前提に書き換えた。
+- 通常 Llama / DeepL / Gemini に影響しないこと、VisionLLM translation request builder/provider で prepend/strip を完結させることを明記した。
+- 全体を見直し、ゴール、前提、手順、影響範囲、Definition of Done の整合を取り直した。
+
+### Files Touched
+- `Doc/Llama_PreviousSourceContextAssist_Plan.md` — VisionLLM translation path 専用の context assist 設計に更新した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 実装対象が通常 Llama path ではなく VisionLLM translation path であることが明確になった。
+
+### Risk & Mitigation
+- Risk: 実際の VisionLLM translation 実装箇所と doc の責務境界がずれる可能性がある。
+- Mitigation: provider/request builder 側で prepend/strip を完結させる方針に寄せ、通常 Llama path 非影響を明示した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Llama_PreviousSourceContextAssist_Plan.md -Encoding UTF8`
+- 全章を見直し、対象経路・設定名・影響範囲・DoD の整合を確認
