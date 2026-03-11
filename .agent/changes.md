@@ -19158,3 +19158,86 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `Get-Content -Path '.\.agent\changes.md' -Tail 50 -Encoding UTF8`
 - `Get-Content -Path 'Services/Orchestration/Stages/OcrAndGroupStage.cs' -TotalCount 260`
 - `Get-Content -Path 'Services/VisionGeometryHybridAligner.cs' -Encoding UTF8 | Select-Object -First 220`
+**2026-03-11 15:31 (Asia/Taipei) — VisionLLM hybrid capacity allocation doc**
+
+### Summary
+- VisionLLM Hybrid で `Vision line > geometry box` の時に、完成済み geometry 枠の容量スコアで line を配分する実装案を新規 Doc として整理した。
+
+### Context / Goal
+- `many-to-many` の汎用最適化は複雑化が大きく、現行の `1 Vision -> many Geometry` split を壊すリスクがある。
+- そこで、geometry 枠位置を固定したまま、枠の占有率や helper OCR text 量を評価して `many Vision -> one Geometry` を自然に扱う案を整理したい。
+
+### Changes
+- 現行 `OcrAndGroupStage` と `VisionGeometryHybridAligner` の責務を前提に、capacity allocation 方式の設計をまとめた。
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` を追加した。
+- 容量スコア設計、quota ベースの line 配分、実装手順、リスクと緩和策を記載した。
+
+### Files Touched
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` — 完成済み geometry 枠の容量スコアで Vision line を配分する新実装案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- `many-to-many` を避けた、より軽量な Hybrid 改善方針を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 容量スコアだけでは誤配分する可能性がある。
+- Mitigation: Doc 内で headingPenalty、quota clamp、textLength は補助扱いとする方針を明示した。
+
+### Tests / Verification
+- `Get-Content -Path '.\.agent\changes.md' -Tail 50 -Encoding UTF8`
+- `Get-Content -Path 'Services/Orchestration/Stages/OcrAndGroupStage.cs' -TotalCount 260`
+- `Get-Content -Path 'Services/VisionGeometryHybridAligner.cs' -Encoding UTF8 | Select-Object -First 220`
+**2026-03-11 15:34 (Asia/Taipei) — VisionLLM hybrid capacity allocation doc refinement**
+
+### Summary
+- Capacity allocation 案に helper OCR テキスト類似度を補助スコアとして使う方針を追記した。
+
+### Context / Goal
+- 枠の収容力だけでは、どの geometry 枠へ Vision line 群を入れるかの判定が弱い。
+- helper OCR text の類似度も割当先選択に使う方針を Doc に反映し、容量スコアと責務分離を明確化したい。
+
+### Changes
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` に `capacityScore` は収容力、`allocationScore` は割当先選択という役割分離を追記した。
+- `allocationScore = capacityScore + textSimilarityScore + orderScore` の初期式を追加した。
+- 実装手順とリスク節を更新し、helper OCR text similarity の位置づけを明示した。
+
+### Files Touched
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` — helper OCR テキスト類似度を補助スコアとして使う方針へ更新した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 容量スコアだけでなく text 類似度を含む割当先選択方針が Doc に明文化された。
+
+### Risk & Mitigation
+- Risk: helper OCR text similarity を強くしすぎると誤認識に引っ張られる。
+- Mitigation: Doc 内で similarity を補助信号に留め、capacity と order を同等以上の重みに維持する方針を明記した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\VisionLlm_Hybrid_CapacityAllocation_Plan.md' -Encoding UTF8`
+**2026-03-11 15:36 (Asia/Taipei) — VisionLLM hybrid capacity allocation doc refinement**
+
+### Summary
+- Capacity allocation 案に helper OCR テキスト類似度を補助スコアとして使う方針を反映した。
+
+### Context / Goal
+- 枠の収容力だけでは、どの geometry 枠へ Vision line 群を入れるかの判定が弱い。
+- helper OCR text の類似度も割当先選択に使う方針を Doc に反映し、容量スコアと責務分離を明確化したい。
+
+### Changes
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` に `capacityScore` は収容力、`allocationScore` は割当先選択という役割分離を追記した。
+- `allocationScore = capacityScore * 0.45 + textSimilarityScore * 0.45 + orderScore * 0.10` の初期式を追加した。
+- 実装手順とリスク節を更新し、helper OCR text similarity の位置づけを明示した。
+
+### Files Touched
+- `Doc/VisionLlm_Hybrid_CapacityAllocation_Plan.md` — helper OCR テキスト類似度を補助スコアとして使う方針へ更新した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 容量スコアだけでなく text 類似度を含む割当先選択方針が Doc に明文化された。
+
+### Risk & Mitigation
+- Risk: helper OCR text similarity を強くしすぎると誤認識に引っ張られる。
+- Mitigation: Doc 内で similarity を補助信号に留め、capacity と order を同等以上の重みに維持する方針を明記した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\VisionLlm_Hybrid_CapacityAllocation_Plan.md' -Encoding UTF8`
