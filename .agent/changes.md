@@ -19129,3 +19129,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `Get-Content .\Doc\Llama_PreviousSourceContextAssist_Plan.md -Encoding UTF8`
 - 全章を見直し、対象経路・設定名・影響範囲・DoD の整合を確認
+**2026-03-11 15:24 (Asia/Taipei) — VisionLLM hybrid global segment allocation doc**
+
+### Summary
+- VisionLLM Hybrid の完成済み geometry 枠を固定したまま、`many Vision -> 1 Geometry` を最初から扱う実装案を新規 Doc として整理した。
+
+### Context / Goal
+- 現状の Hybrid は 1:1 greedy 対応の後に split / synthetic / merge fallback を行うため、Vision line が geometry 枠より多いケースで fallback 依存が強い。
+- geometry 枠の位置を乱さず、通常パイプラインで確定した複数枠に対して VisionLLM text をより自然に配分する方針を明文化したい。
+
+### Changes
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` と `Services/VisionGeometryHybridAligner.cs` の現行責務を確認した。
+- `Doc/VisionLlm_Hybrid_GlobalSegmentAllocation_Plan.md` を追加し、`1->many` を維持しつつ `many->1` を含む global segment allocation の実装案を整理した。
+- DP ベースの monotonic segment alignment、score 設計、段階実装、リスクと緩和策を記載した。
+
+### Files Touched
+- `Doc/VisionLlm_Hybrid_GlobalSegmentAllocation_Plan.md` — 完成済み geometry 枠固定のまま Vision text を区間配分する新実装案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 現行 Hybrid の問題点と、geometry 枠位置を崩さない改善方針を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: Doc 上のアルゴリズム案だけでは実装時に `1->many` split の既存強みを落とす可能性がある。
+- Mitigation: Doc 内で `1->many` 既存 split を候補評価へ再利用し、置換ではなく上位統合にする方針を明記した。
+
+### Tests / Verification
+- `Get-Content -Path '.\.agent\changes.md' -Tail 50 -Encoding UTF8`
+- `Get-Content -Path 'Services/Orchestration/Stages/OcrAndGroupStage.cs' -TotalCount 260`
+- `Get-Content -Path 'Services/VisionGeometryHybridAligner.cs' -Encoding UTF8 | Select-Object -First 220`
