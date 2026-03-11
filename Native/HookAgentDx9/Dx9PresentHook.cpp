@@ -13,10 +13,13 @@
 #include <d3d9.h>
 
 #include <MinHook.h>
+#include <imgui.h>
+#include <imgui_impl_dx9.h>
 
 #include "../HookCommon/SharedFrameWriter.h"
 #include "../HookCommon/SharedHookConfig.h"
 #include "../HookCommon/SharedHookStatus.h"
+#include "../HookCommon/SharedOverlayV2.h"
 
 namespace ht::hook::dx9
 {
@@ -72,6 +75,10 @@ namespace ht::hook::dx9
         constexpr int kDevicePresentExIndex = 121;
         constexpr int kDeviceResetExIndex = 132;
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
+        constexpr std::uint32_t kOverlayFontBasePx = 26u;
+        constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500u;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200u;
+        constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300u;
 
         // WHY: Some titles can re-enter Present on the same thread. Capture only on outer-most call.
         static thread_local int g_presentDepth = 0;
@@ -103,8 +110,11 @@ namespace ht::hook::dx9
             ipc::SharedFrameWriter frameWriter;
             ipc::SharedHookConfigReader configReader;
             ipc::SharedHookStatusWriter statusWriter;
+            ipc::SharedOverlayV2Reader overlayV2Reader;
 
             std::vector<std::uint8_t> scratch;
+            std::vector<ipc::OverlayTextBlockV2> overlayV2Blocks;
+            std::vector<std::uint8_t> overlayV2TextBlob;
 
             std::uint64_t qpcFreq = 0;
             std::uint64_t frameId = 0;
@@ -115,6 +125,12 @@ namespace ht::hook::dx9
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
             bool overlayEnabled = false;
             bool perfDiagLogEnabled = false;
+            std::uint64_t lastOverlayV2Seq = 0;
+            std::uint64_t lastOverlayV2Qpc = 0;
+            ipc::OverlayV2Header overlayV2Header{};
+            bool hookSuccessIndicatorArmed = false;
+            bool hookSuccessIndicatorDone = false;
+            std::uint64_t hookSuccessIndicatorStartQpc = 0;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -122,6 +138,11 @@ namespace ht::hook::dx9
             std::uint32_t backBufferFormat = 0;
             std::uint32_t backBufferWidth = 0;
             std::uint32_t backBufferHeight = 0;
+            bool imguiInitialized = false;
+            ImGuiContext* imguiContext = nullptr;
+            IDirect3DDevice9* imguiDevice = nullptr;
+            ImFont* overlayFont = nullptr;
+            std::uint64_t lastImGuiQpc = 0;
 
             IDirect3DSurface9* stagingSurface = nullptr;
             IDirect3DSurface9* resolvedSurface = nullptr;
@@ -440,6 +461,34 @@ namespace ht::hook::dx9
             return std::clamp(fps, 1u, 240u);
         }
 
+        std::uint32_t ReadEnvU32(const wchar_t* name, std::uint32_t defaultValue)
+        {
+            wchar_t buf[32]{};
+            const DWORD got = GetEnvironmentVariableW(name, buf, static_cast<DWORD>(std::size(buf)));
+            if (got == 0 || got >= std::size(buf))
+            {
+                return defaultValue;
+            }
+
+            wchar_t* end = nullptr;
+            const unsigned long value = wcstoul(buf, &end, 10);
+            if (end == buf || value == 0)
+            {
+                return defaultValue;
+            }
+
+            return static_cast<std::uint32_t>(value);
+        }
+
+        ImU32 ArgbToImU32(std::uint32_t argb)
+        {
+            const auto a = (argb >> 24) & 0xFFu;
+            const auto r = (argb >> 16) & 0xFFu;
+            const auto g = (argb >> 8) & 0xFFu;
+            const auto b = argb & 0xFFu;
+            return IM_COL32(static_cast<int>(r), static_cast<int>(g), static_cast<int>(b), static_cast<int>(a));
+        }
+
         const char* FrameWriterErrorToString(ipc::SharedFrameWriter::LastErrorKind kind)
         {
             switch (kind)
@@ -484,12 +533,33 @@ namespace ht::hook::dx9
             return target;
         }
 
+        void ResetImGuiLocked(Dx9Runtime& rt)
+        {
+            if (!rt.imguiInitialized && rt.imguiContext == nullptr)
+            {
+                return;
+            }
+
+            ImGui::SetCurrentContext(rt.imguiContext);
+            ImGui_ImplDX9_Shutdown();
+            ImGui::DestroyContext(rt.imguiContext);
+            rt.imguiInitialized = false;
+            rt.imguiContext = nullptr;
+            rt.imguiDevice = nullptr;
+            rt.overlayFont = nullptr;
+            rt.lastImGuiQpc = 0;
+        }
+
         void ResetRuntimeStateLocked(Dx9Runtime& rt)
         {
+            ResetImGuiLocked(rt);
             rt.frameWriter.Reset();
             rt.configReader.Reset();
             rt.statusWriter.Reset();
+            rt.overlayV2Reader.Reset();
             rt.scratch.clear();
+            rt.overlayV2Blocks.clear();
+            rt.overlayV2TextBlob.clear();
 
             rt.presentTarget = nullptr;
             rt.resetTarget = nullptr;
@@ -518,6 +588,12 @@ namespace ht::hook::dx9
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.overlayEnabled = false;
             rt.perfDiagLogEnabled = false;
+            rt.lastOverlayV2Seq = 0;
+            rt.lastOverlayV2Qpc = 0;
+            rt.overlayV2Header = {};
+            rt.hookSuccessIndicatorArmed = true;
+            rt.hookSuccessIndicatorDone = false;
+            rt.hookSuccessIndicatorStartQpc = 0;
             g_perfDiagLogEnabled.store(false, std::memory_order_relaxed);
             const bool wasDiagFileSinkEnabled = g_diagFileSinkEnabled.exchange(false, std::memory_order_relaxed);
             if (wasDiagFileSinkEnabled)
@@ -589,6 +665,303 @@ namespace ht::hook::dx9
                 CloseDiagFile();
             }
             return true;
+        }
+
+        bool RefreshOverlayV2Locked(Dx9Runtime& rt)
+        {
+            if (!rt.overlayEnabled)
+            {
+                return false;
+            }
+
+            const DWORD pid = GetCurrentProcessId();
+            if (!rt.overlayV2Reader.Ensure(pid, ipc::GraphicsApi::Dx9))
+            {
+                return false;
+            }
+
+            ipc::OverlayV2Header header{};
+            std::vector<ipc::OverlayTextBlockV2> blocks;
+            std::vector<std::uint8_t> textBlob;
+            if (!rt.overlayV2Reader.TryRead(header, blocks, textBlob))
+            {
+                return false;
+            }
+
+            if (header.updatedSeq == 0 || header.updatedSeq == rt.lastOverlayV2Seq)
+            {
+                return false;
+            }
+
+            rt.overlayV2Header = header;
+            rt.overlayV2Blocks = std::move(blocks);
+            rt.overlayV2TextBlob = std::move(textBlob);
+            rt.lastOverlayV2Seq = header.updatedSeq;
+            rt.lastOverlayV2Qpc = NowQpc();
+            // WHY: Once real overlay payload arrives, the attach indicator is only visual noise.
+            rt.hookSuccessIndicatorArmed = false;
+            rt.hookSuccessIndicatorDone = true;
+            rt.hookSuccessIndicatorStartQpc = 0;
+            LogDx9Perf(
+                "event=overlay_v2_refresh seq=%llu canvas=%ux%u blocks=%u textBytes=%u.",
+                static_cast<unsigned long long>(header.updatedSeq),
+                static_cast<unsigned int>(header.canvasW),
+                static_cast<unsigned int>(header.canvasH),
+                static_cast<unsigned int>(header.textBlockCount),
+                static_cast<unsigned int>(header.textBytes));
+            return true;
+        }
+
+        bool EnsureImGuiLocked(Dx9Runtime& rt, IDirect3DDevice9* device)
+        {
+            if (device == nullptr)
+            {
+                return false;
+            }
+
+            if (rt.imguiInitialized && rt.imguiContext != nullptr && rt.imguiDevice == device)
+            {
+                ImGui::SetCurrentContext(rt.imguiContext);
+                return true;
+            }
+
+            if (rt.imguiContext != nullptr && rt.imguiDevice != device)
+            {
+                ResetImGuiLocked(rt);
+            }
+
+            IMGUI_CHECKVERSION();
+            rt.imguiContext = ImGui::CreateContext();
+            ImGui::SetCurrentContext(rt.imguiContext);
+            ImGuiIO& io = ImGui::GetIO();
+            io.IniFilename = nullptr;
+            io.LogFilename = nullptr;
+
+            ImFontConfig cfg{};
+            cfg.OversampleH = 2;
+            cfg.OversampleV = 2;
+
+            static ImVector<ImWchar> sGlyphRanges;
+            if (sGlyphRanges.empty())
+            {
+                ImFontGlyphRangesBuilder builder;
+                builder.AddRanges(io.Fonts->GetGlyphRangesDefault());
+                builder.AddRanges(io.Fonts->GetGlyphRangesJapanese());
+                builder.AddRanges(io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+                builder.AddRanges(io.Fonts->GetGlyphRangesKorean());
+                builder.BuildRanges(&sGlyphRanges);
+            }
+
+            rt.overlayFont = io.Fonts->AddFontFromFileTTF(
+                "C:/Windows/Fonts/meiryo.ttc",
+                static_cast<float>(kOverlayFontBasePx),
+                &cfg,
+                sGlyphRanges.Data);
+            if (rt.overlayFont == nullptr)
+            {
+                rt.overlayFont = io.Fonts->AddFontDefault();
+            }
+            io.FontDefault = rt.overlayFont;
+
+            if (!ImGui_ImplDX9_Init(device))
+            {
+                ResetImGuiLocked(rt);
+                return false;
+            }
+
+            rt.imguiInitialized = true;
+            rt.imguiDevice = device;
+            rt.lastImGuiQpc = 0;
+            return true;
+        }
+
+        void DrawImGuiOverlayV2Locked(Dx9Runtime& rt, IDirect3DDevice9* device)
+        {
+            if (!rt.overlayEnabled)
+            {
+                return;
+            }
+
+            const bool hasOverlayBlocks = !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
+            const bool shouldDrawHookSuccessIndicator = !rt.hookSuccessIndicatorDone;
+            if (!hasOverlayBlocks && !shouldDrawHookSuccessIndicator)
+            {
+                return;
+            }
+
+            if (rt.backBufferWidth == 0 || rt.backBufferHeight == 0)
+            {
+                return;
+            }
+
+            if (!EnsureImGuiLocked(rt, device))
+            {
+                LogDx9("event=overlay_draw_skip reason=imgui_init_failed.");
+                return;
+            }
+
+            ImGui::SetCurrentContext(rt.imguiContext);
+            const auto now = NowQpc();
+            ImGuiIO& io = ImGui::GetIO();
+            io.DisplaySize = ImVec2(static_cast<float>(rt.backBufferWidth), static_cast<float>(rt.backBufferHeight));
+            if (rt.lastImGuiQpc != 0 && rt.qpcFreq != 0)
+            {
+                const double dt = static_cast<double>(now - rt.lastImGuiQpc) / static_cast<double>(rt.qpcFreq);
+                io.DeltaTime = static_cast<float>(std::max(1.0 / 240.0, std::min(dt, 0.1)));
+            }
+            else
+            {
+                io.DeltaTime = 1.0f / static_cast<float>(std::max(1u, rt.configuredFpsLimit));
+            }
+            rt.lastImGuiQpc = now;
+
+            ImGui_ImplDX9_NewFrame();
+            ImGui::NewFrame();
+
+            const auto canvasW = std::max(1u, rt.overlayV2Header.canvasW);
+            const auto canvasH = std::max(1u, rt.overlayV2Header.canvasH);
+            const float scaleX = static_cast<float>(rt.backBufferWidth) / static_cast<float>(canvasW);
+            const float scaleY = static_cast<float>(rt.backBufferHeight) / static_cast<float>(canvasH);
+            const float scaleMin = std::max(0.5f, std::min(scaleX, scaleY));
+
+            ImDrawList* bg = ImGui::GetBackgroundDrawList();
+            ImDrawList* fg = ImGui::GetForegroundDrawList();
+            std::vector<const ipc::OverlayTextBlockV2*> roiPreviewBlocks;
+            const bool overlayTrace = ReadEnvU32(L"HT_HOOK_OVL_TRACE", 0) != 0;
+
+            for (const auto& b : rt.overlayV2Blocks)
+            {
+                if (b.w <= 0.0f || b.h <= 0.0f)
+                {
+                    continue;
+                }
+
+                const float x = b.x * scaleX;
+                const float y = b.y * scaleY;
+                const float w = b.w * scaleX;
+                const float h = b.h * scaleY;
+                const float pad = std::max(0.0f, b.paddingPx * scaleMin);
+                const float rounding = std::max(0.0f, b.roundingPx * scaleMin);
+
+                if (b.wrap == 2u && b.textLen == 0)
+                {
+                    roiPreviewBlocks.push_back(&b);
+                    continue;
+                }
+
+                bg->AddRectFilled(ImVec2(x, y), ImVec2(x + w, y + h), ArgbToImU32(b.bgArgb), rounding);
+
+                const std::size_t textOffset = static_cast<std::size_t>(b.textOffset);
+                const std::size_t textLen = static_cast<std::size_t>(b.textLen);
+                if (textLen == 0 || textOffset >= rt.overlayV2TextBlob.size())
+                {
+                    continue;
+                }
+
+                const std::size_t textEndOffset = std::min(rt.overlayV2TextBlob.size(), textOffset + textLen);
+                if (textEndOffset <= textOffset)
+                {
+                    continue;
+                }
+
+                const char* textBegin = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + textOffset);
+                const char* textEnd = reinterpret_cast<const char*>(rt.overlayV2TextBlob.data() + textEndOffset);
+                const float fontPx = std::max(10.0f, b.fontPx * scaleMin);
+                const float wrapWidth = (b.wrap != 0u) ? std::max(0.0f, w - (pad * 2.0f)) : 0.0f;
+                fg->AddText(
+                    rt.overlayFont != nullptr ? rt.overlayFont : ImGui::GetFont(),
+                    fontPx,
+                    ImVec2(x + pad, y + pad),
+                    ArgbToImU32(b.fgArgb),
+                    textBegin,
+                    textEnd,
+                    wrapWidth);
+            }
+
+            for (const auto* rb : roiPreviewBlocks)
+            {
+                if (rb == nullptr)
+                {
+                    continue;
+                }
+
+                const float x = rb->x * scaleX;
+                const float y = rb->y * scaleY;
+                const float w = rb->w * scaleX;
+                const float h = rb->h * scaleY;
+                const float stroke = std::max(1.0f, rb->paddingPx * scaleMin);
+                const float rounding = std::max(0.0f, rb->roundingPx * scaleMin);
+                const float inset = stroke * 0.5f;
+                fg->AddRect(
+                    ImVec2(x + inset, y + inset),
+                    ImVec2(x + w - inset, y + h - inset),
+                    ArgbToImU32(rb->fgArgb),
+                    rounding,
+                    0,
+                    stroke);
+            }
+
+            if (!hasOverlayBlocks && shouldDrawHookSuccessIndicator && rt.qpcFreq != 0)
+            {
+                if (rt.hookSuccessIndicatorArmed && rt.hookSuccessIndicatorStartQpc == 0)
+                {
+                    rt.hookSuccessIndicatorStartQpc = now;
+                    rt.hookSuccessIndicatorArmed = false;
+                }
+
+                if (rt.hookSuccessIndicatorStartQpc != 0)
+                {
+                    const auto elapsedQpc = now - rt.hookSuccessIndicatorStartQpc;
+                    const auto elapsedMs = static_cast<std::uint64_t>(
+                        (elapsedQpc * 1000ull) / std::max<std::uint64_t>(1ull, rt.qpcFreq));
+                    if (elapsedMs >= kHookSuccessIndicatorDurationMs)
+                    {
+                        rt.hookSuccessIndicatorDone = true;
+                    }
+                    else
+                    {
+                        float alpha = 1.0f;
+                        if (elapsedMs < kHookSuccessIndicatorFadeInMs)
+                        {
+                            alpha = static_cast<float>(elapsedMs) /
+                                static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeInMs));
+                        }
+                        else if (elapsedMs > (kHookSuccessIndicatorDurationMs - kHookSuccessIndicatorFadeOutMs))
+                        {
+                            const auto tailMs = kHookSuccessIndicatorDurationMs - elapsedMs;
+                            alpha = static_cast<float>(tailMs) /
+                                static_cast<float>(std::max<std::uint64_t>(1ull, kHookSuccessIndicatorFadeOutMs));
+                        }
+                        alpha = std::clamp(alpha, 0.0f, 1.0f);
+
+                        const int plateA = static_cast<int>(170.0f * alpha + 0.5f);
+                        const int ringA = static_cast<int>(235.0f * alpha + 0.5f);
+                        const int tickA = static_cast<int>(245.0f * alpha + 0.5f);
+                        const ImVec2 c(34.0f, 34.0f);
+                        fg->AddCircleFilled(c, 16.0f, IM_COL32(16, 16, 16, plateA), 24);
+                        fg->AddCircle(c, 15.0f, IM_COL32(83, 214, 108, ringA), 24, 2.0f);
+                        fg->AddLine(ImVec2(c.x - 6.0f, c.y + 0.5f), ImVec2(c.x - 1.5f, c.y + 5.5f), IM_COL32(255, 255, 255, tickA), 2.4f);
+                        fg->AddLine(ImVec2(c.x - 1.5f, c.y + 5.5f), ImVec2(c.x + 8.0f, c.y - 5.0f), IM_COL32(255, 255, 255, tickA), 2.4f);
+                    }
+                }
+            }
+
+            ImGui::EndFrame();
+            ImGui::Render();
+            ImGui_ImplDX9_RenderDrawData(ImGui::GetDrawData());
+
+            if (overlayTrace)
+            {
+                LogDx9Perf(
+                    "event=overlay_draw seq=%llu bb=%ux%u canvas=%ux%u blocks=%zu roi=%zu.",
+                    static_cast<unsigned long long>(rt.lastOverlayV2Seq),
+                    static_cast<unsigned int>(rt.backBufferWidth),
+                    static_cast<unsigned int>(rt.backBufferHeight),
+                    static_cast<unsigned int>(rt.overlayV2Header.canvasW),
+                    static_cast<unsigned int>(rt.overlayV2Header.canvasH),
+                    static_cast<std::size_t>(rt.overlayV2Blocks.size()),
+                    static_cast<std::size_t>(roiPreviewBlocks.size()));
+            }
         }
 
         bool ShouldCaptureNowLocked(const Dx9Runtime& rt, std::uint64_t nowQpc)
@@ -1005,8 +1378,11 @@ namespace ht::hook::dx9
             status.stagingDxgiFormat = rt.backBufferFormat;
             status.lastFrameIdWritten = rt.frameId;
             status.lastFrameWriteQpc = rt.lastFrameWriteQpc;
-            status.lastCmdQpc = rt.lastConfigQpc;
-            status.lastCmdCount = 0;
+            // COMPAT: Keep v1 status fields populated from v2 overlay updates until status schema migration.
+            status.lastCmdQpc = rt.lastOverlayV2Qpc;
+            status.lastCmdCount = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
+            status.reserved0 = static_cast<std::uint32_t>(rt.overlayV2TextBlob.size());
+            status.reserved1 = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
             (void)rt.statusWriter.Write(status);
         }
 
@@ -1266,6 +1642,10 @@ namespace ht::hook::dx9
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
                 }
                 (void)RefreshConfigLocked(g_rt);
+                if (g_rt.overlayEnabled)
+                {
+                    (void)RefreshOverlayV2Locked(g_rt);
+                }
 
                 const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
                 if (shouldCapture)
@@ -1288,6 +1668,8 @@ namespace ht::hook::dx9
                             static_cast<unsigned long long>(g_rt.lastCaptureQpc));
                     }
                 }
+
+                DrawImGuiOverlayV2Locked(g_rt, device);
 
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalPresent;
@@ -1333,6 +1715,10 @@ namespace ht::hook::dx9
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
                 }
                 (void)RefreshConfigLocked(g_rt);
+                if (g_rt.overlayEnabled)
+                {
+                    (void)RefreshOverlayV2Locked(g_rt);
+                }
 
                 const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
                 if (shouldCapture)
@@ -1366,6 +1752,11 @@ namespace ht::hook::dx9
                     }
                 }
 
+                if (SUCCEEDED(getDeviceHr) && device != nullptr)
+                {
+                    DrawImGuiOverlayV2Locked(g_rt, device);
+                }
+
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalSwapChainPresent;
             }
@@ -1387,6 +1778,11 @@ namespace ht::hook::dx9
             std::uint64_t presentCount = 0;
             {
                 std::lock_guard<std::mutex> lock(g_rt.mutex);
+                if (g_rt.imguiInitialized && g_rt.imguiContext != nullptr)
+                {
+                    ImGui::SetCurrentContext(g_rt.imguiContext);
+                    ImGui_ImplDX9_InvalidateDeviceObjects();
+                }
                 ReleaseCaptureSurfacesLocked(g_rt, "reset_begin");
                 g_rt.backBufferWidth = 0;
                 g_rt.backBufferHeight = 0;
@@ -1402,6 +1798,11 @@ namespace ht::hook::dx9
                 std::lock_guard<std::mutex> lock(g_rt.mutex);
                 if (SUCCEEDED(result))
                 {
+                    if (g_rt.imguiInitialized && g_rt.imguiContext != nullptr)
+                    {
+                        ImGui::SetCurrentContext(g_rt.imguiContext);
+                        (void)ImGui_ImplDX9_CreateDeviceObjects();
+                    }
                     g_rt.resetCount++;
                     g_rt.lastResetQpc = NowQpc();
                     g_rt.pendingPostResetRebind = true;
@@ -1455,6 +1856,10 @@ namespace ht::hook::dx9
                         static_cast<unsigned long long>(g_rt.lastPresentQpc));
                 }
                 (void)RefreshConfigLocked(g_rt);
+                if (g_rt.overlayEnabled)
+                {
+                    (void)RefreshOverlayV2Locked(g_rt);
+                }
 
                 const bool shouldCapture = ShouldCaptureNowLocked(g_rt, g_rt.lastPresentQpc);
                 if (shouldCapture)
@@ -1478,6 +1883,8 @@ namespace ht::hook::dx9
                     }
                 }
 
+                DrawImGuiOverlayV2Locked(g_rt, static_cast<IDirect3DDevice9*>(device));
+
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalPresentEx;
             }
@@ -1495,6 +1902,11 @@ namespace ht::hook::dx9
             std::uint64_t presentCount = 0;
             {
                 std::lock_guard<std::mutex> lock(g_rt.mutex);
+                if (g_rt.imguiInitialized && g_rt.imguiContext != nullptr)
+                {
+                    ImGui::SetCurrentContext(g_rt.imguiContext);
+                    ImGui_ImplDX9_InvalidateDeviceObjects();
+                }
                 ReleaseCaptureSurfacesLocked(g_rt, "reset_ex_begin");
                 g_rt.backBufferWidth = 0;
                 g_rt.backBufferHeight = 0;
@@ -1510,6 +1922,11 @@ namespace ht::hook::dx9
                 std::lock_guard<std::mutex> lock(g_rt.mutex);
                 if (SUCCEEDED(result))
                 {
+                    if (g_rt.imguiInitialized && g_rt.imguiContext != nullptr)
+                    {
+                        ImGui::SetCurrentContext(g_rt.imguiContext);
+                        (void)ImGui_ImplDX9_CreateDeviceObjects();
+                    }
                     g_rt.resetCount++;
                     g_rt.lastResetQpc = NowQpc();
                     g_rt.pendingPostResetRebind = true;
@@ -1883,6 +2300,9 @@ namespace ht::hook::dx9
             LogDx9("event=install_step step=capture_interval_qpc value=%llu.", static_cast<unsigned long long>(rt.captureIntervalQpc));
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.overlayEnabled = false;
+            rt.hookSuccessIndicatorArmed = true;
+            rt.hookSuccessIndicatorDone = false;
+            rt.hookSuccessIndicatorStartQpc = 0;
 
             void* presentTarget = nullptr;
             void* resetTarget = nullptr;

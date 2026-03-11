@@ -319,7 +319,7 @@ internal sealed class GraphicsHookClientService : IDisposable
 
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
-        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+        return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private bool EnsureHostProcess(HostSelection hostSelection)

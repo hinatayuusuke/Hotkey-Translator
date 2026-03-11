@@ -19004,3 +19004,71 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-11 10:21 (Asia/Taipei) — DX9 Hook overlay implementation plan doc**
+
+### Summary
+- DX9 Hook overlay 実装方針を調査し、実装案ドキュメントを追加した。
+
+### Context / Goal
+- DX9 Hook は capture-only で、DX11 / Vulkan のような overlay 描画が未実装だった。
+- 現行コードを確認した上で、DX11 / Vulkan の OverlayV2 描画実装を踏まえた DX9 向け実装案を整理したい。
+
+### Changes
+- DX9 hook の現行状態、DX11/Vulkan overlay 実装、C# 側 publish 条件を確認した。
+- DX9 用 overlay 実装の段階的な導入案を `Doc/GraphicsHook_Dx9_Overlay_Implementation_Plan.md` に出力した。
+
+### Files Touched
+- `Doc/GraphicsHook_Dx9_Overlay_Implementation_Plan.md` — DX9 overlay 実装方針、手順、影響範囲、リスクを整理した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- DX9 overlay 実装の設計判断を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 実装案が現行コード差分とずれる可能性がある。
+- Mitigation: `HookAgentDx9`, `HookAgentDx11`, `HookAgentVulkan`, `GraphicsHookClientService` の現行コードを直接確認した上で記述した。
+
+### Tests / Verification
+- `rg -n "Dx9|OverlayV2|imgui_impl_dx11|imgui_impl_vulkan|overlayEnabled" Native Services -g "!Doc/**"`
+- `Get-Content Native\HookAgentDx9\Dx9PresentHook.cpp`
+- `Get-Content Native\HookAgentDx11\Dx11PresentHook.cpp`
+- `Get-Content Native\HookAgentVulkan\VulkanPresentHook.cpp`
+- `Get-Content Services\Hook\GraphicsHookClientService.cs`
+**2026-03-11 11:47 (Asia/Taipei) — DX9 Hook OverlayV2 rendering**
+
+### Summary
+- DX9 Hook に OverlayV2 描画を追加し、DX11/Vulkan と同じ runtime config で hook overlay を publish/render できるようにした。
+
+### Context / Goal
+- DX9 Hook は capture-only で、`overlayEnabled` 設定値は読んでいたが、OverlayV2 の読み取りと実描画が未実装だった。
+- DX11/Vulkan の overlay 実装を踏まえ、DX9 でも ROI preview とテキスト overlay を hook 側で描けるようにしたい。
+
+### Changes
+- `GraphicsHookClientService` の DX9 overlay 制限を外し、DX9 attach 中も OverlayV2 と runtime config を publish できるようにした。
+- DX9 agent build に `SharedOverlayV2` と Dear ImGui DX9 backend を追加した。
+- `HookAgentDx9` に OverlayV2 reader、ImGui 初期化/破棄、Present/PresentEx/SwapChainPresent での draw path、Reset/ResetEx での device object invalidate/recreate を追加した。
+- attach-success indicator と ROI preview 枠描画、status への overlay 状態 publish を追加した。
+- `imgui` 公式 `v1.92.5` の `imgui_impl_dx9.cpp/.h` を vendor 追加した。
+
+### Files Touched
+- `Services/Hook/GraphicsHookClientService.cs` — DX9 を overlay 対応 API として扱うように変更した。
+- `Native/HookAgentDx9/CMakeLists.txt` — OverlayV2 と ImGui DX9 backend の build 依存を追加した。
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — OverlayV2 runtime state、ImGui init/reset、DX9 overlay draw path、status publish を追加した。
+- `Native/ThirdParty/imgui/backends/imgui_impl_dx9.cpp` — 公式 ImGui DX9 backend を追加した。
+- `Native/ThirdParty/imgui/backends/imgui_impl_dx9.h` — 公式 ImGui DX9 backend header を追加した。
+
+### Behavioral Impact
+- DX9 hook でも runtime config の overlay ON/OFF が反映され、OverlayV2 payload が届けば hook 側でテキストと ROI preview を描画する。
+- payload 未着時は短時間の attach-success indicator を表示する。
+- `Reset` / `ResetEx` 後も DX9 backend device object を再生成して overlay 継続を試みる。
+
+### Risk & Mitigation
+- Risk: D3D9 state 汚染や reset 後の device object 不整合で、一部タイトルの描画に影響する可能性がある。
+- Mitigation: Dear ImGui 公式 DX9 backend を利用し、Reset 前に `InvalidateDeviceObjects`、成功後に `CreateDeviceObjects` を呼ぶようにした。overlay 初期化失敗時は capture を止めず、overlay のみ fail fast で落とす。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- `cmake -S Native -B Native/build`
+- `cmake -S Native -B Native/build_x86 -A Win32`
+- `cmake --build Native/build --config Debug --target HookAgentDx9`
+- `cmake --build Native/build_x86 --config Debug --target HookAgentDx9`
