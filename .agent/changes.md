@@ -18976,3 +18976,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `rg -n "Run-next-slot hotkeys|ShowTransientRoiPreview\(|ROI slot .*: .*run" .\MainWindow.xaml.cs`
 
+**2026-03-11 09:39 (Asia/Taipei) — VisionLLM hybrid geometry settings UI**
+
+### Summary
+- VisionLLM のサイドパネルに geometry assist hybrid OCR の UI を追加した。
+
+### Context / Goal
+- `EnableVisionGeometryHybridOcr` と `VisionGeometryHybridBaseEngine` は settings 側に実装済みだったが、UI から切り替えできなかった。
+- VisionLLM 利用時に hybrid geometry 補助を設定画面から操作できるようにしたい。
+
+### Changes
+- `SettingsViewModel` に Vision geometry hybrid 用の observable property と settings 反映処理を追加した。
+- VisionLLM サイドパネルに hybrid OCR の有効化チェックボックスと補助 OCR エンジン選択 ComboBox を追加した。
+- NOTE 文を追加し、VisionLLM が text を主担当に保ち、補助 OCR は geometry hint だけに使うことを明示した。
+
+### Files Touched
+- `ViewModels/SettingsViewModel.cs` — hybrid geometry 設定の読み込み、保存、UI 変更時の自動保存を追加した。
+- `MainWindow.xaml` — VisionLLM サイドパネルに hybrid OCR の設定 UI を追加した。
+
+### Behavioral Impact
+- VisionLLM を使う時に、UI から geometry assist hybrid OCR の ON/OFF と補助 OCR エンジンの選択ができるようになった。
+- 補助 OCR エンジン選択は hybrid OCR を有効にした時だけ操作できる。
+
+### Risk & Mitigation
+- Risk: enum と UI タグの対応がずれると、保存時に別エンジンへ丸められる可能性がある。
+- Mitigation: `WinRt` / `Ndl` / `Paddle` のみを明示的に相互変換し、未定義値は `WinRt` へ fail-safe で戻すようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`

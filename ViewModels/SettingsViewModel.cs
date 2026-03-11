@@ -59,6 +59,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedMmprojFileName = string.Empty;
+    [ObservableProperty] private bool _enableVisionGeometryHybridOcr;
+    [ObservableProperty] private string _visionGeometryHybridBaseEngineTag = "WinRt";
     [ObservableProperty] private bool _enableDeepL;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
@@ -215,6 +217,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
             VisionLlmSelectedModelFileName = settings.VisionLlmSelectedModelFileName;
             VisionLlmSelectedMmprojFileName = settings.VisionLlmSelectedMmprojFileName;
+            EnableVisionGeometryHybridOcr = settings.EnableVisionGeometryHybridOcr;
+            VisionGeometryHybridBaseEngineTag = settings.VisionGeometryHybridBaseEngine switch
+            {
+                VisionGeometryHybridBaseEngineKind.Ndl => "Ndl",
+                VisionGeometryHybridBaseEngineKind.Paddle => "Paddle",
+                _ => "WinRt"
+            };
             EnableDeepL = settings.EnableDeepL;
             EnableGemini = settings.EnableGemini;
             VerticalModeOverrideTag = settings.VerticalModeOverride switch
@@ -586,6 +595,14 @@ internal sealed partial class SettingsViewModel : ObservableObject
             settings.VisionLlmMaxImageSide = visionLlmMaxImageSide;
         }
 
+        settings.EnableVisionGeometryHybridOcr = EnableVisionGeometryHybridOcr;
+        settings.VisionGeometryHybridBaseEngine = VisionGeometryHybridBaseEngineTag switch
+        {
+            "Ndl" => VisionGeometryHybridBaseEngineKind.Ndl,
+            "Paddle" => VisionGeometryHybridBaseEngineKind.Paddle,
+            _ => VisionGeometryHybridBaseEngineKind.WinRt
+        };
+
         settings.DeepLEndpoint = (DeepLEndpointText ?? string.Empty).Trim();
         settings.DeepLApiKey = DeepLApiKeyText ?? string.Empty;
         settings.ApiKey = ApiKeyText ?? string.Empty;
@@ -704,6 +721,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnVisionLlmBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxImageSideTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableVisionGeometryHybridOcrChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnVisionGeometryHybridBaseEngineTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLApiKeyTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnApiKeyTextChanged(string value) => RequestSaveOnValueChange();

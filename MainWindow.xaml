@@ -866,6 +866,26 @@
                                       <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
+                                  <CheckBox x:Name="EnableVisionGeometryHybridOcrCheck"
+                                            Content="Enable geometry assist hybrid OCR"
+                                            Margin="0,8,0,0"
+                                            IsChecked="{Binding Settings.EnableVisionGeometryHybridOcr, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Hybrid base OCR" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="VisionGeometryHybridBaseEngineBox"
+                                                Width="140"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.VisionGeometryHybridBaseEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                IsEnabled="{Binding Settings.EnableVisionGeometryHybridOcr}">
+                                          <ComboBoxItem Content="WinRT" Tag="WinRt" />
+                                          <ComboBoxItem Content="NDL" Tag="Ndl" />
+                                          <ComboBoxItem Content="PaddleOCR" Tag="Paddle" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <TextBlock Text="NOTE: VisionLLM text stays primary. The selected OCR engine is used only to provide geometry hints for overlay placement."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelAutoTranslate"
