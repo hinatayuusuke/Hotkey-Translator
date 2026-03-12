@@ -150,6 +150,15 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         while (DateTimeOffset.UtcNow < deadline)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (TryGetProcessExitCode(out var exitCode))
+            {
+                // WHY: Model/mmproj mismatches can terminate the Python host quickly while the gRPC
+                // endpoint never becomes healthy. Failing fast here prevents the busy overlay from
+                // hanging until the generic ready-timeout elapses.
+                throw new InvalidOperationException(
+                    $"VisionLLM gRPC server exited during startup with exit code {exitCode}.");
+            }
+
             try
             {
                 using var channel = GrpcChannel.ForAddress(endpoint);

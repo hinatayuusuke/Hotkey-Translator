@@ -19912,3 +19912,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal
 - 実機の VisionLLM hybrid ケース確認は未実施。
+
+**2026-03-12 22:07 (Asia/Taipei) — Fail fast when VisionLLM host exits during startup**
+
+### Summary
+- VisionLLM gRPC host が ready 待ち中に先に終了した場合、timeout まで待たず即失敗にするよう修正した。
+
+### Context / Goal
+- VisionLLM の model / mmproj 不整合時、ログ上は失敗していても WaitForReadyCoreAsync(...) が health poll を続けるため、busy overlay が ready-timeout まで消えないことがあった。
+- 起動途中でプロセス終了を検知した時点で失敗扱いにし、モーダル初期化表示を早く閉じたかった。
+
+### Changes
+- GrpcHostBase に起動中プロセスの終了コードを取得する protected helper を追加した。
+- VisionLlmGrpcHost.WaitForReadyCoreAsync(...) のループ冒頭で host プロセスの終了を確認し、終了済みなら即 InvalidOperationException を投げるようにした。
+- WHY コメントを追加して、model/mmproj mismatch 時の fail-fast 意図を明記した。
+
+### Files Touched
+- Services/GrpcHost/GrpcHostBase.cs — 起動中プロセスが終了済みかを確認する TryGetProcessExitCode(...) helper を追加した。
+- Services/VisionLlmGrpcHost.cs — ready wait 中に VisionLLM host が終了した場合、timeout 待ちせず即失敗させるガードを追加した。
+- .agent/changes.md — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- VisionLLM host が startup 中に即終了するケースでは、busy overlay は generic ready-timeout を待たずに解除される。
+- 失敗時は従来どおり GrpcHostOrchestrator が host を停止し、設定を OFF にしてユーザ通知する。
+
+### Risk & Mitigation
+- Risk: 起動直後の一時的なプロセス再起動や wrapper 挙動を誤って致命失敗扱いする可能性がある。
+- Mitigation: 対象は WaitForReadyCoreAsync(...) 中の VisionLLM host プロセス終了だけに限定し、正常な gRPC ready 遷移には影響しないようにした。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal
+- 実機の VisionLLM model/mmproj mismatch 再現確認は未実施。

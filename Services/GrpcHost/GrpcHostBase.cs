@@ -37,6 +37,21 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
         }
     }
 
+    protected bool TryGetProcessExitCode(out int exitCode)
+    {
+        lock (_sync)
+        {
+            if (_process is not { HasExited: true })
+            {
+                exitCode = 0;
+                return false;
+            }
+
+            exitCode = _process.ExitCode;
+            return true;
+        }
+    }
+
     public async Task StartAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         if (!IsEnabled(settings))
