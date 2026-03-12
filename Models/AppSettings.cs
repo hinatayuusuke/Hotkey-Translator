@@ -244,13 +244,13 @@ public sealed class AppSettings
     public string HotkeyRunNextRoiModifiers { get; set; } = "Shift";
     public string HotkeyRunNextNextRoiKey { get; set; } = "F8";
     public string HotkeyRunNextNextRoiModifiers { get; set; } = "Control";
-    public string HotkeyToggleOverlayKey { get; set; } = "F9";
+    public string HotkeyToggleOverlayKey { get; set; } = "F10";
     public string HotkeyToggleOverlayModifiers { get; set; } = "None";
-    public string HotkeyForceRunKey { get; set; } = "F10";
+    public string HotkeyForceRunKey { get; set; } = "F9";
     public string HotkeyForceRunModifiers { get; set; } = "None";
-    public string HotkeyForceRunNextRoiKey { get; set; } = "F10";
+    public string HotkeyForceRunNextRoiKey { get; set; } = "F9";
     public string HotkeyForceRunNextRoiModifiers { get; set; } = "Shift";
-    public string HotkeyForceRunNextNextRoiKey { get; set; } = "F10";
+    public string HotkeyForceRunNextNextRoiKey { get; set; } = "F9";
     public string HotkeyForceRunNextNextRoiModifiers { get; set; } = "Control";
     public string HotkeyForceGeminiStrictKey { get; set; } = "F8";
     public string HotkeyForceGeminiStrictModifiers { get; set; } = "Alt";
