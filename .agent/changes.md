@@ -19241,3 +19241,30 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `Get-Content -Path 'Doc\VisionLlm_Hybrid_CapacityAllocation_Plan.md' -Encoding UTF8`
+**2026-03-11 20:19 (Asia/Taipei) — VisionLLM line-to-geometry classification 実装案を追加**
+
+### Summary
+- VisionLLM hybrid の新案として、Vision 各行を geometry 枠へ分類する方式の実装案を追加した。
+
+### Context / Goal
+- global segment allocation を再検討し、より軽量で実装しやすい `line-to-geometry classification` 方式の整理が必要になった。
+- Doc 配下の既存ファイルは参照せず、新規案だけを独立に記録したい。
+
+### Changes
+- `Doc/VisionLlm_Hybrid_LineToGeometryClassification_Plan.md` を新規追加した。
+- 内容は `text similarity + order + continuity` ベースで Vision line を geometry 枠へ分類する案に絞った。
+- `many Vision -> 1 Geometry` の出力方針、実装手順、リスク、DoD を整理した。
+
+### Files Touched
+- `Doc/VisionLlm_Hybrid_LineToGeometryClassification_Plan.md` — VisionLLM hybrid 新方式の実装案を新規作成した。
+
+### Behavioral Impact
+- コード変更なし。設計ドキュメントのみ追加。
+
+### Risk & Mitigation
+- Risk: 設計案が現実装とずれる可能性がある。
+- Mitigation: Doc では geometry 固定・public API 維持・軽量分類方式に前提を限定した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+
