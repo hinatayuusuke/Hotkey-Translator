@@ -19569,3 +19569,86 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
 - 成功（0 warnings / 0 errors）
+**2026-03-12 15:38 (Asia/Taipei) — Translation line join normalization plan**
+
+### Summary
+- 翻訳送信時だけ multi-line OCR text を保守的に空白連結する設計案を Doc に追加した。
+
+### Context / Goal
+- 同一 OCR 合併枠の本文は翻訳時に連結した方が質が上がる一方、メニューや選択肢は改行維持が必要だった。
+- 表示用 text を壊さず、翻訳送信直前だけ正規化する方針をアルゴリズム込みで整理した。
+
+### Changes
+- TranslationTextNormalizer に実装を寄せる前提で、menu-like / sentence-like 判定を使う line join アルゴリズムを設計した。
+- CJK 限定ではなく全言語対象、かつ「行数が多すぎない」は判定条件に使わない方針を明記した。
+
+### Files Touched
+- Doc/Translation_LineJoin_ForTranslation_Plan.md — 翻訳直前の改行連結案、判定アルゴリズム、実装手順、リスクを追加した。
+
+### Behavioral Impact
+- コード変更は未実施。今後この案を実装する場合、表示 text は維持しつつ翻訳送信 text だけが変化する。
+
+### Risk & Mitigation
+- Risk: menu-like と sentence-like の判定が甘いと、UI 項目を誤って連結する可能性がある。
+- Mitigation: 連結判定は TranslationTextNormalizer に限定し、overlay / OCR merge には影響させない方針にした。
+
+### Tests / Verification
+- Get-Content .\Doc\Translation_LineJoin_ForTranslation_Plan.md -Encoding UTF8
+- 内容確認のみ。コード実装・動作検証は未実施。
+**2026-03-12 15:47 (Asia/Taipei) — Translation-only line join normalization**
+
+### Summary
+- 翻訳送信時だけ multi-line OCR text を本文判定で空白連結し、メニュー系は改行維持する正規化を実装した。
+
+### Context / Goal
+- 同一 OCR 合併枠の本文は改行をそのまま送ると翻訳品質が落ちやすく、翻訳送信時だけ連結したかった。
+- ただしメニューや選択肢のような UI 項目は改行を維持したかったため、表示 text を壊さず translation path のみで判定する必要があった。
+
+### Changes
+- TranslationTextNormalizer に line-aware 正規化を追加し、multi-line text を menu-like / sentence-like ヒューリスティックで改行維持か空白連結か判定するようにした。
+- 改行正規化後も既存の CJK 近傍スペース補正は維持し、translation path だけへ適用する形に整理した。
+
+### Files Touched
+- Services/TranslationTextNormalizer.cs — 翻訳送信用の改行連結アルゴリズム、menu-like / sentence-like 判定、line-aware 空白正規化を実装した。
+
+### Behavioral Impact
+- 同一 ReadingUnit 内の本文系 multi-line text は翻訳送信時だけ半角スペース連結される。
+- メニューや短いラベル列、ステータス風 UI は改行を維持したまま翻訳送信される。
+- overlay 表示用 text や OCR merge 結果そのものは変わらない。
+
+### Risk & Mitigation
+- Risk: ヒューリスティック誤判定で UI 項目が連結される可能性がある。
+- Mitigation: 判定は TranslationTextNormalizer に閉じ、menu-like スコアを優先して保守的に改行維持する実装にした。
+- Risk: 既存 CJK spacing fix と干渉する可能性がある。
+- Mitigation: 行単位の空白正規化後に従来の CJK 近傍スペース補正を再適用し、translation path だけに影響を限定した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 15:54 (Asia/Taipei) — Add Chinese sentence markers for translation line join**
+
+### Summary
+- 翻訳送信用 line join 判定に繁體/簡体中国語の sentence marker を追加した。
+
+### Context / Goal
+- 現状の sentence-like 判定は英語 stop word と日本語 marker に寄っており、中国語本文が本文ブロックとして判定されにくかった。
+- menu-like 誤判定を増やしすぎないよう、単文字ではなく多文字の接続語・会話語中心で補強したかった。
+
+### Changes
+- TranslationTextNormalizer に ChineseSentenceMarkers を追加した。
+- ContainsSentenceMarker(...) で繁體/簡体中国語の marker も sentence-like 判定対象にした。
+
+### Files Touched
+- Services/TranslationTextNormalizer.cs — 繁體/簡体中国語の sentence marker を追加し、本文判定の言語カバレッジを拡張した。
+
+### Behavioral Impact
+- 中国語本文の multi-line text が、翻訳送信時に本文ブロックとして空白連結されやすくなる。
+- メニュー誤判定を増やしにくいよう、単文字ではなく多文字 marker に限定している。
+
+### Risk & Mitigation
+- Risk: 中国語 UI ラベルの一部まで本文扱いされる可能性がある。
+- Mitigation: 単文字 marker は避け、接続・因果・会話で使う多文字 marker のみを追加した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
