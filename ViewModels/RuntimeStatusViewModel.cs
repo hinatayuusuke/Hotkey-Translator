@@ -17,6 +17,9 @@ internal sealed partial class RuntimeStatusViewModel : ObservableObject
     private double _busyProgressPercent;
 
     [ObservableProperty]
+    private bool _canCancelCurrentRun;
+
+    [ObservableProperty]
     private string _roiStatusMessage = "ROI: not set";
 
     [ObservableProperty]

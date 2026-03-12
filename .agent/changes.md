@@ -19532,3 +19532,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
 - 成功（0 warnings / 0 errors）
+**2026-03-12 15:00 (Asia/Taipei) — Cancel button for OCR run busy overlay**
+
+### Summary
+- OCR 実行中の busy overlay に Cancel current run ボタンを追加し、既存の run cancellation token へ接続した。
+
+### Context / Goal
+- 現状は OCR/翻訳実行中や host 読み込み中に操作が拒否されるだけで、長い OCR 実行を途中で止める UI が無かった。
+- host 起動や install の busy はそのままにしつつ、OCR run だけは協調キャンセルできるようにしたかった。
+
+### Changes
+- MainWindowRunCoordinator に CancelCurrentRun() を追加し、実行中の _runCts を cancel する経路を追加した。
+- run 開始時だけ busy overlay の cancel 可否を ON にし、終了時に OFF に戻すようにした。
+- RuntimeStatusViewModel に CanCancelCurrentRun を追加し、busy overlay に Cancel current run ボタンを表示するようにした。
+- MainWindowViewModel に CancelCurrentRunCommand を追加し、UI から run coordinator の cancel を呼べるようにした。
+
+### Files Touched
+- Services/Application/MainWindowRunCoordinator.cs — OCR run 用の cancel API と busy overlay cancel 可否の制御を追加した。
+- Services/Application/IMainWindowViewBridge.cs — busy overlay の cancel 可否を view へ通知するメソッドを追加した。
+- ViewModels/RuntimeStatusViewModel.cs — OCR run の cancel ボタン表示状態を保持するプロパティを追加した。
+- ViewModels/MainWindowViewModel.cs — CancelCurrentRunCommand を追加した。
+- MainWindow.xaml.cs — run coordinator cancel の配線と CanCancelCurrentRun の更新を実装した。
+- MainWindow.xaml — busy overlay に Cancel current run ボタンを追加した。
+
+### Behavioral Impact
+- OCR/翻訳 run 中だけ、中央 busy overlay に Cancel current run ボタンが表示される。
+- host 起動や言語パック導入の busy overlay ではボタンは表示されない。
+- ボタン押下時は現在の OCR run が協調キャンセルされ、既存の OperationCanceledException 経路で終了する。
+
+### Risk & Mitigation
+- Risk: busy overlay を使う他の処理でも cancel ボタンが出ると意味がずれる。
+- Mitigation: MainWindowRunCoordinator の run 開始/終了時だけ CanCancelCurrentRun を制御し、host 起動系 busy には触れていない。
+- Risk: 初期化順序の都合で cancel command が null 参照になる可能性がある。
+- Mitigation: MainWindow 側の command 配線は null 条件演算子で保護した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）

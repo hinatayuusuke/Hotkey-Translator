@@ -124,6 +124,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             new SettingsViewModel(_settingsChangeScheduler),
             new RuntimeStatusViewModel(),
             RunOnceAsync,
+            () => _runCoordinator?.CancelCurrentRun(),
             SelectRoiAsync,
             SwapLanguages,
             RequestSettingsSave,
@@ -1171,6 +1172,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _busyOverlayController.SetBusyOverlay(visible, message);
     }
 
+    private void SetBusyOverlayCancelable(bool visible)
+    {
+        _mainWindowViewModel.RuntimeStatus.CanCancelCurrentRun = visible;
+    }
+
     private void ShowLoadingSpinnerForRun(AppSettings settings)
     {
         if (_overlayPresenter == null || _captureManager == null)
@@ -1215,6 +1221,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void IMainWindowViewBridge.AppendLog(string message) => AppendLog(message);
     void IMainWindowViewBridge.EnableOverlay() => EnableOverlay();
     void IMainWindowViewBridge.SetBusyOverlay(bool visible, string? message) => SetBusyOverlay(visible, message);
+    void IMainWindowViewBridge.SetBusyOverlayCancelable(bool visible) => SetBusyOverlayCancelable(visible);
     void IMainWindowViewBridge.ShowLoadingSpinnerForRun(AppSettings settings) => ShowLoadingSpinnerForRun(settings);
     void IMainWindowViewBridge.HideLoadingSpinnerForRun() => HideLoadingSpinnerForRun();
     void IMainWindowViewBridge.CancelTranslationOverlay() => CancelTranslationOverlay();

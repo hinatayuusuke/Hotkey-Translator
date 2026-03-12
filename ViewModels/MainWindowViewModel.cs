@@ -41,6 +41,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         SettingsViewModel settings,
         RuntimeStatusViewModel runtimeStatus,
         Func<Task> runOnceAsync,
+        Action cancelCurrentRun,
         Func<Task> selectRoiAsync,
         Action swapLanguages,
         Action requestSettingsSave,
@@ -62,6 +63,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         VisionLlmMmprojOptions = new ObservableCollection<LlamaModelOption>();
         TranslationPriority = new ObservableCollection<string>();
         RunOnceCommand = new AsyncRelayCommand(runOnceAsync);
+        CancelCurrentRunCommand = new RelayCommand(cancelCurrentRun);
         SelectRoiCommand = new AsyncRelayCommand(selectRoiAsync);
         SwapLanguagesCommand = new RelayCommand(swapLanguages);
         TranslationPriorityUpCommand = new RelayCommand(MoveTranslationPriorityUp);
@@ -95,6 +97,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public ObservableCollection<string> TranslationPriority { get; }
 
     public IAsyncRelayCommand RunOnceCommand { get; }
+
+    public IRelayCommand CancelCurrentRunCommand { get; }
 
     public IAsyncRelayCommand SelectRoiCommand { get; }
 

@@ -1630,6 +1630,12 @@
                                  Maximum="100"
                                  Value="{Binding RuntimeStatus.BusyProgressPercent}"
                                  IsIndeterminate="{Binding RuntimeStatus.BusyProgressIsIndeterminate}" />
+                    <Button Content="Cancel"
+                            Width="70"
+                            Margin="0,12,0,0"
+                            HorizontalAlignment="Center"
+                            Command="{Binding CancelCurrentRunCommand}"
+                            Visibility="{Binding RuntimeStatus.CanCancelCurrentRun, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
             </Border>
         </Grid>
