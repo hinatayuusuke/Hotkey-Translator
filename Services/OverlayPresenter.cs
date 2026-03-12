@@ -282,7 +282,7 @@ public sealed class OverlayPresenter
         _perfLogThresholdMs = Math.Max(0, thresholdMs);
     }
 
-    public void SetScreenRectMapper(Func<Rect, Rect?>? mapper)
+    public void SetScreenRectMapper(Func<Rect, Rect?>? mapper, bool refreshLastOverlay = true)
     {
         _screenRectMapper = mapper;
         if (!_isEnabled)
@@ -290,7 +290,12 @@ public sealed class OverlayPresenter
             return;
         }
 
-        ShowLast();
+        // WHY: Settings updates can legitimately change mapper/style while overlay stays hidden.
+        // Repainting the last overlay here would resurrect stale content during unrelated settings saves.
+        if (refreshLastOverlay)
+        {
+            ShowLast();
+        }
         SetAutoTranslateBadgeVisible(_autoTranslateBadgeVisible, _autoTranslateBadgeAnchorScreenRect);
     }
 

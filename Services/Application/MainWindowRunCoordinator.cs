@@ -40,6 +40,17 @@ internal sealed class MainWindowRunCoordinator : IDisposable
     public bool ShouldShowCenterBusyForCurrentRun =>
         Interlocked.CompareExchange(ref _showCenterBusyForCurrentRun, 0, 0) == 1;
 
+    public void CancelCurrentRun()
+    {
+        if (!IsRunning)
+        {
+            return;
+        }
+
+        _viewBridge.AppendLog("Cancel requested: current OCR run will stop.");
+        _runCts?.Cancel();
+    }
+
     public async Task RunOnceAsync(ForceRunOptions options)
     {
         var pipeline = _pipelineAccessor();
@@ -66,6 +77,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         if (showCenterBusyForCurrentRun)
         {
             _viewBridge.SetBusyOverlay(true, isFirstRun ? "Initializing OCR..." : "OCR running...");
+            _viewBridge.SetBusyOverlayCancelable(true);
         }
         if (!options.SuppressTransientUiFeedback)
         {
@@ -102,6 +114,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
             if (showCenterBusyForCurrentRun)
             {
+                _viewBridge.SetBusyOverlayCancelable(false);
                 _viewBridge.SetBusyOverlay(false, null);
             }
 

@@ -19241,6 +19241,7 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `Get-Content -Path 'Doc\VisionLlm_Hybrid_CapacityAllocation_Plan.md' -Encoding UTF8`
+<<<<<<< HEAD
 **2026-03-11 20:19 (Asia/Taipei) — VisionLLM line-to-geometry classification 実装案を追加**
 
 ### Summary
@@ -19268,3 +19269,552 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
 
+=======
+**2026-03-12 09:56 (Asia/Taipei) — Enable DX9 hook overlay route in pipeline**
+
+### Summary
+- Pipeline 側の hook overlay 対応 API 判定に DX9 を追加し、DX9 でも WPF 抑止と OverlayV2 publish が有効になるようにした。
+
+### Context / Goal
+- DX9 Hook では attach-success icon は描画される一方、翻訳オーバーレイが WPF 側に出ていた。
+- Native DX9 overlay 実装は存在するため、C# pipeline 側の API 判定を揃えて hook overlay 経路へ流したい。
+
+### Changes
+- `PipelineOrchestrator` の `IsHookOverlaySupportedApi(...)` に `GraphicsHookApiKind.Dx9` を追加した。
+- これにより DX9 でも `ShouldSuppressWpfOverlay()` と `TryUpdateGraphicsHookOverlayV2()` が有効になる。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — hook overlay 対応 API 判定に `Dx9` を追加した。
+
+### Behavioral Impact
+- DX9 GraphicsHook 使用時、overlay route が `wpf_allowed` ではなく `hook_only` へ切り替わるようになる。
+- DX9 でも Hook 側へ OverlayV2 text block が publish される。
+
+### Risk & Mitigation
+- Risk: DX9 で overlay publish が失敗する場合、WPF overlay が抑止されて見えなくなる可能性がある。
+- Mitigation: 既存の DX9 native overlay 実装が前提であり、status/log で `hook_only` と publish 成否を追える状態を維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-12 10:05 (Asia/Taipei) — Fix DX9 overlay runtime republish on F9/F10**
+
+### Summary
+- `MainWindow.xaml.cs` 側の hook overlay 対応 API 判定に DX9 を追加し、F9/F10 後も DX9 hook overlay を再有効化できるようにした。
+
+### Context / Goal
+- DX9 では初回の hook overlay 描画は成功していたが、F9 で非表示後に再表示すると `runtime_config_publish ... overlay=False` のままになっていた。
+- 原因は `MainWindow.xaml.cs` の runtime republish 用 API 判定が DX11/Vulkan のみで、DX9 を未対応扱いしていたためだった。
+
+### Changes
+- `MainWindow.xaml.cs` の `IsHookOverlaySupportedApi(...)` に `GraphicsHookApiKind.Dx9` を追加した。
+- これにより F9 toggle と F10/F8 の再表示経路でも DX9 hook overlay が `overlay=True` で publish されるようになる。
+
+### Files Touched
+- `MainWindow.xaml.cs` — hook overlay 対応 API 判定に `Dx9` を追加した。
+
+### Behavioral Impact
+- DX9 GraphicsHook 使用時、F9 で非表示後に再度 F9 または F8/F10 実行で hook overlay が再表示されるようになる。
+- 設定変更に依存せず runtime config 再 publish だけで self-heal するようになる。
+
+### Risk & Mitigation
+- Risk: DX9 で runtime republish が失敗すると overlay 状態がずれる可能性がある。
+- Mitigation: 既存の publish failure 時 `ApplySettingsAsync` 再適用経路は維持し、ログでも `runtime_config_publish` を確認できる状態を保つ。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-12 10:13 (Asia/Taipei) — Resource host VRAM budget simplification doc**
+
+### Summary
+- OCR / 翻訳 host の複雑な排他ロジックを、主 OCR 単一 + VRAM budget ベースへ整理する実装案を新規 Doc として追加した。
+
+### Context / Goal
+- 現状の `ShouldLoad*`, `ShouldKeep*Resident`, `StopBeforeStartHostIds`, `UseVisionSharedLocalTranslation` などが分散し、組み合わせの理解コストが高い。
+- これを host planning と VRAM budget 判定へ集約する方針を明文化したい。
+
+### Changes
+- `Services/Application/ResourceHostFacade.cs` の現行責務と問題点を整理した。
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` を追加した。
+- 主 OCR 単一、host tier、optional/required、budget drop、段階実装、リスクと緩和策を記載した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — host 排他を VRAM budget ベースへ整理する新実装案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 現状の複雑な host 排他を整理する設計方針を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 静的 tier だけでは実際の VRAM 使用量とずれる可能性がある。
+- Mitigation: Doc 内で conservative な tier 設計と budget profile 化を明示した。
+
+### Tests / Verification
+- `Get-Content -Path 'Services/Application/ResourceHostFacade.cs' -Encoding UTF8 | Select-Object -First 460`
+- `Get-Content -Path 'Services/TranslationFallbackService.cs' -Encoding UTF8 | Select-Object -First 220`
+- `Get-Content -Path 'Models/OcrEngineKind.cs' -Encoding UTF8`
+**2026-03-12 10:20 (Asia/Taipei) — Resource host VRAM budget doc refinement**
+
+### Summary
+- VRAM budget 案に `VisionLLM=4`、Hybrid helper OCR の budget 反映、device 別 weight、required 超過時の設定拒否を反映した。
+
+### Context / Goal
+- VisionLLM の実運用 VRAM は 4〜5GB 程度なので、weight を 4 に寄せた方が現実に合う。
+- また、Hybrid helper OCR も GPU 実行なら budget に含め、主 OCR + 翻訳の必須組み合わせだけで超過した時は fail fast で拒否する方針を Doc に反映したい。
+
+### Changes
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` を更新し、weight を `VisionLLM=4`, `Llama=3`, `PaddleVL=6`, `Paddle(gpu)=1`, `Paddle(cpu)=0`, `NDL=0` に整理した。
+- `UltraVram=10` を含む budget profile を追加した。
+- `ValidateRequiredBudget` と、設定変更キャンセル + 前回設定復元の方針を追加した。
+- 全体を見直し、前提、ルール、実装手順、DoD の整合を取り直した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — VisionLLM weight、Hybrid helper budget、required 超過 reject を反映した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- VRAM budget の評価対象と reject 方針がより具体的に整理された。
+
+### Risk & Mitigation
+- Risk: 静的 weight と実環境の差で reject が厳しすぎる可能性がある。
+- Mitigation: Doc 内で profile 調整と conservative 運用を前提にした。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\ResourceHost_VramBudget_Simplification_Plan.md' -Encoding UTF8`
+**2026-03-12 10:26 (Asia/Taipei) — Resource host VRAM budget doc vision-local-translation update**
+
+### Summary
+- VisionLLM 自前翻訳時は `Llama` を required budget に含めない前提を、`UsesVisionLocalTranslation(settings)` の判定関数込みで Doc に反映した。
+
+### Context / Goal
+- VisionLLM が自前翻訳を行う経路では、`EnableLlamaCppTranslation=true` でも純粋な `Llama` host を required budget に入れるのは二重計上になる。
+- そのため、設定値ではなく実際に使う翻訳経路で budget 判定する方針を Doc に明確化したい。
+
+### Changes
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` に `UsesVisionLocalTranslation(AppSettings settings)` を追加した。
+- VisionLLM self-translate 時の `Llama` required budget 除外ルールを追記した。
+- データフロー、ルール案、実装手順、ログ方針、DoD をこの判定前提で更新した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — VisionLLM 自前翻訳時の budget 判定方針を更新した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- `EnableLlamaCppTranslation=true` だけでは required budget 判定に入れず、実際の翻訳経路で判断する設計が明文化された。
+
+### Risk & Mitigation
+- Risk: VisionLLM self-translate と通常 Llama translation の境界が実装でぶれる可能性がある。
+- Mitigation: `UsesVisionLocalTranslation(settings)` を単独 helper 化し、budget と host plan の両方で同じ判定を使う方針を明記した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\ResourceHost_VramBudget_Simplification_Plan.md' -Encoding UTF8`
+**2026-03-12 13:14 (Asia/Taipei) — Resource host VRAM budget enforcement**
+
+### Summary
+- Resource host の排他判断を VRAM budget ベースの host plan へ寄せ、over-budget な設定変更を保存前に拒否する経路を追加した。
+
+### Context / Goal
+- OCR / 翻訳 host の常駐判断が `ShouldLoad*` / resident 判定 / 特例停止に分散しており、VisionLLM / helper OCR / local translation の組み合わせが追いにくかった。
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` の方針どおり、主 OCR と翻訳の必須構成が budget を超える場合は設定変更を fail fast で止め、前回設定へ戻したい。
+
+### Changes
+- `GraphicsResourceBudgetProfile` と settings validation を追加し、budget profile を settings.json に保持できるようにした。
+- `SettingsUiController` に budget 事前検証と設定差し戻しを追加し、保存前に前回設定へ復元できるようにした。
+- `ResourceHostFacade` を `BuildDesiredHostSet + ApplyVramBudget + TryValidateBudget` ベースへ整理し、host 起動計画を `_plannedHostIds` で一元化した。
+- `UsesVisionLocalTranslation(settings)` を host plan と budget 判定の共通 helper として導入し、VisionLLM 自前翻訳時は純粋な Llama host を required budget に含めないようにした。
+
+### Files Touched
+- `Models/AppSettings.cs` — `ResourceBudgetProfile` を追加した。
+- `Models/GraphicsResourceBudgetProfile.cs` — VRAM budget profile enum を追加した。
+- `Services/Settings/Rules/ResourceHostBudgetSettingsRule.cs` — budget profile 正規化ルールを追加した。
+- `Services/Settings/AppSettingsValidator.cs` — budget rule を validation pipeline に登録した。
+- `Services/SettingsService.cs` — settings 差し戻し用の `ReplaceSettings` を追加した。
+- `Services/Application/SettingsUiController.cs` — 保存前 budget validation、前回 settings clone / restore、UI sync を追加した。
+- `Services/Application/ResourceHostFacade.cs` — desired host set、budget 適用、required budget reject、planned host reconcile を実装した。
+- `MainWindow.xaml.cs` — budget validation / settings sync / failure dialog を `ISettingsUiBridge` に実装し、settings 差し戻し時に auto-translate badge も更新するようにした。
+
+### Behavioral Impact
+- `ResourceBudgetProfile` に応じて host の desired/planned 判定が変わるようになった。
+- 主 OCR + 翻訳の required host だけで budget 超過する設定は保存前に拒否され、前回設定へ戻る。
+- helper OCR は optional host として扱われ、budget 超過時は自動で drop される。
+- VisionLLM self-translate 経路では pure `llama_grpc` host を required host に含めなくなった。
+
+### Risk & Mitigation
+- Risk: 静的 weight と実環境の VRAM 消費がずれると、helper host が保守的に落ちる可能性がある。
+- Mitigation: budget profile を settings 化し、drop / reject を `stage=grpc_host_plan` ログで追えるようにした。
+- Risk: 保存時の settings 差し戻しで secret field が落ちる可能性がある。
+- Mitigation: clone 後に `ApiKey` と `DeepLApiKey` を明示的に復元している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- 成功（0 warnings / 0 errors）
+**2026-03-12 13:28 (Asia/Taipei) — Runtime budget eviction plan doc**
+
+### Summary
+- Resource host の常駐制御を runtime budget eviction へ寄せる新設計案を新規 Doc として追加した。
+
+### Context / Goal
+- 直前の budget 実装案は `desired/planned host set` を事前に決めすぎており、Paddle/NDL のような host 常駐共存の意図と噛み合わなかった。
+- 討論の結果、host 起動要求時に budget を確認し、不要 host を weight の大きい順に stop する設計へ整理し直したい。
+
+### Changes
+- `Doc/ResourceHost_RuntimeBudgetEviction_Plan.md` を新規作成した。
+- `unused first + weight desc` で host を evict する設計、`UsesVisionLocalTranslation(settings)` の扱い、reject 条件、実装手順を整理した。
+
+### Files Touched
+- `Doc/ResourceHost_RuntimeBudgetEviction_Plan.md` — runtime budget eviction ベースの新設計案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 以後の実装方針として、事前の複雑な resident 判定ではなく、起動要求時の budget 調停へ寄せる設計が明文化された。
+
+### Risk & Mitigation
+- Risk: 旧 Doc と新 Doc で設計案が併存するため、実装時に参照を誤る可能性がある。
+- Mitigation: 今回の Doc は新規ファイルとして分離し、runtime eviction を採用する場合の正本を明確にした。
+
+### Tests / Verification
+- `Get-Content -Path '.\Doc\ResourceHost_RuntimeBudgetEviction_Plan.md' -Encoding UTF8`
+**2026-03-12 14:16 (Asia/Taipei) — Runtime budget eviction implementation**
+
+### Summary
+- `ResourceHost_RuntimeBudgetEviction_Plan.md` に沿って、resource host 管理を「起動要求時の budget 確保 + unused host eviction」方式へ切り替えた。
+
+### Context / Goal
+- 直前の `planned resident set` 方式では、OCR 切替のたびに `Paddle` / `NDL` などの host が `stop_unused` で落ち、budget が許す範囲での常駐共存を表現できなかった。
+- 今回は `今必要な host は止めず、不要な host を weight の大きい順に落とす` 方式へ整理し直したかった。
+
+### Changes
+- `ResourceHostFacade` の budget ロジックを `BuildRequiredHosts + EnsureBudgetForHosts + runtime eviction` へ置き換えた。
+- required host だけで budget 超過する場合は reject し、それ以外は running host のうち unused なものを `Weight DESC` で evict するようにした。
+- `EnableLlamaCppTranslation=false` にしても pure `llama_grpc` がすぐ stop されないよう、Llama の resident 判定は「設定 OR 既に running」に変更した。
+- `stage=grpc_host_plan event=budget_request / budget_evict / budget_decision / budget_reject` のログを追加した。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — runtime budget eviction 本体を実装し、planned host 集合を「required + budget 内で残せる running host」に変更した。
+
+### Behavioral Impact
+- OCR / 翻訳の切替時、budget が許す限り既存 host は常駐を維持する。
+- budget が足りない場合だけ、今不要な running host が重い順に stop される。
+- `VisionLLM` 自前翻訳時は pure `llama_grpc` を required host として数えない。
+- required host だけで budget 超過する設定は引き続き reject される。
+
+### Risk & Mitigation
+- Risk: 未使用でも warm に残したい host が budget 圧迫時に自動で落ちる。
+- Mitigation: これは設計意図として受け入れ、`budget_evict` ログで理由を追えるようにした。
+- Risk: explicit host enable を OFF にした時の stop 条件が host ごとに異なる。
+- Mitigation: OCR 系 host は enable flag ベース、Llama は「設定 OR 既に running」の resident 判定に分けている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- 成功（0 warnings / 0 errors）
+**2026-03-12 14:44 (Asia/Taipei) — VisionLLM translation route UI toggle**
+
+### Summary
+- VisionLLM サイドパネルに、翻訳を VisionLLM 経路へ流すか通常経路へ流すかのチェックボックスを追加した。
+
+### Context / Goal
+- VisionLLM の OCR と翻訳経路の切替は既存設定 EnableVisionLlmSharedLocalTranslation で制御されていたが、UI からは操作できなかった。
+- VisionLLM OCR を使いながら、翻訳だけ通常経路へ戻す運用を UI から明示的に切り替えられるようにしたかった。
+
+### Changes
+- SettingsViewModel に EnableVisionLlmSharedLocalTranslation の公開プロパティを追加し、load/save/auto-save に接続した。
+- VisionLLM サイドパネルに Use VisionLLM for translation チェックボックスと説明文を追加した。
+
+### Files Touched
+- ViewModels/SettingsViewModel.cs — EnableVisionLlmSharedLocalTranslation を ViewModel に追加し、設定の読込・保存・自動保存へ接続した。
+- MainWindow.xaml — VisionLLM パネルに翻訳経路切替チェックボックスと補足説明を追加した。
+
+### Behavioral Impact
+- VisionLLM OCR 使用時、UI から VisionLLM の自前翻訳経路を ON/OFF できるようになった。
+- ON のときは既存の EnableVisionLlmSharedLocalTranslation 分岐に従い VisionLLM 翻訳経路を使い、OFF のときは通常翻訳経路を使う。
+
+### Risk & Mitigation
+- Risk: UI からの切替で既存の budget / host 判定が想定外に揺れる可能性がある。
+- Mitigation: 既存の設定フラグをそのまま UI 露出しただけに留め、経路分岐ロジック自体は変更していない。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 14:51 (Asia/Taipei) — VRAM budget profile UI**
+
+### Summary
+- System サイドパネルに VRAM budget profile のコンボボックスを追加した。
+
+### Context / Goal
+- ResourceBudgetProfile は既に settings と runtime budget 判定に存在していたが、UI から変更できなかった。
+- OCR / 翻訳 host の常駐数を UI から切り替えられるようにしたかった。
+
+### Changes
+- SettingsViewModel に ResourceBudgetProfileTag を追加し、settings の読込・保存・自動保存へ接続した。
+- MainWindow.xaml の System > Performance セクションに budget profile コンボと説明文を追加した。
+
+### Files Touched
+- ViewModels/SettingsViewModel.cs — ResourceBudgetProfile を UI から扱うためのタグプロパティと load/save 配線を追加した。
+- MainWindow.xaml — System パネルに VRAM budget profile コンボボックスを追加した。
+
+### Behavioral Impact
+- UI から Low VRAM / Balanced / High VRAM / Ultra VRAM を選択できるようになった。
+- 選択値は既存の resource host budget 判定へそのまま反映される。
+
+### Risk & Mitigation
+- Risk: 設定変更直後に budget reject が起きると、UI 上の値と実 settings がずれる可能性がある。
+- Mitigation: 既存の settings restore 経路をそのまま使うため、reject 時は前回設定へ戻る。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 15:00 (Asia/Taipei) — Cancel button for OCR run busy overlay**
+
+### Summary
+- OCR 実行中の busy overlay に Cancel current run ボタンを追加し、既存の run cancellation token へ接続した。
+
+### Context / Goal
+- 現状は OCR/翻訳実行中や host 読み込み中に操作が拒否されるだけで、長い OCR 実行を途中で止める UI が無かった。
+- host 起動や install の busy はそのままにしつつ、OCR run だけは協調キャンセルできるようにしたかった。
+
+### Changes
+- MainWindowRunCoordinator に CancelCurrentRun() を追加し、実行中の _runCts を cancel する経路を追加した。
+- run 開始時だけ busy overlay の cancel 可否を ON にし、終了時に OFF に戻すようにした。
+- RuntimeStatusViewModel に CanCancelCurrentRun を追加し、busy overlay に Cancel current run ボタンを表示するようにした。
+- MainWindowViewModel に CancelCurrentRunCommand を追加し、UI から run coordinator の cancel を呼べるようにした。
+
+### Files Touched
+- Services/Application/MainWindowRunCoordinator.cs — OCR run 用の cancel API と busy overlay cancel 可否の制御を追加した。
+- Services/Application/IMainWindowViewBridge.cs — busy overlay の cancel 可否を view へ通知するメソッドを追加した。
+- ViewModels/RuntimeStatusViewModel.cs — OCR run の cancel ボタン表示状態を保持するプロパティを追加した。
+- ViewModels/MainWindowViewModel.cs — CancelCurrentRunCommand を追加した。
+- MainWindow.xaml.cs — run coordinator cancel の配線と CanCancelCurrentRun の更新を実装した。
+- MainWindow.xaml — busy overlay に Cancel current run ボタンを追加した。
+
+### Behavioral Impact
+- OCR/翻訳 run 中だけ、中央 busy overlay に Cancel current run ボタンが表示される。
+- host 起動や言語パック導入の busy overlay ではボタンは表示されない。
+- ボタン押下時は現在の OCR run が協調キャンセルされ、既存の OperationCanceledException 経路で終了する。
+
+### Risk & Mitigation
+- Risk: busy overlay を使う他の処理でも cancel ボタンが出ると意味がずれる。
+- Mitigation: MainWindowRunCoordinator の run 開始/終了時だけ CanCancelCurrentRun を制御し、host 起動系 busy には触れていない。
+- Risk: 初期化順序の都合で cancel command が null 参照になる可能性がある。
+- Mitigation: MainWindow 側の command 配線は null 条件演算子で保護した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 15:38 (Asia/Taipei) — Translation line join normalization plan**
+
+### Summary
+- 翻訳送信時だけ multi-line OCR text を保守的に空白連結する設計案を Doc に追加した。
+
+### Context / Goal
+- 同一 OCR 合併枠の本文は翻訳時に連結した方が質が上がる一方、メニューや選択肢は改行維持が必要だった。
+- 表示用 text を壊さず、翻訳送信直前だけ正規化する方針をアルゴリズム込みで整理した。
+
+### Changes
+- TranslationTextNormalizer に実装を寄せる前提で、menu-like / sentence-like 判定を使う line join アルゴリズムを設計した。
+- CJK 限定ではなく全言語対象、かつ「行数が多すぎない」は判定条件に使わない方針を明記した。
+
+### Files Touched
+- Doc/Translation_LineJoin_ForTranslation_Plan.md — 翻訳直前の改行連結案、判定アルゴリズム、実装手順、リスクを追加した。
+
+### Behavioral Impact
+- コード変更は未実施。今後この案を実装する場合、表示 text は維持しつつ翻訳送信 text だけが変化する。
+
+### Risk & Mitigation
+- Risk: menu-like と sentence-like の判定が甘いと、UI 項目を誤って連結する可能性がある。
+- Mitigation: 連結判定は TranslationTextNormalizer に限定し、overlay / OCR merge には影響させない方針にした。
+
+### Tests / Verification
+- Get-Content .\Doc\Translation_LineJoin_ForTranslation_Plan.md -Encoding UTF8
+- 内容確認のみ。コード実装・動作検証は未実施。
+**2026-03-12 15:47 (Asia/Taipei) — Translation-only line join normalization**
+
+### Summary
+- 翻訳送信時だけ multi-line OCR text を本文判定で空白連結し、メニュー系は改行維持する正規化を実装した。
+
+### Context / Goal
+- 同一 OCR 合併枠の本文は改行をそのまま送ると翻訳品質が落ちやすく、翻訳送信時だけ連結したかった。
+- ただしメニューや選択肢のような UI 項目は改行を維持したかったため、表示 text を壊さず translation path のみで判定する必要があった。
+
+### Changes
+- TranslationTextNormalizer に line-aware 正規化を追加し、multi-line text を menu-like / sentence-like ヒューリスティックで改行維持か空白連結か判定するようにした。
+- 改行正規化後も既存の CJK 近傍スペース補正は維持し、translation path だけへ適用する形に整理した。
+
+### Files Touched
+- Services/TranslationTextNormalizer.cs — 翻訳送信用の改行連結アルゴリズム、menu-like / sentence-like 判定、line-aware 空白正規化を実装した。
+
+### Behavioral Impact
+- 同一 ReadingUnit 内の本文系 multi-line text は翻訳送信時だけ半角スペース連結される。
+- メニューや短いラベル列、ステータス風 UI は改行を維持したまま翻訳送信される。
+- overlay 表示用 text や OCR merge 結果そのものは変わらない。
+
+### Risk & Mitigation
+- Risk: ヒューリスティック誤判定で UI 項目が連結される可能性がある。
+- Mitigation: 判定は TranslationTextNormalizer に閉じ、menu-like スコアを優先して保守的に改行維持する実装にした。
+- Risk: 既存 CJK spacing fix と干渉する可能性がある。
+- Mitigation: 行単位の空白正規化後に従来の CJK 近傍スペース補正を再適用し、translation path だけに影響を限定した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 15:54 (Asia/Taipei) — Add Chinese sentence markers for translation line join**
+
+### Summary
+- 翻訳送信用 line join 判定に繁體/簡体中国語の sentence marker を追加した。
+
+### Context / Goal
+- 現状の sentence-like 判定は英語 stop word と日本語 marker に寄っており、中国語本文が本文ブロックとして判定されにくかった。
+- menu-like 誤判定を増やしすぎないよう、単文字ではなく多文字の接続語・会話語中心で補強したかった。
+
+### Changes
+- TranslationTextNormalizer に ChineseSentenceMarkers を追加した。
+- ContainsSentenceMarker(...) で繁體/簡体中国語の marker も sentence-like 判定対象にした。
+
+### Files Touched
+- Services/TranslationTextNormalizer.cs — 繁體/簡体中国語の sentence marker を追加し、本文判定の言語カバレッジを拡張した。
+
+### Behavioral Impact
+- 中国語本文の multi-line text が、翻訳送信時に本文ブロックとして空白連結されやすくなる。
+- メニュー誤判定を増やしにくいよう、単文字ではなく多文字 marker に限定している。
+
+### Risk & Mitigation
+- Risk: 中国語 UI ラベルの一部まで本文扱いされる可能性がある。
+- Mitigation: 単文字 marker は避け、接続・因果・会話で使う多文字 marker のみを追加した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 16:28 (Asia/Taipei) — Prevent stale overlay resurrection on settings save**
+
+### Summary
+- 設定変更時の overlay mapper 再適用で、非表示だった前回 overlay が勝手に再表示される経路を止めた。
+
+### Context / Goal
+- 一度 overlay を非表示にした後、ROI 変更や Fixed ROI overlay mode などの設定保存で前回の overlay が復活していた。
+- 設定反映は必要だが、F9/F10 や新規 OCR 結果のような意図した再表示は壊さず、settings save だけで stale overlay を出さないようにしたかった。
+
+### Changes
+- OverlayPresenter.SetScreenRectMapper(...) に efreshLastOverlay 引数を追加し、setter が無条件に ShowLast() しないようにした。
+- ApplyMirrorOverlayMapper() からは efreshLastOverlay: false で呼ぶように変更し、settings save では mapper 状態だけ更新するようにした。
+
+### Files Touched
+- Services/OverlayPresenter.cs — screen rect mapper 更新時の自動 ShowLast() を明示制御に変更した。
+- MainWindow.xaml.cs — settings 反映時の mapper 再適用では stale overlay を再描画しないようにした。
+
+### Behavioral Impact
+- overlay 非表示中に設定を保存しても、前回の overlay が勝手に再表示されなくなる。
+- F9 による表示復帰や、新しい OCR/翻訳結果による overlay 更新は従来どおり動作する。
+
+### Risk & Mitigation
+- Risk: mapper 変更直後に意図した overlay 再描画が行われない経路が残る可能性がある。
+- Mitigation: efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び出し元だけ alse を指定した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
+**2026-03-12 19:00 (Asia/Taipei) — WPF UI rework direction document**
+
+### Summary
+- テーマ被せ方式をやめ、WPF 前提で機能優先に UI を整理し直す方針を Doc に追加した。
+
+### Context / Goal
+- 既存レイアウト維持を前提にした visual refresh は、標準コントロールの破綻や見た目の不整合が出やすかった。
+- 今後は多少のレイアウト変更を許容し、機能優先で UI を再設計する方向を明文化したかった。
+
+### Changes
+- テーマ被せから WPF UI 再整理へ方針転換するドキュメントを新規追加した。
+- ゴール、非ゴール、パネル単位の進め方、実装順序、DoD を整理した。
+
+### Files Touched
+- `Doc/Wpf_Ui_Rework_Direction.md` — WPF 前提の UI 再整理方針、パネルごとの方向性、段階実装手順を追加した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修はこの方針に従って、パネル単位で再整理する前提となる。
+
+### Risk & Mitigation
+- Risk: 既存 UI 設計と新方針が一時的に混在し、途中段階で見た目が揃わない可能性がある。
+- Mitigation: System -> VisionLLM -> OCR Settings の順で段階実装し、共通レイアウト部品を先に作る方針を明記した。
+
+### Tests / Verification
+- 文書作成のみ。コード実装・画面検証は未実施。**2026-03-12 19:05 (Asia/Taipei) — ModernWpf-based UI rework direction**
+
+### Summary
+- WPF UI 再整理方針を、完全自前テーマではなく ModernWpf をテーマ基盤に使う前提へ更新した。
+
+### Context / Goal
+- 自前テーマ被せ方式は破綻しやすく、複雑コントロールで標準挙動を壊しやすかった。
+- 今後は ModernWpf を使って light/dark と基本コントロールを安定させ、その上でレイアウトを整理する方向に切り替えたかった。
+
+### Changes
+- `Doc/Wpf_Ui_Rework_Direction.md` を ModernWpf 前提に更新した。
+- 実装手順を `ModernWpf 導入 -> 共通レイアウト部品 -> パネル再整理 -> 局所調整` の順へ更新した。
+- テーマ適用の方針を「ModernWpf 既定を優先し、自前 style は不足分だけ」に整理した。
+
+### Files Touched
+- `Doc/Wpf_Ui_Rework_Direction.md` — ModernWpf 採用前提の UI 再整理方針、テーマ基盤、実装順序、DoD を更新した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修は ModernWpf をテーマ基盤にして進める前提となる。
+
+### Risk & Mitigation
+- Risk: ModernWpf 導入時に既存画面の見た目や余白が一気に変わる可能性がある。
+- Mitigation: 先にテーマ基盤だけを入れ、独自見た目調整は後段で限定的に行う方針へ整理した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_Ui_Rework_Direction.md -Encoding UTF8`
+- 内容確認のみ。コード実装・画面検証は未実施。
+
+**2026-03-12 19:26 (Asia/Taipei) — Settings console UI modernization recommendation doc**
+
+### Summary
+- オーバーレイ主役・`MainWindow` は設定コンソールという前提で、UI モダン化の推奨方針を新規 Doc に追加した。
+
+### Context / Goal
+- このアプリの主役は対象アプリ上の翻訳オーバーレイであり、`MainWindow` は調整・設定・検証のための画面としての性質が強い。
+- ランチャー風の見た目ではなく、設定責務の分離と検証しやすさを優先した UI 再編方針を文書化したかった。
+
+### Changes
+- `MainWindow` を設定コンソールとして捉える前提の UI 推奨案を新規追加した。
+- 画面カテゴリ再編、`Overview` の役割、`Basic / Advanced` 分離、`Preview / Log` の位置づけ、実装手順を整理した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — 設定コンソール前提の UI モダン化推奨、情報設計、ナビゲーション構成、実装手順、DoD を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修方針として、`MainWindow` を設定コンソール中心に再設計する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: 既存のカテゴリ名や画面構成と提案カテゴリの差分により、実装着手時に再整理コストが発生する。
+- Mitigation: 文書内で `Overview`、`Runtime / Logs`、`Advanced` を含む責務分離と段階的な実装順を先に定義した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書追加のみ。コード実装・画面検証は未実施。
+
+**2026-03-12 19:31 (Asia/Taipei) — Add language pair guidance to settings console doc**
+
+### Summary
+- `Overview` に言語ペアの即時確認・即時変更を置く方針を UI 推奨文書へ追記した。
+
+### Context / Goal
+- 言語選択はオーバーレイ結果に直結し、テスト操作の直前に確認・変更されやすい主要設定である。
+- `Overview` に何を置くべきかを明確化し、`Translation` との責務分離を文書上で整理したかった。
+
+### Changes
+- `Overview` の役割に source / target language と swap を追加した。
+- `Translation` を「言語設定の詳細」を扱う位置づけに修正した。
+- `Overview` に置く主要設定の基準を補足する節を追加した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — `Overview` に置く言語ペア操作と `Translation` 側へ残す詳細設定の責務分離を追記した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 設計では、言語ペアの最小操作を `Overview` に配置する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: `Overview` に設定を足しすぎると診断トップとしての簡潔さが失われる。
+- Mitigation: 文書上で `Overview` には最小限の言語ペア操作だけを置き、詳細設定は `Translation` に残す方針を明記した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書更新のみ。コード実装・画面検証は未実施。
+>>>>>>> 2bc7f20e78b3a24ede5366153dd6192342540ffa

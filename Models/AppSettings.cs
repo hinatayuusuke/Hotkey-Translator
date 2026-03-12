@@ -116,8 +116,9 @@ public sealed class AppSettings
     public double SceneSemanticBlockIouThreshold { get; set; } = 0.5;
     public int SceneSemanticMinChars { get; set; } = 2;
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
+    public GraphicsResourceBudgetProfile ResourceBudgetProfile { get; set; } = GraphicsResourceBudgetProfile.Balanced;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
-    public string PaddleDevice { get; set; } = "cpu";
+    public string PaddleDevice { get; set; } = "gpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
     public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";
@@ -243,13 +244,13 @@ public sealed class AppSettings
     public string HotkeyRunNextRoiModifiers { get; set; } = "Shift";
     public string HotkeyRunNextNextRoiKey { get; set; } = "F8";
     public string HotkeyRunNextNextRoiModifiers { get; set; } = "Control";
-    public string HotkeyToggleOverlayKey { get; set; } = "F9";
+    public string HotkeyToggleOverlayKey { get; set; } = "F10";
     public string HotkeyToggleOverlayModifiers { get; set; } = "None";
-    public string HotkeyForceRunKey { get; set; } = "F10";
+    public string HotkeyForceRunKey { get; set; } = "F9";
     public string HotkeyForceRunModifiers { get; set; } = "None";
-    public string HotkeyForceRunNextRoiKey { get; set; } = "F10";
+    public string HotkeyForceRunNextRoiKey { get; set; } = "F9";
     public string HotkeyForceRunNextRoiModifiers { get; set; } = "Shift";
-    public string HotkeyForceRunNextNextRoiKey { get; set; } = "F10";
+    public string HotkeyForceRunNextNextRoiKey { get; set; } = "F9";
     public string HotkeyForceRunNextNextRoiModifiers { get; set; } = "Control";
     public string HotkeyForceGeminiStrictKey { get; set; } = "F8";
     public string HotkeyForceGeminiStrictModifiers { get; set; } = "Alt";

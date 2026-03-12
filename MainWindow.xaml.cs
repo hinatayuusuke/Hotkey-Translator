@@ -124,6 +124,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             new SettingsViewModel(_settingsChangeScheduler),
             new RuntimeStatusViewModel(),
             RunOnceAsync,
+            () => _runCoordinator?.CancelCurrentRun(),
             SelectRoiAsync,
             SwapLanguages,
             RequestSettingsSave,
@@ -756,6 +757,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             UpdateTranslationStatus(settings);
         }
+
+        UpdateAutoTranslateBadgeVisibility(settings);
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
@@ -959,7 +962,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
-        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+        return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private static bool IsGraphicsHookLauncherModeEnabled(AppSettings settings)
@@ -1169,6 +1172,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _busyOverlayController.SetBusyOverlay(visible, message);
     }
 
+    private void SetBusyOverlayCancelable(bool visible)
+    {
+        _mainWindowViewModel.RuntimeStatus.CanCancelCurrentRun = visible;
+    }
+
     private void ShowLoadingSpinnerForRun(AppSettings settings)
     {
         if (_overlayPresenter == null || _captureManager == null)
@@ -1213,6 +1221,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void IMainWindowViewBridge.AppendLog(string message) => AppendLog(message);
     void IMainWindowViewBridge.EnableOverlay() => EnableOverlay();
     void IMainWindowViewBridge.SetBusyOverlay(bool visible, string? message) => SetBusyOverlay(visible, message);
+    void IMainWindowViewBridge.SetBusyOverlayCancelable(bool visible) => SetBusyOverlayCancelable(visible);
     void IMainWindowViewBridge.ShowLoadingSpinnerForRun(AppSettings settings) => ShowLoadingSpinnerForRun(settings);
     void IMainWindowViewBridge.HideLoadingSpinnerForRun() => HideLoadingSpinnerForRun();
     void IMainWindowViewBridge.CancelTranslationOverlay() => CancelTranslationOverlay();
@@ -1228,6 +1237,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
+    bool ISettingsUiBridge.TryValidateResourceHostBudget(AppSettings settings, out string? message) =>
+        _resourceHostFacade.TryValidateBudget(settings, out message);
+    void ISettingsUiBridge.SyncSettingsToView(AppSettings settings, bool updateTranslationStatus) =>
+        SyncSettingsAfterHostFailure(settings, updateTranslationStatus);
+    void ISettingsUiBridge.ShowLoadFailure(string message) => ShowLoadFailure(message);
     void ISettingsUiBridge.AppendLog(string message) => AppendLog(message);
     void ISettingsUiBridge.TryUpdateHotkeys(AppSettings settings) => TryUpdateHotkeys(settings);
     void ISettingsUiBridge.UpdateAutoHideWatcher(AppSettings settings) => UpdateAutoHideWatcher(settings);
@@ -2063,7 +2077,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         // WHY: Mirror mode now captures from Magpie scaling window directly, so source->mirror mapping
         // would become a double transform and shift overlay positions.
-        _overlayPresenter.SetScreenRectMapper(null);
+        // WHY: Settings saves should refresh mapper state without resurrecting the last hidden overlay.
+        _overlayPresenter.SetScreenRectMapper(null, refreshLastOverlay: false);
     }
 
     private void ResetRoiForMirrorStop()

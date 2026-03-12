@@ -59,6 +59,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedMmprojFileName = string.Empty;
+    [ObservableProperty] private bool _enableVisionLlmSharedLocalTranslation;
     [ObservableProperty] private bool _enableVisionGeometryHybridOcr;
     [ObservableProperty] private string _visionGeometryHybridBaseEngineTag = "WinRt";
     [ObservableProperty] private bool _enableDeepL;
@@ -91,6 +92,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableGraphicsHookPerfDiagLog;
     [ObservableProperty] private bool _enableGraphicsHookDiagFileSink;
     [ObservableProperty] private bool _enableGraphicsHookLauncher;
+    [ObservableProperty] private string _resourceBudgetProfileTag = "Balanced";
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
@@ -217,6 +219,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
             VisionLlmSelectedModelFileName = settings.VisionLlmSelectedModelFileName;
             VisionLlmSelectedMmprojFileName = settings.VisionLlmSelectedMmprojFileName;
+            EnableVisionLlmSharedLocalTranslation = settings.EnableVisionLlmSharedLocalTranslation;
             EnableVisionGeometryHybridOcr = settings.EnableVisionGeometryHybridOcr;
             VisionGeometryHybridBaseEngineTag = settings.VisionGeometryHybridBaseEngine switch
             {
@@ -264,6 +267,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableGraphicsHookPerfDiagLog = settings.EnableGraphicsHookPerfDiagLog;
             EnableGraphicsHookDiagFileSink = settings.EnableGraphicsHookDiagFileSink;
             EnableGraphicsHookLauncher = settings.EnableGraphicsHookLauncher;
+            ResourceBudgetProfileTag = settings.ResourceBudgetProfile switch
+            {
+                GraphicsResourceBudgetProfile.LowVram => "LowVram",
+                GraphicsResourceBudgetProfile.HighVram => "HighVram",
+                GraphicsResourceBudgetProfile.UltraVram => "UltraVram",
+                _ => "Balanced"
+            };
             EnableSceneChangeTextWeighted = settings.EnableSceneChangeTextWeighted;
             EnableSceneChangeQuietWindow = settings.EnableSceneChangeQuietWindow;
             PhashThresholdText = settings.PhashThreshold.ToString();
@@ -363,6 +373,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
         settings.VisionLlmSelectedModelFileName = (VisionLlmSelectedModelFileName ?? string.Empty).Trim();
         settings.VisionLlmSelectedMmprojFileName = (VisionLlmSelectedMmprojFileName ?? string.Empty).Trim();
+        settings.EnableVisionLlmSharedLocalTranslation = EnableVisionLlmSharedLocalTranslation;
         settings.EnableDeepL = EnableDeepL;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
@@ -403,6 +414,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableGraphicsHookPerfDiagLog = EnableGraphicsHookPerfDiagLog;
         settings.EnableGraphicsHookDiagFileSink = EnableGraphicsHookDiagFileSink;
         settings.EnableGraphicsHookLauncher = EnableGraphicsHookLauncher;
+        settings.ResourceBudgetProfile = ResourceBudgetProfileTag switch
+        {
+            "LowVram" => GraphicsResourceBudgetProfile.LowVram,
+            "HighVram" => GraphicsResourceBudgetProfile.HighVram,
+            "UltraVram" => GraphicsResourceBudgetProfile.UltraVram,
+            _ => GraphicsResourceBudgetProfile.Balanced
+        };
         settings.GraphicsHookLauncherExePath = (GraphicsHookLauncherExePath ?? string.Empty).Trim();
         settings.GraphicsHookLauncherArgs = GraphicsHookLauncherArgs ?? string.Empty;
         settings.EnableRawInputHotkeys = EnableRawInputHotkeys;
@@ -721,6 +739,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnVisionLlmBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxImageSideTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableVisionLlmSharedLocalTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableVisionGeometryHybridOcrChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVisionGeometryHybridBaseEngineTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
@@ -839,6 +858,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableGraphicsHookDiagFileSinkChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookLauncherChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnResourceBudgetProfileTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookLauncherExePathChanged(string value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookLauncherArgsChanged(string value) => RequestSaveOnValueChange();
     partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
