@@ -19652,3 +19652,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
 - 成功（0 warnings / 0 errors）
+**2026-03-12 16:28 (Asia/Taipei) — Prevent stale overlay resurrection on settings save**
+
+### Summary
+- 設定変更時の overlay mapper 再適用で、非表示だった前回 overlay が勝手に再表示される経路を止めた。
+
+### Context / Goal
+- 一度 overlay を非表示にした後、ROI 変更や Fixed ROI overlay mode などの設定保存で前回の overlay が復活していた。
+- 設定反映は必要だが、F9/F10 や新規 OCR 結果のような意図した再表示は壊さず、settings save だけで stale overlay を出さないようにしたかった。
+
+### Changes
+- OverlayPresenter.SetScreenRectMapper(...) に efreshLastOverlay 引数を追加し、setter が無条件に ShowLast() しないようにした。
+- ApplyMirrorOverlayMapper() からは efreshLastOverlay: false で呼ぶように変更し、settings save では mapper 状態だけ更新するようにした。
+
+### Files Touched
+- Services/OverlayPresenter.cs — screen rect mapper 更新時の自動 ShowLast() を明示制御に変更した。
+- MainWindow.xaml.cs — settings 反映時の mapper 再適用では stale overlay を再描画しないようにした。
+
+### Behavioral Impact
+- overlay 非表示中に設定を保存しても、前回の overlay が勝手に再表示されなくなる。
+- F9 による表示復帰や、新しい OCR/翻訳結果による overlay 更新は従来どおり動作する。
+
+### Risk & Mitigation
+- Risk: mapper 変更直後に意図した overlay 再描画が行われない経路が残る可能性がある。
+- Mitigation: efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び出し元だけ alse を指定した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）

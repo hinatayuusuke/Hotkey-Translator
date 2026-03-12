@@ -2077,7 +2077,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         // WHY: Mirror mode now captures from Magpie scaling window directly, so source->mirror mapping
         // would become a double transform and shift overlay positions.
-        _overlayPresenter.SetScreenRectMapper(null);
+        // WHY: Settings saves should refresh mapper state without resurrecting the last hidden overlay.
+        _overlayPresenter.SetScreenRectMapper(null, refreshLastOverlay: false);
     }
 
     private void ResetRoiForMirrorStop()
