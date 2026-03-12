@@ -41,8 +41,8 @@
   6. どの枠にも十分なスコアで割り当てられない Vision line だけを synthetic fallback に回す。
 - 既存パターンへの整合:
   - geometry 枠位置は固定。
-  - 既存の `1 Vision -> many Geometry` split は当面残してよい。
-  - 本 pass は greedy より前に置くか、greedy を置き換える。
+  - 既存の `1 Vision -> many Geometry` split は削除しない。
+  - 初期実装では classification pass の後に、未解決ケースだけ既存 split を試す。
 
 6. スコアリング設計
 - 各 `Vision line -> geometry rect` のスコア候補:
@@ -75,6 +75,7 @@
     - `Rect`: geometry 枠そのまま
     - `LineCount`: 結合した Vision line 数
     - `LineHeight`: geometry rect 高さベースで再計算
+  - NOTE: `ReadingUnitBuilder` は `OcrLine.LineCount` / `LineHeight` をそのまま下流へ渡すため、ここを省略すると `OverlayStage` 側で改行が潰れる。
 
 8. 実装手順
 - Step 1: score helper の抽出
@@ -88,7 +89,8 @@
 - Step 4: fallback
   - 十分なスコアで分類できない line だけ synthetic fallback へ流す。
 - Step 5: existing split との共存
-  - 必要なら `1 Vision -> many Geometry` split は分類後の残ケースだけへ適用する。
+  - 既存の `1 Vision -> many Geometry` split は分類 pass の後に、未解決 Vision line と未使用 geometry 枠へだけ適用する。
+  - WHY: 先に line classification で `many Vision -> 1 Geometry` を片付け、その後に既存 split で `1 Vision -> many Geometry` を補完する方が、現在の greedy 実装と干渉しにくい。
 
 9. 非機能要件チェック
 - 性能:
@@ -97,7 +99,7 @@
 - 可観測性:
   - `stage=vision_geometry_hybrid event=line_classifier_summary`
   - 例:
-    - `visionLines=4 geometryRects=2 assigned=4 fallback=0 switched=1`
+    - `visionLines=4 geometryRects=2 assigned11=1 assignedN1=3 postSplit=0 synthetic=0 merged=0 switched=1`
 - 互換性:
   - public API 変更なし。
   - 初期段階では feature flag なしでもよいが、必要なら internal flag 化できる構造にする。
@@ -108,7 +110,7 @@
 - Risk: geometry OCR text が崩れすぎて分類根拠が弱い。
 - Mitigation: low-score line は無理に分類せず fallback へ回す。
 - Risk: 同じ geometry 枠へ line を集約した結果、overlay が overflow しやすくなる。
-- Mitigation: `LineCount` を正しく設定し、最終的な改行制御は Overlay 側へ委譲する。
+- Mitigation: `Text` は `Environment.NewLine` を保持し、`LineCount` / `LineHeight` を正しく設定したうえで、最終的な改行制御は Overlay 側へ委譲する。
 
 11. 影響範囲
 - `Services/VisionGeometryHybridAligner.cs` — 実装本体。
@@ -119,4 +121,4 @@
 - geometry 枠位置を変えずに、`many Vision -> 1 Geometry` を自然に扱える。
 - `2枠 + 4行` のようなケースで、line が geometry 枠へ分類され、synthetic fallback が減る。
 - `LineCount` と改行が保持され、overlay 表示で行構造が潰れない。
-- `stage=vision_geometry_hybrid event=line_classifier_summary` で分類結果を確認できる。
+- `stage=vision_geometry_hybrid event=line_classifier_summary` で `assigned11 / assignedN1 / postSplit / synthetic / merged` を確認できる。

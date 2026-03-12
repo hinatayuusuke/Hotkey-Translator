@@ -149,7 +149,8 @@ internal sealed class OcrAndGroupStage
                         _logger?.Info(
                             $"stage=vision_geometry_hybrid event=stage_summary geometryRawLineCount={geometryPass.Result.Lines.Count} " +
                             $"groupedGeometryLineCount={groupedGeometryLines.Count} visionLineCount={filteredLines.Count} " +
-                            $"matchedCount={aligned.MatchedCount} syntheticCount={aligned.SyntheticFallbackCount}.");
+                            $"assigned11={aligned.AssignedOneToOneCount} assignedN1={aligned.AssignedManyToOneCount} " +
+                            $"postSplit={aligned.SplitCount} syntheticCount={aligned.SyntheticFallbackCount} mergedCount={aligned.SyntheticMergedCount}.");
 
                         if (aligned.Lines.Count > 0)
                         {

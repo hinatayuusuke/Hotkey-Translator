@@ -14,6 +14,9 @@ public sealed class VisionGeometryHybridAligner
     private const double SplitGeometryRunMinTextSimilarity = 0.62;
     private const double SplitGeometrySegmentMinSimilarity = 0.38;
     private const int SplitGeometryRunMaxSegments = 3;
+    private const double ClassificationContinuityBonus = 0.08;
+    private const double ClassificationSwitchPenalty = 0.04;
+    private const double ClassificationMinScoreFactor = 0.92;
     private readonly NormalizationService _normalizationService = new();
     private readonly AppLogger? _logger;
 
@@ -23,209 +26,259 @@ public sealed class VisionGeometryHybridAligner
     }
 
     public HybridOcrAlignmentResult Align(
-        IReadOnlyList<OcrLine> geometryLines,
-        IReadOnlyList<OcrLine> visionLines,
-        int imageWidth,
-        int imageHeight,
-        AppSettings settings)
+    IReadOnlyList<OcrLine> geometryLines,
+    IReadOnlyList<OcrLine> visionLines,
+    int imageWidth,
+    int imageHeight,
+    AppSettings settings)
+{
+    if (visionLines.Count == 0)
     {
-        if (visionLines.Count == 0)
+        return new HybridOcrAlignmentResult(geometryLines.ToList(), geometryLines.Count, 0, 0, 0, 0, 0, 0);
+    }
+
+    if (geometryLines.Count == 0)
+    {
+        return new HybridOcrAlignmentResult(
+            settings.VisionGeometryAllowSyntheticFallback ? visionLines.ToList() : new List<OcrLine>(),
+            0,
+            visionLines.Count,
+            0,
+            0,
+            0,
+            settings.VisionGeometryAllowSyntheticFallback ? visionLines.Count : 0,
+            0);
+    }
+
+    var geometry = geometryLines
+        .Select((line, index) => new GeometryCandidate(line, index, _normalizationService.Normalize(line.Text)))
+        .ToList();
+    var normalizedVisionLines = visionLines
+        .Select(line => _normalizationService.Normalize(line.Text))
+        .ToList();
+    var threshold = Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0);
+    var outputLinesByOwner = new Dictionary<int, List<OcrLine>>();
+    var outputOwnerByVisionIndex = new int?[visionLines.Count];
+    var usedGeometryIndexes = new HashSet<int>();
+    var assignedOneToOneCount = 0;
+    var assignedManyToOneCount = 0;
+
+    var lineToGeometryScores = BuildLineToGeometryScores(geometry, visionLines, normalizedVisionLines);
+    if (TrySolveMonotonicLineAssignment(lineToGeometryScores, out var geometryAssignment))
+    {
+        for (var visionStart = 0; visionStart < visionLines.Count;)
         {
-            return new HybridOcrAlignmentResult(geometryLines.ToList(), geometryLines.Count, 0, 0, 0);
-        }
-
-        if (geometryLines.Count == 0)
-        {
-            return new HybridOcrAlignmentResult(
-                settings.VisionGeometryAllowSyntheticFallback ? visionLines.ToList() : new List<OcrLine>(),
-                0,
-                visionLines.Count,
-                0,
-                settings.VisionGeometryAllowSyntheticFallback ? visionLines.Count : 0);
-        }
-
-        var geometry = geometryLines
-            .Select((line, index) => new GeometryCandidate(line, index, _normalizationService.Normalize(line.Text)))
-            .ToList();
-        var threshold = Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0);
-        var matchedOutputs = new OcrLine?[visionLines.Count];
-        var matchedGeometryByVisionIndex = new GeometryCandidate?[visionLines.Count];
-        var matchedGeometryIndexes = new HashSet<int>();
-        var matchedCount = 0;
-
-        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
-        {
-            var visionLine = visionLines[visionIndex];
-            var normalizedVision = _normalizationService.Normalize(visionLine.Text);
-            GeometryCandidate? best = null;
-            var bestScore = double.MinValue;
-
-            foreach (var candidate in geometry)
+            var geometryIndex = geometryAssignment[visionStart];
+            var visionEnd = visionStart;
+            while (visionEnd + 1 < visionLines.Count && geometryAssignment[visionEnd + 1] == geometryIndex)
             {
-                if (matchedGeometryIndexes.Contains(candidate.Index))
+                visionEnd++;
+            }
+
+            if (TryBuildClassifiedOutputForGroup(
+                    geometry[geometryIndex],
+                    visionLines,
+                    lineToGeometryScores,
+                    visionStart,
+                    visionEnd,
+                    threshold,
+                    out var classifiedOutput))
+            {
+                outputLinesByOwner[visionStart] = [classifiedOutput];
+                usedGeometryIndexes.Add(geometryIndex);
+                for (var groupIndex = visionStart; groupIndex <= visionEnd; groupIndex++)
+                {
+                    outputOwnerByVisionIndex[groupIndex] = visionStart;
+                }
+
+                if (visionEnd == visionStart)
+                {
+                    assignedOneToOneCount++;
+                }
+                else
+                {
+                    assignedManyToOneCount += (visionEnd - visionStart) + 1;
+                }
+            }
+
+            visionStart = visionEnd + 1;
+        }
+    }
+
+    var splitCount = 0;
+    for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+    {
+        if (outputOwnerByVisionIndex[visionIndex].HasValue)
+        {
+            continue;
+        }
+
+        var visionLine = visionLines[visionIndex];
+        GeometryCandidate? best = null;
+        var bestScore = double.MinValue;
+
+        foreach (var candidate in geometry)
+        {
+            if (usedGeometryIndexes.Contains(candidate.Index))
+            {
+                continue;
+            }
+
+            var score = lineToGeometryScores[visionIndex, candidate.Index];
+            if (score <= bestScore)
+            {
+                continue;
+            }
+
+            bestScore = score;
+            best = candidate;
+        }
+
+        if (best is null || bestScore < threshold)
+        {
+            continue;
+        }
+
+        if (TryBuildSplitOutputsForVision(
+                geometry,
+                visionLine,
+                best,
+                usedGeometryIndexes,
+                outputLinesByOwner,
+                out var splitOutputs))
+        {
+            outputLinesByOwner[visionIndex] = splitOutputs;
+            outputOwnerByVisionIndex[visionIndex] = visionIndex;
+            foreach (var splitLine in splitOutputs)
+            {
+                foreach (var geometryIndex in ResolveGeometryIndexesForRect(geometry, splitLine.Rect))
+                {
+                    usedGeometryIndexes.Add(geometryIndex);
+                }
+            }
+
+            splitCount++;
+            continue;
+        }
+
+        outputLinesByOwner[visionIndex] =
+        [
+            visionLine with
+            {
+                Rect = best.Line.Rect,
+                Confidence = Math.Max(visionLine.Confidence, best.Line.Confidence),
+                LineHeight = best.Line.Rect.Height,
+                LineCount = 1
+            }
+        ];
+        outputOwnerByVisionIndex[visionIndex] = visionIndex;
+        usedGeometryIndexes.Add(best.Index);
+        assignedOneToOneCount++;
+    }
+
+    var matchedSlots = new List<MatchedSlot>();
+    foreach (var (ownerIndex, linesForOwner) in outputLinesByOwner.OrderBy(item => item.Key))
+    {
+        matchedSlots.AddRange(linesForOwner.Select(line => new MatchedSlot(ownerIndex, line.Rect)));
+    }
+
+    var occupiedRects = matchedSlots.Select(slot => slot.Rect).ToList();
+    var mergedTextByOwnerIndex = new Dictionary<int, List<VisionTextContribution>>();
+    foreach (var (ownerIndex, linesForOwner) in outputLinesByOwner)
+    {
+        if (linesForOwner.Count != 1)
+        {
+            continue;
+        }
+
+        mergedTextByOwnerIndex[ownerIndex] =
+        [
+            new VisionTextContribution(ownerIndex, linesForOwner[0].Text)
+        ];
+    }
+
+    var standaloneSyntheticByStartIndex = new Dictionary<int, OcrLine>();
+    var syntheticCount = 0;
+    var syntheticMergedCount = 0;
+
+    for (var visionIndex = 0; visionIndex < visionLines.Count;)
+    {
+        if (outputOwnerByVisionIndex[visionIndex].HasValue)
+        {
+            visionIndex++;
+            continue;
+        }
+
+        if (!settings.VisionGeometryAllowSyntheticFallback)
+        {
+            visionIndex++;
+            continue;
+        }
+
+        var groupStart = visionIndex;
+        var groupEnd = visionIndex;
+        while (groupEnd + 1 < visionLines.Count && !outputOwnerByVisionIndex[groupEnd + 1].HasValue)
+        {
+            groupEnd++;
+        }
+
+        var syntheticLine = BuildSyntheticLineForGroup(
+            visionLines,
+            groupStart,
+            groupEnd,
+            matchedSlots,
+            occupiedRects,
+            imageWidth,
+            imageHeight);
+        var overlapPenalty = ComputeOverlapPenalty(syntheticLine.Rect, occupiedRects);
+        // WHY: If the fallback panel still collides heavily after readability-first placement,
+        // the safer choice is to fold the text back into the nearest matched geometry block.
+        if (overlapPenalty >= SyntheticMergePenaltyThreshold &&
+            TryFindMergeTargetVisionIndex(syntheticLine.Rect, matchedSlots, out var mergeTargetVisionIndex))
+        {
+            if (!mergedTextByOwnerIndex.TryGetValue(mergeTargetVisionIndex, out var contributions))
+            {
+                contributions = new List<VisionTextContribution>();
+                mergedTextByOwnerIndex[mergeTargetVisionIndex] = contributions;
+            }
+
+            for (var groupIndex = groupStart; groupIndex <= groupEnd; groupIndex++)
+            {
+                var text = visionLines[groupIndex].Text.Trim();
+                if (string.IsNullOrWhiteSpace(text))
                 {
                     continue;
                 }
 
-                var score = ScoreCandidate(
-                    normalizedVision,
-                    candidate.NormalizedText,
-                    visionLine.Text,
-                    candidate.Line.Text,
-                    visionIndex,
-                    candidate.Index,
-                    visionLines.Count,
-                    geometry.Count);
-                if (score <= bestScore)
-                {
-                    continue;
-                }
-
-                bestScore = score;
-                best = candidate;
+                contributions.Add(new VisionTextContribution(groupIndex, text));
             }
 
-            if (best is not null && bestScore >= threshold)
-            {
-                matchedGeometryIndexes.Add(best.Index);
-                matchedCount++;
-                matchedGeometryByVisionIndex[visionIndex] = best;
-                matchedOutputs[visionIndex] = visionLine with
-                {
-                    Rect = best.Line.Rect,
-                    Confidence = Math.Max(visionLine.Confidence, best.Line.Confidence),
-                    LineHeight = best.Line.Rect.Height,
-                    LineCount = Math.Max(visionLine.LineCount, best.Line.LineCount)
-                };
-            }
+            syntheticMergedCount++;
+        }
+        else
+        {
+            standaloneSyntheticByStartIndex[groupStart] = syntheticLine;
+            syntheticCount++;
+            occupiedRects.Add(syntheticLine.Rect);
         }
 
-        var splitOutputsByVisionIndex = new Dictionary<int, List<OcrLine>>();
-        var splitCount = 0;
-        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        visionIndex = groupEnd + 1;
+    }
+
+    var lines = new List<OcrLine>(visionLines.Count);
+    for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+    {
+        if (outputOwnerByVisionIndex[visionIndex] is int ownerIndex)
         {
-            if (matchedOutputs[visionIndex] is null || matchedGeometryByVisionIndex[visionIndex] is null)
+            if (ownerIndex != visionIndex)
             {
                 continue;
             }
 
-            if (TryBuildSplitOutputsForVision(
-                    geometry,
-                    visionLines[visionIndex],
-                    matchedGeometryByVisionIndex[visionIndex]!,
-                    matchedGeometryIndexes,
-                    splitOutputsByVisionIndex,
-                    out var splitOutputs))
+            var ownerLines = outputLinesByOwner[ownerIndex];
+            if (ownerLines.Count > 1)
             {
-                splitOutputsByVisionIndex[visionIndex] = splitOutputs;
-                splitCount++;
-            }
-        }
-
-        var matchedSlots = new List<MatchedSlot>();
-        foreach (var visionIndex in Enumerable.Range(0, visionLines.Count))
-        {
-            if (splitOutputsByVisionIndex.TryGetValue(visionIndex, out var splitOutputs))
-            {
-                matchedSlots.AddRange(splitOutputs.Select(line => new MatchedSlot(visionIndex, line.Rect)));
-                continue;
-            }
-
-            if (matchedOutputs[visionIndex] is OcrLine matchedLine)
-            {
-                matchedSlots.Add(new MatchedSlot(visionIndex, matchedLine.Rect));
-            }
-        }
-        var occupiedRects = matchedSlots.Select(slot => slot.Rect).ToList();
-        var mergedTextByMatchedVisionIndex = new Dictionary<int, List<VisionTextContribution>>();
-        foreach (var matchedSlot in matchedSlots)
-        {
-            if (splitOutputsByVisionIndex.ContainsKey(matchedSlot.VisionIndex))
-            {
-                continue;
-            }
-
-            var matchedLine = matchedOutputs[matchedSlot.VisionIndex]!;
-            mergedTextByMatchedVisionIndex[matchedSlot.VisionIndex] =
-            [
-                new VisionTextContribution(matchedSlot.VisionIndex, matchedLine.Text)
-            ];
-        }
-
-        var standaloneSyntheticByStartIndex = new Dictionary<int, OcrLine>();
-        var syntheticCount = 0;
-        var syntheticMergedCount = 0;
-
-        for (var visionIndex = 0; visionIndex < visionLines.Count;)
-        {
-            if (matchedOutputs[visionIndex] is not null)
-            {
-                visionIndex++;
-                continue;
-            }
-
-            if (!settings.VisionGeometryAllowSyntheticFallback)
-            {
-                visionIndex++;
-                continue;
-            }
-
-            var groupStart = visionIndex;
-            var groupEnd = visionIndex;
-            while (groupEnd + 1 < visionLines.Count && matchedOutputs[groupEnd + 1] is null)
-            {
-                groupEnd++;
-            }
-
-            var syntheticLine = BuildSyntheticLineForGroup(
-                visionLines,
-                groupStart,
-                groupEnd,
-                matchedSlots,
-                occupiedRects,
-                imageWidth,
-                imageHeight);
-            var overlapPenalty = ComputeOverlapPenalty(syntheticLine.Rect, occupiedRects);
-            // WHY: If the fallback panel still collides heavily after readability-first placement,
-            // the safer choice is to fold the text back into the nearest matched geometry block.
-            if (overlapPenalty >= SyntheticMergePenaltyThreshold &&
-                TryFindMergeTargetVisionIndex(syntheticLine.Rect, matchedSlots, out var mergeTargetVisionIndex))
-            {
-                if (!mergedTextByMatchedVisionIndex.TryGetValue(mergeTargetVisionIndex, out var contributions))
-                {
-                    contributions = new List<VisionTextContribution>();
-                    mergedTextByMatchedVisionIndex[mergeTargetVisionIndex] = contributions;
-                }
-
-                for (var groupIndex = groupStart; groupIndex <= groupEnd; groupIndex++)
-                {
-                    var text = visionLines[groupIndex].Text.Trim();
-                    if (string.IsNullOrWhiteSpace(text))
-                    {
-                        continue;
-                    }
-
-                    contributions.Add(new VisionTextContribution(groupIndex, text));
-                }
-
-                syntheticMergedCount++;
-            }
-            else
-            {
-                standaloneSyntheticByStartIndex[groupStart] = syntheticLine;
-                syntheticCount++;
-                occupiedRects.Add(syntheticLine.Rect);
-            }
-
-            visionIndex = groupEnd + 1;
-        }
-
-        var lines = new List<OcrLine>(visionLines.Count);
-        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
-        {
-            if (splitOutputsByVisionIndex.TryGetValue(visionIndex, out var splitOutputs))
-            {
-                if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var extraContributions))
+                if (mergedTextByOwnerIndex.TryGetValue(ownerIndex, out var extraContributions))
                 {
                     var extraText = string.Join(
                         Environment.NewLine,
@@ -235,11 +288,11 @@ public sealed class VisionGeometryHybridAligner
                             .Where(text => !string.IsNullOrWhiteSpace(text)));
                     if (!string.IsNullOrWhiteSpace(extraText))
                     {
-                        var lastIndex = splitOutputs.Count - 1;
-                        var mergedSplitText = string.IsNullOrWhiteSpace(splitOutputs[lastIndex].Text)
+                        var lastIndex = ownerLines.Count - 1;
+                        var mergedSplitText = string.IsNullOrWhiteSpace(ownerLines[lastIndex].Text)
                             ? extraText
-                            : $"{splitOutputs[lastIndex].Text}{Environment.NewLine}{extraText}";
-                        splitOutputs[lastIndex] = splitOutputs[lastIndex] with
+                            : $"{ownerLines[lastIndex].Text}{Environment.NewLine}{extraText}";
+                        ownerLines[lastIndex] = ownerLines[lastIndex] with
                         {
                             // WHY: Preserve the Vision-side line structure here and let OverlayStage
                             // decide later whether the final box needs to collapse or clamp line breaks.
@@ -248,39 +301,213 @@ public sealed class VisionGeometryHybridAligner
                     }
                 }
 
-                lines.AddRange(splitOutputs);
+                lines.AddRange(ownerLines);
                 continue;
             }
 
-            if (matchedOutputs[visionIndex] is OcrLine matchedLine)
+            var outputLine = ownerLines[0];
+            if (mergedTextByOwnerIndex.TryGetValue(ownerIndex, out var contributions))
             {
-                if (mergedTextByMatchedVisionIndex.TryGetValue(visionIndex, out var contributions))
+                var mergedText = string.Join(
+                    Environment.NewLine,
+                    contributions
+                        .OrderBy(item => item.VisionIndex)
+                        .Select(item => item.Text.Trim())
+                        .Where(text => !string.IsNullOrWhiteSpace(text)));
+                if (!string.IsNullOrWhiteSpace(mergedText))
                 {
-                    var mergedText = string.Join(
-                        Environment.NewLine,
-                        contributions
-                            .OrderBy(item => item.VisionIndex)
-                            .Select(item => item.Text.Trim())
-                            .Where(text => !string.IsNullOrWhiteSpace(text)));
-                    if (!string.IsNullOrWhiteSpace(mergedText))
-                    {
-                        matchedLine = matchedLine with { Text = mergedText };
-                    }
+                    outputLine = outputLine with { Text = mergedText };
                 }
-
-                lines.Add(matchedLine);
-                continue;
             }
 
-            if (standaloneSyntheticByStartIndex.TryGetValue(visionIndex, out var syntheticLine))
+            lines.Add(outputLine);
+            continue;
+        }
+
+        if (standaloneSyntheticByStartIndex.TryGetValue(visionIndex, out var syntheticLine))
+        {
+            lines.Add(syntheticLine);
+        }
+    }
+
+    _logger?.Info(
+        $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} assigned11={assignedOneToOneCount} assignedN1={assignedManyToOneCount} postSplit={splitCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
+    return new HybridOcrAlignmentResult(
+        lines,
+        geometryLines.Count,
+        visionLines.Count,
+        assignedOneToOneCount,
+        assignedManyToOneCount,
+        splitCount,
+        syntheticCount,
+        syntheticMergedCount);
+}
+
+    private double[,] BuildLineToGeometryScores(
+        IReadOnlyList<GeometryCandidate> geometry,
+        IReadOnlyList<OcrLine> visionLines,
+        IReadOnlyList<string> normalizedVisionLines)
+    {
+        var scores = new double[visionLines.Count, geometry.Count];
+        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        {
+            for (var geometryIndex = 0; geometryIndex < geometry.Count; geometryIndex++)
             {
-                lines.Add(syntheticLine);
+                var candidate = geometry[geometryIndex];
+                scores[visionIndex, geometryIndex] = ScoreCandidate(
+                    normalizedVisionLines[visionIndex],
+                    candidate.NormalizedText,
+                    visionLines[visionIndex].Text,
+                    candidate.Line.Text,
+                    visionIndex,
+                    geometryIndex,
+                    visionLines.Count,
+                    geometry.Count);
             }
         }
 
-        _logger?.Info(
-            $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} matched={matchedCount} split={splitCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
-        return new HybridOcrAlignmentResult(lines, geometryLines.Count, visionLines.Count, matchedCount, syntheticCount);
+        return scores;
+    }
+
+    private static bool TrySolveMonotonicLineAssignment(double[,] scores, out int[] assignment)
+    {
+        var visionCount = scores.GetLength(0);
+        var geometryCount = scores.GetLength(1);
+        assignment = Array.Empty<int>();
+        if (visionCount == 0 || geometryCount == 0)
+        {
+            return false;
+        }
+
+        var bestScores = new double[visionCount, geometryCount];
+        var previousGeometryIndexes = new int[visionCount, geometryCount];
+
+        for (var geometryIndex = 0; geometryIndex < geometryCount; geometryIndex++)
+        {
+            bestScores[0, geometryIndex] = scores[0, geometryIndex];
+            previousGeometryIndexes[0, geometryIndex] = -1;
+        }
+
+        for (var visionIndex = 1; visionIndex < visionCount; visionIndex++)
+        {
+            for (var geometryIndex = 0; geometryIndex < geometryCount; geometryIndex++)
+            {
+                var best = double.MinValue;
+                var bestPreviousGeometryIndex = -1;
+                for (var previousGeometryIndex = 0; previousGeometryIndex <= geometryIndex; previousGeometryIndex++)
+                {
+                    var transitionBonus = previousGeometryIndex == geometryIndex
+                        ? ClassificationContinuityBonus
+                        : -ClassificationSwitchPenalty;
+                    var candidateScore = bestScores[visionIndex - 1, previousGeometryIndex] +
+                                         scores[visionIndex, geometryIndex] +
+                                         transitionBonus;
+                    if (candidateScore <= best)
+                    {
+                        continue;
+                    }
+
+                    best = candidateScore;
+                    bestPreviousGeometryIndex = previousGeometryIndex;
+                }
+
+                bestScores[visionIndex, geometryIndex] = best;
+                previousGeometryIndexes[visionIndex, geometryIndex] = bestPreviousGeometryIndex;
+            }
+        }
+
+        var bestEndGeometryIndex = 0;
+        var bestEndScore = double.MinValue;
+        for (var geometryIndex = 0; geometryIndex < geometryCount; geometryIndex++)
+        {
+            if (bestScores[visionCount - 1, geometryIndex] <= bestEndScore)
+            {
+                continue;
+            }
+
+            bestEndScore = bestScores[visionCount - 1, geometryIndex];
+            bestEndGeometryIndex = geometryIndex;
+        }
+
+        assignment = new int[visionCount];
+        var currentGeometryIndex = bestEndGeometryIndex;
+        for (var visionIndex = visionCount - 1; visionIndex >= 0; visionIndex--)
+        {
+            assignment[visionIndex] = currentGeometryIndex;
+            currentGeometryIndex = previousGeometryIndexes[visionIndex, currentGeometryIndex];
+            if (visionIndex > 0 && currentGeometryIndex < 0)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool TryBuildClassifiedOutputForGroup(
+        GeometryCandidate geometryCandidate,
+        IReadOnlyList<OcrLine> visionLines,
+        double[,] lineToGeometryScores,
+        int startVisionIndex,
+        int endVisionIndex,
+        double threshold,
+        out OcrLine outputLine)
+    {
+        outputLine = default!;
+        var groupTexts = visionLines
+            .Skip(startVisionIndex)
+            .Take((endVisionIndex - startVisionIndex) + 1)
+            .Select(line => line.Text.Trim())
+            .Where(text => !string.IsNullOrWhiteSpace(text))
+            .ToList();
+        if (groupTexts.Count == 0)
+        {
+            return false;
+        }
+
+        var combinedText = string.Join(Environment.NewLine, groupTexts);
+        var normalizedCombinedText = _normalizationService.Normalize(combinedText);
+        if (normalizedCombinedText.Length == 0)
+        {
+            return false;
+        }
+
+        var lineCount = Math.Max(1, (endVisionIndex - startVisionIndex) + 1);
+        var averagePairScore = Enumerable.Range(startVisionIndex, lineCount)
+            .Average(visionIndex => lineToGeometryScores[visionIndex, geometryCandidate.Index]);
+        var textSimilarity = ComputeTextSimilarity(
+            normalizedCombinedText,
+            geometryCandidate.NormalizedText,
+            combinedText,
+            geometryCandidate.Line.Text);
+        var lengthScore = ComputeLengthScore(
+            normalizedCombinedText,
+            geometryCandidate.NormalizedText,
+            combinedText,
+            geometryCandidate.Line.Text);
+        var classificationScore = (textSimilarity * 0.60) + (averagePairScore * 0.25) + (lengthScore * 0.15);
+        if (classificationScore < threshold * ClassificationMinScoreFactor)
+        {
+            return false;
+        }
+
+        outputLine = new OcrLine(
+            combinedText,
+            geometryCandidate.Line.Rect,
+            visionLines.Skip(startVisionIndex).Take(lineCount).Max(line => line.Confidence),
+            lineCount,
+            geometryCandidate.Line.Rect.Height / lineCount);
+        return true;
+    }
+
+    private static IReadOnlyList<int> ResolveGeometryIndexesForRect(
+        IReadOnlyList<GeometryCandidate> geometry,
+        Rect rect)
+    {
+        return geometry
+            .Where(candidate => candidate.Line.Rect == rect)
+            .Select(candidate => candidate.Index)
+            .ToList();
     }
 
     private bool TryBuildSplitOutputsForVision(
@@ -1105,5 +1332,11 @@ public sealed record HybridOcrAlignmentResult(
     IReadOnlyList<OcrLine> Lines,
     int GeometryLineCount,
     int VisionLineCount,
-    int MatchedCount,
-    int SyntheticFallbackCount);
+    int AssignedOneToOneCount,
+    int AssignedManyToOneCount,
+    int SplitCount,
+    int SyntheticFallbackCount,
+    int SyntheticMergedCount)
+{
+    public int MatchedCount => AssignedOneToOneCount + AssignedManyToOneCount;
+}

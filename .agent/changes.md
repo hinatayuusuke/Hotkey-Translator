@@ -19818,3 +19818,65 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
 - 文書更新のみ。コード実装・画面検証は未実施。
 >>>>>>> 2bc7f20e78b3a24ede5366153dd6192342540ffa
+
+**2026-03-12 20:11 (Asia/Taipei) — Refine VisionLLM line classification plan**
+
+### Summary
+- VisionLLM line-to-geometry classification plan を現行実装に合わせて補正した。
+
+### Context / Goal
+- 既存の VisionGeometryHybridAligner には greedy 1:1 と 1 Vision -> many Geometry split が既にあり、新しい分類案との順序が曖昧だった。
+- 実装着手時に迷わないよう、出力契約とログ粒度も含めて文書を整理したかった。
+
+### Changes
+- classification pass と既存 split の適用順を明文化した。
+- many Vision -> 1 Geometry の Text / LineCount / LineHeight 契約を補足した。
+- 可観測性と DoD のログ項目を、現行 hybrid summary と比較しやすい粒度へ修正した。
+
+### Files Touched
+- Doc/VisionLlm_Hybrid_LineToGeometryClassification_Plan.md — existing split との共存順序、出力契約、ログ項目、DoD を現行実装に合わせて修正した。
+- .agent/changes.md — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。VisionLLM hybrid の将来実装時に、classification pass と既存 split の責務分担が明確になった。
+
+### Risk & Mitigation
+- Risk: 文書だけ先行しており、将来の実装詳細がさらに変わると再度調整が必要になる。
+- Mitigation: 現行の VisionGeometryHybridAligner / ReadingUnitBuilder / OverlayStage の実装依存点だけに絞って補正した。
+
+### Tests / Verification
+- Get-Content .\Doc\VisionLlm_Hybrid_LineToGeometryClassification_Plan.md -Encoding UTF8
+- 文書更新のみ。コード実装・実機検証は未実施。
+
+**2026-03-12 20:24 (Asia/Taipei) — Implement VisionLLM line-to-geometry classification hybrid**
+
+### Summary
+- VisionLLM hybrid に line-to-geometry classification pass を追加し、many Vision -> 1 Geometry を geometry 枠固定のまま扱えるようにした。
+
+### Context / Goal
+- 既存の VisionLLM hybrid は 1 Vision -> 1 Geometry greedy と 1 Vision -> many Geometry split はあるが、many Vision -> 1 Geometry を最初から最適化できていなかった。
+- Doc/VisionLlm_Hybrid_LineToGeometryClassification_Plan.md に沿って、Vision 行を geometry 枠へ monotonic に分類し、synthetic fallback を減らしたかった。
+
+### Changes
+- VisionGeometryHybridAligner に line-to-geometry score 行列、monotonic assignment solver、many Vision -> 1 Geometry 出力生成を追加した。
+- classification で未解決だった Vision 行にだけ既存 1 Vision -> many Geometry split を後段適用する順序へ組み替えた。
+- hybrid summary/result に ssigned11 / ssignedN1 / postSplit / syntheticMerged を追加し、OcrAndGroupStage のログも更新した。
+
+### Files Touched
+- Services/VisionGeometryHybridAligner.cs — classification pass、solver、grouped output build、summary counter、HybridOcrAlignmentResult の拡張を実装した。
+- Services/Orchestration/Stages/OcrAndGroupStage.cs — Vision hybrid stage summary log を新しい分類カウンタへ合わせて更新した。
+- .agent/changes.md — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- VisionLLM hybrid 有効時、複数 Vision 行が 1 つの geometry 枠へ分類される場合、geometry rect を結合せずに Environment.NewLine 保持で 1 出力へ集約されるようになった。
+- 既存 split は未解決ケース専用になり、summary log は matchedCount ではなく ssigned11/assignedN1/postSplit を出すようになった。
+
+### Risk & Mitigation
+- Risk: monotonic classification が短文や OCR 崩れに引っ張られて誤分類する可能性がある。
+- Mitigation: classification は group score で再検証し、しきい値未満は採用せず既存 split / synthetic fallback へ流す構成にした。
+- Risk: many Vision -> 1 Geometry で line count が増えると overlay overflow が起きやすくなる。
+- Mitigation: Text は改行保持、LineCount は group 行数、LineHeight は geometry rect 高さベースで再計算し、最終制御は OverlayStage に委譲した。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal
+- 実機の VisionLLM hybrid 画面確認は未実施。
