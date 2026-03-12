@@ -756,6 +756,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             UpdateTranslationStatus(settings);
         }
+
+        UpdateAutoTranslateBadgeVisibility(settings);
     }
 
     private async void OnHotkeyPressed(object? sender, EventArgs e)
@@ -1228,6 +1230,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
+    bool ISettingsUiBridge.TryValidateResourceHostBudget(AppSettings settings, out string? message) =>
+        _resourceHostFacade.TryValidateBudget(settings, out message);
+    void ISettingsUiBridge.SyncSettingsToView(AppSettings settings, bool updateTranslationStatus) =>
+        SyncSettingsAfterHostFailure(settings, updateTranslationStatus);
+    void ISettingsUiBridge.ShowLoadFailure(string message) => ShowLoadFailure(message);
     void ISettingsUiBridge.AppendLog(string message) => AppendLog(message);
     void ISettingsUiBridge.TryUpdateHotkeys(AppSettings settings) => TryUpdateHotkeys(settings);
     void ISettingsUiBridge.UpdateAutoHideWatcher(AppSettings settings) => UpdateAutoHideWatcher(settings);

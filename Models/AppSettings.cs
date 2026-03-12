@@ -116,6 +116,7 @@ public sealed class AppSettings
     public double SceneSemanticBlockIouThreshold { get; set; } = 0.5;
     public int SceneSemanticMinChars { get; set; } = 2;
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
+    public GraphicsResourceBudgetProfile ResourceBudgetProfile { get; set; } = GraphicsResourceBudgetProfile.Balanced;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
     public string PaddleDevice { get; set; } = "cpu";
     public string? PaddleModelDir { get; set; }

@@ -1,12 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.GrpcHost;
 using Hotkey_Translator.Services.Settings;
-using Hotkey_Translator.Services.Settings.FeatureSettings;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -30,7 +30,7 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly VisionLlmGrpcHost _visionLlmGrpcHost;
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
-    private readonly FeatureSettingsProvider _featureSettingsProvider = new();
+    private readonly HashSet<string> _plannedHostIds = new(StringComparer.Ordinal);
 
     private LlamaHostConfig? _llamaHostConfig;
 
@@ -59,25 +59,46 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public bool IsVisionLlmRunning => _visionLlmGrpcHost.IsRunning;
 
+    public bool TryValidateBudget(AppSettings settings, out string? message)
+    {
+        var desiredHosts = BuildDesiredHostSet(settings);
+        var limit = GetBudgetLimit(settings);
+        var requiredHosts = desiredHosts.Where(static host => host.Required).ToArray();
+        var requiredWeight = requiredHosts.Sum(static host => host.BudgetWeight);
+        if (requiredWeight <= limit)
+        {
+            message = null;
+            return true;
+        }
+
+        var hostSummary = string.Join(", ", requiredHosts.Select(host => $"{host.DisplayName}({host.BudgetWeight})"));
+        message =
+            $"The selected OCR/translation combination exceeds the {settings.ResourceBudgetProfile} VRAM budget ({requiredWeight}/{limit}). Required hosts: {hostSummary}.";
+        _loggerAccessor()?.Info(
+            $"stage=grpc_host_plan event=budget_reject profile={settings.ResourceBudgetProfile} limit={limit} requiredWeight={requiredWeight} hosts=\"{hostSummary}\".");
+        return false;
+    }
+
     public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
     {
         await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
         try
         {
-            StopHostsNoLongerNeeded(settings);
-
-            if (!ShouldLoadPaddle(settings) && !ShouldLoadPaddleVl(settings) && !ShouldLoadNdl(settings) &&
-                !ShouldLoadVisionLlm(settings) &&
-                !ShouldLoadLlama(settings))
+            var desiredHosts = BuildDesiredHostSet(settings);
+            var limit = GetBudgetLimit(settings);
+            var requiredWeight = desiredHosts.Where(static host => host.Required).Sum(static host => host.BudgetWeight);
+            if (requiredWeight > limit)
             {
-                return false;
+                _loggerAccessor()?.Info(
+                    $"stage=grpc_host_plan event=required_over_budget_allowed profile={settings.ResourceBudgetProfile} limit={limit} requiredWeight={requiredWeight}.");
             }
 
-            if (ShouldLoadVisionLlm(settings) && UseVisionSharedLocalTranslation(settings))
+            var plannedHosts = ApplyVramBudget(settings, desiredHosts);
+            SetPlannedHostIds(plannedHosts);
+            StopHostsNoLongerNeeded();
+            if (_plannedHostIds.Count == 0)
             {
-                // WHY: Shared VisionLLM translation must not keep the pure-translation llama host resident,
-                // otherwise the same family of models occupies VRAM twice.
-                StopLlama();
+                return false;
             }
 
             return await _hostOrchestrator
@@ -145,10 +166,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => "Loading PaddleOCR...",
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
-                FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.",
-                // WHY: stop_unused handles Paddle <-> Vision primary exclusivity so Paddle can stay available
-                // as a geometry helper when VisionLLM hybrid OCR is enabled.
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+                FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details."
             },
             new()
             {
@@ -160,8 +178,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => "Loading PaddleOCR-VL...",
                 DisableOnFailure = DisablePaddleVlOcr,
                 FailureLogMessage = "PaddleOCR-VL gRPC host failed to start.",
-                FailureUserMessage = "Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.",
-                StopBeforeStartHostIds = new[] { HostIdPaddle, HostIdNdl, HostIdVisionLlm }
+                FailureUserMessage = "Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details."
             },
             new()
             {
@@ -173,9 +190,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => "Loading NDLOCR-Lite...",
                 DisableOnFailure = DisableNdlOcr,
                 FailureLogMessage = "NDLOCR gRPC host failed to start.",
-                FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.",
-                // WHY: Allow NDL + Paddle to coexist (hot-switch ready). Keep PaddleVL exclusive.
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+                FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details."
             },
             new()
             {
@@ -187,10 +202,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => "Loading VisionLLM OCR...",
                 DisableOnFailure = DisableVisionLlmOcr,
                 FailureLogMessage = "VisionLLM gRPC host failed to start.",
-                FailureUserMessage = "Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details.",
-                // WHY: stop_unused handles primary OCR exclusivity so VisionLLM can coexist with Paddle/NDL
-                // only when they are explicitly used as geometry helpers.
-                StopBeforeStartHostIds = new[] { HostIdPaddleVl }
+                FailureUserMessage = "Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details."
             },
             new()
             {
@@ -213,37 +225,15 @@ internal sealed class ResourceHostFacade : IDisposable
         };
     }
 
-    private bool ShouldLoadPaddle(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        return host.EnablePaddleGrpcHost &&
-               (host.OcrEngine == OcrEngineKind.Paddle || ShouldUsePaddleAsVisionGeometryHelper(settings));
-    }
+    private bool ShouldLoadPaddle(AppSettings _) => _plannedHostIds.Contains(HostIdPaddle);
 
-    private bool ShouldLoadPaddleVl(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        return host.OcrEngine == OcrEngineKind.PaddleVllm && host.EnablePaddleVlGrpcHost;
-    }
+    private bool ShouldLoadPaddleVl(AppSettings _) => _plannedHostIds.Contains(HostIdPaddleVl);
 
-    private bool ShouldLoadNdl(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        return host.EnableNdlGrpcHost &&
-               (host.OcrEngine == OcrEngineKind.Ndl || ShouldUseNdlAsVisionGeometryHelper(settings));
-    }
+    private bool ShouldLoadNdl(AppSettings _) => _plannedHostIds.Contains(HostIdNdl);
 
-    private bool ShouldLoadVisionLlm(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        return host.OcrEngine == OcrEngineKind.VisionLlm && host.EnableVisionLlmGrpcHost;
-    }
+    private bool ShouldLoadVisionLlm(AppSettings _) => _plannedHostIds.Contains(HostIdVisionLlm);
 
-    private bool ShouldLoadLlama(AppSettings settings)
-    {
-        var host = _featureSettingsProvider.GetHost(settings);
-        return host.EnableLlamaCppTranslation && !UseVisionSharedLocalTranslation(settings);
-    }
+    private bool ShouldLoadLlama(AppSettings _) => _plannedHostIds.Contains(HostIdLlama);
 
     private void DisablePaddleOcr(AppSettings settings)
     {
@@ -275,40 +265,115 @@ internal sealed class ResourceHostFacade : IDisposable
         _syncSettingsToView(settings, true);
     }
 
-    private void StopHostsNoLongerNeeded(AppSettings settings)
+    private void StopHostsNoLongerNeeded()
     {
-        if (_paddleGrpcHost.IsRunning && !ShouldKeepPaddleResident(settings))
-        {
-            _loggerAccessor()?.Info("stage=grpc_host host=paddle_grpc event=stop_unused.");
-            StopPaddle();
-        }
-
-        if (_paddleVlGrpcHost.IsRunning && !ShouldKeepPaddleVlResident(settings))
-        {
-            _loggerAccessor()?.Info("stage=grpc_host host=paddle_vl_grpc event=stop_unused.");
-            StopPaddleVl();
-        }
-
-        if (_ndlGrpcHost.IsRunning && !ShouldKeepNdlResident(settings))
-        {
-            _loggerAccessor()?.Info("stage=grpc_host host=ndl_grpc event=stop_unused.");
-            StopNdl();
-        }
-
-        if (_visionLlmGrpcHost.IsRunning && !ShouldKeepVisionLlmResident(settings))
-        {
-            _loggerAccessor()?.Info("stage=grpc_host host=vision_llm_grpc event=stop_unused.");
-            StopVisionLlm();
-        }
-
-        if (_llamaGrpcHost.IsRunning && ShouldStopLlamaAsUnused(settings))
-        {
-            _loggerAccessor()?.Info("stage=grpc_host host=llama_grpc event=stop_unused.");
-            StopLlama();
-        }
+        StopIfUnused(HostIdPaddle, _paddleGrpcHost.IsRunning, StopPaddle);
+        StopIfUnused(HostIdPaddleVl, _paddleVlGrpcHost.IsRunning, StopPaddleVl);
+        StopIfUnused(HostIdNdl, _ndlGrpcHost.IsRunning, StopNdl);
+        StopIfUnused(HostIdVisionLlm, _visionLlmGrpcHost.IsRunning, StopVisionLlm);
+        StopIfUnused(HostIdLlama, _llamaGrpcHost.IsRunning, StopLlama);
     }
 
-    private static bool UseVisionSharedLocalTranslation(AppSettings settings)
+    private void StopIfUnused(string hostId, bool isRunning, Action stop)
+    {
+        if (!isRunning || _plannedHostIds.Contains(hostId))
+        {
+            return;
+        }
+
+        _loggerAccessor()?.Info($"stage=grpc_host host={hostId} event=stop_unused.");
+        stop();
+    }
+
+    private IReadOnlyList<PlannedHost> BuildDesiredHostSet(AppSettings settings)
+    {
+        var desiredHosts = new List<PlannedHost>();
+        if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost)
+        {
+            desiredHosts.Add(CreatePlannedHost(HostIdPaddle, "PaddleOCR", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost)
+        {
+            desiredHosts.Add(CreatePlannedHost(HostIdPaddleVl, "PaddleOCR-VL", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.Ndl && settings.EnableNdlGrpcHost)
+        {
+            desiredHosts.Add(CreatePlannedHost(HostIdNdl, "NDLOCR-Lite", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.VisionLlm && settings.EnableVisionLlmGrpcHost)
+        {
+            desiredHosts.Add(CreatePlannedHost(HostIdVisionLlm, "VisionLLM", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.VisionLlm &&
+            settings.EnableVisionLlmGrpcHost &&
+            settings.EnableVisionGeometryHybridOcr)
+        {
+            if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Paddle && settings.EnablePaddleGrpcHost)
+            {
+                desiredHosts.Add(CreatePlannedHost(HostIdPaddle, "PaddleOCR", HostPlanRole.HelperOcr, settings, required: false, reason: "vision_geometry_helper"));
+            }
+
+            if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Ndl && settings.EnableNdlGrpcHost)
+            {
+                desiredHosts.Add(CreatePlannedHost(HostIdNdl, "NDLOCR-Lite", HostPlanRole.HelperOcr, settings, required: false, reason: "vision_geometry_helper"));
+            }
+        }
+
+        if (!UsesVisionLocalTranslation(settings) && settings.EnableLlamaCppTranslation)
+        {
+            desiredHosts.Add(CreatePlannedHost(HostIdLlama, "Llama.cpp", HostPlanRole.Translation, settings, required: true, reason: "translation"));
+        }
+
+        return desiredHosts;
+    }
+
+    private PlannedHost CreatePlannedHost(
+        string hostId,
+        string displayName,
+        HostPlanRole role,
+        AppSettings settings,
+        bool required,
+        string reason)
+    {
+        return new PlannedHost(hostId, displayName, role, GetHostBudgetWeight(settings, hostId), required, reason);
+    }
+
+    private IReadOnlyList<PlannedHost> ApplyVramBudget(AppSettings settings, IReadOnlyList<PlannedHost> desiredHosts)
+    {
+        var limit = GetBudgetLimit(settings);
+        var plannedHosts = new List<PlannedHost>();
+        var currentWeight = 0;
+        foreach (var host in desiredHosts.Where(static host => host.Required))
+        {
+            plannedHosts.Add(host);
+            currentWeight += host.BudgetWeight;
+        }
+
+        foreach (var host in desiredHosts.Where(static host => !host.Required))
+        {
+            if (currentWeight + host.BudgetWeight <= limit)
+            {
+                plannedHosts.Add(host);
+                currentWeight += host.BudgetWeight;
+                continue;
+            }
+
+            _loggerAccessor()?.Info(
+                $"stage=grpc_host_plan event=budget_drop host={host.HostId} role={host.Role} weight={host.BudgetWeight} limit={limit} currentWeight={currentWeight} reason={host.Reason}.");
+        }
+
+        var desiredSummary = string.Join(",", desiredHosts.Select(host => host.HostId));
+        var plannedSummary = string.Join(",", plannedHosts.Select(host => host.HostId));
+        _loggerAccessor()?.Info(
+            $"stage=grpc_host_plan event=budget_decision profile={settings.ResourceBudgetProfile} limit={limit} desiredWeight={desiredHosts.Sum(static host => host.BudgetWeight)} plannedWeight={plannedHosts.Sum(static host => host.BudgetWeight)} desired=\"{desiredSummary}\" planned=\"{plannedSummary}\" uses_vision_local_translation={(UsesVisionLocalTranslation(settings) ? "yes" : "no")}.");
+        return plannedHosts;
+    }
+
+    private static bool UsesVisionLocalTranslation(AppSettings settings)
     {
         return settings.OcrEngine == OcrEngineKind.VisionLlm &&
                settings.EnableVisionLlmGrpcHost &&
@@ -316,69 +381,44 @@ internal sealed class ResourceHostFacade : IDisposable
                settings.EnableLlamaCppTranslation;
     }
 
-    private static bool ShouldKeepPaddleResident(AppSettings settings)
+    private static int GetHostBudgetWeight(AppSettings settings, string hostId)
     {
-        // WHY: Paddle and NDL are intentionally hot-switch ready together, so selecting either OCR
-        // keeps both hosts resident. VisionLLM and PaddleOCR-VL stay exclusive because they carry
-        // their own heavier pipelines.
-        return settings.EnablePaddleGrpcHost &&
-               (settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl ||
-                ShouldUsePaddleAsVisionGeometryHelper(settings));
-    }
-
-    private static bool ShouldKeepPaddleVlResident(AppSettings settings)
-    {
-        return settings.EnablePaddleVlGrpcHost &&
-               settings.OcrEngine == OcrEngineKind.PaddleVllm;
-    }
-
-    private static bool ShouldKeepNdlResident(AppSettings settings)
-    {
-        return settings.EnableNdlGrpcHost &&
-               (settings.OcrEngine is OcrEngineKind.Paddle or OcrEngineKind.Ndl ||
-                ShouldUseNdlAsVisionGeometryHelper(settings));
-    }
-
-    private static bool ShouldKeepVisionLlmResident(AppSettings settings)
-    {
-        if (!settings.EnableVisionLlmGrpcHost)
+        return hostId switch
         {
-            return false;
-        }
+            HostIdPaddle => IsPaddleGpu(settings) ? 1 : 0,
+            HostIdPaddleVl => 6,
+            HostIdNdl => 0,
+            HostIdVisionLlm => 4,
+            HostIdLlama => 3,
+            _ => 0
+        };
+    }
 
-        if (settings.OcrEngine == OcrEngineKind.VisionLlm)
+    private static int GetBudgetLimit(AppSettings settings)
+    {
+        return settings.ResourceBudgetProfile switch
         {
-            return true;
+            GraphicsResourceBudgetProfile.LowVram => 4,
+            GraphicsResourceBudgetProfile.Balanced => 6,
+            GraphicsResourceBudgetProfile.HighVram => 8,
+            GraphicsResourceBudgetProfile.UltraVram => 10,
+            _ => 6
+        };
+    }
+
+    private static bool IsPaddleGpu(AppSettings settings)
+    {
+        return !string.IsNullOrWhiteSpace(settings.PaddleDevice) &&
+               settings.PaddleDevice.Trim().StartsWith("gpu", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SetPlannedHostIds(IReadOnlyList<PlannedHost> plannedHosts)
+    {
+        _plannedHostIds.Clear();
+        foreach (var plannedHost in plannedHosts)
+        {
+            _plannedHostIds.Add(plannedHost.HostId);
         }
-
-        // WHY: When local Llama translation is disabled, VisionLLM can stay warm across WinRT/NDL
-        // switches because it is no longer competing with the pure-translation llama host for VRAM.
-        return !settings.EnableLlamaCppTranslation &&
-               settings.OcrEngine is OcrEngineKind.WinRt or OcrEngineKind.Ndl;
-    }
-
-    private static bool ShouldUsePaddleAsVisionGeometryHelper(AppSettings settings)
-    {
-        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
-               settings.EnableVisionLlmGrpcHost &&
-               settings.EnableVisionGeometryHybridOcr &&
-               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Paddle;
-    }
-
-    private static bool ShouldUseNdlAsVisionGeometryHelper(AppSettings settings)
-    {
-        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
-               settings.EnableVisionLlmGrpcHost &&
-               settings.EnableVisionGeometryHybridOcr &&
-               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Ndl;
-    }
-
-    private static bool ShouldStopLlamaAsUnused(AppSettings settings)
-    {
-        // WHY: The translation enable toggle controls provider usage, not process lifetime.
-        // Keep the pure translation host resident until the user explicitly stops it, unless
-        // Vision shared translation needs the VRAM back for its own llama-server instance.
-        return UseVisionSharedLocalTranslation(settings);
     }
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
@@ -402,6 +442,21 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaGrpcHost,
             settings.LlamaGrpcPort);
     }
+
+    private enum HostPlanRole
+    {
+        PrimaryOcr,
+        HelperOcr,
+        Translation
+    }
+
+    private readonly record struct PlannedHost(
+        string HostId,
+        string DisplayName,
+        HostPlanRole Role,
+        int BudgetWeight,
+        bool Required,
+        string Reason);
 
     private readonly record struct LlamaHostConfig(
         string Host,

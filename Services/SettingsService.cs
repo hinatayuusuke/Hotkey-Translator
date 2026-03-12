@@ -100,4 +100,10 @@ public sealed class SettingsService
 
         await _repository.SaveAsync(Settings, CancellationToken.None).ConfigureAwait(false);
     }
+
+    public void ReplaceSettings(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        Settings = settings;
+    }
 }

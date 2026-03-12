@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
@@ -13,6 +14,9 @@ internal interface ISettingsUiBridge
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
+    bool TryValidateResourceHostBudget(AppSettings settings, out string? message);
+    void SyncSettingsToView(AppSettings settings, bool updateTranslationStatus);
+    void ShowLoadFailure(string message);
     void AppendLog(string message);
     void TryUpdateHotkeys(AppSettings settings);
     void UpdateAutoHideWatcher(AppSettings settings);
@@ -56,8 +60,17 @@ internal sealed class SettingsUiController
         try
         {
             var settings = _settingsService.Settings;
+            var previousSettings = CloneSettings(settings);
             _applySettingsInput(settings);
             _settingsFacade.NormalizeForSave(settings);
+            if (!_bridge.TryValidateResourceHostBudget(settings, out var budgetFailureMessage))
+            {
+                _settingsService.ReplaceSettings(previousSettings);
+                _bridge.SyncSettingsToView(previousSettings, true);
+                _bridge.ShowLoadFailure(budgetFailureMessage ?? "Resource host VRAM budget exceeded.");
+                _bridge.AppendLog("Settings change rejected: resource host VRAM budget exceeded.");
+                return;
+            }
 
             if (!settings.EnableSceneChangeAutoTranslate)
             {
@@ -75,5 +88,14 @@ internal sealed class SettingsUiController
         {
             _bridge.IsApplyingSettings = previousApplyingState;
         }
+    }
+
+    private static AppSettings CloneSettings(AppSettings settings)
+    {
+        var json = JsonSerializer.Serialize(settings);
+        var clone = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+        clone.ApiKey = settings.ApiKey;
+        clone.DeepLApiKey = settings.DeepLApiKey;
+        return clone;
     }
 }

@@ -19293,3 +19293,127 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-12 10:13 (Asia/Taipei) — Resource host VRAM budget simplification doc**
+
+### Summary
+- OCR / 翻訳 host の複雑な排他ロジックを、主 OCR 単一 + VRAM budget ベースへ整理する実装案を新規 Doc として追加した。
+
+### Context / Goal
+- 現状の `ShouldLoad*`, `ShouldKeep*Resident`, `StopBeforeStartHostIds`, `UseVisionSharedLocalTranslation` などが分散し、組み合わせの理解コストが高い。
+- これを host planning と VRAM budget 判定へ集約する方針を明文化したい。
+
+### Changes
+- `Services/Application/ResourceHostFacade.cs` の現行責務と問題点を整理した。
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` を追加した。
+- 主 OCR 単一、host tier、optional/required、budget drop、段階実装、リスクと緩和策を記載した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — host 排他を VRAM budget ベースへ整理する新実装案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 現状の複雑な host 排他を整理する設計方針を Doc として参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 静的 tier だけでは実際の VRAM 使用量とずれる可能性がある。
+- Mitigation: Doc 内で conservative な tier 設計と budget profile 化を明示した。
+
+### Tests / Verification
+- `Get-Content -Path 'Services/Application/ResourceHostFacade.cs' -Encoding UTF8 | Select-Object -First 460`
+- `Get-Content -Path 'Services/TranslationFallbackService.cs' -Encoding UTF8 | Select-Object -First 220`
+- `Get-Content -Path 'Models/OcrEngineKind.cs' -Encoding UTF8`
+**2026-03-12 10:20 (Asia/Taipei) — Resource host VRAM budget doc refinement**
+
+### Summary
+- VRAM budget 案に `VisionLLM=4`、Hybrid helper OCR の budget 反映、device 別 weight、required 超過時の設定拒否を反映した。
+
+### Context / Goal
+- VisionLLM の実運用 VRAM は 4〜5GB 程度なので、weight を 4 に寄せた方が現実に合う。
+- また、Hybrid helper OCR も GPU 実行なら budget に含め、主 OCR + 翻訳の必須組み合わせだけで超過した時は fail fast で拒否する方針を Doc に反映したい。
+
+### Changes
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` を更新し、weight を `VisionLLM=4`, `Llama=3`, `PaddleVL=6`, `Paddle(gpu)=1`, `Paddle(cpu)=0`, `NDL=0` に整理した。
+- `UltraVram=10` を含む budget profile を追加した。
+- `ValidateRequiredBudget` と、設定変更キャンセル + 前回設定復元の方針を追加した。
+- 全体を見直し、前提、ルール、実装手順、DoD の整合を取り直した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — VisionLLM weight、Hybrid helper budget、required 超過 reject を反映した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- VRAM budget の評価対象と reject 方針がより具体的に整理された。
+
+### Risk & Mitigation
+- Risk: 静的 weight と実環境の差で reject が厳しすぎる可能性がある。
+- Mitigation: Doc 内で profile 調整と conservative 運用を前提にした。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\ResourceHost_VramBudget_Simplification_Plan.md' -Encoding UTF8`
+**2026-03-12 10:26 (Asia/Taipei) — Resource host VRAM budget doc vision-local-translation update**
+
+### Summary
+- VisionLLM 自前翻訳時は `Llama` を required budget に含めない前提を、`UsesVisionLocalTranslation(settings)` の判定関数込みで Doc に反映した。
+
+### Context / Goal
+- VisionLLM が自前翻訳を行う経路では、`EnableLlamaCppTranslation=true` でも純粋な `Llama` host を required budget に入れるのは二重計上になる。
+- そのため、設定値ではなく実際に使う翻訳経路で budget 判定する方針を Doc に明確化したい。
+
+### Changes
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` に `UsesVisionLocalTranslation(AppSettings settings)` を追加した。
+- VisionLLM self-translate 時の `Llama` required budget 除外ルールを追記した。
+- データフロー、ルール案、実装手順、ログ方針、DoD をこの判定前提で更新した。
+
+### Files Touched
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` — VisionLLM 自前翻訳時の budget 判定方針を更新した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- `EnableLlamaCppTranslation=true` だけでは required budget 判定に入れず、実際の翻訳経路で判断する設計が明文化された。
+
+### Risk & Mitigation
+- Risk: VisionLLM self-translate と通常 Llama translation の境界が実装でぶれる可能性がある。
+- Mitigation: `UsesVisionLocalTranslation(settings)` を単独 helper 化し、budget と host plan の両方で同じ判定を使う方針を明記した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\ResourceHost_VramBudget_Simplification_Plan.md' -Encoding UTF8`
+**2026-03-12 13:14 (Asia/Taipei) — Resource host VRAM budget enforcement**
+
+### Summary
+- Resource host の排他判断を VRAM budget ベースの host plan へ寄せ、over-budget な設定変更を保存前に拒否する経路を追加した。
+
+### Context / Goal
+- OCR / 翻訳 host の常駐判断が `ShouldLoad*` / resident 判定 / 特例停止に分散しており、VisionLLM / helper OCR / local translation の組み合わせが追いにくかった。
+- `Doc/ResourceHost_VramBudget_Simplification_Plan.md` の方針どおり、主 OCR と翻訳の必須構成が budget を超える場合は設定変更を fail fast で止め、前回設定へ戻したい。
+
+### Changes
+- `GraphicsResourceBudgetProfile` と settings validation を追加し、budget profile を settings.json に保持できるようにした。
+- `SettingsUiController` に budget 事前検証と設定差し戻しを追加し、保存前に前回設定へ復元できるようにした。
+- `ResourceHostFacade` を `BuildDesiredHostSet + ApplyVramBudget + TryValidateBudget` ベースへ整理し、host 起動計画を `_plannedHostIds` で一元化した。
+- `UsesVisionLocalTranslation(settings)` を host plan と budget 判定の共通 helper として導入し、VisionLLM 自前翻訳時は純粋な Llama host を required budget に含めないようにした。
+
+### Files Touched
+- `Models/AppSettings.cs` — `ResourceBudgetProfile` を追加した。
+- `Models/GraphicsResourceBudgetProfile.cs` — VRAM budget profile enum を追加した。
+- `Services/Settings/Rules/ResourceHostBudgetSettingsRule.cs` — budget profile 正規化ルールを追加した。
+- `Services/Settings/AppSettingsValidator.cs` — budget rule を validation pipeline に登録した。
+- `Services/SettingsService.cs` — settings 差し戻し用の `ReplaceSettings` を追加した。
+- `Services/Application/SettingsUiController.cs` — 保存前 budget validation、前回 settings clone / restore、UI sync を追加した。
+- `Services/Application/ResourceHostFacade.cs` — desired host set、budget 適用、required budget reject、planned host reconcile を実装した。
+- `MainWindow.xaml.cs` — budget validation / settings sync / failure dialog を `ISettingsUiBridge` に実装し、settings 差し戻し時に auto-translate badge も更新するようにした。
+
+### Behavioral Impact
+- `ResourceBudgetProfile` に応じて host の desired/planned 判定が変わるようになった。
+- 主 OCR + 翻訳の required host だけで budget 超過する設定は保存前に拒否され、前回設定へ戻る。
+- helper OCR は optional host として扱われ、budget 超過時は自動で drop される。
+- VisionLLM self-translate 経路では pure `llama_grpc` host を required host に含めなくなった。
+
+### Risk & Mitigation
+- Risk: 静的 weight と実環境の VRAM 消費がずれると、helper host が保守的に落ちる可能性がある。
+- Mitigation: budget profile を settings 化し、drop / reject を `stage=grpc_host_plan` ログで追えるようにした。
+- Risk: 保存時の settings 差し戻しで secret field が落ちる可能性がある。
+- Mitigation: clone 後に `ApiKey` と `DeepLApiKey` を明示的に復元している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- 成功（0 warnings / 0 errors）
