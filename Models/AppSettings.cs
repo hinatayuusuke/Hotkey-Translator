@@ -95,7 +95,7 @@ public sealed class AppSettings
     public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
     public bool EnableGraphicsHookPipeline { get; set; } = false;
     public GraphicsHookApiKind GraphicsHookApi { get; set; } = GraphicsHookApiKind.Dx11;
-    public int GraphicsHookCaptureFpsLimit { get; set; } = 15;
+    public int GraphicsHookCaptureFpsLimit { get; set; } = 30;
     public bool GraphicsHookOverlayEnabled { get; set; } = true;
     public bool GraphicsHookFallbackOnError { get; set; } = true;
     public bool EnableGraphicsHookPerfDiagLog { get; set; } = false;
@@ -121,7 +121,7 @@ public sealed class AppSettings
     public string PaddleDevice { get; set; } = "gpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
-    public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";
+    public string PaddleTextRecognitionModelName { get; set; } = "auto";
     public double PaddleTextDetThresh { get; set; } = 0.3;
     public double PaddleTextDetBoxThresh { get; set; } = 0.5;
     public double PaddleTextDetUnclipRatio { get; set; } = 1.0;

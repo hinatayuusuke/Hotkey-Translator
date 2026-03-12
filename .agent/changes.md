@@ -19880,3 +19880,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal
 - 実機の VisionLLM hybrid 画面確認は未実施。
+
+**2026-03-12 20:53 (Asia/Taipei) — Add priority routing to VisionLLM hybrid alignment**
+
+### Summary
+- VisionLLM hybrid の many:1 / 1:many を行数関係で優先実行するルーティングへ切り替えた。
+
+### Context / Goal
+- 既存実装は classification -> split の固定順で、ROI 全体の Vision line count と geometry count の関係を考慮していなかった。
+- Vision > Geometry なら many Vision -> 1 Geometry、Vision < Geometry なら 1 Vision -> many Geometry を優先し、Vision == Geometry なら 1:1 を先に試す形へ整理したかった。
+
+### Changes
+- VisionGeometryHybridAligner に HybridRoutingMode と mode 判定を追加した。
+- classification preferred / split preferred / one-to-one preferred の各ルートで、classification・split・greedy 1:1 の実行順を切り替えた。
+- greedy 1:1、classification、split の未解決ケース処理を helper 化し、summary log に mode= を追加した。
+
+### Files Touched
+- Services/VisionGeometryHybridAligner.cs — routing mode 判定、優先実行ルート、greedy/split/classification helper、summary log の mode 追加を実装した。
+- .agent/changes.md — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- VisionLLM hybrid は ROI 全体の line count 比較に応じて主ルートを変えるようになった。
+- Vision > Geometry では classification を先に、Vision < Geometry では split を先に、Vision == Geometry では 1:1 を先に試し、未解決分だけ補助ルートへ回す。
+
+### Risk & Mitigation
+- Risk: 行数比較で選んだ主ルートが局所的な最適対応とずれる可能性がある。
+- Mitigation: 主ルートは優先実行に留め、取りこぼしは補助ルートと synthetic fallback が受ける構造にした。
+- Risk: helper 化で state 管理が増え、同一 geometry 枠の再利用が混入する可能性がある。
+- Mitigation: usedGeometryIndexes を各 helper で共有し、classification 内でも使用済み geometry を即スキップするようにした。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -v minimal
+- 実機の VisionLLM hybrid ケース確認は未実施。

@@ -57,123 +57,123 @@ public sealed class VisionGeometryHybridAligner
         .Select(line => _normalizationService.Normalize(line.Text))
         .ToList();
     var threshold = Math.Clamp(settings.VisionGeometryMatchMinScore, 0.0, 1.0);
+    var routingMode = ResolveRoutingMode(visionLines.Count, geometry.Count);
     var outputLinesByOwner = new Dictionary<int, List<OcrLine>>();
     var outputOwnerByVisionIndex = new int?[visionLines.Count];
     var usedGeometryIndexes = new HashSet<int>();
     var assignedOneToOneCount = 0;
     var assignedManyToOneCount = 0;
+    var splitCount = 0;
 
     var lineToGeometryScores = BuildLineToGeometryScores(geometry, visionLines, normalizedVisionLines);
-    if (TrySolveMonotonicLineAssignment(lineToGeometryScores, out var geometryAssignment))
-    {
-        for (var visionStart = 0; visionStart < visionLines.Count;)
-        {
-            var geometryIndex = geometryAssignment[visionStart];
-            var visionEnd = visionStart;
-            while (visionEnd + 1 < visionLines.Count && geometryAssignment[visionEnd + 1] == geometryIndex)
-            {
-                visionEnd++;
-            }
 
-            if (TryBuildClassifiedOutputForGroup(
-                    geometry[geometryIndex],
+    switch (routingMode)
+    {
+        case HybridRoutingMode.ClassificationPreferred:
+            ApplyClassificationToUnresolved(
+                geometry,
+                visionLines,
+                lineToGeometryScores,
+                threshold,
+                outputLinesByOwner,
+                outputOwnerByVisionIndex,
+                usedGeometryIndexes,
+                ref assignedOneToOneCount,
+                ref assignedManyToOneCount);
+            ApplySplitToUnresolved(
+                geometry,
+                visionLines,
+                lineToGeometryScores,
+                threshold,
+                outputLinesByOwner,
+                outputOwnerByVisionIndex,
+                usedGeometryIndexes,
+                ref assignedOneToOneCount,
+                ref splitCount);
+            break;
+
+        case HybridRoutingMode.SplitPreferred:
+            ApplySplitToUnresolved(
+                geometry,
+                visionLines,
+                lineToGeometryScores,
+                threshold,
+                outputLinesByOwner,
+                outputOwnerByVisionIndex,
+                usedGeometryIndexes,
+                ref assignedOneToOneCount,
+                ref splitCount);
+            ApplyClassificationToUnresolved(
+                geometry,
+                visionLines,
+                lineToGeometryScores,
+                threshold,
+                outputLinesByOwner,
+                outputOwnerByVisionIndex,
+                usedGeometryIndexes,
+                ref assignedOneToOneCount,
+                ref assignedManyToOneCount);
+            break;
+
+        default:
+            ApplyGreedyOneToOneToUnresolved(
+                geometry,
+                visionLines,
+                lineToGeometryScores,
+                threshold,
+                outputLinesByOwner,
+                outputOwnerByVisionIndex,
+                usedGeometryIndexes,
+                ref assignedOneToOneCount);
+            var remainingVisionCount = CountUnresolvedVision(outputOwnerByVisionIndex);
+            var remainingGeometryCount = geometry.Count - usedGeometryIndexes.Count;
+            if (remainingVisionCount > remainingGeometryCount)
+            {
+                ApplyClassificationToUnresolved(
+                    geometry,
                     visionLines,
                     lineToGeometryScores,
-                    visionStart,
-                    visionEnd,
                     threshold,
-                    out var classifiedOutput))
-            {
-                outputLinesByOwner[visionStart] = [classifiedOutput];
-                usedGeometryIndexes.Add(geometryIndex);
-                for (var groupIndex = visionStart; groupIndex <= visionEnd; groupIndex++)
-                {
-                    outputOwnerByVisionIndex[groupIndex] = visionStart;
-                }
-
-                if (visionEnd == visionStart)
-                {
-                    assignedOneToOneCount++;
-                }
-                else
-                {
-                    assignedManyToOneCount += (visionEnd - visionStart) + 1;
-                }
+                    outputLinesByOwner,
+                    outputOwnerByVisionIndex,
+                    usedGeometryIndexes,
+                    ref assignedOneToOneCount,
+                    ref assignedManyToOneCount);
+                ApplySplitToUnresolved(
+                    geometry,
+                    visionLines,
+                    lineToGeometryScores,
+                    threshold,
+                    outputLinesByOwner,
+                    outputOwnerByVisionIndex,
+                    usedGeometryIndexes,
+                    ref assignedOneToOneCount,
+                    ref splitCount);
             }
-
-            visionStart = visionEnd + 1;
-        }
-    }
-
-    var splitCount = 0;
-    for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
-    {
-        if (outputOwnerByVisionIndex[visionIndex].HasValue)
-        {
-            continue;
-        }
-
-        var visionLine = visionLines[visionIndex];
-        GeometryCandidate? best = null;
-        var bestScore = double.MinValue;
-
-        foreach (var candidate in geometry)
-        {
-            if (usedGeometryIndexes.Contains(candidate.Index))
+            else
             {
-                continue;
+                ApplySplitToUnresolved(
+                    geometry,
+                    visionLines,
+                    lineToGeometryScores,
+                    threshold,
+                    outputLinesByOwner,
+                    outputOwnerByVisionIndex,
+                    usedGeometryIndexes,
+                    ref assignedOneToOneCount,
+                    ref splitCount);
+                ApplyClassificationToUnresolved(
+                    geometry,
+                    visionLines,
+                    lineToGeometryScores,
+                    threshold,
+                    outputLinesByOwner,
+                    outputOwnerByVisionIndex,
+                    usedGeometryIndexes,
+                    ref assignedOneToOneCount,
+                    ref assignedManyToOneCount);
             }
-
-            var score = lineToGeometryScores[visionIndex, candidate.Index];
-            if (score <= bestScore)
-            {
-                continue;
-            }
-
-            bestScore = score;
-            best = candidate;
-        }
-
-        if (best is null || bestScore < threshold)
-        {
-            continue;
-        }
-
-        if (TryBuildSplitOutputsForVision(
-                geometry,
-                visionLine,
-                best,
-                usedGeometryIndexes,
-                outputLinesByOwner,
-                out var splitOutputs))
-        {
-            outputLinesByOwner[visionIndex] = splitOutputs;
-            outputOwnerByVisionIndex[visionIndex] = visionIndex;
-            foreach (var splitLine in splitOutputs)
-            {
-                foreach (var geometryIndex in ResolveGeometryIndexesForRect(geometry, splitLine.Rect))
-                {
-                    usedGeometryIndexes.Add(geometryIndex);
-                }
-            }
-
-            splitCount++;
-            continue;
-        }
-
-        outputLinesByOwner[visionIndex] =
-        [
-            visionLine with
-            {
-                Rect = best.Line.Rect,
-                Confidence = Math.Max(visionLine.Confidence, best.Line.Confidence),
-                LineHeight = best.Line.Rect.Height,
-                LineCount = 1
-            }
-        ];
-        outputOwnerByVisionIndex[visionIndex] = visionIndex;
-        usedGeometryIndexes.Add(best.Index);
-        assignedOneToOneCount++;
+            break;
     }
 
     var matchedSlots = new List<MatchedSlot>();
@@ -331,7 +331,7 @@ public sealed class VisionGeometryHybridAligner
     }
 
     _logger?.Info(
-        $"stage=vision_geometry_hybrid event=summary geometryLines={geometryLines.Count} visionLines={visionLines.Count} assigned11={assignedOneToOneCount} assignedN1={assignedManyToOneCount} postSplit={splitCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
+        $"stage=vision_geometry_hybrid event=summary mode={routingMode} geometryLines={geometryLines.Count} visionLines={visionLines.Count} assigned11={assignedOneToOneCount} assignedN1={assignedManyToOneCount} postSplit={splitCount} synthetic={syntheticCount} merged={syntheticMergedCount} output={lines.Count}.");
     return new HybridOcrAlignmentResult(
         lines,
         geometryLines.Count,
@@ -342,6 +342,288 @@ public sealed class VisionGeometryHybridAligner
         syntheticCount,
         syntheticMergedCount);
 }
+
+    private static HybridRoutingMode ResolveRoutingMode(int visionLineCount, int geometryLineCount)
+    {
+        if (visionLineCount > geometryLineCount)
+        {
+            return HybridRoutingMode.ClassificationPreferred;
+        }
+
+        if (visionLineCount < geometryLineCount)
+        {
+            return HybridRoutingMode.SplitPreferred;
+        }
+
+        return HybridRoutingMode.OneToOnePreferred;
+    }
+
+    private static int CountUnresolvedVision(IReadOnlyList<int?> outputOwnerByVisionIndex)
+    {
+        return outputOwnerByVisionIndex.Count(owner => !owner.HasValue);
+    }
+
+    private void ApplyGreedyOneToOneToUnresolved(
+        IReadOnlyList<GeometryCandidate> geometry,
+        IReadOnlyList<OcrLine> visionLines,
+        double[,] lineToGeometryScores,
+        double threshold,
+        Dictionary<int, List<OcrLine>> outputLinesByOwner,
+        IList<int?> outputOwnerByVisionIndex,
+        HashSet<int> usedGeometryIndexes,
+        ref int assignedOneToOneCount)
+    {
+        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        {
+            if (outputOwnerByVisionIndex[visionIndex].HasValue)
+            {
+                continue;
+            }
+
+            if (!TrySelectBestUnusedGeometryCandidate(
+                    geometry,
+                    lineToGeometryScores,
+                    visionIndex,
+                    usedGeometryIndexes,
+                    out var best,
+                    out var bestScore) ||
+                bestScore < threshold)
+            {
+                continue;
+            }
+
+            outputLinesByOwner[visionIndex] =
+            [
+                visionLines[visionIndex] with
+                {
+                    Rect = best.Line.Rect,
+                    Confidence = Math.Max(visionLines[visionIndex].Confidence, best.Line.Confidence),
+                    LineHeight = best.Line.Rect.Height,
+                    LineCount = 1
+                }
+            ];
+            outputOwnerByVisionIndex[visionIndex] = visionIndex;
+            usedGeometryIndexes.Add(best.Index);
+            assignedOneToOneCount++;
+        }
+    }
+
+    private void ApplySplitToUnresolved(
+        IReadOnlyList<GeometryCandidate> geometry,
+        IReadOnlyList<OcrLine> visionLines,
+        double[,] lineToGeometryScores,
+        double threshold,
+        Dictionary<int, List<OcrLine>> outputLinesByOwner,
+        IList<int?> outputOwnerByVisionIndex,
+        HashSet<int> usedGeometryIndexes,
+        ref int assignedOneToOneCount,
+        ref int splitCount)
+    {
+        for (var visionIndex = 0; visionIndex < visionLines.Count; visionIndex++)
+        {
+            if (outputOwnerByVisionIndex[visionIndex].HasValue)
+            {
+                continue;
+            }
+
+            if (!TrySelectBestUnusedGeometryCandidate(
+                    geometry,
+                    lineToGeometryScores,
+                    visionIndex,
+                    usedGeometryIndexes,
+                    out var best,
+                    out var bestScore) ||
+                bestScore < threshold)
+            {
+                continue;
+            }
+
+            if (TryBuildSplitOutputsForVision(
+                    geometry,
+                    visionLines[visionIndex],
+                    best,
+                    usedGeometryIndexes,
+                    outputLinesByOwner,
+                    out var splitOutputs))
+            {
+                outputLinesByOwner[visionIndex] = splitOutputs;
+                outputOwnerByVisionIndex[visionIndex] = visionIndex;
+                foreach (var splitLine in splitOutputs)
+                {
+                    foreach (var geometryIndex in ResolveGeometryIndexesForRect(geometry, splitLine.Rect))
+                    {
+                        usedGeometryIndexes.Add(geometryIndex);
+                    }
+                }
+
+                splitCount++;
+                continue;
+            }
+
+            outputLinesByOwner[visionIndex] =
+            [
+                visionLines[visionIndex] with
+                {
+                    Rect = best.Line.Rect,
+                    Confidence = Math.Max(visionLines[visionIndex].Confidence, best.Line.Confidence),
+                    LineHeight = best.Line.Rect.Height,
+                    LineCount = 1
+                }
+            ];
+            outputOwnerByVisionIndex[visionIndex] = visionIndex;
+            usedGeometryIndexes.Add(best.Index);
+            assignedOneToOneCount++;
+        }
+    }
+
+    private void ApplyClassificationToUnresolved(
+        IReadOnlyList<GeometryCandidate> geometry,
+        IReadOnlyList<OcrLine> visionLines,
+        double[,] lineToGeometryScores,
+        double threshold,
+        Dictionary<int, List<OcrLine>> outputLinesByOwner,
+        IList<int?> outputOwnerByVisionIndex,
+        HashSet<int> usedGeometryIndexes,
+        ref int assignedOneToOneCount,
+        ref int assignedManyToOneCount)
+    {
+        var availableGeometry = geometry
+            .Where(candidate => !usedGeometryIndexes.Contains(candidate.Index))
+            .ToList();
+        if (availableGeometry.Count == 0)
+        {
+            return;
+        }
+
+        var unresolvedSegments = new List<List<int>>();
+        for (var visionIndex = 0; visionIndex < visionLines.Count;)
+        {
+            if (outputOwnerByVisionIndex[visionIndex].HasValue)
+            {
+                visionIndex++;
+                continue;
+            }
+
+            var segment = new List<int>();
+            while (visionIndex < visionLines.Count && !outputOwnerByVisionIndex[visionIndex].HasValue)
+            {
+                segment.Add(visionIndex);
+                visionIndex++;
+            }
+
+            unresolvedSegments.Add(segment);
+        }
+
+        foreach (var unresolvedSegment in unresolvedSegments)
+        {
+            if (unresolvedSegment.Count == 0)
+            {
+                continue;
+            }
+
+            var subsetScores = new double[unresolvedSegment.Count, availableGeometry.Count];
+            for (var localVisionIndex = 0; localVisionIndex < unresolvedSegment.Count; localVisionIndex++)
+            {
+                for (var localGeometryIndex = 0; localGeometryIndex < availableGeometry.Count; localGeometryIndex++)
+                {
+                    subsetScores[localVisionIndex, localGeometryIndex] =
+                        lineToGeometryScores[unresolvedSegment[localVisionIndex], availableGeometry[localGeometryIndex].Index];
+                }
+            }
+
+            if (!TrySolveMonotonicLineAssignment(subsetScores, out var geometryAssignment))
+            {
+                continue;
+            }
+
+            for (var localStart = 0; localStart < unresolvedSegment.Count;)
+            {
+                var localGeometryIndex = geometryAssignment[localStart];
+                var localEnd = localStart;
+                while (localEnd + 1 < unresolvedSegment.Count && geometryAssignment[localEnd + 1] == localGeometryIndex)
+                {
+                    localEnd++;
+                }
+
+                var startVisionIndex = unresolvedSegment[localStart];
+                var endVisionIndex = unresolvedSegment[localEnd];
+                var geometryCandidate = availableGeometry[localGeometryIndex];
+                if (usedGeometryIndexes.Contains(geometryCandidate.Index))
+                {
+                    localStart = localEnd + 1;
+                    continue;
+                }
+
+                if (TryBuildClassifiedOutputForGroup(
+                        geometryCandidate,
+                        visionLines,
+                        lineToGeometryScores,
+                        startVisionIndex,
+                        endVisionIndex,
+                        threshold,
+                        out var classifiedOutput))
+                {
+                    outputLinesByOwner[startVisionIndex] = [classifiedOutput];
+                    usedGeometryIndexes.Add(geometryCandidate.Index);
+                    for (var groupIndex = localStart; groupIndex <= localEnd; groupIndex++)
+                    {
+                        outputOwnerByVisionIndex[unresolvedSegment[groupIndex]] = startVisionIndex;
+                    }
+
+                    if (localEnd == localStart)
+                    {
+                        assignedOneToOneCount++;
+                    }
+                    else
+                    {
+                        assignedManyToOneCount += (localEnd - localStart) + 1;
+                    }
+                }
+
+                localStart = localEnd + 1;
+            }
+
+            availableGeometry = availableGeometry
+                .Where(candidate => !usedGeometryIndexes.Contains(candidate.Index))
+                .ToList();
+            if (availableGeometry.Count == 0)
+            {
+                return;
+            }
+        }
+    }
+
+    private static bool TrySelectBestUnusedGeometryCandidate(
+        IReadOnlyList<GeometryCandidate> geometry,
+        double[,] lineToGeometryScores,
+        int visionIndex,
+        ISet<int> usedGeometryIndexes,
+        out GeometryCandidate best,
+        out double bestScore)
+    {
+        best = default!;
+        bestScore = double.MinValue;
+        var found = false;
+        foreach (var candidate in geometry)
+        {
+            if (usedGeometryIndexes.Contains(candidate.Index))
+            {
+                continue;
+            }
+
+            var score = lineToGeometryScores[visionIndex, candidate.Index];
+            if (score <= bestScore)
+            {
+                continue;
+            }
+
+            bestScore = score;
+            best = candidate;
+            found = true;
+        }
+
+        return found;
+    }
 
     private double[,] BuildLineToGeometryScores(
         IReadOnlyList<GeometryCandidate> geometry,
@@ -1325,6 +1607,13 @@ public sealed class VisionGeometryHybridAligner
         public int Latin { get; set; }
         public int Digit { get; set; }
         public int Cjk { get; set; }
+    }
+
+    private enum HybridRoutingMode
+    {
+        ClassificationPreferred,
+        SplitPreferred,
+        OneToOnePreferred
     }
 }
 
