@@ -19417,3 +19417,62 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
 - 成功（0 warnings / 0 errors）
+**2026-03-12 13:28 (Asia/Taipei) — Runtime budget eviction plan doc**
+
+### Summary
+- Resource host の常駐制御を runtime budget eviction へ寄せる新設計案を新規 Doc として追加した。
+
+### Context / Goal
+- 直前の budget 実装案は `desired/planned host set` を事前に決めすぎており、Paddle/NDL のような host 常駐共存の意図と噛み合わなかった。
+- 討論の結果、host 起動要求時に budget を確認し、不要 host を weight の大きい順に stop する設計へ整理し直したい。
+
+### Changes
+- `Doc/ResourceHost_RuntimeBudgetEviction_Plan.md` を新規作成した。
+- `unused first + weight desc` で host を evict する設計、`UsesVisionLocalTranslation(settings)` の扱い、reject 条件、実装手順を整理した。
+
+### Files Touched
+- `Doc/ResourceHost_RuntimeBudgetEviction_Plan.md` — runtime budget eviction ベースの新設計案を追加した。
+
+### Behavioral Impact
+- コード動作は未変更。
+- 以後の実装方針として、事前の複雑な resident 判定ではなく、起動要求時の budget 調停へ寄せる設計が明文化された。
+
+### Risk & Mitigation
+- Risk: 旧 Doc と新 Doc で設計案が併存するため、実装時に参照を誤る可能性がある。
+- Mitigation: 今回の Doc は新規ファイルとして分離し、runtime eviction を採用する場合の正本を明確にした。
+
+### Tests / Verification
+- `Get-Content -Path '.\Doc\ResourceHost_RuntimeBudgetEviction_Plan.md' -Encoding UTF8`
+**2026-03-12 14:16 (Asia/Taipei) — Runtime budget eviction implementation**
+
+### Summary
+- `ResourceHost_RuntimeBudgetEviction_Plan.md` に沿って、resource host 管理を「起動要求時の budget 確保 + unused host eviction」方式へ切り替えた。
+
+### Context / Goal
+- 直前の `planned resident set` 方式では、OCR 切替のたびに `Paddle` / `NDL` などの host が `stop_unused` で落ち、budget が許す範囲での常駐共存を表現できなかった。
+- 今回は `今必要な host は止めず、不要な host を weight の大きい順に落とす` 方式へ整理し直したかった。
+
+### Changes
+- `ResourceHostFacade` の budget ロジックを `BuildRequiredHosts + EnsureBudgetForHosts + runtime eviction` へ置き換えた。
+- required host だけで budget 超過する場合は reject し、それ以外は running host のうち unused なものを `Weight DESC` で evict するようにした。
+- `EnableLlamaCppTranslation=false` にしても pure `llama_grpc` がすぐ stop されないよう、Llama の resident 判定は「設定 OR 既に running」に変更した。
+- `stage=grpc_host_plan event=budget_request / budget_evict / budget_decision / budget_reject` のログを追加した。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — runtime budget eviction 本体を実装し、planned host 集合を「required + budget 内で残せる running host」に変更した。
+
+### Behavioral Impact
+- OCR / 翻訳の切替時、budget が許す限り既存 host は常駐を維持する。
+- budget が足りない場合だけ、今不要な running host が重い順に stop される。
+- `VisionLLM` 自前翻訳時は pure `llama_grpc` を required host として数えない。
+- required host だけで budget 超過する設定は引き続き reject される。
+
+### Risk & Mitigation
+- Risk: 未使用でも warm に残したい host が budget 圧迫時に自動で落ちる。
+- Mitigation: これは設計意図として受け入れ、`budget_evict` ログで理由を追えるようにした。
+- Risk: explicit host enable を OFF にした時の stop 条件が host ごとに異なる。
+- Mitigation: OCR 系 host は enable flag ベース、Llama は「設定 OR 既に running」の resident 判定に分けている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+- 成功（0 warnings / 0 errors）

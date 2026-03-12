@@ -61,17 +61,16 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public bool TryValidateBudget(AppSettings settings, out string? message)
     {
-        var desiredHosts = BuildDesiredHostSet(settings);
+        var requiredHosts = BuildRequiredHosts(settings);
+        var requiredWeight = requiredHosts.Sum(static host => host.Weight);
         var limit = GetBudgetLimit(settings);
-        var requiredHosts = desiredHosts.Where(static host => host.Required).ToArray();
-        var requiredWeight = requiredHosts.Sum(static host => host.BudgetWeight);
         if (requiredWeight <= limit)
         {
             message = null;
             return true;
         }
 
-        var hostSummary = string.Join(", ", requiredHosts.Select(host => $"{host.DisplayName}({host.BudgetWeight})"));
+        var hostSummary = string.Join(", ", requiredHosts.Select(host => $"{host.DisplayName}({host.Weight})"));
         message =
             $"The selected OCR/translation combination exceeds the {settings.ResourceBudgetProfile} VRAM budget ({requiredWeight}/{limit}). Required hosts: {hostSummary}.";
         _loggerAccessor()?.Info(
@@ -84,17 +83,13 @@ internal sealed class ResourceHostFacade : IDisposable
         await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
         try
         {
-            var desiredHosts = BuildDesiredHostSet(settings);
-            var limit = GetBudgetLimit(settings);
-            var requiredWeight = desiredHosts.Where(static host => host.Required).Sum(static host => host.BudgetWeight);
-            if (requiredWeight > limit)
+            var requiredHosts = BuildRequiredHosts(settings);
+            if (!EnsureBudgetForHosts(settings, requiredHosts, out var rejectMessage))
             {
-                _loggerAccessor()?.Info(
-                    $"stage=grpc_host_plan event=required_over_budget_allowed profile={settings.ResourceBudgetProfile} limit={limit} requiredWeight={requiredWeight}.");
+                _showLoadFailure(rejectMessage ?? "Resource host VRAM budget exceeded.");
+                return false;
             }
 
-            var plannedHosts = ApplyVramBudget(settings, desiredHosts);
-            SetPlannedHostIds(plannedHosts);
             StopHostsNoLongerNeeded();
             if (_plannedHostIds.Count == 0)
             {
@@ -159,7 +154,7 @@ internal sealed class ResourceHostFacade : IDisposable
             new()
             {
                 HostId = HostIdPaddle,
-                ShouldLoad = ShouldLoadPaddle,
+                ShouldLoad = _ => _plannedHostIds.Contains(HostIdPaddle),
                 IsRunning = () => _paddleGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _paddleGrpcHost.StartAsync(settings, token),
                 Stop = () => _paddleGrpcHost.Stop(),
@@ -171,7 +166,7 @@ internal sealed class ResourceHostFacade : IDisposable
             new()
             {
                 HostId = HostIdPaddleVl,
-                ShouldLoad = ShouldLoadPaddleVl,
+                ShouldLoad = _ => _plannedHostIds.Contains(HostIdPaddleVl),
                 IsRunning = () => _paddleVlGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _paddleVlGrpcHost.StartAsync(settings, token),
                 Stop = () => _paddleVlGrpcHost.Stop(),
@@ -183,7 +178,7 @@ internal sealed class ResourceHostFacade : IDisposable
             new()
             {
                 HostId = HostIdNdl,
-                ShouldLoad = ShouldLoadNdl,
+                ShouldLoad = _ => _plannedHostIds.Contains(HostIdNdl),
                 IsRunning = () => _ndlGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _ndlGrpcHost.StartAsync(settings, token),
                 Stop = () => _ndlGrpcHost.Stop(),
@@ -195,7 +190,7 @@ internal sealed class ResourceHostFacade : IDisposable
             new()
             {
                 HostId = HostIdVisionLlm,
-                ShouldLoad = ShouldLoadVisionLlm,
+                ShouldLoad = _ => _plannedHostIds.Contains(HostIdVisionLlm),
                 IsRunning = () => _visionLlmGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _visionLlmGrpcHost.StartAsync(settings, token),
                 Stop = () => _visionLlmGrpcHost.Stop(),
@@ -207,7 +202,7 @@ internal sealed class ResourceHostFacade : IDisposable
             new()
             {
                 HostId = HostIdLlama,
-                ShouldLoad = ShouldLoadLlama,
+                ShouldLoad = _ => _plannedHostIds.Contains(HostIdLlama),
                 IsRunning = () => _llamaGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _llamaGrpcHost.StartAsync(settings, token),
                 Stop = () => _llamaGrpcHost.Stop(),
@@ -224,16 +219,6 @@ internal sealed class ResourceHostFacade : IDisposable
             }
         };
     }
-
-    private bool ShouldLoadPaddle(AppSettings _) => _plannedHostIds.Contains(HostIdPaddle);
-
-    private bool ShouldLoadPaddleVl(AppSettings _) => _plannedHostIds.Contains(HostIdPaddleVl);
-
-    private bool ShouldLoadNdl(AppSettings _) => _plannedHostIds.Contains(HostIdNdl);
-
-    private bool ShouldLoadVisionLlm(AppSettings _) => _plannedHostIds.Contains(HostIdVisionLlm);
-
-    private bool ShouldLoadLlama(AppSettings _) => _plannedHostIds.Contains(HostIdLlama);
 
     private void DisablePaddleOcr(AppSettings settings)
     {
@@ -265,6 +250,71 @@ internal sealed class ResourceHostFacade : IDisposable
         _syncSettingsToView(settings, true);
     }
 
+    private bool EnsureBudgetForHosts(AppSettings settings, IReadOnlyList<RequiredHost> requiredHosts, out string? rejectMessage)
+    {
+        var limit = GetBudgetLimit(settings);
+        var requiredHostIds = requiredHosts.Select(static host => host.HostId).ToHashSet(StringComparer.Ordinal);
+        var requiredWeight = requiredHosts.Sum(static host => host.Weight);
+        _loggerAccessor()?.Info(
+            $"stage=grpc_host_plan event=budget_request profile={settings.ResourceBudgetProfile} limit={limit} requiredWeight={requiredWeight} required=\"{string.Join(",", requiredHostIds)}\" uses_vision_local_translation={(UsesVisionLocalTranslation(settings) ? "yes" : "no")}.");
+        if (requiredWeight > limit)
+        {
+            var hostSummary = string.Join(", ", requiredHosts.Select(host => $"{host.DisplayName}({host.Weight})"));
+            rejectMessage =
+                $"The selected OCR/translation combination exceeds the {settings.ResourceBudgetProfile} VRAM budget ({requiredWeight}/{limit}). Required hosts: {hostSummary}.";
+            _loggerAccessor()?.Info(
+                $"stage=grpc_host_plan event=budget_reject profile={settings.ResourceBudgetProfile} limit={limit} requiredWeight={requiredWeight} hosts=\"{hostSummary}\".");
+            return false;
+        }
+
+        var hostStates = BuildHostStates(settings, requiredHostIds);
+        var plannedHostIds = hostStates
+            .Where(static state => state.IsRunning && state.AllowResident)
+            .Select(static state => state.HostId)
+            .ToHashSet(StringComparer.Ordinal);
+        plannedHostIds.UnionWith(requiredHostIds);
+
+        var evictableStates = hostStates
+            .Where(state => state.IsRunning && plannedHostIds.Contains(state.HostId) && !requiredHostIds.Contains(state.HostId))
+            .OrderByDescending(static state => state.Weight)
+            .ThenBy(static state => state.HostId, StringComparer.Ordinal)
+            .ToArray();
+        var plannedWeight = SumWeights(settings, plannedHostIds);
+        foreach (var evictableState in evictableStates)
+        {
+            if (plannedWeight <= limit)
+            {
+                break;
+            }
+
+            plannedHostIds.Remove(evictableState.HostId);
+            plannedWeight -= evictableState.Weight;
+            _loggerAccessor()?.Info(
+                $"stage=grpc_host_plan event=budget_evict host={evictableState.HostId} weight={evictableState.Weight} reason=unused plannedWeight={plannedWeight} limit={limit}.");
+        }
+
+        if (plannedWeight > limit)
+        {
+            rejectMessage =
+                $"Unable to free enough VRAM for the selected OCR/translation route under the {settings.ResourceBudgetProfile} budget ({plannedWeight}/{limit}).";
+            _loggerAccessor()?.Info(
+                $"stage=grpc_host_plan event=budget_reject profile={settings.ResourceBudgetProfile} limit={limit} plannedWeight={plannedWeight} requiredWeight={requiredWeight} hosts=\"{string.Join(",", plannedHostIds)}\".");
+            return false;
+        }
+
+        _plannedHostIds.Clear();
+        foreach (var plannedHostId in plannedHostIds)
+        {
+            _plannedHostIds.Add(plannedHostId);
+        }
+
+        _loggerAccessor()?.Info(
+            $"stage=grpc_host_plan event=budget_decision profile={settings.ResourceBudgetProfile} limit={limit} plannedWeight={plannedWeight} planned=\"{string.Join(",", plannedHostIds.OrderBy(static hostId => hostId, StringComparer.Ordinal))}\".");
+
+        rejectMessage = null;
+        return true;
+    }
+
     private void StopHostsNoLongerNeeded()
     {
         StopIfUnused(HostIdPaddle, _paddleGrpcHost.IsRunning, StopPaddle);
@@ -285,92 +335,85 @@ internal sealed class ResourceHostFacade : IDisposable
         stop();
     }
 
-    private IReadOnlyList<PlannedHost> BuildDesiredHostSet(AppSettings settings)
+    private IReadOnlyList<RequiredHost> BuildRequiredHosts(AppSettings settings)
     {
-        var desiredHosts = new List<PlannedHost>();
+        var requiredHosts = new List<RequiredHost>();
         if (settings.OcrEngine == OcrEngineKind.Paddle && settings.EnablePaddleGrpcHost)
         {
-            desiredHosts.Add(CreatePlannedHost(HostIdPaddle, "PaddleOCR", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+            requiredHosts.Add(CreateRequiredHost(HostIdPaddle, "PaddleOCR", settings));
         }
 
         if (settings.OcrEngine == OcrEngineKind.PaddleVllm && settings.EnablePaddleVlGrpcHost)
         {
-            desiredHosts.Add(CreatePlannedHost(HostIdPaddleVl, "PaddleOCR-VL", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+            requiredHosts.Add(CreateRequiredHost(HostIdPaddleVl, "PaddleOCR-VL", settings));
         }
 
         if (settings.OcrEngine == OcrEngineKind.Ndl && settings.EnableNdlGrpcHost)
         {
-            desiredHosts.Add(CreatePlannedHost(HostIdNdl, "NDLOCR-Lite", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
+            requiredHosts.Add(CreateRequiredHost(HostIdNdl, "NDLOCR-Lite", settings));
         }
 
         if (settings.OcrEngine == OcrEngineKind.VisionLlm && settings.EnableVisionLlmGrpcHost)
         {
-            desiredHosts.Add(CreatePlannedHost(HostIdVisionLlm, "VisionLLM", HostPlanRole.PrimaryOcr, settings, required: true, reason: "primary_ocr"));
-        }
-
-        if (settings.OcrEngine == OcrEngineKind.VisionLlm &&
-            settings.EnableVisionLlmGrpcHost &&
-            settings.EnableVisionGeometryHybridOcr)
-        {
-            if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Paddle && settings.EnablePaddleGrpcHost)
+            requiredHosts.Add(CreateRequiredHost(HostIdVisionLlm, "VisionLLM", settings));
+            if (settings.EnableVisionGeometryHybridOcr)
             {
-                desiredHosts.Add(CreatePlannedHost(HostIdPaddle, "PaddleOCR", HostPlanRole.HelperOcr, settings, required: false, reason: "vision_geometry_helper"));
-            }
+                if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Paddle && settings.EnablePaddleGrpcHost)
+                {
+                    requiredHosts.Add(CreateRequiredHost(HostIdPaddle, "PaddleOCR", settings));
+                }
 
-            if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Ndl && settings.EnableNdlGrpcHost)
-            {
-                desiredHosts.Add(CreatePlannedHost(HostIdNdl, "NDLOCR-Lite", HostPlanRole.HelperOcr, settings, required: false, reason: "vision_geometry_helper"));
+                if (settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.Ndl && settings.EnableNdlGrpcHost)
+                {
+                    requiredHosts.Add(CreateRequiredHost(HostIdNdl, "NDLOCR-Lite", settings));
+                }
             }
         }
 
         if (!UsesVisionLocalTranslation(settings) && settings.EnableLlamaCppTranslation)
         {
-            desiredHosts.Add(CreatePlannedHost(HostIdLlama, "Llama.cpp", HostPlanRole.Translation, settings, required: true, reason: "translation"));
+            requiredHosts.Add(CreateRequiredHost(HostIdLlama, "Llama.cpp", settings));
         }
 
-        return desiredHosts;
+        return requiredHosts;
     }
 
-    private PlannedHost CreatePlannedHost(
+    private RequiredHost CreateRequiredHost(string hostId, string displayName, AppSettings settings)
+    {
+        return new RequiredHost(hostId, displayName, GetHostWeight(hostId, settings));
+    }
+
+    private IReadOnlyList<HostRuntimeState> BuildHostStates(AppSettings settings, IReadOnlySet<string> requiredHostIds)
+    {
+        return new[]
+        {
+            CreateHostRuntimeState(HostIdPaddle, "PaddleOCR", _paddleGrpcHost.IsRunning, AllowPaddleResident(settings), requiredHostIds.Contains(HostIdPaddle), settings),
+            CreateHostRuntimeState(HostIdPaddleVl, "PaddleOCR-VL", _paddleVlGrpcHost.IsRunning, settings.EnablePaddleVlGrpcHost, requiredHostIds.Contains(HostIdPaddleVl), settings),
+            CreateHostRuntimeState(HostIdNdl, "NDLOCR-Lite", _ndlGrpcHost.IsRunning, settings.EnableNdlGrpcHost, requiredHostIds.Contains(HostIdNdl), settings),
+            CreateHostRuntimeState(HostIdVisionLlm, "VisionLLM", _visionLlmGrpcHost.IsRunning, settings.EnableVisionLlmGrpcHost, requiredHostIds.Contains(HostIdVisionLlm), settings),
+            CreateHostRuntimeState(HostIdLlama, "Llama.cpp", _llamaGrpcHost.IsRunning, AllowLlamaResident(settings), requiredHostIds.Contains(HostIdLlama), settings)
+        };
+    }
+
+    private HostRuntimeState CreateHostRuntimeState(
         string hostId,
         string displayName,
-        HostPlanRole role,
-        AppSettings settings,
-        bool required,
-        string reason)
+        bool isRunning,
+        bool allowResident,
+        bool isRequiredNow,
+        AppSettings settings)
     {
-        return new PlannedHost(hostId, displayName, role, GetHostBudgetWeight(settings, hostId), required, reason);
+        return new HostRuntimeState(hostId, displayName, GetHostWeight(hostId, settings), isRunning, allowResident, isRequiredNow);
     }
 
-    private IReadOnlyList<PlannedHost> ApplyVramBudget(AppSettings settings, IReadOnlyList<PlannedHost> desiredHosts)
+    private static bool AllowPaddleResident(AppSettings settings)
     {
-        var limit = GetBudgetLimit(settings);
-        var plannedHosts = new List<PlannedHost>();
-        var currentWeight = 0;
-        foreach (var host in desiredHosts.Where(static host => host.Required))
-        {
-            plannedHosts.Add(host);
-            currentWeight += host.BudgetWeight;
-        }
+        return settings.EnablePaddleGrpcHost;
+    }
 
-        foreach (var host in desiredHosts.Where(static host => !host.Required))
-        {
-            if (currentWeight + host.BudgetWeight <= limit)
-            {
-                plannedHosts.Add(host);
-                currentWeight += host.BudgetWeight;
-                continue;
-            }
-
-            _loggerAccessor()?.Info(
-                $"stage=grpc_host_plan event=budget_drop host={host.HostId} role={host.Role} weight={host.BudgetWeight} limit={limit} currentWeight={currentWeight} reason={host.Reason}.");
-        }
-
-        var desiredSummary = string.Join(",", desiredHosts.Select(host => host.HostId));
-        var plannedSummary = string.Join(",", plannedHosts.Select(host => host.HostId));
-        _loggerAccessor()?.Info(
-            $"stage=grpc_host_plan event=budget_decision profile={settings.ResourceBudgetProfile} limit={limit} desiredWeight={desiredHosts.Sum(static host => host.BudgetWeight)} plannedWeight={plannedHosts.Sum(static host => host.BudgetWeight)} desired=\"{desiredSummary}\" planned=\"{plannedSummary}\" uses_vision_local_translation={(UsesVisionLocalTranslation(settings) ? "yes" : "no")}.");
-        return plannedHosts;
+    private bool AllowLlamaResident(AppSettings settings)
+    {
+        return settings.EnableLlamaCppTranslation || _llamaGrpcHost.IsRunning;
     }
 
     private static bool UsesVisionLocalTranslation(AppSettings settings)
@@ -381,7 +424,7 @@ internal sealed class ResourceHostFacade : IDisposable
                settings.EnableLlamaCppTranslation;
     }
 
-    private static int GetHostBudgetWeight(AppSettings settings, string hostId)
+    private static int GetHostWeight(string hostId, AppSettings settings)
     {
         return hostId switch
         {
@@ -392,6 +435,11 @@ internal sealed class ResourceHostFacade : IDisposable
             HostIdLlama => 3,
             _ => 0
         };
+    }
+
+    private static int SumWeights(AppSettings settings, IEnumerable<string> hostIds)
+    {
+        return hostIds.Distinct(StringComparer.Ordinal).Sum(hostId => GetHostWeight(hostId, settings));
     }
 
     private static int GetBudgetLimit(AppSettings settings)
@@ -410,15 +458,6 @@ internal sealed class ResourceHostFacade : IDisposable
     {
         return !string.IsNullOrWhiteSpace(settings.PaddleDevice) &&
                settings.PaddleDevice.Trim().StartsWith("gpu", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void SetPlannedHostIds(IReadOnlyList<PlannedHost> plannedHosts)
-    {
-        _plannedHostIds.Clear();
-        foreach (var plannedHost in plannedHosts)
-        {
-            _plannedHostIds.Add(plannedHost.HostId);
-        }
     }
 
     private static LlamaHostConfig BuildLlamaHostConfig(AppSettings settings)
@@ -443,20 +482,15 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaGrpcPort);
     }
 
-    private enum HostPlanRole
-    {
-        PrimaryOcr,
-        HelperOcr,
-        Translation
-    }
+    private readonly record struct RequiredHost(string HostId, string DisplayName, int Weight);
 
-    private readonly record struct PlannedHost(
+    private readonly record struct HostRuntimeState(
         string HostId,
         string DisplayName,
-        HostPlanRole Role,
-        int BudgetWeight,
-        bool Required,
-        string Reason);
+        int Weight,
+        bool IsRunning,
+        bool AllowResident,
+        bool IsRequiredNow);
 
     private readonly record struct LlamaHostConfig(
         string Host,
