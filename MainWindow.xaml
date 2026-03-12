@@ -1466,6 +1466,22 @@
                                         Margin="0,12,0,0"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=7}">
                                 <TextBlock Text="Performance" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="VRAM budget profile" Width="150" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="ResourceBudgetProfileBox"
+                                              Width="160"
+                                              SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Settings.ResourceBudgetProfileTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBoxItem Content="Low VRAM" Tag="LowVram" />
+                                        <ComboBoxItem Content="Balanced" Tag="Balanced" />
+                                        <ComboBoxItem Content="High VRAM" Tag="HighVram" />
+                                        <ComboBoxItem Content="Ultra VRAM" Tag="UltraVram" />
+                                    </ComboBox>
+                                </StackPanel>
+                                <TextBlock Text="NOTE: Controls how many OCR and translation hosts may stay resident at the same time."
+                                           Foreground="DimGray"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0" />
                                 <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"

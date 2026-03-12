@@ -19504,3 +19504,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
 - 成功（0 warnings / 0 errors）
+**2026-03-12 14:51 (Asia/Taipei) — VRAM budget profile UI**
+
+### Summary
+- System サイドパネルに VRAM budget profile のコンボボックスを追加した。
+
+### Context / Goal
+- ResourceBudgetProfile は既に settings と runtime budget 判定に存在していたが、UI から変更できなかった。
+- OCR / 翻訳 host の常駐数を UI から切り替えられるようにしたかった。
+
+### Changes
+- SettingsViewModel に ResourceBudgetProfileTag を追加し、settings の読込・保存・自動保存へ接続した。
+- MainWindow.xaml の System > Performance セクションに budget profile コンボと説明文を追加した。
+
+### Files Touched
+- ViewModels/SettingsViewModel.cs — ResourceBudgetProfile を UI から扱うためのタグプロパティと load/save 配線を追加した。
+- MainWindow.xaml — System パネルに VRAM budget profile コンボボックスを追加した。
+
+### Behavioral Impact
+- UI から Low VRAM / Balanced / High VRAM / Ultra VRAM を選択できるようになった。
+- 選択値は既存の resource host budget 判定へそのまま反映される。
+
+### Risk & Mitigation
+- Risk: 設定変更直後に budget reject が起きると、UI 上の値と実 settings がずれる可能性がある。
+- Mitigation: 既存の settings restore 経路をそのまま使うため、reject 時は前回設定へ戻る。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
