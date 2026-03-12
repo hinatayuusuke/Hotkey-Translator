@@ -19680,3 +19680,111 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
 - 成功（0 warnings / 0 errors）
+**2026-03-12 19:00 (Asia/Taipei) — WPF UI rework direction document**
+
+### Summary
+- テーマ被せ方式をやめ、WPF 前提で機能優先に UI を整理し直す方針を Doc に追加した。
+
+### Context / Goal
+- 既存レイアウト維持を前提にした visual refresh は、標準コントロールの破綻や見た目の不整合が出やすかった。
+- 今後は多少のレイアウト変更を許容し、機能優先で UI を再設計する方向を明文化したかった。
+
+### Changes
+- テーマ被せから WPF UI 再整理へ方針転換するドキュメントを新規追加した。
+- ゴール、非ゴール、パネル単位の進め方、実装順序、DoD を整理した。
+
+### Files Touched
+- `Doc/Wpf_Ui_Rework_Direction.md` — WPF 前提の UI 再整理方針、パネルごとの方向性、段階実装手順を追加した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修はこの方針に従って、パネル単位で再整理する前提となる。
+
+### Risk & Mitigation
+- Risk: 既存 UI 設計と新方針が一時的に混在し、途中段階で見た目が揃わない可能性がある。
+- Mitigation: System -> VisionLLM -> OCR Settings の順で段階実装し、共通レイアウト部品を先に作る方針を明記した。
+
+### Tests / Verification
+- 文書作成のみ。コード実装・画面検証は未実施。**2026-03-12 19:05 (Asia/Taipei) — ModernWpf-based UI rework direction**
+
+### Summary
+- WPF UI 再整理方針を、完全自前テーマではなく ModernWpf をテーマ基盤に使う前提へ更新した。
+
+### Context / Goal
+- 自前テーマ被せ方式は破綻しやすく、複雑コントロールで標準挙動を壊しやすかった。
+- 今後は ModernWpf を使って light/dark と基本コントロールを安定させ、その上でレイアウトを整理する方向に切り替えたかった。
+
+### Changes
+- `Doc/Wpf_Ui_Rework_Direction.md` を ModernWpf 前提に更新した。
+- 実装手順を `ModernWpf 導入 -> 共通レイアウト部品 -> パネル再整理 -> 局所調整` の順へ更新した。
+- テーマ適用の方針を「ModernWpf 既定を優先し、自前 style は不足分だけ」に整理した。
+
+### Files Touched
+- `Doc/Wpf_Ui_Rework_Direction.md` — ModernWpf 採用前提の UI 再整理方針、テーマ基盤、実装順序、DoD を更新した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修は ModernWpf をテーマ基盤にして進める前提となる。
+
+### Risk & Mitigation
+- Risk: ModernWpf 導入時に既存画面の見た目や余白が一気に変わる可能性がある。
+- Mitigation: 先にテーマ基盤だけを入れ、独自見た目調整は後段で限定的に行う方針へ整理した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_Ui_Rework_Direction.md -Encoding UTF8`
+- 内容確認のみ。コード実装・画面検証は未実施。
+
+**2026-03-12 19:26 (Asia/Taipei) — Settings console UI modernization recommendation doc**
+
+### Summary
+- オーバーレイ主役・`MainWindow` は設定コンソールという前提で、UI モダン化の推奨方針を新規 Doc に追加した。
+
+### Context / Goal
+- このアプリの主役は対象アプリ上の翻訳オーバーレイであり、`MainWindow` は調整・設定・検証のための画面としての性質が強い。
+- ランチャー風の見た目ではなく、設定責務の分離と検証しやすさを優先した UI 再編方針を文書化したかった。
+
+### Changes
+- `MainWindow` を設定コンソールとして捉える前提の UI 推奨案を新規追加した。
+- 画面カテゴリ再編、`Overview` の役割、`Basic / Advanced` 分離、`Preview / Log` の位置づけ、実装手順を整理した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — 設定コンソール前提の UI モダン化推奨、情報設計、ナビゲーション構成、実装手順、DoD を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 改修方針として、`MainWindow` を設定コンソール中心に再設計する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: 既存のカテゴリ名や画面構成と提案カテゴリの差分により、実装着手時に再整理コストが発生する。
+- Mitigation: 文書内で `Overview`、`Runtime / Logs`、`Advanced` を含む責務分離と段階的な実装順を先に定義した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書追加のみ。コード実装・画面検証は未実施。
+
+**2026-03-12 19:31 (Asia/Taipei) — Add language pair guidance to settings console doc**
+
+### Summary
+- `Overview` に言語ペアの即時確認・即時変更を置く方針を UI 推奨文書へ追記した。
+
+### Context / Goal
+- 言語選択はオーバーレイ結果に直結し、テスト操作の直前に確認・変更されやすい主要設定である。
+- `Overview` に何を置くべきかを明確化し、`Translation` との責務分離を文書上で整理したかった。
+
+### Changes
+- `Overview` の役割に source / target language と swap を追加した。
+- `Translation` を「言語設定の詳細」を扱う位置づけに修正した。
+- `Overview` に置く主要設定の基準を補足する節を追加した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — `Overview` に置く言語ペア操作と `Translation` 側へ残す詳細設定の責務分離を追記した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 設計では、言語ペアの最小操作を `Overview` に配置する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: `Overview` に設定を足しすぎると診断トップとしての簡潔さが失われる。
+- Mitigation: 文書上で `Overview` には最小限の言語ペア操作だけを置き、詳細設定は `Translation` に残す方針を明記した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書更新のみ。コード実装・画面検証は未実施。
