@@ -1328,7 +1328,7 @@ public sealed class PipelineOrchestrator
 
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
-        return api is GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+        return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
     }
 
     private static string FormatRect(Rect rect)

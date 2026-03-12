@@ -19241,3 +19241,55 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `Get-Content -Path 'Doc\VisionLlm_Hybrid_CapacityAllocation_Plan.md' -Encoding UTF8`
+**2026-03-12 09:56 (Asia/Taipei) — Enable DX9 hook overlay route in pipeline**
+
+### Summary
+- Pipeline 側の hook overlay 対応 API 判定に DX9 を追加し、DX9 でも WPF 抑止と OverlayV2 publish が有効になるようにした。
+
+### Context / Goal
+- DX9 Hook では attach-success icon は描画される一方、翻訳オーバーレイが WPF 側に出ていた。
+- Native DX9 overlay 実装は存在するため、C# pipeline 側の API 判定を揃えて hook overlay 経路へ流したい。
+
+### Changes
+- `PipelineOrchestrator` の `IsHookOverlaySupportedApi(...)` に `GraphicsHookApiKind.Dx9` を追加した。
+- これにより DX9 でも `ShouldSuppressWpfOverlay()` と `TryUpdateGraphicsHookOverlayV2()` が有効になる。
+
+### Files Touched
+- `Services/PipelineOrchestrator.cs` — hook overlay 対応 API 判定に `Dx9` を追加した。
+
+### Behavioral Impact
+- DX9 GraphicsHook 使用時、overlay route が `wpf_allowed` ではなく `hook_only` へ切り替わるようになる。
+- DX9 でも Hook 側へ OverlayV2 text block が publish される。
+
+### Risk & Mitigation
+- Risk: DX9 で overlay publish が失敗する場合、WPF overlay が抑止されて見えなくなる可能性がある。
+- Mitigation: 既存の DX9 native overlay 実装が前提であり、status/log で `hook_only` と publish 成否を追える状態を維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
+**2026-03-12 10:05 (Asia/Taipei) — Fix DX9 overlay runtime republish on F9/F10**
+
+### Summary
+- `MainWindow.xaml.cs` 側の hook overlay 対応 API 判定に DX9 を追加し、F9/F10 後も DX9 hook overlay を再有効化できるようにした。
+
+### Context / Goal
+- DX9 では初回の hook overlay 描画は成功していたが、F9 で非表示後に再表示すると `runtime_config_publish ... overlay=False` のままになっていた。
+- 原因は `MainWindow.xaml.cs` の runtime republish 用 API 判定が DX11/Vulkan のみで、DX9 を未対応扱いしていたためだった。
+
+### Changes
+- `MainWindow.xaml.cs` の `IsHookOverlaySupportedApi(...)` に `GraphicsHookApiKind.Dx9` を追加した。
+- これにより F9 toggle と F10/F8 の再表示経路でも DX9 hook overlay が `overlay=True` で publish されるようになる。
+
+### Files Touched
+- `MainWindow.xaml.cs` — hook overlay 対応 API 判定に `Dx9` を追加した。
+
+### Behavioral Impact
+- DX9 GraphicsHook 使用時、F9 で非表示後に再度 F9 または F8/F10 実行で hook overlay が再表示されるようになる。
+- 設定変更に依存せず runtime config 再 publish だけで self-heal するようになる。
+
+### Risk & Mitigation
+- Risk: DX9 で runtime republish が失敗すると overlay 状態がずれる可能性がある。
+- Mitigation: 既存の publish failure 時 `ApplySettingsAsync` 再適用経路は維持し、ログでも `runtime_config_publish` を確認できる状態を保つ。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
