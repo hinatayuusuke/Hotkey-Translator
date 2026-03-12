@@ -866,6 +866,14 @@
                                       <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
+                                  <CheckBox x:Name="EnableVisionLlmSharedLocalTranslationCheck"
+                                            Content="Use VisionLLM for translation"
+                                            Margin="0,8,0,0"
+                                            IsChecked="{Binding Settings.EnableVisionLlmSharedLocalTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <TextBlock Text="NOTE: ON shares the VisionLLM model for OCR and local translation. OFF keeps OCR on VisionLLM and uses the normal translation pipeline."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
                                   <CheckBox x:Name="EnableVisionGeometryHybridOcrCheck"
                                             Content="Enable geometry assist hybrid OCR"
                                             Margin="0,8,0,0"

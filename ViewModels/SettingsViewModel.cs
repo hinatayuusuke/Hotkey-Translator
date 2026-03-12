@@ -59,6 +59,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedMmprojFileName = string.Empty;
+    [ObservableProperty] private bool _enableVisionLlmSharedLocalTranslation;
     [ObservableProperty] private bool _enableVisionGeometryHybridOcr;
     [ObservableProperty] private string _visionGeometryHybridBaseEngineTag = "WinRt";
     [ObservableProperty] private bool _enableDeepL;
@@ -217,6 +218,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
             VisionLlmSelectedModelFileName = settings.VisionLlmSelectedModelFileName;
             VisionLlmSelectedMmprojFileName = settings.VisionLlmSelectedMmprojFileName;
+            EnableVisionLlmSharedLocalTranslation = settings.EnableVisionLlmSharedLocalTranslation;
             EnableVisionGeometryHybridOcr = settings.EnableVisionGeometryHybridOcr;
             VisionGeometryHybridBaseEngineTag = settings.VisionGeometryHybridBaseEngine switch
             {
@@ -363,6 +365,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.LlamaSelectedModelFileName = (LlamaSelectedModelFileName ?? string.Empty).Trim();
         settings.VisionLlmSelectedModelFileName = (VisionLlmSelectedModelFileName ?? string.Empty).Trim();
         settings.VisionLlmSelectedMmprojFileName = (VisionLlmSelectedMmprojFileName ?? string.Empty).Trim();
+        settings.EnableVisionLlmSharedLocalTranslation = EnableVisionLlmSharedLocalTranslation;
         settings.EnableDeepL = EnableDeepL;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
@@ -721,6 +724,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnVisionLlmBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxImageSideTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableVisionLlmSharedLocalTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableVisionGeometryHybridOcrChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVisionGeometryHybridBaseEngineTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();

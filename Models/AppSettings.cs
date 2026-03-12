@@ -118,7 +118,7 @@ public sealed class AppSettings
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
     public GraphicsResourceBudgetProfile ResourceBudgetProfile { get; set; } = GraphicsResourceBudgetProfile.Balanced;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
-    public string PaddleDevice { get; set; } = "cpu";
+    public string PaddleDevice { get; set; } = "gpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";
     public string PaddleTextRecognitionModelName { get; set; } = "PP-OCRv5_server_rec";

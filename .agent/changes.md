@@ -19476,3 +19476,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\`
 - 成功（0 warnings / 0 errors）
+**2026-03-12 14:44 (Asia/Taipei) — VisionLLM translation route UI toggle**
+
+### Summary
+- VisionLLM サイドパネルに、翻訳を VisionLLM 経路へ流すか通常経路へ流すかのチェックボックスを追加した。
+
+### Context / Goal
+- VisionLLM の OCR と翻訳経路の切替は既存設定 EnableVisionLlmSharedLocalTranslation で制御されていたが、UI からは操作できなかった。
+- VisionLLM OCR を使いながら、翻訳だけ通常経路へ戻す運用を UI から明示的に切り替えられるようにしたかった。
+
+### Changes
+- SettingsViewModel に EnableVisionLlmSharedLocalTranslation の公開プロパティを追加し、load/save/auto-save に接続した。
+- VisionLLM サイドパネルに Use VisionLLM for translation チェックボックスと説明文を追加した。
+
+### Files Touched
+- ViewModels/SettingsViewModel.cs — EnableVisionLlmSharedLocalTranslation を ViewModel に追加し、設定の読込・保存・自動保存へ接続した。
+- MainWindow.xaml — VisionLLM パネルに翻訳経路切替チェックボックスと補足説明を追加した。
+
+### Behavioral Impact
+- VisionLLM OCR 使用時、UI から VisionLLM の自前翻訳経路を ON/OFF できるようになった。
+- ON のときは既存の EnableVisionLlmSharedLocalTranslation 分岐に従い VisionLLM 翻訳経路を使い、OFF のときは通常翻訳経路を使う。
+
+### Risk & Mitigation
+- Risk: UI からの切替で既存の budget / host 判定が想定外に揺れる可能性がある。
+- Mitigation: 既存の設定フラグをそのまま UI 露出しただけに留め、経路分岐ロジック自体は変更していない。
+
+### Tests / Verification
+- dotnet build .\Hotkey-Translator.csproj -p:BuildProjectReferences=false -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
+- 成功（0 warnings / 0 errors）
