@@ -90,7 +90,7 @@
                                                Text="{Binding ElementName=VerticalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <TextBlock Text="NOTE: Strength controls are mapped to internal merge thresholds."
-                                           Foreground="DimGray"
+                                           Style="{StaticResource MutedTextStyle}"
                                            Margin="0,4,0,0" />
                                 <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
@@ -306,7 +306,9 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                                <TextBlock Text="OCR input preview is available in the bottom drawer." Margin="0,10,0,4" Foreground="DimGray" />
+                                <TextBlock Text="OCR input preview is available in the bottom drawer."
+                                           Style="{StaticResource MutedTextStyle}"
+                                           Margin="0,10,0,4" />
                                     </StackPanel>
                                 </Grid>
     </StackPanel>

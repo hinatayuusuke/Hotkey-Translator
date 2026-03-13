@@ -7,11 +7,10 @@
     <StackPanel>
                                   <TextBlock Text="VisionLLM (Local VLM)" FontWeight="SemiBold" />
                                   <TextBlock Text="VisionLLM starts automatically when OCR engine is set to VisionLLM."
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,4,0,0" />
                                   <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
-                                             Foreground="DimGray"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,6,0,0" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
@@ -77,8 +76,7 @@
                                             Margin="0,8,0,0"
                                             IsChecked="{Binding Settings.EnableVisionLlmSharedLocalTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <TextBlock Text="NOTE: ON shares the VisionLLM model for OCR and local translation. OFF keeps OCR on VisionLLM and uses the normal translation pipeline."
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,4,0,0" />
                                   <CheckBox x:Name="EnableVisionGeometryHybridOcrCheck"
                                             Content="Enable geometry assist hybrid OCR"
@@ -97,8 +95,7 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <TextBlock Text="NOTE: VisionLLM text stays primary. The selected OCR engine is used only to provide geometry hints for overlay placement."
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,4,0,0" />
     </StackPanel>
 </UserControl>

@@ -21,11 +21,10 @@
                                   <Separator Margin="0,10,0,8" />
                                   <TextBlock Text="Local Llama.cpp (GGUF)" FontWeight="SemiBold" />
                                   <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,4,0,0" />
                                   <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
-                                             Foreground="DimGray"
+                                             Style="{StaticResource MutedTextStyle}"
                                              Margin="0,6,0,0" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />

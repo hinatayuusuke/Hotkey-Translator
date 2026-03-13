@@ -99,7 +99,9 @@
                                                  TextAlignment="Right"
                                                  Text="{Binding ElementName=PaddleConfidenceThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                   </StackPanel>
-                                  <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
+                                  <TextBlock Text="Language follows Main settings."
+                                             Style="{StaticResource MutedTextStyle}"
+                                             Margin="0,6,0,0" />
                                   <Separator Margin="0,10,0,8" />
 
                                   <TextBlock Text="PaddleOCR-VL (gRPC)" FontWeight="SemiBold" />
@@ -141,7 +143,10 @@
                                                     LargeChange="32"
                                                     SpinButtonPlacementMode="Compact"
                                                     Value="{Binding Settings.PaddleVlMaxNewTokensValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="AUTO=blank"
+                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                 Margin="8,0,0,0"
+                                                 VerticalAlignment="Center" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Layout detection" Width="180" VerticalAlignment="Center" />

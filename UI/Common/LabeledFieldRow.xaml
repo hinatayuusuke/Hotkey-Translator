@@ -20,11 +20,11 @@
         <StackPanel Grid.Column="1">
             <ContentPresenter Content="{Binding FieldContent, ElementName=Root}" />
             <TextBlock Margin="0,4,0,0"
-                       Foreground="DimGray"
                        TextWrapping="Wrap"
                        Text="{Binding Description, ElementName=Root}">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock"
+                           BasedOn="{StaticResource MutedTextStyle}">
                         <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
                             <Trigger Property="Text" Value="">

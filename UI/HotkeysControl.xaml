@@ -11,9 +11,8 @@
                                           Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableRawInputHotkeys, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Text="NOTE: Use this when some apps ignore standard RegisterHotKey."
-                                           Foreground="DimGray"
-                                           Margin="0,2,0,0"
-                                           TextWrapping="Wrap" />
+                                           Style="{StaticResource MutedTextStyle}"
+                                           Margin="0,2,0,0" />
                                 <Grid Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto" MinWidth="170" />
@@ -205,6 +204,8 @@
                                                   IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
                                 </Grid>
-                                <TextBlock Text="Note: Win key is not supported." Foreground="DimGray" Margin="0,8,0,0" />
+                                <TextBlock Text="Note: Win key is not supported."
+                                           Style="{StaticResource MutedTextStyle}"
+                                           Margin="0,8,0,0" />
     </StackPanel>
 </UserControl>

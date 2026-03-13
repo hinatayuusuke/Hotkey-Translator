@@ -46,11 +46,10 @@
                             <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
                             <TextBlock x:Name="OcrPreprocessPreviewHint"
                                        Text="Run OCR to update preview."
-                                       Foreground="DimGray"
+                                       Style="{StaticResource MutedTextStyle}"
                                        TextAlignment="Center"
                                        HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
+                                       VerticalAlignment="Center" />
                         </Grid>
                     </TabItem>
                     <TabItem Header="Pinned">
@@ -59,11 +58,10 @@
                             <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
                             <TextBlock x:Name="PinnedCaptureThumbnailHint"
                                        Text="No fixed target"
-                                       Foreground="DimGray"
+                                       Style="{StaticResource MutedTextStyle}"
                                        TextAlignment="Center"
                                        HorizontalAlignment="Center"
-                                       VerticalAlignment="Center"
-                                       TextWrapping="Wrap" />
+                                       VerticalAlignment="Center" />
                         </Grid>
                     </TabItem>
                 </TabControl>

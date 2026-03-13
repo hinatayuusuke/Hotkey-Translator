@@ -21157,6 +21157,44 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` を実行
 - ビルドは `Tools\WinRtLanguagePackElevator\obj\Debug\WinRtLanguagePackElevator.sourcelink.json` へのアクセス拒否で失敗し、今回変更のコンパイル確認までは未完了
+
+**2026-03-13 21:54 (Asia/Taipei) — Unify help text contrast with theme-muted colors**
+
+### Summary
+- 各設定画面に散っていた説明文の `DimGray` 直書きをやめ、テーマ連動する補足文スタイルへ統一した。
+
+### Context / Goal
+- 補足文や説明文の一部はテーマの `Secondary` 色を使い、一部は `DimGray` 固定色を使っており、画面ごとに見え方がばらついていた。
+- ライト/ダーク両モードで説明文のコントラストをそろえつつ、無効状態を示すグレー表示だけは残したかった。
+
+### Changes
+- 説明文系 `TextBlock` を `MutedTextStyle` または `TextFillColorSecondaryBrush` に統一した。
+- 共通 UI の `FormSection` と `LabeledFieldRow` も `MutedTextStyle` ベースへ変更し、今後の説明文も自動でテーマ追従するようにした。
+- プレビュー領域のプレースホルダー文言も同じ補足文スタイルへ寄せた。
+
+### Files Touched
+- `UI/SystemSettingsControl.xaml` — System 画面の NOTE 文をテーマ補足文スタイルへ統一した。
+- `UI/HotkeysControl.xaml` — Hotkey 画面の補足文をテーマ補足文スタイルへ統一した。
+- `UI/OcrEnginesControl.xaml` — OCR エンジン設定の説明文と補足ラベルをテーマ色へ変更した。
+- `UI/OcrSettingsControl.xaml` — OCR 設定画面の NOTE 文とプレビュー案内文をテーマ補足文スタイルへ変更した。
+- `UI/TranslationControl.xaml` — Translation 画面の補足文をテーマ補足文スタイルへ変更した。
+- `UI/VisionLlmSettingsControl.xaml` — VisionLLM 画面の説明文をテーマ補足文スタイルへ変更した。
+- `UI/RuntimeLogsControl.xaml` — Preview のプレースホルダー文言をテーマ補足文スタイルへ変更した。
+- `UI/Common/FormSection.xaml` — 共通セクション説明文を `MutedTextStyle` ベースへ変更した。
+- `UI/Common/LabeledFieldRow.xaml` — 共通フィールド説明文を `MutedTextStyle` ベースへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 説明文・補足文・プレースホルダー文言がライト/ダーク両モードで一貫したテーマ色になり、固定 `DimGray` より視認性が安定する。
+- 無効状態の数値表示など、状態表現としてのグレーアウトは従来どおり維持される。
+
+### Risk & Mitigation
+- Risk: 一部の補足文は以前より少し主張が強く見える可能性がある。
+- Mitigation: 目立ちすぎない `TextFillColorSecondaryBrush` 系に統一し、本文色ではなく補足文色のまま揃えた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `UI\*.xaml` / `UI\Common\*.xaml` 内の `Foreground="DimGray"` を再検索し、説明文用途の固定色が残っていないことを確認
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
