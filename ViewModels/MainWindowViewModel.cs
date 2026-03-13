@@ -27,13 +27,13 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     private int _selectedRootTabIndex;
 
     [ObservableProperty]
-    private bool _isBottomPanelOpen = true;
+    private bool _isBottomPanelOpen = false;
 
     [ObservableProperty]
-    private bool _bottomPreviewPaneVisible = true;
+    private bool _bottomPreviewPaneVisible = false;
 
     [ObservableProperty]
-    private bool _bottomLogPaneVisible = true;
+    private bool _bottomLogPaneVisible = false;
 
     [ObservableProperty]
     private int _selectedTranslationPriorityIndex = -1;
