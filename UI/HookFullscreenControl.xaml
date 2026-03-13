@@ -1,0 +1,189 @@
+<UserControl x:Class="Hotkey_Translator.UI.HookFullscreenControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style x:Key="SectionDescriptionStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="DimGray" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+        </Style>
+        <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
+            <Setter Property="Width" Value="150" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel Margin="0,12,0,0">
+        <TextBlock Text="Hook / Fullscreen" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="Exclusive fullscreen support and virtual fullscreen workflows live here so game compatibility settings stay grouped together."
+                   Style="{StaticResource SectionDescriptionStyle}" />
+        <TextBlock Text="{Binding HookStatusSummary}"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,12" />
+
+        <TextBlock Text="Graphics Hook" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="Use this path when overlay injection or direct rendering support is required for the target app."
+                   Style="{StaticResource SectionDescriptionStyle}" />
+        <CheckBox Content="Enable Graphics hook pipeline"
+                  Margin="0,0,0,8"
+                  IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Hook API" Style="{StaticResource FieldLabelStyle}" />
+            <ComboBox Grid.Column="1"
+                      Width="220"
+                      HorizontalAlignment="Left"
+                      IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                      SelectedValuePath="Tag"
+                      SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                <ComboBoxItem Content="DX11" Tag="Dx11" />
+                <ComboBoxItem Content="DX9 (capture-only planned)" Tag="Dx9" />
+                <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+            </ComboBox>
+        </Grid>
+
+        <CheckBox Content="Enable hook overlay rendering"
+                  Margin="0,0,0,6"
+                  IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                  IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <CheckBox Content="Fallback to legacy capture on hook error"
+                  Margin="0,0,0,6"
+                  IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                  IsChecked="{Binding Settings.GraphicsHookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Capture FPS limit" Style="{StaticResource FieldLabelStyle}" />
+            <TextBox Grid.Column="1"
+                     Width="80"
+                     HorizontalAlignment="Left"
+                     IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                     Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+            <TextBlock Grid.Column="2"
+                       Margin="12,0,0,0"
+                       Text="Limits capture-side updates when the hook pipeline owns the target app."
+                       Style="{StaticResource SectionDescriptionStyle}" />
+        </Grid>
+
+        <Expander Header="Diagnostics"
+                  Margin="0,6,0,12"
+                  IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}">
+            <StackPanel Margin="0,8,0,0">
+                <CheckBox Content="Enable hook perf diagnostic log (Vulkan)"
+                          Margin="0,0,0,6"
+                          IsChecked="{Binding Settings.GraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <CheckBox Content="Enable hook diagnostic file sink"
+                          IsChecked="{Binding Settings.GraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            </StackPanel>
+        </Expander>
+
+        <TextBlock Text="Launcher" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="Use launcher integration when the target app must be started through the hook pipeline."
+                   Style="{StaticResource SectionDescriptionStyle}" />
+        <CheckBox Content="Enable Graphics Hook launcher"
+                  Margin="0,0,0,8"
+                  IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                  IsChecked="{Binding Settings.EnableGraphicsHookLauncher, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <Grid Margin="0,0,0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="390" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Launcher EXE" Style="{StaticResource FieldLabelStyle}" />
+            <TextBox Grid.Column="1"
+                     Width="380"
+                     HorizontalAlignment="Left"
+                     IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                     Text="{Binding Settings.GraphicsHookLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2"
+                    Content="Browse..."
+                    Width="80"
+                    Margin="8,0,0,0"
+                    IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                    Click="OnBrowseLauncherClicked" />
+        </Grid>
+
+        <Grid Margin="0,0,0,2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="390" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Launcher args" Style="{StaticResource FieldLabelStyle}" />
+            <TextBox Grid.Column="1"
+                     Width="380"
+                     HorizontalAlignment="Left"
+                     IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                     Text="{Binding Settings.GraphicsHookLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+            <Button Grid.Column="2"
+                    Content="Hook Launch"
+                    Width="100"
+                    Margin="8,0,0,0"
+                    IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
+                    Click="OnLaunchClicked" />
+        </Grid>
+
+        <TextBlock Text="NOTE: In launcher mode, lock/unlock fixed target hotkeys (F7 / Shift+F7) are disabled."
+                   Style="{StaticResource SectionDescriptionStyle}" />
+
+        <Grid Margin="0,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Steam launch" Style="{StaticResource FieldLabelStyle}" />
+            <Button Grid.Column="1"
+                    Content="Copy"
+                    Width="80"
+                    IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                    Click="OnCopySteamLaunchOptionsClicked" />
+            <TextBlock Grid.Column="2"
+                       Margin="12,0,0,0"
+                       Text="Format: &quot;&lt;Hotkey-Translator.exe&gt;&quot; --hook-launch -- %command%. For non-Steam shortcuts, %command% may not expand as expected."
+                       Style="{StaticResource SectionDescriptionStyle}" />
+        </Grid>
+
+        <TextBlock Text="Mirror Fullscreen" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,4" />
+        <TextBlock Text="Use Magpie-based virtual fullscreen for apps that are fixed-window or need fullscreen-like presentation."
+                   Style="{StaticResource SectionDescriptionStyle}" />
+        <CheckBox Content="Enable mirror fullscreen mode"
+                  Margin="0,0,0,8"
+                  IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+
+        <Grid Margin="0,0,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="160" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column="0" Text="Magpie profile index" Style="{StaticResource FieldLabelStyle}" />
+            <TextBox Grid.Column="1"
+                     Width="80"
+                     HorizontalAlignment="Left"
+                     IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
+                     Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+            <TextBlock Grid.Column="2"
+                       Margin="12,0,0,0"
+                       Text="Magpie core path: Tools\Magpie\Magpie.Core.exe (app relative)"
+                       Style="{StaticResource SectionDescriptionStyle}" />
+        </Grid>
+    </StackPanel>
+</UserControl>

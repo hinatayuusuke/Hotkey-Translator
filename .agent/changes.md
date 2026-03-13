@@ -18889,6 +18889,67 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒タイムアウトまで起動継続を確認
 
+**2026-03-13 12:16 (Asia/Taipei) — Replace hook screen with direct WPF form layout**
+
+### Summary
+- `Hook / Fullscreen` 画面の多段 `UserControl` 構造をやめ、直接 WPF コントロールで組んだフォームへ戻した。
+
+### Context / Goal
+- `Hook / Fullscreen` 切り出し時に `FormSection` / `LabeledFieldRow` を重ねたことで、ボタン・入力・コンボボックスが効かない状態になっていた。
+- まずは見た目より操作不能の回帰を止めるため、単純な WPF フォーム構造へ戻す必要があった。
+
+### Changes
+- `UI/HookFullscreenControl.xaml` を全面的に書き直し、`TextBlock` / `Grid` / `CheckBox` / `ComboBox` / `TextBox` / `Button` だけで構成する形にした。
+- `Hook / Fullscreen` のイベント中継は維持しつつ、`FormSection` / `LabeledFieldRow` への依存をなくした。
+
+### Files Touched
+- `UI/HookFullscreenControl.xaml` — 共通 `UserControl` 依存を外し、直接 WPF フォームへ置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Hook / Fullscreen` の各入力、チェックボックス、コンボボックス、ボタンが通常の WPF フォームとして操作可能な構造に戻った。
+- 画面の散らかり自体は残るが、まず操作不能の回帰は止める方向に寄った。
+
+### Risk & Mitigation
+- Risk: 共通化を外したことで、ラベル幅や説明文の整列は一時的に個別管理へ戻る。
+- Mitigation: 今回は操作回帰の修正を優先し、共通化は後段で `Style` ベースにやり直す前提にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒タイムアウトまで起動継続を確認
+
+**2026-03-13 12:11 (Asia/Taipei) — Extract hook and fullscreen settings into dedicated control**
+
+### Summary
+- `Hook / Fullscreen` 設定を専用 `UserControl` へ切り出し、通常運用の項目と診断系の見せ方を整理した。
+
+### Context / Goal
+- `Overview` と `Runtime / Logs` に続いて、設定本体の代表領域をもう 1 つ `MainWindow.xaml` から外したかった。
+- Hook は独占フルスクリーン対応や仮想フルスクリーン運用の主機能なので、独立カテゴリとして整理しやすい対象だった。
+
+### Changes
+- `UI/HookFullscreenControl.xaml` と `UI/HookFullscreenControl.xaml.cs` を追加し、Graphics Hook、Launcher、Mirror Fullscreen をセクション分けして移設した。
+- Graphics Hook の診断系設定は `Expander` に寄せ、通常運用の項目を先に見せる構成にした。
+- `MainWindow.xaml` の既存 `SettingsPanelHook` は新しい control を配置するだけの形へ縮小した。
+
+### Files Touched
+- `UI/HookFullscreenControl.xaml` — Hook / Fullscreen のレイアウト、launcher 導線、mirror fullscreen 設定を追加した。
+- `UI/HookFullscreenControl.xaml.cs` — browse / launch / Steam copy のイベントを親へ返すための中継を追加した。
+- `MainWindow.xaml` — Hook 設定の直接実装を削除し、`HookFullscreenControl` の配置に置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Hook 設定の挙動自体は維持したまま、画面構造が `UserControl` ベースへ寄った。
+- Graphics Hook の通常運用項目と診断項目が視覚的に分かれ、Mirror Fullscreen も同カテゴリ内で追いやすくなった。
+
+### Risk & Mitigation
+- Risk: Hook は launcher / Steam copy などのボタン操作を含むため、親 `MainWindow` とのイベント配線を外すと動作回帰になる。
+- Mitigation: browse / launch / Steam copy は control 側でイベント中継のみ行い、既存の `MainWindow.xaml.cs` ハンドラをそのまま使う構成にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒タイムアウトまで起動継続を確認
+
 **2026-03-13 11:23 (Asia/Taipei) — Extract overview prototype into UserControl**
 
 ### Summary

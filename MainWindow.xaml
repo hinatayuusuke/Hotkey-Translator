@@ -1,4 +1,4 @@
-﻿<Window x:Class="Hotkey_Translator.MainWindow"
+<Window x:Class="Hotkey_Translator.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -1040,117 +1040,9 @@
                               <StackPanel x:Name="SettingsPanelHook"
                                           Margin="0,12,0,0"
                                           Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=4}">
-                                  <TextBlock Text="Graphics Hook (Experimental)" FontWeight="SemiBold" />
-                                  <CheckBox x:Name="EnableGraphicsHookPipelineCheck"
-                                            Content="Enable Graphics hook pipeline"
-                                            Margin="0,6,0,0"
-                                            IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Hook API" Width="150" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="GraphicsHookApiBox"
-                                                Width="180"
-                                                IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                                SelectedValuePath="Tag"
-                                                SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                          <ComboBoxItem Content="DX11" Tag="Dx11" />
-                                          <ComboBoxItem Content="DX9 (capture-only planned)" Tag="Dx9" />
-                                          <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
-                                      </ComboBox>
-                                  </StackPanel>
-                                  <CheckBox x:Name="GraphicsHookOverlayEnabledCheck"
-                                            Content="Enable hook overlay rendering"
-                                            Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <CheckBox x:Name="GraphicsHookFallbackOnErrorCheck"
-                                            Content="Fallback to legacy capture on hook error"
-                                            Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.GraphicsHookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <CheckBox x:Name="GraphicsHookPerfDiagLogCheck"
-                                            Content="Enable hook perf diagnostic log (Vulkan)"
-                                            Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.EnableGraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <CheckBox x:Name="GraphicsHookDiagFileSinkCheck"
-                                            Content="Enable hook diagnostic file sink"
-                                            Margin="0,4,0,0"
-                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.EnableGraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Capture FPS limit" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="GraphicsHookCaptureFpsLimitBox" Width="80"
-                                               IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                               Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                  </StackPanel>
-                                  <CheckBox x:Name="EnableGraphicsHookLauncherCheck"
-                                            Content="Enable Graphics Hook launcher"
-                                            Margin="0,8,0,0"
-                                            IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                            IsChecked="{Binding Settings.EnableGraphicsHookLauncher, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Launcher EXE" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="GraphicsHookLauncherExePathBox" Width="380"
-                                               IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
-                                               Text="{Binding Settings.GraphicsHookLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <Button x:Name="BrowseGraphicsHookLauncherExeButton"
-                                              Content="Browse..."
-                                              Width="80"
-                                              Margin="8,0,0,0"
-                                              IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
-                                              Click="OnBrowseGraphicsHookLauncherExeClicked" />
-                                  </StackPanel>
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Launcher args" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="GraphicsHookLauncherArgsBox" Width="380"
-                                               IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
-                                               Text="{Binding Settings.GraphicsHookLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <Button x:Name="LaunchGraphicsHookLauncherButton"
-                                              Content="Hook Launch"
-                                              Width="100"
-                                              Margin="8,0,0,0"
-                                              IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
-                                              Click="OnLaunchGraphicsHookLauncherClicked" />
-                                  </StackPanel>
-                                  <TextBlock Text="NOTE: In this mode, lock/unlock fixed target hotkeys (F7 / Shift+F7) are disabled."
-                                             Margin="0,4,0,0"
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Steam Launch Options" Width="150" VerticalAlignment="Center" />
-                                      <Button x:Name="CopySteamLaunchOptionsButton"
-                                              Content="Copy"
-                                              Width="80"
-                                              Margin="12,0,0,0"
-                                              HorizontalContentAlignment="Center"
-                                              VerticalContentAlignment="Center"
-                                              IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                              Click="OnCopySteamLaunchOptionsClicked" />
-                                  </StackPanel>
-                                  <TextBlock Text="Format: &quot;&lt;Hotkey-Translator.exe&gt;&quot; --hook-launch -- %command%"
-                                             Margin="0,4,0,0"
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap" />
-                                  <TextBlock Text="NOTE: For non-Steam shortcuts, %command% may not be expanded as expected."
-                                             Margin="0,2,0,0"
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap" />
-                                  <Separator Margin="0,8,0,6" />
-                                  <TextBlock Text="Mirror Fullscreen (Magpie.Core)" FontWeight="SemiBold" />
-                                  <CheckBox x:Name="EnableMirrorFullscreenModeCheck"
-                                            Content="Enable mirror fullscreen mode"
-                                            Margin="0,6,0,0"
-                                            IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Magpie profile index" Width="150" VerticalAlignment="Center" />
-                                      <TextBox x:Name="MagpieProfileIndexBox" Width="80"
-                                               IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
-                                               Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                  </StackPanel>
-                                  <TextBlock Text="Magpie core path: Tools\Magpie\Magpie.Core.exe (app relative)"
-                                             Margin="0,6,0,0"
-                                             Foreground="DimGray"
-                                             TextWrapping="Wrap" />
+                                  <ui:HookFullscreenControl BrowseLauncherClicked="OnBrowseGraphicsHookLauncherExeClicked"
+                                                            LaunchClicked="OnLaunchGraphicsHookLauncherClicked"
+                                                            CopySteamLaunchOptionsClicked="OnCopySteamLaunchOptionsClicked" />
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelTranslation"
