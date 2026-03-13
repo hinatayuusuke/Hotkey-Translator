@@ -21895,6 +21895,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、タイトル文字が維持されることを確認した。
 - 別ウィンドウを前面に出した状態でスクリーンショットを取得し、非アクティブ時もタイトルバーが暗色のままであることを確認した。
 
+**2026-03-13 23:17 (Asia/Taipei) — Remove temporary app theme diagnostic logs**
+
+### Summary
+- タイトルバー調査で追加した `stage=app_theme` ログを削除した。
+
+### Context / Goal
+- DWM と WPF-UI の切り分け用にテーマ適用ログを一時追加していた。
+- 原因切り分けと修正が完了したため、通常運用ログのノイズを減らしたかった。
+
+### Changes
+- `MainWindow` でテーマ適用時に出していた `stage=app_theme` ログ出力を削除した。
+- ログ専用だった補助メソッドもあわせて削除し、テーマ適用呼び出しだけを残した。
+
+### Files Touched
+- `MainWindow.xaml.cs` — 一時的なテーマ診断ログと関連補助メソッドを削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 起動時、設定反映時、保存後再反映時にランタイムログへ `stage=app_theme` が出なくなる。
+- テーマ適用自体の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 将来タイトルバー不具合を再調査するときに、そのままでは詳細ログが取れない。
+- Mitigation: ログ追加の影響範囲は `MainWindow` に限定されていたため、必要時は同じ箇所へ限定的に再追加しやすい状態を維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-13 23:07 (Asia/Taipei) — Replace WPF-UI theme apply path to preserve standard title text**
 
 ### Summary

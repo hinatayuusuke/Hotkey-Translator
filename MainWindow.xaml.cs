@@ -111,7 +111,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
-        LogThemeApplyResult(_appThemeController.Apply(_settingsService.Settings, this), "constructor");
+        _appThemeController.Apply(_settingsService.Settings, this);
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -272,7 +272,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        LogThemeApplyResult(_appThemeController.Apply(_settingsService.Settings, this), "source_initialized");
+        _appThemeController.Apply(_settingsService.Settings, this);
         _wmMagpieScalingChanged = _magpieSessionController.MagpieScalingChangedMessageId;
         _mainHwndSource = PresentationSource.FromVisual(this) as HwndSource;
         _mainHwndSource?.AddHook(WndProc);
@@ -1441,7 +1441,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
-        LogThemeApplyResult(_appThemeController.Apply(settings, this), "apply_settings_to_ui");
+        _appThemeController.Apply(settings, this);
         EnsureRoiPresetSlots(settings);
         ReloadLlamaModelOptions(settings);
         ReloadVisionLlmModelOptions(settings);
@@ -1718,7 +1718,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
     {
         // WHY: Rehydrate VM from normalized settings so invalid text input is corrected in bound controls.
-        LogThemeApplyResult(_appThemeController.Apply(settings, this), "apply_runtime_state_after_save");
+        _appThemeController.Apply(settings, this);
         EnsureRoiPresetSlots(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         SyncRoiPresetSlotUi(settings);
@@ -2180,30 +2180,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _uiLogController.AppendLog(_pendingUiLogMessages.Dequeue());
         }
     }
-
-    private void LogThemeApplyResult(AppThemeApplyResult result, string source)
-    {
-        var handleText = result.WindowHandle == IntPtr.Zero
-            ? "0x0"
-            : $"0x{result.WindowHandle.ToInt64():X}";
-        var themeText = result.ApplicationTheme.ToString().ToLowerInvariant();
-        var titleText = EscapeLogValue(Title);
-        var titleBarManagedByOsText = result.TitleBarManagedByOs.ToString().ToLowerInvariant();
-
-        var message =
-            $"stage=app_theme event=apply source={source} theme={themeText} title=\"{titleText}\" hwnd={handleText} " +
-            $"title_bar_managed_by_os={titleBarManagedByOsText}.";
-
-        if (_logger is not null)
-        {
-            _logger.Info(message);
-            return;
-        }
-
-        AppendLog(message);
-    }
-
-    private static string EscapeLogValue(string? value) => (value ?? string.Empty).Replace("\"", "'");
 
     private void InitializeLogBuffer()
     {
