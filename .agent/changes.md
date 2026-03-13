@@ -20128,3 +20128,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` — タイムアウトまで継続し、起動直後クラッシュがないことを確認。
+
+**2026-03-13 10:42 (Asia/Taipei) — Promote quick controls to top of overview**
+
+### Summary
+- `Overview` の `Quick Controls` を最上段へ移し、ホットキー表示を大きく目立つ見た目に強化した。
+
+### Context / Goal
+- このアプリはホットキー主体で操作するため、`Quick Controls` は補助情報ではなく主導線として最上部に見える必要があった。
+- 操作名とキーの視認性を上げ、`Overview` を開いた瞬間に何を押すか分かる見た目へ寄せたかった。
+
+### Changes
+- `Quick Controls` カードを `Overview` の最上段へ移動した。
+- ホットキー表示用の専用スタイルを追加し、操作名は小見出し、キーは大きい太字で表示する構成にした。
+- `MainWindowViewModel` にキー表示専用の gesture プロパティを追加し、UI 側で操作名とキー文字列を分離して表示できるようにした。
+
+### Files Touched
+- `MainWindow.xaml` — `Quick Controls` のカード順とスタイルを更新し、ホットキー表示を大きくした。
+- `ViewModels/MainWindowViewModel.cs` — `Quick Controls` 用のキー表示専用プロパティを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` を開いた直後に、主要ホットキーが最初に目に入る構成になった。
+- 各操作のキー表示が強調され、操作説明としての視認性が上がった。
+
+### Risk & Mitigation
+- Risk: 強調しすぎると他カードより `Quick Controls` が視覚的に勝ちすぎる可能性がある。
+- Mitigation: 大きくしたのはキー表示だけに留め、詳細設定や警告表示の情報量は増やしていない。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 起動プロセスが継続することを確認後、次のビルド前にプロセスロックが解消された状態で再ビルド確認。

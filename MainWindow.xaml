@@ -27,6 +27,17 @@
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
+        <Style x:Key="QuickControlNameStyle" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="#555555" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+        </Style>
+        <Style x:Key="QuickControlGestureStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
         <Style x:Key="HeaderlessTabControlStyle" TargetType="TabControl">
             <Setter Property="Template">
                 <Setter.Value>
@@ -83,6 +94,36 @@
                                    Text="Step 1.5 prototype. This keeps the current settings implementation and previews the new overview-focused information hierarchy before the wider page split." />
 
                         <WrapPanel Margin="0,14,0,0" ItemWidth="320" ItemHeight="Auto">
+                            <GroupBox Header="Quick Controls" Margin="0,0,12,12" Width="320">
+                                <StackPanel Margin="12">
+                                    <TextBlock Text="Primary operations"
+                                               FontSize="18"
+                                               FontWeight="Bold"
+                                               Margin="0,0,0,12" />
+                                    <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
+                                    <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+
+                                    <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
+                                    <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+
+                                    <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
+                                    <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+
+                                    <TextBlock Text="Mirror fullscreen" Style="{StaticResource QuickControlNameStyle}" />
+                                    <TextBlock Text="{Binding ToggleMirrorFullscreenHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+
+                                    <Border Margin="0,6,0,0"
+                                            Padding="10"
+                                            Background="#11C97A00"
+                                            BorderBrush="#55C97A00"
+                                            BorderThickness="1"
+                                            Visibility="{Binding HasOverviewHotkeyWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                        <TextBlock Text="{Binding OverviewHotkeyWarning}"
+                                                   Style="{StaticResource OverviewMutedTextStyle}" />
+                                    </Border>
+                                </StackPanel>
+                            </GroupBox>
+
                             <GroupBox Header="Current Setup" Margin="0,0,12,12" Width="320">
                                 <StackPanel Margin="12">
                                     <TextBlock Text="Capture" Style="{StaticResource OverviewLabelStyle}" />
@@ -319,23 +360,6 @@
                                 </StackPanel>
                             </GroupBox>
 
-                            <GroupBox Header="Quick Controls" Margin="0,0,12,12" Width="320">
-                                <StackPanel Margin="12">
-                                    <TextBlock Text="{Binding RunOnceHotkeySummary}" Style="{StaticResource OverviewValueStyle}" />
-                                    <TextBlock Text="{Binding ToggleOverlayHotkeySummary}" Style="{StaticResource OverviewValueStyle}" />
-                                    <TextBlock Text="{Binding SelectRoiHotkeySummary}" Style="{StaticResource OverviewValueStyle}" />
-                                    <TextBlock Text="{Binding ToggleMirrorFullscreenHotkeySummary}" Style="{StaticResource OverviewValueStyle}" />
-                                    <Border Margin="0,4,0,0"
-                                            Padding="10"
-                                            Background="#11C97A00"
-                                            BorderBrush="#55C97A00"
-                                            BorderThickness="1"
-                                            Visibility="{Binding HasOverviewHotkeyWarning, Converter={StaticResource BooleanToVisibilityConverter}}">
-                                        <TextBlock Text="{Binding OverviewHotkeyWarning}"
-                                                   Style="{StaticResource OverviewMutedTextStyle}" />
-                                    </Border>
-                                </StackPanel>
-                            </GroupBox>
                         </WrapPanel>
 
                         <Separator Margin="0,6,0,10" />

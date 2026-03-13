@@ -234,6 +234,14 @@ internal sealed partial class MainWindowViewModel : ObservableObject
 
     public string ToggleMirrorFullscreenHotkeySummary => $"Mirror fullscreen: {FormatHotkey(Settings.HotkeyToggleMirrorFullscreenKey, Settings.HotkeyToggleMirrorFullscreenCtrl, Settings.HotkeyToggleMirrorFullscreenAlt, Settings.HotkeyToggleMirrorFullscreenShift)}";
 
+    public string RunOnceHotkeyGesture => FormatHotkey(Settings.HotkeyRunOnceKey, Settings.HotkeyRunOnceCtrl, Settings.HotkeyRunOnceAlt, Settings.HotkeyRunOnceShift);
+
+    public string ToggleOverlayHotkeyGesture => FormatHotkey(Settings.HotkeyToggleOverlayKey, Settings.HotkeyToggleOverlayCtrl, Settings.HotkeyToggleOverlayAlt, Settings.HotkeyToggleOverlayShift);
+
+    public string SelectRoiHotkeyGesture => FormatHotkey(Settings.HotkeySelectRoiKey, Settings.HotkeySelectRoiCtrl, Settings.HotkeySelectRoiAlt, Settings.HotkeySelectRoiShift);
+
+    public string ToggleMirrorFullscreenHotkeyGesture => FormatHotkey(Settings.HotkeyToggleMirrorFullscreenKey, Settings.HotkeyToggleMirrorFullscreenCtrl, Settings.HotkeyToggleMirrorFullscreenAlt, Settings.HotkeyToggleMirrorFullscreenShift);
+
     public bool HasOverviewHotkeyWarning => !string.IsNullOrWhiteSpace(OverviewHotkeyWarning);
 
     public string OverviewHotkeyWarning
@@ -489,6 +497,10 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(ToggleOverlayHotkeySummary));
         OnPropertyChanged(nameof(SelectRoiHotkeySummary));
         OnPropertyChanged(nameof(ToggleMirrorFullscreenHotkeySummary));
+        OnPropertyChanged(nameof(RunOnceHotkeyGesture));
+        OnPropertyChanged(nameof(ToggleOverlayHotkeyGesture));
+        OnPropertyChanged(nameof(SelectRoiHotkeyGesture));
+        OnPropertyChanged(nameof(ToggleMirrorFullscreenHotkeyGesture));
         OnPropertyChanged(nameof(OverviewHotkeyWarning));
         OnPropertyChanged(nameof(HasOverviewHotkeyWarning));
     }
