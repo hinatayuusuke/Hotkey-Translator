@@ -20886,3 +20886,84 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:40 (Asia/Taipei) — Align overview right-column start positions**
+
+### Summary
+- `Overview` の各ブロックで右列の開始位置を共通化し、余った右端スペースぶん全体幅も縮めた。
+
+### Context / Goal
+- `Overview` の各ブロックは内部2列化できていたが、右列の開始X座標が微妙にずれており、比較イメージほど整列していなかった。
+- 右列の開始位置を共通基準に揃えたうえで、右に余るスペースを減らして枠全体も引き締めたかった。
+
+### Changes
+- `Overview` 全体の幅を `840` から `780` に縮小した。
+- `Quick Controls`、`Language & Actions`、`Quick Display Settings`、`Hook / Fullscreen` の外側グリッドを `390 / 12 / *` の共通カラムに揃えた。
+- `Current Setup` は左右セットを内側グリッドへ分け、外側は同じく `390 / 12 / *` の共通配置に変更した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 右列開始位置を共通カラムへ統一し、`Overview` 全体幅も縮小した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` の各ブロックで右列の開始位置が揃い、比較イメージに近い整列感になった。
+- 右端の遊びが減り、各ブロックの枠も少し引き締まった。
+- 機能や設定導線の挙動自体は変わらない。
+
+### Risk & Mitigation
+- Risk: 全体幅を縮めたことで、長いテキストを持つ右列項目が折り返しやすくなる可能性がある。
+- Mitigation: 右列は `*` 幅のまま残し、固定幅化は開始位置の統一に必要な左列側だけへ限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:45 (Asia/Taipei) — Place hook API label and combo on one row**
+
+### Summary
+- `Overview` の `Hook / Fullscreen` ブロックで、`Hook API` ラベルと `ComboBox` を横並びにした。
+
+### Context / Goal
+- `Hook / Fullscreen` 右列では `Hook API` だけが縦積みになっており、`Mirror mode` セクションとの整列感が崩れていた。
+- ラベルと入力を同じ行に置き、右列内のフォーム表現を揃えたかった。
+
+### Changes
+- `Hook API` 表示を `Grid` ベースに変更し、ラベルと `ComboBox` を横並びにした。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Hook API` のラベルと `ComboBox` を同一行へ再配置した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Hook / Fullscreen` 右列の `Hook API` 行がコンパクトになり、右列内の整列感が改善した。
+- `ComboBox` の動作や設定値の変更には影響しない。
+
+### Risk & Mitigation
+- Risk: ラベルと入力を同じ行に置いたことで、狭い幅ではやや詰まって見える可能性がある。
+- Mitigation: `ComboBox` 幅は維持しつつ、ラベルとの間隔だけを最小限にしている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:48 (Asia/Taipei) — Remove quick controls graphics-hook warning banner**
+
+### Summary
+- `Overview` の `Quick Controls` 下に出ていた Graphics Hook 警告バナーを削除した。
+
+### Context / Goal
+- `Quick Controls` は主要操作の表示を優先したく、Graphics Hook 時の補足メッセージがノイズになっていた。
+- Hook 状態自体は別ブロックで確認できるため、ここでは警告バナーを出さない構成にしたかった。
+
+### Changes
+- `OverviewControl` の `Quick Controls` 下にあった `OverviewHotkeyWarning` 表示用 `Border` を削除した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Quick Controls` 下の警告バナー表示を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Quick Controls` には主要操作だけが表示され、Graphics Hook 警告メッセージは出なくなった。
+- Hotkey や Hook の機能自体には影響しない。
+
+### Risk & Mitigation
+- Risk: Graphics Hook 時の lock/unlock 制約が `Overview` では見えなくなる。
+- Mitigation: Hook 状態は `Current Setup` と `Hook / Fullscreen` ブロックで引き続き確認できる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
