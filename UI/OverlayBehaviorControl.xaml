@@ -79,10 +79,11 @@
                     </MultiBinding>
                 </ui:NumberBox.IsEnabled>
                 <ui:NumberBox.Style>
-                    <Style TargetType="{x:Type ui:NumberBox}">
+                    <Style TargetType="{x:Type ui:NumberBox}"
+                           BasedOn="{StaticResource {x:Type ui:NumberBox}}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
-                                <Setter Property="Foreground" Value="DimGray" />
+                                <Setter Property="Foreground" Value="{DynamicResource TextFillColorDisabledBrush}" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

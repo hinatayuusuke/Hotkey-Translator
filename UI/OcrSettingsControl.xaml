@@ -192,7 +192,8 @@
                                             LargeChange="10"
                                             Value="{Binding Settings.OcrBinarizationThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <Slider.Style>
-                                            <Style TargetType="Slider">
+                                            <Style TargetType="Slider"
+                                                   BasedOn="{StaticResource {x:Type Slider}}">
                                                 <Setter Property="IsEnabled" Value="False" />
                                                 <Style.Triggers>
                                                     <MultiDataTrigger>

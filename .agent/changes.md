@@ -21218,3 +21218,61 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、初期化時の即時例外が出ないことを確認した（確認後に停止）。
+
+**2026-03-13 19:23 (Asia/Taipei) — Add NumberBox single-source migration plan**
+
+### Summary
+- `NumberBox` の数値/文字列二重管理を解消するための移行計画を `Doc/` に追加した。
+
+### Context / Goal
+- 現在の数値入力は `Value` と `...Text` を併用する暫定構成になっている。
+- 今後の実装判断に使えるよう、数値プロパティを正本に寄せる段階的な移行ステップを文書化したかった。
+
+### Changes
+- `NumberBox` の単一ソース化に向けたゴール、非ゴール、実装手順、リスクを整理した。
+- `ApplyTo()` の文字列パース撤去と nullable 数値への移行方針を明記した。
+
+### Files Touched
+- `Doc/NumberBox_SingleSourceOfTruth_Migration_Plan.md` — 数値入力の単一ソース化移行計画を新規追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- アプリ挙動には影響しない。
+- 今後の数値入力改善を段階的に進めるための判断材料が追加された。
+
+### Risk & Mitigation
+- Risk: 計画書と実装が将来ずれる可能性がある。
+- Mitigation: 実装着手時はこの文書を起点に差分を確認し、必要なら文書を先に更新する。
+
+### Tests / Verification
+- `Get-Content .\Doc\NumberBox_SingleSourceOfTruth_Migration_Plan.md -Encoding UTF8 | Select-Object -First 40`
+
+**2026-03-13 19:28 (Asia/Taipei) — Preserve WPF UI base styles for NumberBox and slider**
+
+### Summary
+- ローカル `Style` で潰していた `WPF UI` 既定スタイルを維持するよう修正した。
+
+### Context / Goal
+- `Quiet window (ms)` の `NumberBox` と `Threshold` スライダーが、`WPF UI` を導入しているのに従来 WPF 風の見た目になっていた。
+- 原因はローカル `Style` が `BasedOn` なしで定義され、既定テーマテンプレートを切っていたためだった。
+
+### Changes
+- `OverlayBehaviorControl` の `NumberBox.Style` に `BasedOn="{StaticResource {x:Type ui:NumberBox}}"` を追加した。
+- 無効時の `Foreground` を固定色 `DimGray` から `TextFillColorDisabledBrush` に変更した。
+- `OcrSettingsControl` の `Threshold` スライダーの `Style` に `BasedOn="{StaticResource {x:Type Slider}}"` を追加した。
+
+### Files Touched
+- `UI/OverlayBehaviorControl.xaml` — `NumberBox` のローカルスタイルが `WPF UI` 既定スタイルを継承するよう修正した。
+- `UI/OcrSettingsControl.xaml` — `Threshold` スライダーのローカルスタイルが既定スタイルを継承するよう修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Quiet window (ms)` の入力欄で `WPF UI` の既定見た目が復帰する。
+- `Threshold` スライダーでもローカル有効/無効制御を維持したまま既定スタイルが適用される。
+
+### Risk & Mitigation
+- Risk: 既定スタイルの見た目が予想より強く変わる可能性がある。
+- Mitigation: ローカルで残したのは有効/無効制御だけで、装飾はライブラリ側へ戻して影響範囲を限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
