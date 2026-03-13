@@ -33,9 +33,9 @@
             <Setter Property="Margin" Value="0,0,0,2" />
         </Style>
         <Style x:Key="QuickControlGestureStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="22" />
+            <Setter Property="FontSize" Value="20" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="Margin" Value="0,0,0,8" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
         <Style x:Key="HeaderlessTabControlStyle" TargetType="TabControl">
@@ -99,20 +99,40 @@
                                     <TextBlock Text="Primary operations"
                                                FontSize="18"
                                                FontWeight="Bold"
-                                               Margin="0,0,0,12" />
-                                    <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
-                                    <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                               Margin="0,0,0,10" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="12" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
 
-                                    <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
-                                    <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        <StackPanel Grid.Row="0" Grid.Column="0">
+                                            <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
+                                            <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        </StackPanel>
 
-                                    <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
-                                    <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        <StackPanel Grid.Row="0" Grid.Column="2">
+                                            <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
+                                            <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        </StackPanel>
 
-                                    <TextBlock Text="Mirror fullscreen" Style="{StaticResource QuickControlNameStyle}" />
-                                    <TextBlock Text="{Binding ToggleMirrorFullscreenHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        <StackPanel Grid.Row="1" Grid.Column="0">
+                                            <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
+                                            <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        </StackPanel>
 
-                                    <Border Margin="0,6,0,0"
+                                        <StackPanel Grid.Row="1" Grid.Column="2">
+                                            <TextBlock Text="Mirror fullscreen" Style="{StaticResource QuickControlNameStyle}" />
+                                            <TextBlock Text="{Binding ToggleMirrorFullscreenHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <Border Margin="0,2,0,0"
                                             Padding="10"
                                             Background="#11C97A00"
                                             BorderBrush="#55C97A00"
@@ -125,28 +145,38 @@
                             </GroupBox>
 
                             <GroupBox Header="Current Setup" Margin="0,0,12,12" Width="320">
-                                <StackPanel Margin="12">
-                                    <TextBlock Text="Capture" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding CaptureModeSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                <Grid Margin="12">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
 
-                                    <TextBlock Text="Provider" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding CaptureProviderSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Capture" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CaptureModeSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                                    <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding OcrEngineSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CaptureProviderSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                                    <TextBlock Text="Translation route" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding TranslationRouteSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OcrEngineSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                                    <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Translation" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding TranslationRouteSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                                    <TextBlock Text="ROI status" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding RuntimeStatus.RoiStatusMessage}" Style="{StaticResource OverviewValueStyle}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Hook / Fullscreen" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                                    <TextBlock Text="Overlay status" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding OverlayStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
-                                </StackPanel>
+                                    <TextBlock Grid.Row="5" Grid.Column="0" Text="ROI status" Style="{StaticResource OverviewLabelStyle}" />
+                                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding RuntimeStatus.RoiStatusMessage}" Style="{StaticResource OverviewValueStyle}" />
+                                </Grid>
                             </GroupBox>
 
                             <GroupBox Header="Language &amp; Actions" Margin="0,0,12,12" Width="320">
@@ -325,38 +355,33 @@
                                     <CheckBox Content="Fixed ROI overlay mode"
                                               Margin="0,0,0,6"
                                               IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <CheckBox Content="Stabilize overlay font size"
-                                              Margin="0,0,0,6"
-                                              IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <CheckBox Content="Boost readability for small OCR boxes"
-                                              IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                </StackPanel>
-                            </GroupBox>
+                                    <Separator Margin="0,10,0,10" />
+                                    <GroupBox Header="Hook / Fullscreen">
+                                        <StackPanel Margin="12">
+                                            <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" />
+                                            <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
 
-                            <GroupBox Header="Hook / Fullscreen" Margin="0,0,12,12" Width="320">
-                                <StackPanel Margin="12">
-                                    <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" />
-                                    <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+                                            <CheckBox Content="Enable Graphics Hook pipeline"
+                                                      Margin="0,0,0,6"
+                                                      IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <CheckBox Content="Enable mirror fullscreen mode"
+                                                      Margin="0,0,0,6"
+                                                      IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            <CheckBox Content="Enable hook overlay rendering"
+                                                      Margin="0,0,0,10"
+                                                      IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                                      IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
-                                    <CheckBox Content="Enable Graphics Hook pipeline"
-                                              Margin="0,0,0,6"
-                                              IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <CheckBox Content="Enable mirror fullscreen mode"
-                                              Margin="0,0,0,6"
-                                              IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <CheckBox Content="Enable hook overlay rendering"
-                                              Margin="0,0,0,10"
-                                              IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                                              IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                                    <TextBlock Text="Hook API" Style="{StaticResource OverviewLabelStyle}" />
-                                    <ComboBox Width="180"
-                                              SelectedValuePath="Tag"
-                                              SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <ComboBoxItem Content="DX11" Tag="Dx11" />
-                                        <ComboBoxItem Content="DX9" Tag="Dx9" />
-                                        <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
-                                    </ComboBox>
+                                            <TextBlock Text="Hook API" Style="{StaticResource OverviewLabelStyle}" />
+                                            <ComboBox Width="180"
+                                                      SelectedValuePath="Tag"
+                                                      SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                                <ComboBoxItem Content="DX11" Tag="Dx11" />
+                                                <ComboBoxItem Content="DX9" Tag="Dx9" />
+                                                <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+                                            </ComboBox>
+                                        </StackPanel>
+                                    </GroupBox>
                                 </StackPanel>
                             </GroupBox>
 

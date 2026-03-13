@@ -20159,3 +20159,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 起動プロセスが継続することを確認後、次のビルド前にプロセスロックが解消された状態で再ビルド確認。
+
+**2026-03-13 11:00 (Asia/Taipei) — Compact overview lower layout**
+
+### Summary
+- `Overview` の下段レイアウトを圧縮し、`Current Setup` と `Quick Controls` を短くして、`Hook / Fullscreen` を `Quick Display Settings` の下へ移動した。
+
+### Context / Goal
+- 既存の `Overview` は情報優先度は合っていたが、全体が縦長で一目の把握に向かない状態だった。
+- 下段を 2 列で収めやすい密度へ寄せ、視線移動を減らしたかった。
+
+### Changes
+- `Current Setup` をラベル列 + 値列のコンパクトな 2 カラム表示へ変更し、`Overlay status` を削除した。
+- `Quick Controls` を 2x2 のコンパクト配置に変更し、強調は維持しつつ高さを縮めた。
+- `Quick Display Settings` から `Stabilize overlay font size` と `Boost readability for small OCR boxes` を外した。
+- `Hook / Fullscreen` を独立カードから `Quick Display Settings` 配下のサブセクションへ移動した。
+
+### Files Touched
+- `MainWindow.xaml` — `Overview` 下段のカード構成、コンパクトレイアウト、`Hook / Fullscreen` の配置を更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` の上段・下段ともに縦方向の圧迫が減り、主要情報を 2 列で見やすくなった。
+- `Hook / Fullscreen` は見失わずに、`Quick Display Settings` の文脈で続けて見られる配置になった。
+
+### Risk & Mitigation
+- Risk: `Quick Controls` を圧縮したことで、個々の操作の存在感が少し下がる可能性がある。
+- Mitigation: キー表示の強調自体は維持し、カード順も最上段のままにして主導線は保った。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
