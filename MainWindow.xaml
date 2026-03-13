@@ -10,7 +10,7 @@
                     Title="Hotkey Translator"
                     Height="860"
                     Width="1025"
-                    Background="{DynamicResource ShellWindowBackgroundBrush}"
+                    Background="{DynamicResource ApplicationBackgroundBrush}"
                     ExtendsContentIntoTitleBar="True"
                     WindowBackdropType="Mica"
                     WindowCornerPreference="Round">
@@ -57,8 +57,8 @@
                 Grid.Column="0"
                 Margin="0,0,12,0"
                 Padding="10"
-                Background="{DynamicResource ShellSidebarBackgroundBrush}"
-                BorderBrush="{DynamicResource ShellSidebarBorderBrush}"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="16">
             <Grid>
@@ -189,8 +189,8 @@
         <Border Grid.Row="3"
                 Grid.ColumnSpan="2"
                 Margin="0,8,0,0"
-                Background="{DynamicResource ShellFooterBackgroundBrush}"
-                BorderBrush="{DynamicResource ShellCardBorderBrush}"
+                Background="{DynamicResource ControlFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"
                 Padding="12,8">
@@ -216,8 +216,8 @@
 
         <Grid Grid.RowSpan="4" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Border Background="{DynamicResource ShellBusyOverlayBrush}"
-                    BorderBrush="{DynamicResource ShellCardBorderBrush}"
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Padding="24"
                     CornerRadius="16"

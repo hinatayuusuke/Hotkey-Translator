@@ -17,7 +17,7 @@
     <Border x:Name="BottomDrawerBorder"
             Style="{StaticResource ShellSurfaceBorderStyle}"
             Padding="10"
-            Background="{DynamicResource ShellDrawerBackgroundBrush}"
+            Background="{DynamicResource ControlFillColorSecondaryBrush}"
             MinHeight="140"
             Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
         <Grid>

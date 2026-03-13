@@ -21065,3 +21065,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v normal`
 - `dotnet run --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
+
+**2026-03-13 18:12 (Asia/Taipei) — Replace fixed shell colors with WPF UI theme brushes**
+
+### Summary
+- ダークモードで浮いていた固定色をやめ、`WPF UI` 標準テーマブラシ参照へ置き換えた。
+
+### Context / Goal
+- ダークモード時でも一部の面や補足文字がライト前提のままで、全体が半端な見た目になっていた。
+- 原因は自前の `Shell*` 固定ブラシ群だったため、`WPF UI` のテーマリソースへ寄せて OS テーマ追従を揃えたかった。
+
+### Changes
+- `ThemeResources.xaml` の固定色ブラシ定義を削除し、カード・境界線・補足文字のスタイルを `WPF UI` のテーマブラシへ直接差し替えた。
+- `MainWindow.xaml` のウィンドウ背景、サイドバー、フッター、Busy オーバーレイを `WPF UI` 標準ブラシ参照へ変更した。
+- `RuntimeLogsControl.xaml` のドロワー背景を `WPF UI` 標準ブラシ参照へ変更した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — 固定色リソースを削除し、共通スタイルをテーマブラシ参照へ変更した。
+- `MainWindow.xaml` — シェル背景と境界線の参照先を `WPF UI` 標準ブラシへ変更した。
+- `UI/RuntimeLogsControl.xaml` — ドロワー背景の参照先を `WPF UI` 標準ブラシへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Windows ダークモード時に、シェル背景・カード・補足テキストが `WPF UI` のテーマに追従するようになった。
+- 既存レイアウトや機能には影響しない。
+
+### Risk & Mitigation
+- Risk: `WPF UI` 側のテーマリソース前提に寄せたため、将来的なライブラリアップデートで色味が変わる可能性がある。
+- Mitigation: 固定色を持たない構成にしたことで、少なくとも Light/Dark の不整合は減り、保守点は `WPF UI` テーマに集約された。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
