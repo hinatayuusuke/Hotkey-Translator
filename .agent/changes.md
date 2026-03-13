@@ -21863,6 +21863,36 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-14 01:14 (Asia/Taipei) — Update overview action panel layout**
+
+### Summary
+- `OverviewControl` の右カラム UI を指定レイアウトへ差し替えた。
+
+### Context / Goal
+- `UI\OverviewControl.xaml` の `Translation engines` / `ROI` / `Actions` セクションに、指定された `StackPanel` ベースの構成を反映したい。
+- 既存のバインディングとコマンドは維持したまま、余白と並び方を指定どおりにそろえたい。
+
+### Changes
+- `UniformGrid` と `Grid` を、指定どおりの `StackPanel Orientation="Horizontal"` 構成へ置き換えた。
+- `DeepL` / `Gemini` / `LlamaCpp` のチェックボックス間隔、ROI 行の下マージン、Actions ボタン間隔を指定値へ調整した。
+- `Run test` と `Select ROI` ボタン内の `TextBlock` に `VerticalAlignment="Center"` を追加し、提示されたマークアップに合わせた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 右カラムの各操作 UI を指定された XAML 構成へ差し替えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Overview 画面右カラムの配置が、指定どおり横並び `StackPanel` ベースの見た目に変わる。
+- 既存の設定バインディング、ROI スロット変更イベント、各ボタンコマンドの動作自体は維持される。
+
+### Risk & Mitigation
+- Risk: `UniformGrid` から `StackPanel` への変更で、狭い横幅時の折り返し挙動が変わる可能性がある。
+- Mitigation: 指定レイアウトをそのまま反映し、既存の固定幅ボタンと ROI コンボボックス幅は維持した。
+
+### Tests / Verification
+- XAML 差分を目視確認し、指定されたマークアップ構成と一致することを確認した。
+- ビルド/実行確認は未実施（UI レイアウト差し替えのみのため）。
+
 **2026-03-14 00:36 (Asia/Taipei) — Reduce whitespace inside the language swap icon by tightening path coordinates**
 
 ### Summary

@@ -305,57 +305,54 @@
 
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
-                        <UniformGrid Columns="3" Margin="0,0,0,6">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <CheckBox Content="DeepL"
                                       Margin="0,0,8,0"
+                                      MinWidth="0"
                                       IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <CheckBox Content="Gemini"
                                       Margin="0,0,8,0"
+                                      MinWidth="0"
                                       IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <CheckBox Content="LlamaCpp"
+                                      MinWidth="0"  
                                       IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </UniformGrid>
+                        </StackPanel>
 
                         <TextBlock Text="ROI" Style="{StaticResource OverviewLabelStyle}" />
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="120" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <ComboBox Grid.Column="0"
-                                      Width="120"
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <ComboBox Width="120"
                                       HorizontalAlignment="Left"
                                       VerticalAlignment="Center"
                                       ItemsSource="{Binding RoiPresetSlotItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                       SelectedIndex="{Binding SelectedRoiPresetSlotIndex, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectionChanged="OnOverviewRoiPresetSlotSelectionChanged" />
-                            <CheckBox Grid.Column="1"
-                                      Content="Enable ROI"
+                            <CheckBox Content="Enable ROI"
                                       Margin="12,0,0,0"
                                       VerticalAlignment="Center"
                                       IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </Grid>
+                        </StackPanel>
 
                         <TextBlock Text="Actions" Style="{StaticResource OverviewLabelStyle}" />
-                        <UniformGrid Columns="2">
+                        <StackPanel Orientation="Horizontal">
                             <Button Width="132"
-                                    Margin="0,0,8,0"
+                                    Margin="0,0,12,0"
                                     HorizontalAlignment="Left"
                                     Command="{Binding RunOnceCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Run test" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Run test" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <Button Width="132"
                                     HorizontalAlignment="Left"
                                     Command="{Binding SelectRoiCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Select ROI" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Select ROI" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
-                        </UniformGrid>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </StackPanel>
