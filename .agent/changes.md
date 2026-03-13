@@ -20718,3 +20718,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:14 (Asia/Taipei) — Restack Overview into vertical blocks**
+
+### Summary
+- `Overview` を `WrapPanel + GroupBox` から縦積みのブロック構成へ組み替え、外側の余計な枠感を減らした。
+
+### Context / Goal
+- `Overview` は情報の置き場所が固まり始めたため、次は見た目より先に情報の流れを整理する段階だった。
+- 画面全体を縦方向に読めるようにしつつ、各ブロックだけを軽い枠で区切る構成へ寄せたかった。
+
+### Changes
+- `WrapPanel` ベースの 2 列カード配置をやめ、固定幅の縦積みブロックへ変更した。
+- `GroupBox` をやめて、薄い枠線付き `Border` と見出しテキストで各ブロックを構成した。
+- `Quick Display Settings` と `Hook / Fullscreen` を独立ブロックに分け、画面全体の読み順を上から下へ揃えた。
+- `Language & Actions` の入力幅と行構成を、現行デフォルトウィンドウ幅で揃うように整理した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Overview` 全体のレイアウトを縦積みブロック構成へ再設計した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` は横方向の視線移動が減り、上から下へ順に確認しやすい画面になった。
+- 表示上の構造だけを整理しており、既存の設定変更・WinRT install・ROI 操作の導線は維持される。
+
+### Risk & Mitigation
+- Risk: 固定幅寄りの整列にしたため、狭い幅ではスクロール量が増える可能性がある。
+- Mitigation: 現在の既定ウィンドウ幅を基準に整列し、全体は `ScrollViewer` 配下のままにしている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
