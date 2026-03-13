@@ -20658,3 +20658,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:05 (Asia/Taipei) — Move WinRT install guidance to Overview**
+
+### Summary
+- WinRT OCR language pack の状態表示と `Install` 導線を `Overview` へ移し、`OCR Settings` からは外した。
+
+### Context / Goal
+- `OCR Settings` は詳細調整画面として整理したく、WinRT runtime の見出しや常設説明文はノイズになっていた。
+- ただし `Overview` で WinRT を選んだときに OCR language pack 未導入の検知とインストール導線が壊れないことが必須だった。
+
+### Changes
+- `Overview` の `OCR engine` 直下に WinRT language pack 状態表示と `Install` ボタンを追加した。
+- `OverviewControl` に WinRT install クリックイベントと、controller が触る UI 要素の公開プロパティを追加した。
+- `WinRtLanguagePackUiController` の接続先を `OcrSettingsControl` から `OverviewControl` へ変更した。
+- `OCR Settings` から WinRT runtime 見出し、状態表示、`Install now` ボタン、説明文を削除した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `OCR engine` 直下に WinRT 状態表示と `Install` ボタンを追加した。
+- `UI/OverviewControl.xaml.cs` — WinRT install イベントと UI 要素公開プロパティを追加した。
+- `UI/OcrSettingsControl.xaml` — WinRT runtime ブロックを削除した。
+- `UI/OcrSettingsControl.xaml.cs` — WinRT install イベント中継と UI 要素公開プロパティを削除した。
+- `MainWindow.xaml` — install クリック配線を `OverviewControl` へ移した。
+- `MainWindow.xaml.cs` — WinRT language pack UI controller の接続先を `OverviewControl` に切り替えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` で WinRT OCR を選んだとき、必要な language pack の状態がその場で表示され、未導入なら `Install` を実行できるようになった。
+- `OCR Settings` は詳細調整のみを扱う画面になり、WinRT runtime の補助説明は表示されなくなった。
+
+### Risk & Mitigation
+- Risk: WinRT precheck UI の配線変更で `Install` 導線が反応しなくなる可能性がある。
+- Mitigation: 既存の `WinRtLanguagePackUiController` と `OnInstallWinRtLanguagePackClicked` ハンドラをそのまま再利用し、接続先だけ `Overview` に付け替えた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

@@ -9,24 +9,6 @@
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
     </UserControl.Resources>
     <StackPanel>
-                                <TextBlock Text="WinRT OCR runtime" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock x:Name="WinRtLanguagePackStatusText"
-                                               VerticalAlignment="Center"
-                                               Foreground="DimGray"
-                                               Visibility="Collapsed" />
-                                    <Button x:Name="InstallWinRtLanguagePackButton"
-                                            Content="Install now"
-                                            Margin="10,0,0,0"
-                                            Padding="10,2"
-                                            Visibility="Collapsed"
-                                            Click="OnInstallWinRtLanguagePackClicked" />
-                                </StackPanel>
-                                <TextBlock Text="Use OCR runtime controls to apply changes and release OCR host resources."
-                                           Foreground="DimGray"
-                                           TextWrapping="Wrap"
-                                           Margin="0,6,0,0" />
-                                <Separator Margin="0,10,0,8" />
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />

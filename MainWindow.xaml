@@ -67,6 +67,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
                         <ui:OverviewControl x:Name="OverviewControl"
+                                            InstallWinRtLanguagePackClicked="OnInstallWinRtLanguagePackClicked"
                                             RoiPresetSlotSelectionChanged="OnRoiPresetSlotBoxSelectionChanged" />
                     </StackPanel>
                 </ScrollViewer>
@@ -103,8 +104,7 @@
 
                             <StackPanel x:Name="SettingsPanelOcr"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=1}">
-                                <ui:OcrSettingsControl x:Name="OcrSettingsControl"
-                                                       InstallWinRtLanguagePackClicked="OnInstallWinRtLanguagePackClicked" />
+                                <ui:OcrSettingsControl x:Name="OcrSettingsControl" />
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelPaddle"

@@ -186,8 +186,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             AppendLog,
             () => IsLoaded,
             () => _isClosing,
-            OcrSettingsControl.WinRtLanguagePackStatusTextBlock,
-            OcrSettingsControl.InstallWinRtLanguagePackButtonElement);
+            OverviewControl.WinRtLanguagePackStatusTextBlock,
+            OverviewControl.InstallWinRtLanguagePackButtonElement);
         _winRtLanguagePackCoordinator = new WinRtOcrLanguagePackCoordinator(
             () => _logger,
             new WindowsCapabilityInstaller(() => _logger),

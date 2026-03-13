@@ -25,6 +25,8 @@ public partial class OverviewControl : UserControl
         InitializeComponent();
     }
 
+    public event RoutedEventHandler? InstallWinRtLanguagePackClicked;
+
     public event SelectionChangedEventHandler? RoiPresetSlotSelectionChanged;
 
     public IEnumerable? RoiPresetSlotItemsSource
@@ -39,8 +41,17 @@ public partial class OverviewControl : UserControl
         set => SetValue(SelectedRoiPresetSlotIndexProperty, value);
     }
 
+    public TextBlock WinRtLanguagePackStatusTextBlock => WinRtLanguagePackStatusText;
+
+    public Button InstallWinRtLanguagePackButtonElement => InstallWinRtLanguagePackButton;
+
     private void OnOverviewRoiPresetSlotSelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         RoiPresetSlotSelectionChanged?.Invoke(sender, e);
+    }
+
+    private void OnInstallWinRtLanguagePackClicked(object sender, RoutedEventArgs e)
+    {
+        InstallWinRtLanguagePackClicked?.Invoke(sender, e);
     }
 }

@@ -221,6 +221,19 @@
                         <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
                     </ComboBox>
 
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                        <TextBlock x:Name="WinRtLanguagePackStatusText"
+                                   VerticalAlignment="Center"
+                                   Style="{StaticResource OverviewMutedTextStyle}"
+                                   Visibility="Collapsed" />
+                        <Button x:Name="InstallWinRtLanguagePackButton"
+                                Content="Install"
+                                Margin="10,0,0,0"
+                                Padding="10,2"
+                                Visibility="Collapsed"
+                                Click="OnInstallWinRtLanguagePackClicked" />
+                    </StackPanel>
+
                     <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
                     <WrapPanel Margin="0,0,0,10">
                         <CheckBox Content="DeepL"
