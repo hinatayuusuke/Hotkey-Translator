@@ -21264,6 +21264,93 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - ビルドは成功。`Hotkey-Translator.exe` が起動中だったため `apphost.exe` コピーの再試行警告は出たが、エラーはなし
 
+**2026-03-13 22:51 (Asia/Taipei) — Prevent overlay window from taking activation**
+
+### Summary
+- メインウィンドウのタイトルバー表示確認用に、透明オーバーレイがアクティブ化しないよう `ShowActivated="False"` を追加した。
+
+### Context / Goal
+- `Title` と標準タイトルバー自体は存在していたが、起動直後に表示される最前面オーバーレイがメインウィンドウのアクティブ状態を奪い、タイトルバー描画へ影響している可能性があった。
+- オーバーレイ表示を維持しつつ、メインウィンドウのアクティブ状態を保てるかを確認したかった。
+
+### Changes
+- `OverlayWindow` に `ShowActivated="False"` を追加した。
+
+### Files Touched
+- `UI/OverlayWindow.xaml` — 最前面オーバーレイが `Show()` 時にアクティブ化しないようにした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- オーバーレイは引き続き最前面表示されるが、表示時にキーボードフォーカスやアクティブ状態を奪いにくくなる。
+- タイトルバー未表示問題が、オーバーレイによる非アクティブ化起因かを切り分けやすくなる。
+
+### Risk & Mitigation
+- Risk: もしオーバーレイ表示時にアクティブ化を前提にしている処理があれば影響する可能性がある。
+- Mitigation: `OverlayWindow` は透明・非タスクバー・補助表示専用であり、操作主体ではないため、`ShowActivated=False` は本来の役割に沿った変更に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `UI\OverlayWindow.xaml` に `ShowActivated="False"` が追加されていることを確認
+
+**2026-03-13 22:56 (Asia/Taipei) — Roll back overlay activation probe and isolate title-bar issue scope**
+
+### Summary
+- 効果のなかった `OverlayWindow` の `ShowActivated="False"` をロールバックし、タイトル未表示問題がアプリ固有かどうかを切り分けた。
+
+### Context / Goal
+- オーバーレイがメインウィンドウのアクティブ状態を奪っている仮説を検証したが、表示に変化がなかった。
+- 別観点として、標準 WPF ウィンドウではタイトルが出るかを確認し、このアプリ固有の要因かどうかを分けたかった。
+
+### Changes
+- `OverlayWindow.xaml` の `ShowActivated="False"` を削除して元に戻した。
+- 調査用に最小 WPF タイトルバー表示を確認する一時スクリプトを作成・実行し、確認後に削除した。
+
+### Files Touched
+- `UI/OverlayWindow.xaml` — 効果のなかった `ShowActivated="False"` を削除し、元の動作へ戻した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- オーバーレイウィンドウの挙動は、変更前の状態へ戻った。
+- タイトル未表示問題は、少なくともオーバーレイのアクティブ化有無では説明できないことが確認できた。
+
+### Risk & Mitigation
+- Risk: 調査結果だけではまだ根本原因は修正できていない。
+- Mitigation: 最小 WPF ウィンドウではタイトルが正常表示されることを確認できたため、今後はこのアプリ固有のテーマ/ライブラリ統合へ調査対象を絞れる状態になった。
+
+### Tests / Verification
+- 最小 WPF ウィンドウ `Title Test 123` を別プロセスで表示してスクリーンショット確認し、標準 WPF ではタイトルが正常表示されることを確認
+- 実行中 `Hotkey-Translator` の `MainWindowTitle` が `Hotkey Translator` であることを確認
+
+**2026-03-13 23:00 (Asia/Taipei) — Isolate title loss to WPF-UI theme application**
+
+### Summary
+- `ApplicationThemeManager.Apply(...)` を一時停止して実アプリを画面確認し、タイトル未表示の原因が WPF-UI テーマ適用経路にあることを確認した。
+
+### Context / Goal
+- 標準 WPF ではタイトルが正常表示される一方、このアプリではタイトルが見えないため、クライアントテーマ適用が影響しているかを A/B テストしたかった。
+- 原因を環境問題ではなくコードパス単位で絞り込みたかった。
+
+### Changes
+- `AppThemeController` で `ApplicationThemeManager.Apply(...)` を一時的に無効化した。
+- 実アプリを起動してスクリーンキャプチャを取得し、タイトル表示の有無を確認した。
+- 調査用キャプチャスクリプトは確認後に削除した。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — WPF-UI クライアントテーマ適用を一時停止した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 現在のワークツリーでは、WPF-UI のクライアントテーマ適用が止まっている。
+- この状態で実アプリのタイトルバーに `Hotkey Translator` が表示されることを確認できたため、タイトル未表示の原因は WPF-UI テーマ適用経路でほぼ確定した。
+
+### Risk & Mitigation
+- Risk: クライアント領域の WPF-UI テーマ反映が一時的に無効になっているため、見た目は従来と変わる。
+- Mitigation: 原因切り分けを優先した一時変更であり、次段階では `ApplicationThemeManager.Apply` を使わない代替テーマ適用方法へ置き換えるか、より狭い回避策へ進める前提にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- 実アプリを起動してスクリーンキャプチャを取得し、タイトルバーに `Hotkey Translator` が表示されることを確認
+
 **2026-03-13 22:09 (Asia/Taipei) — Add sidebar selection accent bar**
 
 ### Summary
@@ -21775,6 +21862,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
+
+**2026-03-13 23:07 (Asia/Taipei) — Replace WPF-UI theme apply path to preserve standard title text**
+
+### Summary
+- `ApplicationThemeManager.Apply(...)` をやめ、テーマ辞書の差し替えでクライアント領域だけを切り替えるようにした。
+
+### Context / Goal
+- 標準タイトルバーを OS 管理へ戻しても、`ApplicationThemeManager.Apply(...)` を通す限りアプリ名が描画されなかった。
+- クライアント領域のライト/ダーク切り替えは維持したまま、標準タイトルバーのアプリ名表示を復活させたかった。
+
+### Changes
+- `AppThemeController` から `ApplicationThemeManager.Apply(...)` 呼び出しを外した。
+- `App.xaml` の `ThemesDictionary` を実行時に差し替える方式へ変更し、WPF-UI のテーマブラシ更新を継続した。
+- 標準タイトルバーは OS に完全委譲する前提をコードコメントで明記した。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — WPF-UI のテーマ適用経路を `ThemesDictionary` 差し替え方式へ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- クライアント領域のダーク/ライト切り替えは維持したまま、標準タイトルバーにアプリ名が再び表示される。
+- タイトルバー配色は OS 標準に従い、アプリ側からの DWM 色制御は行わない。
+
+### Risk & Mitigation
+- Risk: `ThemesDictionary` の差し替えだけでは、一部の WPF-UI コントロールが `ApplicationThemeManager.Apply(...)` 前提の更新を期待している可能性がある。
+- Mitigation: 実アプリを起動して、タイトル文字表示とクライアント領域のダークテーマ維持を同時に目視確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、タイトルバーに `Hotkey Translator` が表示されることを確認した。
+- 同起動確認で、クライアント領域がダークテーマのまま維持されていることを確認した。
 
 **2026-03-13 21:35 (Asia/Taipei) — Fix dark mode status bar text color**
 

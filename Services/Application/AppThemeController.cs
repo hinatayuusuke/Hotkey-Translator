@@ -3,7 +3,7 @@ using System.Windows;
 using System.Windows.Interop;
 using Hotkey_Translator.Models;
 using Wpf.Ui.Appearance;
-using Wpf.Ui.Controls;
+using Wpf.Ui.Markup;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -23,7 +23,7 @@ internal sealed class AppThemeController
             ? ApplicationTheme.Light
             : ApplicationTheme.Dark;
 
-        ApplicationThemeManager.Apply(applicationTheme, WindowBackdropType.None, true);
+        ApplyThemeResources(applicationTheme);
         var handle = new WindowInteropHelper(window).Handle;
         // WHY: Rely on the OS-standard non-client rendering because explicit DWM title-bar attributes
         // hid the app name on some environments even when the calls succeeded.
@@ -31,5 +31,36 @@ internal sealed class AppThemeController
             applicationTheme,
             handle,
             TitleBarManagedByOs: true);
+    }
+
+    private static void ApplyThemeResources(ApplicationTheme applicationTheme)
+    {
+        var resources = System.Windows.Application.Current?.Resources;
+        if (resources is null)
+        {
+            return;
+        }
+
+        var mergedDictionaries = resources.MergedDictionaries;
+        for (var index = 0; index < mergedDictionaries.Count; index++)
+        {
+            if (mergedDictionaries[index] is not ThemesDictionary currentThemeDictionary)
+            {
+                continue;
+            }
+
+            // WHY: Replacing the merged dictionary updates WPF-UI brushes without touching
+            // non-client/title-bar behavior that ApplicationThemeManager.Apply altered.
+            mergedDictionaries[index] = new ThemesDictionary
+            {
+                Theme = applicationTheme
+            };
+            return;
+        }
+
+        mergedDictionaries.Insert(0, new ThemesDictionary
+        {
+            Theme = applicationTheme
+        });
     }
 }
