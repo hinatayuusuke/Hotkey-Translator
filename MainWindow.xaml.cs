@@ -111,7 +111,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeComponent();
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
-        CaptureControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
@@ -1073,7 +1072,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             var selectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
             OverviewControl.SelectedRoiPresetSlotIndex = selectedIndex;
-            CaptureControl.SelectedRoiPresetSlotIndex = selectedIndex;
         }
         finally
         {

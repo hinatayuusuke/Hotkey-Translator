@@ -20598,3 +20598,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 14:54 (Asia/Taipei) — Remove ROI controls from Capture**
+
+### Summary
+- `Capture` パネルから ROI 関連 UI と連携コードを外し、ROI の主導線を `Overview` のみに整理した。
+
+### Context / Goal
+- `ROI slot` と `Enable ROI` は `Overview` が日常運用の primary owner であり、`Capture` 側に重複表示する必要がなくなっていた。
+- `Capture` の責務を capture mode / provider / fixed only に絞り、設定面の判断コストを下げたかった。
+
+### Changes
+- `CaptureControl` から `Select ROI`、`Enable ROI`、`ROI slot`、ROI 状態表示を削除した。
+- `CaptureControl` の ROI 用依存関係プロパティと `SelectionChanged` イベントを削除し、最小の code-behind に戻した。
+- `MainWindow` から `CaptureControl` への ROI slot 連携と同期更新を外した。
+
+### Files Touched
+- `UI/CaptureControl.xaml` — ROI 関連の入力と状態表示を削除し、capture 設定だけを残した。
+- `UI/CaptureControl.xaml.cs` — ROI 連携用プロパティとイベントを削除して最小構成に整理した。
+- `MainWindow.xaml` — `CaptureControl` への ROI selection changed ハンドラ接続を削除した。
+- `MainWindow.xaml.cs` — `CaptureControl` への ROI slot items source 設定と選択同期を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ROI の変更導線は `Overview` に一本化され、`Capture` パネルでは capture pipeline の詳細だけを扱うようになった。
+- ROI 機能自体の動作は維持され、`Overview` の ROI UI から引き続き操作できる。
+
+### Risk & Mitigation
+- Risk: `Capture` に ROI がある前提で操作していた場合、最初は配置変更に戸惑う可能性がある。
+- Mitigation: `Overview` 側の ROI UI は維持し、主要運用設定の導線をそこへ統一した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

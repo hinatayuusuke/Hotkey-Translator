@@ -98,8 +98,7 @@
                             <StackPanel x:Name="SettingsPanelCapture"
                                         Margin="0,12,0,0"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=0}">
-                                <ui:CaptureControl x:Name="CaptureControl"
-                                                   RoiPresetSlotSelectionChanged="OnRoiPresetSlotBoxSelectionChanged" />
+                                <ui:CaptureControl x:Name="CaptureControl" />
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelOcr"
