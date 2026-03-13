@@ -20629,3 +20629,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 14:57 (Asia/Taipei) — Prioritize lock window in overview quick controls**
+
+### Summary
+- `Overview` の `Quick Controls` で `Mirror fullscreen` を `Lock window` 表示へ差し替えた。
+
+### Context / Goal
+- 主要操作としては `Mirror fullscreen` より `Lock window` の方が日常運用で使う頻度が高く、`Quick Controls` に置く優先度が高かった。
+- `Overview` の主操作表示を実際の運用導線に寄せたかった。
+
+### Changes
+- `OverviewControl` の `Quick Controls` 4枠目を `Mirror fullscreen` から `Lock window` に変更した。
+- `MainWindowViewModel` に `LockWindowHotkeySummary` と `LockWindowHotkeyGesture` を追加した。
+- 概要表示更新時に `Lock window` ホットキー表示も再通知するようにした。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Quick Controls` の表示ラベルとバインディングを `Lock window` へ差し替えた。
+- `ViewModels/MainWindowViewModel.cs` — `Lock window` のホットキー表示用プロパティを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` を開いたときに、主要操作として `Lock window` のキーが表示されるようになった。
+- ホットキー設定自体の動作は変わらず、表示上の優先度だけを調整した。
+
+### Risk & Mitigation
+- Risk: `Mirror fullscreen` の主要導線が `Quick Controls` から外れるため、その操作を頻繁に使う場合は目立ちにくくなる。
+- Mitigation: `Mirror fullscreen` 自体の設定と機能は `Hook / Fullscreen` に残し、日常運用側の優先度だけを見直した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

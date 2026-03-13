@@ -66,8 +66,8 @@
                         </StackPanel>
 
                         <StackPanel Grid.Row="1" Grid.Column="2">
-                            <TextBlock Text="Mirror fullscreen" Style="{StaticResource QuickControlNameStyle}" />
-                            <TextBlock Text="{Binding ToggleMirrorFullscreenHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                            <TextBlock Text="Lock window" Style="{StaticResource QuickControlNameStyle}" />
+                            <TextBlock Text="{Binding LockWindowHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                         </StackPanel>
                     </Grid>
 

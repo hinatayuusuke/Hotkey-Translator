@@ -232,6 +232,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
 
     public string SelectRoiHotkeySummary => $"Select ROI: {FormatHotkey(Settings.HotkeySelectRoiKey, Settings.HotkeySelectRoiCtrl, Settings.HotkeySelectRoiAlt, Settings.HotkeySelectRoiShift)}";
 
+    public string LockWindowHotkeySummary => $"Lock window: {FormatHotkey(Settings.HotkeyLockCaptureWindowKey, Settings.HotkeyLockCaptureWindowCtrl, Settings.HotkeyLockCaptureWindowAlt, Settings.HotkeyLockCaptureWindowShift)}";
+
     public string ToggleMirrorFullscreenHotkeySummary => $"Mirror fullscreen: {FormatHotkey(Settings.HotkeyToggleMirrorFullscreenKey, Settings.HotkeyToggleMirrorFullscreenCtrl, Settings.HotkeyToggleMirrorFullscreenAlt, Settings.HotkeyToggleMirrorFullscreenShift)}";
 
     public string RunOnceHotkeyGesture => FormatHotkey(Settings.HotkeyRunOnceKey, Settings.HotkeyRunOnceCtrl, Settings.HotkeyRunOnceAlt, Settings.HotkeyRunOnceShift);
@@ -239,6 +241,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public string ToggleOverlayHotkeyGesture => FormatHotkey(Settings.HotkeyToggleOverlayKey, Settings.HotkeyToggleOverlayCtrl, Settings.HotkeyToggleOverlayAlt, Settings.HotkeyToggleOverlayShift);
 
     public string SelectRoiHotkeyGesture => FormatHotkey(Settings.HotkeySelectRoiKey, Settings.HotkeySelectRoiCtrl, Settings.HotkeySelectRoiAlt, Settings.HotkeySelectRoiShift);
+
+    public string LockWindowHotkeyGesture => FormatHotkey(Settings.HotkeyLockCaptureWindowKey, Settings.HotkeyLockCaptureWindowCtrl, Settings.HotkeyLockCaptureWindowAlt, Settings.HotkeyLockCaptureWindowShift);
 
     public string ToggleMirrorFullscreenHotkeyGesture => FormatHotkey(Settings.HotkeyToggleMirrorFullscreenKey, Settings.HotkeyToggleMirrorFullscreenCtrl, Settings.HotkeyToggleMirrorFullscreenAlt, Settings.HotkeyToggleMirrorFullscreenShift);
 
@@ -496,10 +500,12 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(RunOnceHotkeySummary));
         OnPropertyChanged(nameof(ToggleOverlayHotkeySummary));
         OnPropertyChanged(nameof(SelectRoiHotkeySummary));
+        OnPropertyChanged(nameof(LockWindowHotkeySummary));
         OnPropertyChanged(nameof(ToggleMirrorFullscreenHotkeySummary));
         OnPropertyChanged(nameof(RunOnceHotkeyGesture));
         OnPropertyChanged(nameof(ToggleOverlayHotkeyGesture));
         OnPropertyChanged(nameof(SelectRoiHotkeyGesture));
+        OnPropertyChanged(nameof(LockWindowHotkeyGesture));
         OnPropertyChanged(nameof(ToggleMirrorFullscreenHotkeyGesture));
         OnPropertyChanged(nameof(OverviewHotkeyWarning));
         OnPropertyChanged(nameof(HasOverviewHotkeyWarning));
