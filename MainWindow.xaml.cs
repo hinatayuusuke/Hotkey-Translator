@@ -19,14 +19,11 @@ using Hotkey_Translator.Services.Hook;
 using Hotkey_Translator.Services.Settings;
 using Hotkey_Translator.UI;
 using Hotkey_Translator.ViewModels;
-using Wpf.Ui.Appearance;
-using FluentWindow = Wpf.Ui.Controls.FluentWindow;
-using WindowBackdropType = Wpf.Ui.Controls.WindowBackdropType;
 
 namespace Hotkey_Translator;
 
 // NOTE: Global hotkey registration and Window lifecycle handling remain in View because they depend on HWND and WPF dispatcher boundaries.
-public partial class MainWindow : FluentWindow, IMainWindowViewBridge, ISettingsUiBridge
+public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBridge
 {
     private readonly SettingsService _settingsService = new();
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
@@ -112,9 +109,6 @@ public partial class MainWindow : FluentWindow, IMainWindowViewBridge, ISettings
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
-        // WHY: Keep the current layout intact while letting WPF UI react to system theme and accent changes.
-        ApplicationAccentColorManager.ApplySystemAccent();
-        SystemThemeWatcher.Watch(this, WindowBackdropType.Mica, true);
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -269,8 +263,6 @@ public partial class MainWindow : FluentWindow, IMainWindowViewBridge, ISettings
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        // WHY: WPF UI requires a live HWND when unwatching; Closed is too late in the teardown sequence.
-        SystemThemeWatcher.UnWatch(this);
     }
 
     protected override void OnSourceInitialized(EventArgs e)

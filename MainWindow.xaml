@@ -1,20 +1,16 @@
-<wpfui:FluentWindow x:Class="Hotkey_Translator.MainWindow"
-                    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-                    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-                    xmlns:local="clr-namespace:Hotkey_Translator"
-                    xmlns:ui="clr-namespace:Hotkey_Translator.UI"
-                    xmlns:wpfui="http://schemas.lepo.co/wpfui/2022/xaml"
-                    mc:Ignorable="d"
-                    Title="Hotkey Translator"
-                    Height="860"
-                    Width="1025"
-                    Background="{DynamicResource ApplicationBackgroundBrush}"
-                    ExtendsContentIntoTitleBar="True"
-                    WindowBackdropType="Mica"
-                    WindowCornerPreference="Round">
-    <wpfui:FluentWindow.Resources>
+<Window x:Class="Hotkey_Translator.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:Hotkey_Translator"
+        xmlns:ui="clr-namespace:Hotkey_Translator.UI"
+        mc:Ignorable="d"
+        Title="Hotkey Translator"
+        Height="860"
+        Width="1025"
+        Background="{DynamicResource ApplicationBackgroundBrush}">
+    <Window.Resources>
         <local:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
@@ -35,10 +31,9 @@
                 </Setter.Value>
             </Setter>
         </Style>
-    </wpfui:FluentWindow.Resources>
+    </Window.Resources>
     <Grid x:Name="RootLayout" Margin="16">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="{Binding DataContext.IsBottomPanelOpen, ElementName=RootLayout, Converter={StaticResource BottomDrawerRowHeightConverter}}" />
             <RowDefinition Height="Auto" />
@@ -48,12 +43,7 @@
             <ColumnDefinition Width="*" MinWidth="640" />
         </Grid.ColumnDefinitions>
 
-        <wpfui:TitleBar Grid.Row="0"
-                        Grid.ColumnSpan="2"
-                        Title="Hotkey Translator"
-                        Margin="0,0,0,12" />
-
-        <Border Grid.Row="1"
+        <Border Grid.Row="0"
                 Grid.Column="0"
                 Margin="0,0,12,0"
                 Padding="10"
@@ -81,7 +71,7 @@
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="1"
+        <TabControl Grid.Row="0"
                     Grid.Column="1"
                     Background="Transparent"
                     Style="{StaticResource HeaderlessTabControlStyle}"
@@ -180,13 +170,13 @@
         </TabControl>
 
         <ui:RuntimeLogsControl x:Name="RuntimeLogsControl"
-                               Grid.Row="2"
+                               Grid.Row="1"
                                Grid.ColumnSpan="2"
                                Margin="0,8,0,0"
                                OcrPreviewClicked="OnOcrPreviewClicked"
                                PinnedPreviewClicked="OnPinnedPreviewClicked" />
 
-        <Border Grid.Row="3"
+        <Border Grid.Row="2"
                 Grid.ColumnSpan="2"
                 Margin="0,8,0,0"
                 Background="{DynamicResource ControlFillColorSecondaryBrush}"
@@ -214,7 +204,7 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.RowSpan="4" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
+        <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -245,6 +235,6 @@
             </Border>
         </Grid>
     </Grid>
-</wpfui:FluentWindow>
+</Window>
 
 

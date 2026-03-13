@@ -21306,3 +21306,96 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 20:00 (Asia/Taipei) — Tighten custom title bar spacing**
+
+### Summary
+- `WPF UI` のカスタムタイトルバーで、高さと下余白を詰めつつタイトル文字サイズを上げた。
+
+### Context / Goal
+- 標準タイトルバーとの違和感を減らしたいが、`WPF UI` のカスタムタイトルバー構成は維持したかった。
+- まずはタイトルバー全体の高さと縦余白を抑え、タイトル文字は少し大きくしたかった。
+
+### Changes
+- `TitleBar` の高さを `36` に設定した。
+- `TitleBar` の `FontSize` を `14` に設定した。
+- `TitleBar` 下マージンを `12` から `8` に縮めた。
+
+### Files Touched
+- `MainWindow.xaml` — `WPF UI` タイトルバーの高さ、文字サイズ、下余白を調整した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- タイトルバーがややコンパクトになり、タイトル文字は少し大きく表示される。
+- カスタムタイトルバー、ドラッグ、最小化、最大化、閉じるの機能自体は変わらない。
+
+### Risk & Mitigation
+- Risk: ボタンやタイトルの縦位置が環境差で窮屈に見える可能性がある。
+- Mitigation: 変更は `TitleBar` のレイアウト値だけに限定し、必要ならこの数値を微調整する前提にしている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 20:07 (Asia/Taipei) — Revert to standard window title bar**
+
+### Summary
+- カスタム `WPF UI` タイトルバーを外し、Windows 標準タイトルバーへ戻した。
+
+### Context / Goal
+- カスタムタイトルバーは縁でドラッグできず、操作性の観点で致命的だった。
+- まずは標準タイトルバーへ戻して、OS 既定のドラッグ領域とキャプションボタン挙動を確認したかった。
+
+### Changes
+- `ExtendsContentIntoTitleBar` を `False` に変更した。
+- `WindowBackdropType` を `Mica` から `None` に変更した。
+- `wpfui:TitleBar` を削除し、コンテンツ行を 1 行詰めた。
+- `SystemThemeWatcher.Watch(...)` のバックドロップ指定を `WindowBackdropType.None` に変更した。
+
+### Files Touched
+- `MainWindow.xaml` — 標準タイトルバーへ戻すために `TitleBar` を削除し、レイアウト行を詰めた。
+- `MainWindow.xaml.cs` — テーマ監視のバックドロップ指定を `None` に変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- OS 標準のタイトルバー、ドラッグ領域、最小化、最大化、閉じるボタンが使われる。
+- Mica ベースのカスタムタイトルバー表示は無効になる。
+
+### Risk & Mitigation
+- Risk: 上部の見た目は `WPF UI` カスタムタイトルバー時より素朴になる。
+- Mitigation: まずは操作性優先で標準へ戻し、必要ならその上で周辺余白だけ調整する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
+
+**2026-03-13 20:11 (Asia/Taipei) — Switch main window back to standard WPF Window**
+
+### Summary
+- `FluentWindow` をやめて標準 `Window` に戻し、OS 標準タイトルバーが表示される構成にした。
+
+### Context / Goal
+- `FluentWindow` のまま `ExtendsContentIntoTitleBar=False` にしても、完全な標準タイトルバーには戻らず、上部が消失したように見えた。
+- Windows 標準のタイトルバーとドラッグ領域を確実に復帰させたかった。
+
+### Changes
+- `MainWindow` の XAML ルートを `wpfui:FluentWindow` から `Window` に変更した。
+- `wpfui:TitleBar` を削除したまま、残りのコンテンツ行を詰め直した。
+- `MainWindow.xaml.cs` の基底型を `FluentWindow` から `Window` に変更した。
+- `ApplicationAccentColorManager.ApplySystemAccent()` と `SystemThemeWatcher.Watch/UnWatch(...)` を削除した。
+
+### Files Touched
+- `MainWindow.xaml` — ルートを標準 `Window` に切り替え、タイトルバー用レイアウトを整理した。
+- `MainWindow.xaml.cs` — 基底型と `WPF UI` タイトルバー監視関連コードを削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Windows 標準のタイトルバー、枠、ドラッグ領域、最小化、最大化、閉じるボタンが表示される。
+- `WPF UI` の Mica/カスタムタイトルバー連動は無効になる。
+
+### Risk & Mitigation
+- Risk: ウィンドウ外観は `WPF UI` シェル時より標準 WPF/Windows 寄りになり、上部の一体感は減る。
+- Mitigation: まずは操作性を優先し、標準タイトルバーの表示を確実に戻す変更に限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
