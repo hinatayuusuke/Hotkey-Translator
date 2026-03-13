@@ -20568,3 +20568,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 14:51 (Asia/Taipei) — Rename Home to Overview**
+
+### Summary
+- `Home` 表記を `Overview` に統一し、`Overview` 画面先頭のタイトルと説明文を削除した。
+
+### Context / Goal
+- `Overview` はすでにサイドバーで現在位置が分かるため、本文先頭の重複タイトルと移行メモがノイズになっていた。
+- 画面名を役割に合わせて整理し、設定面の密度判断をしやすくしたかった。
+
+### Changes
+- サイドバーの `Home` 表記を `Overview` に変更した。
+- ルート `TabItem` のヘッダーも `Overview` に変更した。
+- `OverviewControl` 先頭のタイトル行と `Step 1.5 prototype...` 説明文を削除した。
+- 説明文削除に合わせて先頭の余白を詰めた。
+
+### Files Touched
+- `MainWindow.xaml` — サイドバー項目名とタブヘッダーを `Overview` に変更した。
+- `UI/OverviewControl.xaml` — 先頭のタイトルと説明文を削除し、先頭余白を整理した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- サイドバーとタブ名が `Overview` で統一され、本文先頭の重複見出しがなくなった。
+- `Overview` 画面を開いた直後に設定ブロックが見える構成になった。
+
+### Risk & Mitigation
+- Risk: `Home` という名称に慣れている場合、最初だけ呼称差分で戸惑う可能性がある。
+- Mitigation: 役割に沿った `Overview` へ統一し、本文内の重複見出しも消して名称の解釈を一本化した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

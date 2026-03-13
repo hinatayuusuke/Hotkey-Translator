@@ -45,7 +45,7 @@
                 <ListBox x:Name="HomeSidebarList"
                          VerticalAlignment="Stretch"
                          SelectedIndex="{Binding SelectedSidebarIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                    <ListBoxItem Content="Home" />
+                    <ListBoxItem Content="Overview" />
                     <ListBoxItem Content="Capture" />
                     <ListBoxItem Content="OCR Settings" />
                     <ListBoxItem Content="OCREngines" />
@@ -63,7 +63,7 @@
                     Grid.Column="1"
                     Style="{StaticResource HeaderlessTabControlStyle}"
                     SelectedIndex="{Binding SelectedRootTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-            <TabItem Header="Home">
+            <TabItem Header="Overview">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
                         <ui:OverviewControl x:Name="OverviewControl"

@@ -32,12 +32,7 @@
     </UserControl.Resources>
 
     <StackPanel Margin="0,6,0,0">
-        <TextBlock Text="Overview" FontSize="22" FontWeight="SemiBold" />
-        <TextBlock Margin="0,6,0,0"
-                   Style="{StaticResource OverviewMutedTextStyle}"
-                   Text="Step 1.5 prototype. This keeps the current settings implementation and previews the new overview-focused information hierarchy before the wider page split." />
-
-        <WrapPanel Margin="0,14,0,0" ItemWidth="320" ItemHeight="Auto">
+        <WrapPanel ItemWidth="320" ItemHeight="Auto">
             <GroupBox Header="Quick Controls" Margin="0,0,12,12" Width="320">
                 <StackPanel Margin="12">
                     <TextBlock Text="Primary operations"
