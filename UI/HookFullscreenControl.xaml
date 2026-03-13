@@ -9,11 +9,6 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,4" />
         </Style>
-        <Style x:Key="SectionDescriptionStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="DimGray" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Margin" Value="0,0,0,8" />
-        </Style>
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
             <Setter Property="Width" Value="150" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -22,15 +17,11 @@
 
     <StackPanel Margin="0,12,0,0">
         <TextBlock Text="Hook / Fullscreen" Style="{StaticResource SectionTitleStyle}" />
-        <TextBlock Text="Exclusive fullscreen support and virtual fullscreen workflows live here so game compatibility settings stay grouped together."
-                   Style="{StaticResource SectionDescriptionStyle}" />
         <TextBlock Text="{Binding HookStatusSummary}"
                    FontWeight="SemiBold"
                    Margin="0,0,0,12" />
 
         <TextBlock Text="Graphics Hook" Style="{StaticResource SectionTitleStyle}" />
-        <TextBlock Text="Use this path when overlay injection or direct rendering support is required for the target app."
-                   Style="{StaticResource SectionDescriptionStyle}" />
         <CheckBox Content="Enable Graphics hook pipeline"
                   Margin="0,0,0,8"
                   IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -74,10 +65,6 @@
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                      Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-            <TextBlock Grid.Column="2"
-                       Margin="12,0,0,0"
-                       Text="Limits capture-side updates when the hook pipeline owns the target app."
-                       Style="{StaticResource SectionDescriptionStyle}" />
         </Grid>
 
         <Expander Header="Diagnostics"
@@ -93,8 +80,6 @@
         </Expander>
 
         <TextBlock Text="Launcher" Style="{StaticResource SectionTitleStyle}" />
-        <TextBlock Text="Use launcher integration when the target app must be started through the hook pipeline."
-                   Style="{StaticResource SectionDescriptionStyle}" />
         <CheckBox Content="Enable Graphics Hook launcher"
                   Margin="0,0,0,8"
                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
@@ -140,14 +125,10 @@
                     Click="OnLaunchClicked" />
         </Grid>
 
-        <TextBlock Text="NOTE: In launcher mode, lock/unlock fixed target hotkeys (F7 / Shift+F7) are disabled."
-                   Style="{StaticResource SectionDescriptionStyle}" />
-
         <Grid Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="150" />
                 <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Steam launch" Style="{StaticResource FieldLabelStyle}" />
             <Button Grid.Column="1"
@@ -155,15 +136,9 @@
                     Width="80"
                     IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                     Click="OnCopySteamLaunchOptionsClicked" />
-            <TextBlock Grid.Column="2"
-                       Margin="12,0,0,0"
-                       Text="Format: &quot;&lt;Hotkey-Translator.exe&gt;&quot; --hook-launch -- %command%. For non-Steam shortcuts, %command% may not expand as expected."
-                       Style="{StaticResource SectionDescriptionStyle}" />
         </Grid>
 
         <TextBlock Text="Mirror Fullscreen" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,4" />
-        <TextBlock Text="Use Magpie-based virtual fullscreen for apps that are fixed-window or need fullscreen-like presentation."
-                   Style="{StaticResource SectionDescriptionStyle}" />
         <CheckBox Content="Enable mirror fullscreen mode"
                   Margin="0,0,0,8"
                   IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -180,10 +155,6 @@
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableMirrorFullscreenMode}"
                      Text="{Binding Settings.MagpieProfileIndexText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-            <TextBlock Grid.Column="2"
-                       Margin="12,0,0,0"
-                       Text="Magpie core path: Tools\Magpie\Magpie.Core.exe (app relative)"
-                       Style="{StaticResource SectionDescriptionStyle}" />
         </Grid>
     </StackPanel>
 </UserControl>

@@ -18859,6 +18859,36 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 
+**2026-03-13 13:38 (Asia/Taipei) — Archive Hook fullscreen help text**
+
+### Summary
+- `Hook / Fullscreen` 画面の常時説明文を退避し、設定入力だけが見える表示に整理した。
+
+### Context / Goal
+- `Hook / Fullscreen` は設定ページとして使う頻度が高く、長い説明文が並ぶと項目探索の邪魔になっていた。
+- 後で tooltip や help box へ戻せるように文言は残しつつ、常時表示だけを外したかった。
+
+### Changes
+- `Hook / Fullscreen` 画面に出していた説明文、注記、補足テキストを新規ドキュメントへ退避した。
+- `HookFullscreenControl` から常時表示の説明 `TextBlock` を削除し、セクション名と設定項目だけを残した。
+- 不要になった `SectionDescriptionStyle` を削除した。
+
+### Files Touched
+- `Doc/HookFullscreen_HelpText_Archive.md` — Hook / Fullscreen の退避用ヘルプ文言を新規作成した。
+- `UI/HookFullscreenControl.xaml` — 常時表示の説明文と補足テキストを削除して設定画面を簡素化した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Hook / Fullscreen` 画面は説明文なしで、設定項目を優先して見るレイアウトになった。
+- 既存のボタン、入力、バインディングの動作自体には変更はない。
+
+### Risk & Mitigation
+- Risk: 常時説明を外したことで、初見では項目の意味が分かりづらくなる可能性がある。
+- Mitigation: 文言は `Doc/HookFullscreen_HelpText_Archive.md` に退避してあり、今後 tooltip や help box に再利用できる状態を保っている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+
 **2026-03-13 11:44 (Asia/Taipei) — Restore footer controls outside runtime drawer**
 
 ### Summary
