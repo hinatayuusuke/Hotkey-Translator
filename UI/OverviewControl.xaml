@@ -171,10 +171,10 @@
 
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Source language" Style="{StaticResource OverviewLabelStyle}" />
-                        <Grid Margin="0,0,0,6">
+                        <Grid Margin="0,0,0,6" Panel.ZIndex="1" >
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="160" />
-                                <ColumnDefinition Width="36" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="120" />
                             </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0"
@@ -188,15 +188,15 @@
                                 <ComboBoxItem Content="Custom..." Tag="custom" />
                             </ComboBox>
                             <Button Grid.Column="1"
-                                    Width="42"
-                                    Height="42"
-                                    Margin="6,0,0,0"
+                                    Width="38"
+                                    Height="34"
+                                    Padding="0" Margin="6,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
                                     Command="{Binding SwapLanguagesCommand}"
                                     ToolTip="Swap languages">
                                 <Button.RenderTransform>
-                                    <TranslateTransform Y="22" />
+                                    <TranslateTransform Y="32" />
                                 </Button.RenderTransform>
                                 <Viewbox Width="22"
                                          Height="22"
