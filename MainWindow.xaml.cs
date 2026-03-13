@@ -109,8 +109,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
-        RoiPresetSlotBox.ItemsSource = BuildRoiPresetSlotOptions();
-        OverviewRoiPresetSlotBox.ItemsSource = BuildRoiPresetSlotOptions();
+        var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
+        RoiPresetSlotBox.ItemsSource = roiPresetSlotOptions;
+        OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
@@ -1072,7 +1073,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             var selectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
             RoiPresetSlotBox.SelectedIndex = selectedIndex;
-            OverviewRoiPresetSlotBox.SelectedIndex = selectedIndex;
+            OverviewControl.SelectedRoiPresetSlotIndex = selectedIndex;
         }
         finally
         {

@@ -18858,6 +18858,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+
+**2026-03-13 11:23 (Asia/Taipei) — Extract overview prototype into UserControl**
+
+### Summary
+- `Home` 先頭の `Overview` Step 1.5 を `UI/OverviewControl` へ切り出し、`MainWindow.xaml` から独立させた。
+
+### Context / Goal
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` の Step 2 に沿って、`MainWindow.xaml` へこれ以上 `Overview` を積み増さない形へ進める必要があった。
+- 既存の `ROI slot` 適用ロジックは維持したまま、`Overview` だけを独立 UI 単位として扱える最小構成にしたかった。
+
+### Changes
+- `Overview` の XAML と専用スタイルを `UI/OverviewControl.xaml` へ移動した。
+- `OverviewControl` に `RoiPresetSlotItemsSource` と `SelectedRoiPresetSlotIndex` の依存関係プロパティ、`RoiPresetSlotSelectionChanged` イベントを追加した。
+- `MainWindow.xaml` は `OverviewControl` の配置だけを持つ形に縮小し、`MainWindow.xaml.cs` では ROI スロット一覧と選択状態を新しいコントロールへ同期するよう更新した。
+- `Overview` 内の警告表示は converter 依存をやめて `DataTrigger` へ置き換え、`UserControl` 単体で解決できるようにした。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Overview` のレイアウト、スタイル、警告表示の trigger 化を追加した。
+- `UI/OverviewControl.xaml.cs` — ROI スロット連携用の依存関係プロパティとイベントを追加した。
+- `MainWindow.xaml` — `Overview` の直接実装を削除し、`OverviewControl` を配置する形へ変更した。
+- `MainWindow.xaml.cs` — ROI スロットの items source と選択状態の同期先を `OverviewControl` に切り替えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` の見た目と操作は維持したまま、`Home` タブの先頭が独立 `UserControl` として管理されるようになった。
+- 今後は `Overview` 単体の調整や `UserControl` ベースのページ分割を、`MainWindow.xaml` の巨大 diff なしで進められる。
+
+### Risk & Mitigation
+- Risk: `UserControl` 化で親 `Window` のリソースや code-behind 依存を取りこぼすと、起動時 XAML 例外になりやすい。
+- Mitigation: `Overview` 専用スタイルを `UserControl` 側へ寄せ、警告表示は converter を使わず trigger 化し、起動確認まで行った。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒のタイムアウトまで起動継続することを確認
 - `rg -n "stage=vision_geometry_hybrid event=summary|TryBuildSplitOutputsForVision|GeometryRunCandidate|NormalizedProjection" .\Services\VisionGeometryHybridAligner.cs`
 **2026-03-10 22:39 (Asia/Taipei) — VisionLLM hybrid の synthetic 改行維持**
 
