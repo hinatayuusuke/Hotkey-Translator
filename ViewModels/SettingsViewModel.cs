@@ -21,6 +21,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     private bool _suspendSceneModeSync;
     private bool _suspendMirrorModeSync;
     private bool _suspendAutoSave;
+    private bool _suspendNumericFieldSync;
 
     public SettingsViewModel(ISettingsChangeScheduler changeScheduler)
     {
@@ -40,6 +41,16 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private double _sceneChangeThreshold;
     [ObservableProperty] private double _sceneChangeWatchIntervalMs;
     [ObservableProperty] private double _sceneChangeWatchPhashThreshold;
+    [ObservableProperty] private double? _phashThresholdValue;
+    [ObservableProperty] private double? _iouThresholdValue;
+    [ObservableProperty] private double? _sceneChangeQuietWindowMsValue;
+    [ObservableProperty] private double? _paddleTextDetThreshValue;
+    [ObservableProperty] private double? _paddleTextDetBoxThreshValue;
+    [ObservableProperty] private double? _paddleTextDetUnclipRatioValue;
+    [ObservableProperty] private double? _paddleTextRecScoreThreshValue;
+    [ObservableProperty] private double? _paddleVlMaxPixelsValue;
+    [ObservableProperty] private double? _paddleVlLayoutThresholdValue;
+    [ObservableProperty] private double? _paddleVlMaxNewTokensValue;
     [ObservableProperty] private string _sourceLanguageTag = "en";
     [ObservableProperty] private string _targetLanguageTag = "ja";
     [ObservableProperty] private string _sourceLanguageCustom = string.Empty;
@@ -291,6 +302,16 @@ internal sealed partial class SettingsViewModel : ObservableObject
             PaddleVlMaxPixelsText = settings.PaddleVlMaxPixels?.ToString() ?? string.Empty;
             PaddleVlLayoutThresholdText = settings.PaddleVlLayoutThreshold?.ToString("0.###") ?? string.Empty;
             PaddleVlMaxNewTokensText = settings.PaddleVlMaxNewTokens?.ToString() ?? string.Empty;
+            PhashThresholdValue = settings.PhashThreshold;
+            IouThresholdValue = settings.OcrIouThreshold;
+            SceneChangeQuietWindowMsValue = settings.SceneChangeQuietWindowMs;
+            PaddleTextDetThreshValue = settings.PaddleTextDetThresh;
+            PaddleTextDetBoxThreshValue = settings.PaddleTextDetBoxThresh;
+            PaddleTextDetUnclipRatioValue = settings.PaddleTextDetUnclipRatio;
+            PaddleTextRecScoreThreshValue = settings.PaddleTextRecScoreThresh;
+            PaddleVlMaxPixelsValue = settings.PaddleVlMaxPixels;
+            PaddleVlLayoutThresholdValue = settings.PaddleVlLayoutThreshold;
+            PaddleVlMaxNewTokensValue = settings.PaddleVlMaxNewTokens;
             LlamaHostText = settings.LlamaHost;
             LlamaPortText = settings.LlamaPort.ToString();
             LlamaContextSizeText = settings.LlamaContextSize.ToString();
@@ -657,6 +678,74 @@ internal sealed partial class SettingsViewModel : ObservableObject
         _changeScheduler.CancelPending();
     }
 
+    // WHY: NumberBox edits commit through Value, but ApplyTo() still parses the
+    // legacy string fields. Keep both representations aligned until that path is removed.
+    private void SyncNumericFieldFromText(string? text, Action<double?> setValue, Func<string, double?> parseValue)
+    {
+        if (_suspendNumericFieldSync)
+        {
+            return;
+        }
+
+        _suspendNumericFieldSync = true;
+        try
+        {
+            setValue(parseValue(text ?? string.Empty));
+        }
+        finally
+        {
+            _suspendNumericFieldSync = false;
+        }
+    }
+
+    private void SyncTextFieldFromNumeric(double? value, Action<string> setText, Func<double?, string> formatValue)
+    {
+        if (_suspendNumericFieldSync)
+        {
+            return;
+        }
+
+        _suspendNumericFieldSync = true;
+        try
+        {
+            setText(formatValue(value));
+        }
+        finally
+        {
+            _suspendNumericFieldSync = false;
+        }
+    }
+
+    private static double? ParseIntegerNumberBoxValue(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return int.TryParse(text.Trim(), out var parsed) ? parsed : null;
+    }
+
+    private static double? ParseDoubleNumberBoxValue(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return double.TryParse(text.Trim(), out var parsed) ? parsed : null;
+    }
+
+    private static string FormatIntegerNumberBoxText(double? value)
+    {
+        return value.HasValue ? ((int)Math.Round(value.Value)).ToString() : string.Empty;
+    }
+
+    private static string FormatDoubleNumberBoxText(double? value, string format)
+    {
+        return value.HasValue ? value.Value.ToString(format) : string.Empty;
+    }
+
     partial void OnPaddleConfidenceThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrBinarizationThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnOcrGammaChanged(double value) => RequestSaveOnValueChange();
@@ -708,16 +797,104 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableFixedRoiOverlayChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOverlayFontStabilizationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSmallBoxReadabilityBoostChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnPhashThresholdTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnIouThresholdTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPhashThresholdTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PhashThresholdValue = parsed, ParseIntegerNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPhashThresholdValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PhashThresholdText = formatted, FormatIntegerNumberBoxText);
+    }
+
+    partial void OnIouThresholdTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => IouThresholdValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnIouThresholdValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => IouThresholdText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.00"));
+    }
     partial void OnOcrPerfLogThresholdTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleTextDetThreshTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleTextDetBoxThreshTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleTextDetUnclipRatioTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleTextRecScoreThreshTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleVlMaxPixelsTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleVlLayoutThresholdTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnPaddleVlMaxNewTokensTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnPaddleTextDetThreshTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleTextDetThreshValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleTextDetThreshValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleTextDetThreshText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.###"));
+    }
+
+    partial void OnPaddleTextDetBoxThreshTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleTextDetBoxThreshValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleTextDetBoxThreshValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleTextDetBoxThreshText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.###"));
+    }
+
+    partial void OnPaddleTextDetUnclipRatioTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleTextDetUnclipRatioValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleTextDetUnclipRatioValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleTextDetUnclipRatioText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.###"));
+    }
+
+    partial void OnPaddleTextRecScoreThreshTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleTextRecScoreThreshValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleTextRecScoreThreshValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleTextRecScoreThreshText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.###"));
+    }
+
+    partial void OnPaddleVlMaxPixelsTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleVlMaxPixelsValue = parsed, ParseIntegerNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleVlMaxPixelsValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleVlMaxPixelsText = formatted, FormatIntegerNumberBoxText);
+    }
+
+    partial void OnPaddleVlLayoutThresholdTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleVlLayoutThresholdValue = parsed, ParseDoubleNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleVlLayoutThresholdValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleVlLayoutThresholdText = formatted, parsed => FormatDoubleNumberBoxText(parsed, "0.###"));
+    }
+
+    partial void OnPaddleVlMaxNewTokensTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => PaddleVlMaxNewTokensValue = parsed, ParseIntegerNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnPaddleVlMaxNewTokensValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => PaddleVlMaxNewTokensText = formatted, FormatIntegerNumberBoxText);
+    }
     partial void OnLlamaHostTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaPortTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaContextSizeTextChanged(string value) => RequestSaveOnValueChange();
@@ -864,7 +1041,16 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnMagpieProfileIndexTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeTextWeightedChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSceneChangeQuietWindowChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnSceneChangeQuietWindowMsTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnSceneChangeQuietWindowMsTextChanged(string value)
+    {
+        SyncNumericFieldFromText(value, parsed => SceneChangeQuietWindowMsValue = parsed, ParseIntegerNumberBoxValue);
+        RequestSaveOnValueChange();
+    }
+
+    partial void OnSceneChangeQuietWindowMsValueChanged(double? value)
+    {
+        SyncTextFieldFromNumeric(value, formatted => SceneChangeQuietWindowMsText = formatted, FormatIntegerNumberBoxText);
+    }
     partial void OnEnableSceneChangeAutoHideChanged(bool value)
     {
         if (_suspendSceneModeSync)

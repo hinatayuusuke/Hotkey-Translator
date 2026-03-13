@@ -27,7 +27,7 @@
                                                   SmallChange="1"
                                                   LargeChange="4"
                                                   SpinButtonPlacementMode="Compact"
-                                                  Text="{Binding Settings.PhashThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                                  Value="{Binding Settings.PhashThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
@@ -37,7 +37,7 @@
                                                   SmallChange="0.05"
                                                   LargeChange="0.1"
                                                   SpinButtonPlacementMode="Compact"
-                                                  Text="{Binding Settings.IouThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                                  Value="{Binding Settings.IouThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />

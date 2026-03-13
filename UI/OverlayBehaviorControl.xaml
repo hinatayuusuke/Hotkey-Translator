@@ -71,7 +71,7 @@
                           SmallChange="100"
                           LargeChange="500"
                           SpinButtonPlacementMode="Compact"
-                          Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                          Value="{Binding Settings.SceneChangeQuietWindowMsValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                 <ui:NumberBox.IsEnabled>
                     <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
                         <Binding Path="Settings.EnableSceneChangeAutoTranslate" />

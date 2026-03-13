@@ -21184,3 +21184,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 19:16 (Asia/Taipei) — Bind NumberBox fields through numeric view-model values**
+
+### Summary
+- `WPF UI` の `NumberBox` を文字列ではなく数値 `Value` で双方向バインドするように直した。
+
+### Context / Goal
+- `NumberBox` 化した数値入力欄で、初期表示時に値が空欄のままになり、クリックや保存後にしか表示されない箇所があった。
+- 既存の保存処理を壊さずに、表示と編集の契約を `NumberBox` に合わせたかった。
+
+### Changes
+- `SettingsViewModel` に `NumberBox.Value` 用の nullable 数値プロパティを追加した。
+- 数値プロパティと既存の `...Text` 文字列プロパティを相互同期するヘルパーを追加した。
+- `ApplyTo()` は既存の文字列パース経路を維持し、`NumberBox` 側から文字列へ同期する形に留めた。
+- `OcrSettingsControl`、`OcrEnginesControl`、`OverlayBehaviorControl` の `NumberBox` バインドを `Text` から `Value` に切り替えた。
+
+### Files Touched
+- `ViewModels/SettingsViewModel.cs` — `NumberBox` 向けの数値プロパティと数値/文字列同期ロジックを追加した。
+- `UI/OcrSettingsControl.xaml` — `pHash threshold` と `IoU threshold` を `Value` バインドへ切り替えた。
+- `UI/OcrEnginesControl.xaml` — PaddleOCR / PaddleOCR-VL の数値入力欄を `Value` バインドへ切り替えた。
+- `UI/OverlayBehaviorControl.xaml` — `Quiet window (ms)` を `Value` バインドへ切り替えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 対象の数値入力欄で、設定ロード直後から値が表示されるようになる。
+- 編集は `NumberBox` の数値契約に沿って行われ、既存の保存処理や空欄許可の意味は維持される。
+
+### Risk & Mitigation
+- Risk: 数値と文字列の二重管理がずれると、保存値が想定外になる可能性がある。
+- Mitigation: 双方向同期は共通ヘルパーに寄せ、`ApplyTo()` の既存パースロジックは変更せずに影響範囲を限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、初期化時の即時例外が出ないことを確認した（確認後に停止）。
