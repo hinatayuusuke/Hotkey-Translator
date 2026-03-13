@@ -21863,6 +21863,62 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-13 23:27 (Asia/Taipei) — Keep preview content top-aligned even when an image is present**
+
+### Summary
+- `Preview` パネルで画像がある場合も、内容の開始位置が上に揃うようにした。
+
+### Context / Goal
+- 空状態メッセージを上寄せにしても、画像が表示されると `Preview` の内容が再び中央寄りに見えていた。
+- `Preview` は常に見出しから下へ読む構造にそろえ、空状態と画像表示状態で重心が揺れないようにしたかった。
+
+### Changes
+- `RuntimeLogsControl` の `OCR` / `Pinned` 両プレビュー画像に、上寄せ配置と上側余白を追加した。
+- 画像表示ロジックやデータ更新処理は変更せず、レイアウトだけを調整した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — プレビュー画像を上寄せへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` に画像があるときも、コンテンツがタブ領域の上側から始まる。
+- 空状態メッセージと画像表示のどちらでも、`Preview` の視線の始点が揃う。
+
+### Risk & Mitigation
+- Risk: 画像ソースのサイズによっては、従来より拡大率が変わって見える可能性がある。
+- Mitigation: 表示ロジックはそのままにし、`Stretch="Uniform"` を維持して画像の縦横比は崩さないようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`（起動中の `Hotkey-Translator.exe` により `apphost.exe` コピー再試行警告あり、ビルド自体は成功）
+
+**2026-03-13 23:29 (Asia/Taipei) — Override preview tab content alignment to stop vertical centering**
+
+### Summary
+- `Preview` タブ内容が共通 `TabItem` スタイルで中央寄せされる問題を、`RuntimeLogsControl` 側で上書きした。
+
+### Context / Goal
+- 空状態メッセージと画像を上寄せにしても、`Preview` タブ内容全体が中央寄せされているため見た目が変わらなかった。
+- `Preview` パネルでは空状態でも画像表示時でも、タブ内容全体を上から始める構造にしたかった。
+
+### Changes
+- `RuntimeLogsControl` に `Preview` 用のローカル `TabItem` スタイルを追加した。
+- `OCR` と `Pinned` のタブで `VerticalContentAlignment` / `HorizontalContentAlignment` を `Stretch` に上書きした。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — `Preview` タブ内容の配置を共通スタイルから上書きした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` パネルで、画像がない場合もある場合も、タブ内容が中央ではなく上から始まる。
+- 他の `TabItem` には影響せず、`RuntimeLogsControl` 内の `Preview` タブだけに反映される。
+
+### Risk & Mitigation
+- Risk: `RuntimeLogsControl` 内のタブだけ共通 `TabItem` スタイルと異なるため、他画面と挙動差が出る可能性がある。
+- Mitigation: 上書きは `Preview` の 2 タブに限定し、共通テーマ資源は変更していない。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-13 23:21 (Asia/Taipei) — Align empty preview hints toward the top**
 
 ### Summary
