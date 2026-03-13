@@ -1,0 +1,135 @@
+<UserControl x:Class="Hotkey_Translator.UI.OcrEnginesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d">
+    <StackPanel>
+                                <TextBlock Text="PaddleOCR Core (gRPC)" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Detection model" Width="180" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="PaddleDetectionModelBox" Width="220"
+                                              SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Settings.PaddleDetectionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBoxItem Content="Mobile (PP-OCRv5_mobile_det)" Tag="PP-OCRv5_mobile_det" />
+                                        <ComboBoxItem Content="Server (PP-OCRv5_server_det)" Tag="PP-OCRv5_server_det" />
+                                    </ComboBox>
+                                </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Recognition model" Width="180" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleRecognitionModelBox" Width="220"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleRecognitionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="Auto (source language)" Tag="auto" />
+                                          <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
+                                        <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Latin (latin_PP-OCRv5_mobile_rec)" Tag="latin_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="East Slavic (eslav_PP-OCRv5_mobile_rec)" Tag="eslav_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Korean (korean_PP-OCRv5_mobile_rec)" Tag="korean_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Thai (th_PP-OCRv5_mobile_rec)" Tag="th_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Greek (el_PP-OCRv5_mobile_rec)" Tag="el_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Arabic (arabic_PP-OCRv5_mobile_rec)" Tag="arabic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Cyrillic (cyrillic_PP-OCRv5_mobile_rec)" Tag="cyrillic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="Devanagari (devanagari_PP-OCRv5_mobile_rec)" Tag="devanagari_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="Telugu (te_PP-OCRv5_mobile_rec)" Tag="te_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_thresh" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetThreshBox" Width="120"
+                                               Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_box_thresh" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetBoxThreshBox" Width="120"
+                                               Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_det_unclip_ratio" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextDetUnclipRatioBox" Width="120"
+                                               Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="text_rec_score_thresh" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleTextRecScoreThreshBox" Width="120"
+                                               Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
+                                            Content="Filter low-confidence lines (Paddle only)"
+                                            Margin="0,8,0,0"
+                                            Visibility="Collapsed"
+                                            IsChecked="{Binding Settings.EnablePaddleConfidenceFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
+                                      <TextBlock Text="Confidence threshold" Width="180" VerticalAlignment="Center" />
+                                      <Slider x:Name="PaddleConfidenceThresholdSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="1"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="0.05"
+                                              SmallChange="0.01"
+                                              LargeChange="0.1"
+                                              Value="{Binding Settings.PaddleConfidenceThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <TextBlock x:Name="PaddleConfidenceThresholdValue"
+                                                 Width="36"
+                                                 Margin="8,0,0,0"
+                                                 VerticalAlignment="Center"
+                                                 TextAlignment="Right"
+                                                 Text="{Binding ElementName=PaddleConfidenceThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
+                                  </StackPanel>
+                                  <TextBlock Text="Language follows Main settings." Foreground="DimGray" Margin="0,6,0,0" />
+                                  <Separator Margin="0,10,0,8" />
+
+                                  <TextBlock Text="PaddleOCR-VL (gRPC)" FontWeight="SemiBold" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Pipeline version" Width="180" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlPipelineVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="v1" Tag="v1" />
+                                          <ComboBoxItem Content="v1.5" Tag="v1.5" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Max pixels" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlMaxPixelsBox" Width="120"
+                                               Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Layout threshold" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlLayoutThresholdBox" Width="120"
+                                               Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Max new tokens" Width="180" VerticalAlignment="Center" />
+                                      <TextBox x:Name="PaddleVlMaxNewTokensBox" Width="120"
+                                               Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Layout detection" Width="180" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlUseLayoutDetectionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlUseLayoutDetectionModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="Auto" Tag="auto" />
+                                          <ComboBoxItem Content="Enable" Tag="true" />
+                                          <ComboBoxItem Content="Disable" Tag="false" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Precision" Width="180" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="PaddleVlPrecisionBox" Width="120"
+                                                SelectedValuePath="Tag"
+                                                SelectedValue="{Binding Settings.PaddleVlPrecisionTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <ComboBoxItem Content="fp16" Tag="fp16" />
+                                          <ComboBoxItem Content="fp32" Tag="fp32" />
+                                      </ComboBox>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                      <TextBlock Text="Runtime control" Width="180" VerticalAlignment="Center" />
+                                      <Button Content="Apply &amp; Restart" Width="160" Command="{Binding RestartPaddleOcrHostsCommand}" />
+                                      <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
+                                  </StackPanel>
+    </StackPanel>
+</UserControl>

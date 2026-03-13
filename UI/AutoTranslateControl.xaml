@@ -1,0 +1,147 @@
+<UserControl x:Class="Hotkey_Translator.UI.AutoTranslateControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Hotkey_Translator"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
+        <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
+    </UserControl.Resources>
+    <StackPanel>
+                                  <TextBlock Text="Scene Change Automation" FontWeight="SemiBold" />
+                                  <CheckBox x:Name="EnableSceneChangeAutoHideCheck" Content="Enable auto-hide on scene change" Margin="0,6,0,0"
+                                            IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <CheckBox x:Name="EnableSceneChangeAutoTranslateCheck" Content="Enable auto-translate on scene change" Margin="0,4,0,0"
+                                            IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <TextBlock Text="NOTE: auto-translate uses ROI-based watcher criteria. Configure ROI to target dialogue area."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
+                                  <CheckBox x:Name="ShowAutoTranslateBadgeIconCheck" Content="Show auto-translate badge icon" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
+                                            IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <TextBlock Text="Auto-translate keeps watching even when overlay is hidden." Foreground="DimGray" Margin="0,4,0,0" />
+                                  <CheckBox x:Name="EnableSceneChangeQuietWindowCheck" Content="Enable quiet window for auto-translate" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
+                                            IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Quiet window (ms)" Width="150" VerticalAlignment="Center" />
+                                      <TextBox x:Name="SceneChangeQuietWindowMsBox" Width="80"
+                                               Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                          <TextBox.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                                  <Binding Path="Settings.EnableSceneChangeQuietWindow" />
+                                              </MultiBinding>
+                                          </TextBox.IsEnabled>
+                                          <TextBox.Style>
+                                              <Style TargetType="TextBox">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBox.Style>
+                                      </TextBox>
+                                  </StackPanel>
+                                  <CheckBox x:Name="EnableSceneChangeTextWeightedCheck" Content="Use text-weighted scoring" Margin="0,4,0,0"
+                                            IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
+                                            IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Scene change threshold" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeThresholdSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="1"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="0.05"
+                                              SmallChange="0.01"
+                                              LargeChange="0.1"
+                                              Value="{Binding Settings.SceneChangeThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeThresholdValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeThresholdSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Watch interval (ms)" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeWatchIntervalSlider"
+                                              Width="180"
+                                              Minimum="200"
+                                              Maximum="5000"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="200"
+                                              SmallChange="100"
+                                              LargeChange="500"
+                                              Value="{Binding Settings.SceneChangeWatchIntervalMs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeWatchIntervalValue" Width="60" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Watcher pHash threshold" Width="150" VerticalAlignment="Center" />
+                                      <Slider x:Name="SceneChangeWatchPhashSlider"
+                                              Width="180"
+                                              Minimum="0"
+                                              Maximum="64"
+                                              IsSnapToTickEnabled="True"
+                                              TickFrequency="2"
+                                              SmallChange="1"
+                                              LargeChange="5"
+                                              Value="{Binding Settings.SceneChangeWatchPhashThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                          <Slider.IsEnabled>
+                                              <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
+                                                  <Binding Path="Settings.EnableSceneChangeAutoHide" />
+                                                  <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
+                                              </MultiBinding>
+                                          </Slider.IsEnabled>
+                                      </Slider>
+                                      <TextBlock x:Name="SceneChangeWatchPhashValue" Width="48" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                                 Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}">
+                                          <TextBlock.Style>
+                                              <Style TargetType="TextBlock">
+                                                  <Style.Triggers>
+                                                      <DataTrigger Binding="{Binding ElementName=SceneChangeWatchPhashSlider, Path=IsEnabled}" Value="False">
+                                                          <Setter Property="Foreground" Value="DimGray" />
+                                                      </DataTrigger>
+                                                  </Style.Triggers>
+                                              </Style>
+                                          </TextBlock.Style>
+                                      </TextBlock>
+                                  </StackPanel>
+    </StackPanel>
+</UserControl>

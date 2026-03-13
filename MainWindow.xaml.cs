@@ -1835,21 +1835,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void PopulateHotkeyKeyBoxes()
     {
-        var keys = BuildHotkeyKeyOptions();
-        HotkeyRunOnceKeyBox.ItemsSource = keys;
-        HotkeyRunNextRoiKeyBox.ItemsSource = keys;
-        HotkeyRunNextNextRoiKeyBox.ItemsSource = keys;
-        HotkeyToggleOverlayKeyBox.ItemsSource = keys;
-        HotkeyForceRunKeyBox.ItemsSource = keys;
-        HotkeyForceRunNextRoiKeyBox.ItemsSource = keys;
-        HotkeyForceRunNextNextRoiKeyBox.ItemsSource = keys;
-        HotkeyForceGeminiStrictKeyBox.ItemsSource = keys;
-        HotkeyOcrOnlyKeyBox.ItemsSource = keys;
-        HotkeyToggleSceneAutoTranslateKeyBox.ItemsSource = keys;
-        HotkeySelectRoiKeyBox.ItemsSource = keys;
-        HotkeyLockCaptureWindowKeyBox.ItemsSource = keys;
-        HotkeyUnlockCaptureWindowKeyBox.ItemsSource = keys;
-        HotkeyToggleMirrorFullscreenKeyBox.ItemsSource = keys;
+        // WHY: Hotkey combo boxes now live inside HotkeysControl, so the shared key list is handed to the child once.
+        HotkeysControl.HotkeyKeyOptions = BuildHotkeyKeyOptions();
     }
 
     private static IReadOnlyList<string> BuildHotkeyKeyOptions()

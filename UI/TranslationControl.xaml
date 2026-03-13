@@ -1,0 +1,111 @@
+<UserControl x:Class="Hotkey_Translator.UI.TranslationControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Hotkey_Translator"
+             mc:Ignorable="d">
+    <StackPanel>
+                                  <TextBlock Text="Translation priority" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <ListBox x:Name="TranslationPriorityList"
+                                               Width="180"
+                                               Height="80"
+                                               ItemsSource="{Binding TranslationPriority}"
+                                               SelectedIndex="{Binding SelectedTranslationPriorityIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <StackPanel Margin="6,0,0,0">
+                                          <Button Content="Up" Width="60" Command="{Binding TranslationPriorityUpCommand}" />
+                                          <Button Content="Down" Width="60" Margin="0,6,0,0" Command="{Binding TranslationPriorityDownCommand}" />
+                                      </StackPanel>
+                                  </StackPanel>
+                                  <Separator Margin="0,10,0,8" />
+                                  <TextBlock Text="Local Llama.cpp (GGUF)" FontWeight="SemiBold" />
+                                  <TextBlock Text="Resources are released on the next launch. Turn OFF and restart the app to free memory."
+                                             Foreground="DimGray"
+                                             TextWrapping="Wrap"
+                                             Margin="0,4,0,0" />
+                                  <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
+                                             Foreground="DimGray"
+                                             Margin="0,6,0,0" />
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="LlamaModelBox" Width="320"
+                                                ItemsSource="{Binding LlamaModelOptions}"
+                                                DisplayMemberPath="Display"
+                                                SelectedValuePath="Value"
+                                                SelectedValue="{Binding Settings.LlamaSelectedModelFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadLlamaModelsCommand}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <Button Content="Restart Llama.cpp" Width="150" Command="{Binding RestartLlamaCppCommand}" />
+                                      <Button Content="Stop llama-server" Width="130" Margin="8,0,0,0" Command="{Binding StopLlamaServerCommand}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaHostBox" Width="120"
+                                               Text="{Binding Settings.LlamaHostText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Port" Width="40" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaPortBox" Width="80"
+                                               Text="{Binding Settings.LlamaPortText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Context size" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaContextSizeBox" Width="80"
+                                               Text="{Binding Settings.LlamaContextSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="GPU layers" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaGpuLayersBox" Width="80"
+                                               Text="{Binding Settings.LlamaGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Threads" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaThreadsBox" Width="80"
+                                               Text="{Binding Settings.LlamaThreadsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Parallel" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaParallelBox" Width="80"
+                                               Text="{Binding Settings.LlamaParallelText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Batch size" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaBatchSizeBox" Width="80"
+                                               Text="{Binding Settings.LlamaBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Max tokens" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaMaxTokensBox" Width="80"
+                                               Text="{Binding Settings.LlamaMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Temperature" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaTemperatureBox" Width="80"
+                                               Text="{Binding Settings.LlamaTemperatureText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Top P" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaTopPBox" Width="80"
+                                               Text="{Binding Settings.LlamaTopPText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                      <TextBlock Text="Top K" Width="120" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaTopKBox" Width="80"
+                                               Text="{Binding Settings.LlamaTopKText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <TextBlock Text="Repeat penalty" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBox x:Name="LlamaRepeatPenaltyBox" Width="80"
+                                               Text="{Binding Settings.LlamaRepeatPenaltyText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                  </StackPanel>
+                                  <Separator Margin="0,10,0,8" />
+                                  <StackPanel Orientation="Horizontal">
+                                      <TextBlock Text="DeepL API key" Width="120" VerticalAlignment="Center" />
+                                      <PasswordBox x:Name="DeepLApiKeyBox"
+                                                   Width="200"
+                                                   local:PasswordBoxAssistant.BoundPassword="{Binding Settings.DeepLApiKeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                  </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="DeepL endpoint" Width="120" VerticalAlignment="Center" />
+                                    <TextBox x:Name="DeepLEndpointBox" Width="200"
+                                             Text="{Binding Settings.DeepLEndpointText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Gemini API key" Width="120" VerticalAlignment="Center" />
+                                    <PasswordBox x:Name="ApiKeyBox"
+                                                 Width="200"
+                                                 local:PasswordBoxAssistant.BoundPassword="{Binding Settings.ApiKeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                </StackPanel>
+    </StackPanel>
+</UserControl>

@@ -18859,6 +18859,52 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 
+**2026-03-13 13:55 (Asia/Taipei) — Extract remaining settings side panels**
+
+### Summary
+- 残っていた設定サイドパネルを `UserControl` へ切り出し、`MainWindow` を配置中心の役割へ寄せた。
+
+### Context / Goal
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` の方針に合わせて、`MainWindow.xaml` に残っていた大きい設定ブロックを段階的に分離したかった。
+- 今後の見た目調整や hint/help box 化に入る前に、サイドパネルの責務をファイル単位で分けておく必要があった。
+
+### Changes
+- `OCR Settings`、`OCREngines`、`VisionLLM`、`Auto Translate`、`Translation`、`Hotkeys`、`System` をそれぞれ専用 `UserControl` に切り出した。
+- `MainWindow.xaml` は各カテゴリの表示切り替えだけを持ち、内容本体は新しい control を配置する形へ変更した。
+- `Hotkeys` だけは既存のキー候補注入を保つため、`HotkeysControl` に `HotkeyKeyOptions` 依存関係プロパティを追加した。
+- `OcrSettings`、`AutoTranslate`、`System` は切り出し後も converter 解決で落ちないよう、必要な converter を control ローカルに持たせた。
+
+### Files Touched
+- `MainWindow.xaml` — 残サイドパネル本体を各 `UserControl` 参照へ置き換えた。
+- `MainWindow.xaml.cs` — hotkey 候補の注入先を `HotkeysControl` へ切り替えた。
+- `UI/OcrSettingsControl.xaml` — `OCR Settings` の UI を切り出し、必要 converter をローカル定義した。
+- `UI/OcrSettingsControl.xaml.cs` — `OcrSettingsControl` の code-behind を追加した。
+- `UI/OcrEnginesControl.xaml` — `OCREngines` の UI を切り出した。
+- `UI/OcrEnginesControl.xaml.cs` — `OcrEnginesControl` の code-behind を追加した。
+- `UI/VisionLlmSettingsControl.xaml` — `VisionLLM` の UI を切り出した。
+- `UI/VisionLlmSettingsControl.xaml.cs` — `VisionLlmSettingsControl` の code-behind を追加した。
+- `UI/AutoTranslateControl.xaml` — `Auto Translate` の UI を切り出し、必要 converter をローカル定義した。
+- `UI/AutoTranslateControl.xaml.cs` — `AutoTranslateControl` の code-behind を追加した。
+- `UI/TranslationControl.xaml` — `Translation` の UI を切り出した。
+- `UI/TranslationControl.xaml.cs` — `TranslationControl` の code-behind を追加した。
+- `UI/HotkeysControl.xaml` — `Hotkeys` の UI を切り出した。
+- `UI/HotkeysControl.xaml.cs` — hotkey 候補注入用の依存関係プロパティを追加した。
+- `UI/SystemSettingsControl.xaml` — `System` の UI を切り出し、必要 converter をローカル定義した。
+- `UI/SystemSettingsControl.xaml.cs` — `SystemSettingsControl` の code-behind を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `MainWindow` の設定カテゴリは従来どおり表示されるが、各カテゴリの UI 本体は別ファイル管理になった。
+- アプリ起動時のリソース解決と hotkey キー候補注入は、切り出し後も継続する。
+
+### Risk & Mitigation
+- Risk: 既存 XAML の丸ごと切り出しにより、親 `MainWindow` 前提だった resource 解決や named control 参照が壊れる可能性がある。
+- Mitigation: converter 依存がある control にはローカル resources を追加し、hotkey 候補は `HotkeysControl` 側へ明示的に受け渡す形へ変更した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 起動が継続することを確認
+
 **2026-03-13 13:38 (Asia/Taipei) — Archive Hook fullscreen help text**
 
 ### Summary
