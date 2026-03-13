@@ -343,7 +343,7 @@
                                     HorizontalAlignment="Left"
                                     Command="{Binding RunOnceCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Run test" />
                                 </StackPanel>
                             </Button>
@@ -351,7 +351,7 @@
                                     HorizontalAlignment="Left"
                                     Command="{Binding SelectRoiCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" />
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="Select ROI" />
                                 </StackPanel>
                             </Button>
