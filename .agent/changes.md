@@ -20967,3 +20967,71 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+
+**2026-03-13 17:51 (Asia/Taipei) — Introduce WPF UI visual theming**
+
+### Summary
+- 既存レイアウトを維持したまま、WPF UI ベースのテーマと主要コントロールの見た目を段階導入した。
+
+### Context / Goal
+- `Doc/WPF-UI.md` をベースに、大きなレイアウト変更なしで UI の見た目だけをモダン化したかった。
+- 機能や既存バインディングを壊さず、段階的に `WPF UI` のテーマ、カード、数値入力を適用したかった。
+
+### Changes
+- `WPF-UI` パッケージを追加し、`App.xaml` にテーマ辞書と共通スタイル辞書を登録した。
+- `MainWindow` を `FluentWindow` 化し、システムテーマ・アクセント追従を有効化した。
+- `Overview` と下部ログ領域をカードベースの見た目へ置き換え、主要ボタンにアイコンを追加した。
+- 数値入力の一部を `NumberBox` へ置き換え、見た目と入力操作を改善した。
+
+### Files Touched
+- `Hotkey-Translator.csproj` — `WPF-UI` パッケージ参照を追加した。
+- `App.xaml` — `ThemesDictionary` / `ControlsDictionary` / 共通テーマ辞書の読み込みを追加した。
+- `UI/ThemeResources.xaml` — 共通ブラシ、カード、サイドバー用スタイルを新規追加した。
+- `MainWindow.xaml` — `FluentWindow` 化、サイドバー・フッター・Busy オーバーレイの見た目を更新した。
+- `MainWindow.xaml.cs` — `SystemThemeWatcher` とシステムアクセント反映を追加した。
+- `UI/OverviewControl.xaml` — セクションを `Card` 化し、主要操作ボタンの見た目を調整した。
+- `UI/RuntimeLogsControl.xaml` — `GroupBox` をやめてカード型のプレビュー/ログ表示へ変更した。
+- `UI/OcrSettingsControl.xaml` — しきい値入力を `NumberBox` 化した。
+- `UI/OcrEnginesControl.xaml` — Paddle 系の数値入力を `NumberBox` 化した。
+- `UI/OverlayBehaviorControl.xaml` — quiet window 入力を `NumberBox` 化した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 画面構成や既存機能は維持したまま、Windows 11 / Fluent 系の外観に近づいた。
+- 数値入力ではスピンボタン付き入力が使えるようになったが、既存の文字列バインディングは維持している。
+
+### Risk & Mitigation
+- Risk: `FluentWindow` とテーマ辞書導入で、一部の余白や配色が既存想定と微妙に変わる可能性がある。
+- Mitigation: レイアウト構造やバインディングは維持し、ビルド確認で型衝突と XAML エラーを解消した。
+- Risk: `NumberBox` 置換箇所で入力時の細かな挙動が標準 `TextBox` と異なる可能性がある。
+- Mitigation: 文字列バインディングを維持し、対象を数値入力に限定して影響範囲を絞った。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+
+**2026-03-13 17:59 (Asia/Taipei) — Fix WPF UI startup crash on dotnet run**
+
+### Summary
+- `dotnet run` で落ちていた `FluentWindow` の起動条件を満たすよう修正した。
+
+### Context / Goal
+- WPF UI 導入後、`dotnet run` 実行時に `Cannot apply backdrop effect if ExtendsContentIntoTitleBar is false.` で起動に失敗していた。
+- `Mica` バックドロップを維持したまま、起動失敗だけを最小差分で解消したかった。
+
+### Changes
+- `MainWindow.xaml` の `FluentWindow` に `ExtendsContentIntoTitleBar="True"` を追加した。
+
+### Files Touched
+- `MainWindow.xaml` — `FluentWindow` のバックドロップ条件を満たすためタイトルバー拡張を有効化した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `dotnet run` でアプリが例外なく起動するようになった。
+- WPF UI の `Mica` バックドロップを維持したままウィンドウが表示される。
+
+### Risk & Mitigation
+- Risk: タイトルバー拡張により、将来的にカスタムタイトルバー領域のドラッグ挙動を調整したくなる可能性がある。
+- Mitigation: 今回は既存レイアウトを変えず、起動条件を満たす最小設定だけを追加した。
+
+### Tests / Verification
+- `dotnet run --project .\Hotkey-Translator.csproj` で例外なく起動し、プロセス `Hotkey-Translator` のウィンドウ表示を確認

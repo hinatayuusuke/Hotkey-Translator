@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
@@ -64,25 +65,29 @@
                   IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Quiet window (ms)" Width="150" VerticalAlignment="Center" />
-            <TextBox x:Name="SceneChangeQuietWindowMsBox"
-                     Width="80"
-                     Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                <TextBox.IsEnabled>
+            <ui:NumberBox x:Name="SceneChangeQuietWindowMsBox"
+                          Width="100"
+                          MaxDecimalPlaces="0"
+                          SmallChange="100"
+                          LargeChange="500"
+                          SpinButtonPlacementMode="Compact"
+                          Text="{Binding Settings.SceneChangeQuietWindowMsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                <ui:NumberBox.IsEnabled>
                     <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
                         <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
                         <Binding Path="Settings.EnableSceneChangeQuietWindow" />
                     </MultiBinding>
-                </TextBox.IsEnabled>
-                <TextBox.Style>
-                    <Style TargetType="TextBox">
+                </ui:NumberBox.IsEnabled>
+                <ui:NumberBox.Style>
+                    <Style TargetType="{x:Type ui:NumberBox}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SceneChangeQuietWindowMsBox, Path=IsEnabled}" Value="False">
                                 <Setter Property="Foreground" Value="DimGray" />
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>
-                </TextBox.Style>
-            </TextBox>
+                </ui:NumberBox.Style>
+            </ui:NumberBox>
         </StackPanel>
         <CheckBox Content="Use text-weighted scoring"
                   Margin="0,4,0,0"

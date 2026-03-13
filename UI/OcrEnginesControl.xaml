@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <StackPanel>
                                 <TextBlock Text="PaddleOCR Core (gRPC)" FontWeight="SemiBold" />
@@ -37,23 +38,43 @@
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_thresh" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleTextDetThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleTextDetThreshBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="3"
+                                                    SmallChange="0.01"
+                                                    LargeChange="0.05"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleTextDetThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_box_thresh" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleTextDetBoxThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleTextDetBoxThreshBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="3"
+                                                    SmallChange="0.01"
+                                                    LargeChange="0.05"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleTextDetBoxThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_det_unclip_ratio" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleTextDetUnclipRatioBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleTextDetUnclipRatioBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="3"
+                                                    SmallChange="0.1"
+                                                    LargeChange="0.5"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleTextDetUnclipRatioText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="text_rec_score_thresh" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleTextRecScoreThreshBox" Width="120"
-                                               Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleTextRecScoreThreshBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="3"
+                                                    SmallChange="0.01"
+                                                    LargeChange="0.05"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleTextRecScoreThreshText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
                                             Content="Filter low-confidence lines (Paddle only)"
@@ -93,18 +114,33 @@
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Max pixels" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleVlMaxPixelsBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleVlMaxPixelsBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="0"
+                                                    SmallChange="50000"
+                                                    LargeChange="200000"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleVlMaxPixelsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Layout threshold" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleVlLayoutThresholdBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleVlLayoutThresholdBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="3"
+                                                    SmallChange="0.01"
+                                                    LargeChange="0.05"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleVlLayoutThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                       <TextBlock Text="Max new tokens" Width="180" VerticalAlignment="Center" />
-                                      <TextBox x:Name="PaddleVlMaxNewTokensBox" Width="120"
-                                               Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                      <ui:NumberBox x:Name="PaddleVlMaxNewTokensBox"
+                                                    Width="140"
+                                                    MaxDecimalPlaces="0"
+                                                    SmallChange="16"
+                                                    LargeChange="32"
+                                                    SpinButtonPlacementMode="Compact"
+                                                    Text="{Binding Settings.PaddleVlMaxNewTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                       <TextBlock Text="AUTO=blank" Foreground="DimGray" Margin="8,0,0,0" VerticalAlignment="Center" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">

@@ -3,26 +3,23 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
-        <Style x:Key="OverviewBlockBorderStyle" TargetType="Border">
-            <Setter Property="BorderBrush" Value="#33000000" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="12" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+        <Style x:Key="OverviewBlockCardStyle" TargetType="{x:Type ui:Card}" BasedOn="{StaticResource SectionCardStyle}">
+            <Setter Property="Margin" Value="0,0,0,10" />
         </Style>
         <Style x:Key="OverviewBlockTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
-        <Style x:Key="OverviewMutedTextStyle" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="DimGray" />
-            <Setter Property="TextWrapping" Value="Wrap" />
+        <Style x:Key="OverviewMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
         </Style>
         <Style x:Key="OverviewLabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#555555" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="Margin" Value="0,0,0,2" />
         </Style>
         <Style x:Key="OverviewValueStyle" TargetType="TextBlock">
@@ -32,13 +29,14 @@
         <Style x:Key="QuickControlNameStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Foreground" Value="#555555" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="Margin" Value="0,0,8,0" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="QuickControlGestureStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="VerticalAlignment" Value="Center" />
@@ -46,7 +44,7 @@
     </UserControl.Resources>
 
     <StackPanel Margin="0,6,0,0" Width="780" HorizontalAlignment="Left">
-        <Border Style="{StaticResource OverviewBlockBorderStyle}">
+        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
             <StackPanel>
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
@@ -110,9 +108,9 @@
                 </Grid>
 
             </StackPanel>
-        </Border>
+        </ui:Card>
 
-        <Border Style="{StaticResource OverviewBlockBorderStyle}">
+        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
             <StackPanel>
                 <TextBlock Text="Current Setup" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -160,9 +158,9 @@
                     </Grid>
                 </Grid>
             </StackPanel>
-        </Border>
+        </ui:Card>
 
-        <Border Style="{StaticResource OverviewBlockBorderStyle}">
+        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
             <StackPanel>
                 <TextBlock Text="Language &amp; Actions" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -314,22 +312,30 @@
 
                         <TextBlock Text="Actions" Style="{StaticResource OverviewLabelStyle}" />
                         <UniformGrid Columns="2">
-                            <Button Content="Run test"
-                                    Width="120"
+                            <Button Width="132"
                                     Margin="0,0,8,0"
                                     HorizontalAlignment="Left"
-                                    Command="{Binding RunOnceCommand}" />
-                            <Button Content="Select ROI"
-                                    Width="120"
+                                    Command="{Binding RunOnceCommand}">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" />
+                                    <TextBlock Text="Run test" />
+                                </StackPanel>
+                            </Button>
+                            <Button Width="132"
                                     HorizontalAlignment="Left"
-                                    Command="{Binding SelectRoiCommand}" />
+                                    Command="{Binding SelectRoiCommand}">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" />
+                                    <TextBlock Text="Select ROI" />
+                                </StackPanel>
+                            </Button>
                         </UniformGrid>
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </Border>
+        </ui:Card>
 
-        <Border Style="{StaticResource OverviewBlockBorderStyle}">
+        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
             <StackPanel>
                 <TextBlock Text="Quick Display Settings" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -380,9 +386,9 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </Border>
+        </ui:Card>
 
-        <Border Style="{StaticResource OverviewBlockBorderStyle}">
+        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
             <StackPanel>
                 <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -436,6 +442,6 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </Border>
+        </ui:Card>
     </StackPanel>
 </UserControl>

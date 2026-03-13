@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -14,10 +15,9 @@
     </UserControl.Resources>
 
     <Border x:Name="BottomDrawerBorder"
-            BorderBrush="#33000000"
-            BorderThickness="1"
-            Padding="8"
-            Background="#06000000"
+            Style="{StaticResource ShellSurfaceBorderStyle}"
+            Padding="10"
+            Background="{DynamicResource ShellDrawerBackgroundBrush}"
             MinHeight="140"
             Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
         <Grid>
@@ -27,11 +27,21 @@
                 <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
             </Grid.ColumnDefinitions>
 
-            <GroupBox Grid.Column="0"
-                      Header="Preview"
-                      MinWidth="220"
-                      Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <TabControl Margin="4">
+            <ui:Card Grid.Column="0"
+                     MinWidth="220"
+                     Padding="12"
+                     Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="0,0,0,8">
+                        <TextBlock Text="Preview" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
+                        <TextBlock Text="OCR preprocessing and pinned capture output"
+                                   Style="{StaticResource MutedTextStyle}" />
+                    </StackPanel>
+                    <TabControl Grid.Row="1">
                     <TabItem Header="OCR">
                         <Grid Cursor="Hand"
                               MouseLeftButtonUp="OnOcrPreviewClicked">
@@ -59,7 +69,8 @@
                         </Grid>
                     </TabItem>
                 </TabControl>
-            </GroupBox>
+                </Grid>
+            </ui:Card>
 
             <GridSplitter Grid.Column="1"
                           Width="6"
@@ -85,16 +96,27 @@
                 </GridSplitter.Style>
             </GridSplitter>
 
-            <GroupBox Grid.Column="2"
-                      Header="Log"
-                      MinWidth="280"
-                      Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                <TextBox x:Name="LogBox"
-                         Margin="4"
-                         IsReadOnly="True"
-                         TextWrapping="Wrap"
-                         VerticalScrollBarVisibility="Auto" />
-            </GroupBox>
+            <ui:Card Grid.Column="2"
+                     MinWidth="280"
+                     Padding="12"
+                     Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Margin="0,0,0,8">
+                        <TextBlock Text="Log" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
+                        <TextBlock Text="Runtime status and diagnostics"
+                                   Style="{StaticResource MutedTextStyle}" />
+                    </StackPanel>
+                    <TextBox x:Name="LogBox"
+                             Grid.Row="1"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
+                </Grid>
+            </ui:Card>
         </Grid>
     </Border>
 </UserControl>

@@ -32,6 +32,7 @@
     <!-- DirectX（D3D11 + DXGI Desktop Duplication） -->
     <PackageReference Include="Vortice.Direct3D11" Version="3.8.2" />
     <PackageReference Include="Vortice.DXGI" Version="3.8.2" />
+    <PackageReference Include="WPF-UI" Version="4.2.0" />
 
   </ItemGroup>
 

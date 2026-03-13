@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
@@ -20,13 +21,23 @@
                                 <TextBlock Text="OCR Tuning" FontWeight="SemiBold" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="PhashThresholdBox" Width="80"
-                                             Text="{Binding Settings.PhashThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                    <ui:NumberBox x:Name="PhashThresholdBox"
+                                                  Width="100"
+                                                  MaxDecimalPlaces="0"
+                                                  SmallChange="1"
+                                                  LargeChange="4"
+                                                  SpinButtonPlacementMode="Compact"
+                                                  Text="{Binding Settings.PhashThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
-                                    <TextBox x:Name="IouThresholdBox" Width="80"
-                                             Text="{Binding Settings.IouThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                    <ui:NumberBox x:Name="IouThresholdBox"
+                                                  Width="100"
+                                                  MaxDecimalPlaces="2"
+                                                  SmallChange="0.05"
+                                                  LargeChange="0.1"
+                                                  SpinButtonPlacementMode="Compact"
+                                                  Text="{Binding Settings.IouThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />
