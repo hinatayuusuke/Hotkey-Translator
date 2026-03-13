@@ -11,12 +11,6 @@
         <local:BooleanToGridLengthConverter x:Key="BottomDrawerRowHeightConverter"
                                             TrueLength="300"
                                             FalseLength="0" />
-        <Style x:Key="PreviewTabItemStyle"
-               TargetType="{x:Type TabItem}"
-               BasedOn="{StaticResource {x:Type TabItem}}">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
-            <Setter Property="VerticalContentAlignment" Value="Stretch" />
-        </Style>
     </UserControl.Resources>
 
     <Border x:Name="BottomDrawerBorder"
@@ -45,44 +39,43 @@
                         <TextBlock Text="OCR preprocessing and pinned capture output"
                                    Style="{StaticResource HelpTextStyle}" />
                     </StackPanel>
-                    <TabControl Grid.Row="1">
-                    <TabItem Header="OCR"
-                             Style="{StaticResource PreviewTabItemStyle}">
-                        <Grid Cursor="Hand"
-                              MouseLeftButtonUp="OnOcrPreviewClicked">
-                            <Image x:Name="OcrPreprocessPreviewImage"
-                                   Stretch="Uniform"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Top"
-                                   Margin="0,12,0,0" />
-                            <TextBlock x:Name="OcrPreprocessPreviewHint"
-                                       Text="Run OCR to update preview."
-                                       Style="{StaticResource HelpTextStyle}"
-                                       TextAlignment="Center"
+                    <TabControl Grid.Row="1"
+                                MinHeight="195">
+                        <TabItem Header="OCR">
+                            <Grid MinHeight="140"
+                                  Cursor="Hand"
+                                  MouseLeftButtonUp="OnOcrPreviewClicked">
+                                <Image x:Name="OcrPreprocessPreviewImage"
+                                       Stretch="Uniform"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Top"
                                        Margin="0,12,0,0" />
-                        </Grid>
-                    </TabItem>
-                    <TabItem Header="Pinned"
-                             Style="{StaticResource PreviewTabItemStyle}">
-                        <Grid Cursor="Hand"
-                              MouseLeftButtonUp="OnPinnedPreviewClicked">
-                            <Image x:Name="PinnedCaptureThumbnailImage"
-                                   Stretch="Uniform"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Top"
-                                   Margin="0,12,0,0" />
-                            <TextBlock x:Name="PinnedCaptureThumbnailHint"
-                                       Text="No fixed target"
-                                       Style="{StaticResource HelpTextStyle}"
-                                       TextAlignment="Center"
+                                <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                           Text="Run OCR to update preview."
+                                           Style="{StaticResource HelpTextStyle}"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </TabItem>
+                        <TabItem Header="Pinned">
+                            <Grid MinHeight="140"
+                                  Cursor="Hand"
+                                  MouseLeftButtonUp="OnPinnedPreviewClicked">
+                                <Image x:Name="PinnedCaptureThumbnailImage"
+                                       Stretch="Uniform"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Top"
                                        Margin="0,12,0,0" />
-                        </Grid>
-                    </TabItem>
-                </TabControl>
+                                <TextBlock x:Name="PinnedCaptureThumbnailHint"
+                                           Text="No fixed target"
+                                           Style="{StaticResource HelpTextStyle}"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
                 </Grid>
             </ui:Card>
 

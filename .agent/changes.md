@@ -21919,6 +21919,68 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-13 23:38 (Asia/Taipei) — Replace preview tabs with a simple OCR/Pinned button switch**
+
+### Summary
+- `Preview` の `TabControl` をやめ、`OCR` / `Pinned` の 2 ボタン切替へ置き換えた。
+
+### Context / Goal
+- `Preview` の空状態が中央寄せされる問題は、`TabControl` 側の内容ホストに由来しており、子要素の配置変更だけでは解消できなかった。
+- 空状態でも画像表示時でも、`Preview` の内容開始位置を常に上側へ固定したかった。
+
+### Changes
+- `RuntimeLogsControl` の `TabControl` / `TabItem` を削除し、`OCR` / `Pinned` の 2 ボタンと 2 枚のプレビューパネルへ置き換えた。
+- コードビハインドに選択中プレビューパネルの状態管理を追加し、ボタン背景と表示パネルを同期させた。
+- プレビュー画像クリックとピン留め画像クリックの既存イベントはそのまま維持した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — `TabControl` を 2 ボタン切替 UI へ置き換えた。
+- `UI/RuntimeLogsControl.xaml.cs` — プレビュー表示モードの切替状態とボタン見た目更新処理を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` は `OCR` / `Pinned` ボタンで切り替える構成になり、表示内容は常にボタン直下から始まる。
+- プレビュー領域のクリックによる拡大表示動作は従来のまま維持される。
+
+### Risk & Mitigation
+- Risk: `TabControl` を前提にした操作感から、ボタン切替へ見た目が変わる。
+- Mitigation: 切替対象は `Preview` の 2 パネルだけで、イベントとデータ更新経路は変更せず既存挙動を維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、`Preview` の空状態がボタン直下の上側から始まることを確認した。
+
+**2026-03-13 23:42 (Asia/Taipei) — Restore preview tabs and reserve empty-state body height**
+
+### Summary
+- `Preview` を `TabControl` に戻し、空状態でも `Log` に近い本文領域が見えるように最低高さを確保した。
+
+### Context / Goal
+- `OCR` / `Pinned` の 2 ボタン切替は認識合わせとしては外れており、元のタブ構成の方が画面文脈に合っていた。
+- 問題の本質は `Preview` 側の空状態で本文領域が浅く見えることだったため、空でも面積が痩せないレイアウトに戻したかった。
+
+### Changes
+- `RuntimeLogsControl` の `Preview` を `TabControl` / `TabItem` 構成へ戻した。
+- `Preview` の `TabControl` と各タブ内容に `MinHeight` を追加し、空状態でもログ欄に近い高さの本文領域を確保した。
+- ボタン切替用に追加していたコードビハインドの状態管理を削除した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — `Preview` をタブ構成へ戻し、空状態用の最低高さを追加した。
+- `UI/RuntimeLogsControl.xaml.cs` — ボタン切替用の一時状態管理コードを削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` は再び `OCR` / `Pinned` のタブ UI になる。
+- 画像がない場合でも `Preview` の本文領域が浅く潰れず、`Log` と近い面積で表示される。
+
+### Risk & Mitigation
+- Risk: `TabControl` のテンプレート由来の余白感は残るため、完璧に `Log` と同一の見え方にはならない可能性がある。
+- Mitigation: 今回は操作モデルを変えず、まず空状態で崩れていた面積差だけを最小変更で是正した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、`Preview` がタブ構成に戻り、空状態でも本文領域の高さが確保されていることを確認した。
+
 **2026-03-13 23:21 (Asia/Taipei) — Align empty preview hints toward the top**
 
 ### Summary

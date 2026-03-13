@@ -52,4 +52,5 @@ public partial class RuntimeLogsControl : UserControl
     {
         PinnedPreviewClicked?.Invoke(sender, e);
     }
+
 }
