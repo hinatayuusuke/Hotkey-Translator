@@ -21321,6 +21321,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `UI\ThemeResources.xaml` で `SelectionAccent` のマージンが `0,8,0,8` になっていることを確認
+
+**2026-03-13 22:19 (Asia/Taipei) — Remove Primary operations heading only**
+
+### Summary
+- Overview の `Primary operations` 見出しだけを削除し、右側のホットキー項目は残した。
+
+### Context / Goal
+- `Primary operations` の文字だけが不要で、下に並ぶ `Toggle overlay` / `Lock OCR window` は残したい要望があった。
+- レイアウトは変えず、見出しのみを最小差分で取り除きたかった。
+
+### Changes
+- `OverviewControl.xaml` から `Primary operations` 用の `TextBlock` を削除した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Primary operations` 見出しの `TextBlock` を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Overview の Quick Controls カードでは、右側のホットキー項目はそのまま表示されるが、上部の `Primary operations` 見出しは表示されなくなる。
+
+### Risk & Mitigation
+- Risk: 右側のホットキー群の意味づけが弱く見える可能性がある。
+- Mitigation: 今回はユーザー意図どおり見出しだけを削除し、レイアウトや項目構成には触れない最小変更に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `UI\OverviewControl.xaml` を再検索し、`Primary operations` が消え、`Toggle overlay` / `Lock OCR window` が残っていることを確認
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**

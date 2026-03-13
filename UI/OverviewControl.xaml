@@ -57,11 +57,6 @@
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Quick Controls" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
-                    <TextBlock Grid.Column="2"
-                               Text="Primary operations"
-                               FontSize="16"
-                               FontWeight="Bold"
-                               VerticalAlignment="Center" />
                 </Grid>
                 <Grid>
                     <Grid.ColumnDefinitions>
