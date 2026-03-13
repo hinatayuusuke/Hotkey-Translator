@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -71,6 +72,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
     private readonly DispatcherTimer _mirrorOverlayTopmostTimer;
     private readonly DispatcherTimer _roiPresetPreviewClearTimer;
+    private readonly Queue<string> _pendingUiLogMessages = new();
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
@@ -110,7 +112,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
-        _appThemeController.Apply(_settingsService.Settings, this);
+        LogThemeApplyResult(_appThemeController.Apply(_settingsService.Settings, this), "constructor");
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -176,6 +178,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _magpieSessionController.ActiveStateChanged += OnMirrorSessionActiveStateChanged;
         _uiLogViewAdapter = new UiLogViewAdapter(() => RuntimeLogsControl.LogTextBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
+        FlushPendingUiLogs();
         _winRtLanguagePackUiController = new WinRtLanguagePackUiController(
             this,
             Dispatcher,
@@ -270,7 +273,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-        _appThemeController.Apply(_settingsService.Settings, this);
+        LogThemeApplyResult(_appThemeController.Apply(_settingsService.Settings, this), "source_initialized");
         _wmMagpieScalingChanged = _magpieSessionController.MagpieScalingChangedMessageId;
         _mainHwndSource = PresentationSource.FromVisual(this) as HwndSource;
         _mainHwndSource?.AddHook(WndProc);
@@ -1439,7 +1442,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
-        _appThemeController.Apply(settings, this);
+        LogThemeApplyResult(_appThemeController.Apply(settings, this), "apply_settings_to_ui");
         EnsureRoiPresetSlots(settings);
         ReloadLlamaModelOptions(settings);
         ReloadVisionLlmModelOptions(settings);
@@ -1716,7 +1719,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
     {
         // WHY: Rehydrate VM from normalized settings so invalid text input is corrected in bound controls.
-        _appThemeController.Apply(settings, this);
+        LogThemeApplyResult(_appThemeController.Apply(settings, this), "apply_runtime_state_after_save");
         EnsureRoiPresetSlots(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         SyncRoiPresetSlotUi(settings);
@@ -2157,8 +2160,63 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void AppendLog(string message)
     {
+        if (_uiLogController is null)
+        {
+            _pendingUiLogMessages.Enqueue(message);
+            return;
+        }
+
         _uiLogController.AppendLog(message);
     }
+
+    private void FlushPendingUiLogs()
+    {
+        if (_uiLogController is null)
+        {
+            return;
+        }
+
+        while (_pendingUiLogMessages.Count > 0)
+        {
+            _uiLogController.AppendLog(_pendingUiLogMessages.Dequeue());
+        }
+    }
+
+    private void LogThemeApplyResult(AppThemeApplyResult result, string source)
+    {
+        var handleText = result.WindowHandle == IntPtr.Zero
+            ? "0x0"
+            : $"0x{result.WindowHandle.ToInt64():X}";
+        var themeText = result.ApplicationTheme.ToString().ToLowerInvariant();
+        var titleText = EscapeLogValue(Title);
+        var preferredAttributeText = result.PreferredAttribute?.ToString(CultureInfo.InvariantCulture) ?? "none";
+        var preferredHrText = result.PreferredHResult.HasValue
+            ? FormatHResult(result.PreferredHResult.Value)
+            : "none";
+        var fallbackAttributeText = result.FallbackAttribute?.ToString(CultureInfo.InvariantCulture) ?? "none";
+        var fallbackHrText = result.FallbackHResult.HasValue
+            ? FormatHResult(result.FallbackHResult.Value)
+            : "none";
+
+        var message =
+            $"stage=app_theme event=apply source={source} theme={themeText} title=\"{titleText}\" hwnd={handleText} " +
+            $"dark_title_bar_requested={result.DarkTitleBarRequested.ToString().ToLowerInvariant()} " +
+            $"dark_title_bar_applied={result.DarkTitleBarApplied.ToString().ToLowerInvariant()} " +
+            $"preferred_attr={preferredAttributeText} preferred_hr={preferredHrText} " +
+            $"fallback_attr={fallbackAttributeText} fallback_hr={fallbackHrText}.";
+
+        if (_logger is not null)
+        {
+            _logger.Info(message);
+            return;
+        }
+
+        AppendLog(message);
+    }
+
+    private static string EscapeLogValue(string? value) => (value ?? string.Empty).Replace("\"", "'");
+
+    private static string FormatHResult(int value) => $"0x{unchecked((uint)value):X8}";
 
     private void InitializeLogBuffer()
     {

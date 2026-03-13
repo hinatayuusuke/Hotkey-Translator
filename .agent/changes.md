@@ -21348,6 +21348,67 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `UI\OverviewControl.xaml` を再検索し、`Primary operations` が消え、`Toggle overlay` / `Lock OCR window` が残っていることを確認
+
+**2026-03-13 22:26 (Asia/Taipei) — Add DWM title bar theme application logging**
+
+### Summary
+- タイトルバー配色適用の成否を追えるよう、DWM 属性適用結果をランタイムログへ出すようにした。
+
+### Context / Goal
+- 標準タイトルバーにアプリ名が表示されない原因調査のため、`UseImmersiveDarkMode` 相当の DWM 属性が実際に成功しているかを確認できる必要があった。
+- `Title` 文字列の有無ではなく、HWND 取得や DWM 属性適用結果をそのままログで見えるようにしたかった。
+
+### Changes
+- `AppThemeController.Apply` がテーマ適用結果を `AppThemeApplyResult` として返すようにした。
+- `MainWindow` 側でテーマ適用のたびに `stage=app_theme event=apply` ログを出すようにした。
+- ログにはテーマ種別、ウィンドウタイトル、HWND、優先属性/フォールバック属性、各 HRESULT、ダークタイトルバー適用可否を含めた。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — DWM 属性適用結果を返す `AppThemeApplyResult` を追加した。
+- `MainWindow.xaml.cs` — テーマ適用結果を `stage=app_theme` としてログ出力する処理を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 起動時とテーマ再適用時に、タイトルバー配色適用の詳細がランタイムログへ出る。
+- これにより、`DWMWA_USE_IMMERSIVE_DARK_MODE` の優先属性 20 / 旧属性 19 のどちらが成功したかを画面内ログで確認できる。
+
+### Risk & Mitigation
+- Risk: テーマ再適用のたびにログが増える。
+- Mitigation: ログは調査に必要な最小限の1行にまとめ、属性番号と HRESULT を直接出す形にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `MainWindow.xaml.cs` / `AppThemeController.cs` を再検索し、`stage=app_theme` と `AppThemeApplyResult` が追加されていることを確認
+
+**2026-03-13 22:28 (Asia/Taipei) — Fix startup crash caused by early theme log emission**
+
+### Summary
+- `dotnet run` 起動時に発生していた初期化順序由来のクラッシュを修正し、テーマ適用ログを安全に残せるようにした。
+
+### Context / Goal
+- DWM タイトルバー調査のために追加した `stage=app_theme` ログが、`MainWindow` コンストラクタ中に `_uiLogController` 初期化前で実行され、`NullReferenceException` を起こしていた。
+- 起動前のテーマ適用ログも落とさず保持しつつ、アプリ起動を壊さないようにしたかった。
+
+### Changes
+- `MainWindow` に `_pendingUiLogMessages` を追加し、UI ログコントローラ初期化前のログを一時退避できるようにした。
+- `AppendLog` を、`_uiLogController` 未初期化時は例外にせず保留キューへ積む実装へ変更した。
+- `_uiLogController` 生成直後に `FlushPendingUiLogs()` を呼び、保留していた起動初期ログを流すようにした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — 起動初期ログの保留キューとフラッシュ処理を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `dotnet run` での起動時に即時クラッシュしなくなる。
+- コンストラクタ時点の `stage=app_theme` ログも、UI ログコントローラ初期化後にランタイムログへ表示される。
+
+### Risk & Mitigation
+- Risk: 起動初期ログの順序が、UI ログ開始タイミングに依存して少し遅れて見える。
+- Mitigation: ログ内容は失わず FIFO でフラッシュし、起動安全性を優先した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --project .\Hotkey-Translator.csproj` を 8 秒間起動し、`Hotkey-Translator` プロセスが生存することを確認後に停止
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
