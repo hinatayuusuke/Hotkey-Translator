@@ -21863,6 +21863,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-13 23:21 (Asia/Taipei) — Align empty preview hints toward the top**
+
+### Summary
+- `Preview` パネルの空状態メッセージを中央寄せから上寄せへ変更した。
+
+### Context / Goal
+- 下段パネルで `Log` は上から読み始める構成なのに対し、`Preview` の空状態メッセージだけが中央に浮いて見えていた。
+- `Preview` 側も見出しから内容へ自然に視線が流れるよう、情報の始点を上へ揃えたかった。
+
+### Changes
+- `RuntimeLogsControl` の `OCR` / `Pinned` 両タブで、空状態ヒントの `VerticalAlignment` を `Top` に変更した。
+- ヘッダ直下で窮屈に見えないよう、上側に最小限の余白を追加した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — `Preview` パネルの空状態ヒントを上寄せへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` に画像がないとき、ヒント文がタブ内容の上側に表示される。
+- `Log` パネルと同じく、見出しから本文へ上から読む構成になる。
+
+### Risk & Mitigation
+- Risk: プレビュー画像がない状態で、ヒント文がタブ上端に寄りすぎて見える可能性がある。
+- Mitigation: 完全な上端固定ではなく、上側余白を 12px 入れて視覚的な呼吸を残した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-13 23:14 (Asia/Taipei) — Restore DWM dark title-bar hints on top of dictionary-based theme switching**
 
 ### Summary
