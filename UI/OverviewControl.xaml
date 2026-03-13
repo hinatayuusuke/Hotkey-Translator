@@ -3,17 +3,21 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
-        <Style x:Key="OverviewBlockCardStyle" TargetType="{x:Type ui:Card}" BasedOn="{StaticResource SectionCardStyle}">
-            <Setter Property="Margin" Value="0,0,0,10" />
+        <Style x:Key="OverviewSectionBorderStyle" TargetType="{x:Type Border}">
+            <Setter Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="Padding" Value="10" />
+            <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
         <Style x:Key="OverviewBlockTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
-            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
         <Style x:Key="OverviewMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
         </Style>
@@ -44,7 +48,7 @@
     </UserControl.Resources>
 
     <StackPanel Margin="0,6,0,0" Width="780" HorizontalAlignment="Left">
-        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
+        <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
@@ -108,9 +112,9 @@
                 </Grid>
 
             </StackPanel>
-        </ui:Card>
+        </Border>
 
-        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
+        <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Current Setup" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -158,9 +162,9 @@
                     </Grid>
                 </Grid>
             </StackPanel>
-        </ui:Card>
+        </Border>
 
-        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
+        <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Language &amp; Actions" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -333,9 +337,9 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </ui:Card>
+        </Border>
 
-        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
+        <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Quick Display Settings" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -386,9 +390,9 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </ui:Card>
+        </Border>
 
-        <ui:Card Style="{StaticResource OverviewBlockCardStyle}">
+        <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
@@ -442,6 +446,6 @@
                     </StackPanel>
                 </Grid>
             </StackPanel>
-        </ui:Card>
+        </Border>
     </StackPanel>
 </UserControl>

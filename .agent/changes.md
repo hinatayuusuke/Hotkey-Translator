@@ -21276,3 +21276,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 19:46 (Asia/Taipei) — Replace Overview cards with explicit section borders**
+
+### Summary
+- `Overview` の大項目コンテナを `ui:Card` から `Border` に切り替え、面の見た目を明示制御するようにした。
+
+### Context / Goal
+- `Overview` のカード面を強めても見た目差分が出ず、ライブラリ側カードテンプレートや弱いテーマ面に依存している可能性があった。
+- `Overview` だけは確実に見えるセクション背景を作りたかった。
+
+### Changes
+- `OverviewControl` から `ui` 名前空間依存を外した。
+- `OverviewSectionBorderStyle` を追加し、背景・境界・角丸・余白を `Border` で明示した。
+- `Overview` の 5 セクションコンテナを `ui:Card` から `Border` に置き換えた。
+- セクション見出しの下余白を少し広げた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Overview` セクションのコンテナを `Border` ベースに置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` の各大項目が、ライブラリ側カードテンプレートに依存せず、明示した背景面として描画される。
+- 機能、データバインディング、画面構造には影響しない。
+
+### Risk & Mitigation
+- Risk: `Overview` だけコンテナ実装が `ui:Card` と異なるため、将来の見た目統一時に個別調整が必要になる。
+- Mitigation: 変更範囲を `Overview` のみに限定し、見える面を確実に作ることを優先した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
