@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -2189,35 +2188,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             : $"0x{result.WindowHandle.ToInt64():X}";
         var themeText = result.ApplicationTheme.ToString().ToLowerInvariant();
         var titleText = EscapeLogValue(Title);
-        var preferredAttributeText = result.PreferredAttribute?.ToString(CultureInfo.InvariantCulture) ?? "none";
-        var preferredHrText = result.PreferredHResult.HasValue
-            ? FormatHResult(result.PreferredHResult.Value)
-            : "none";
-        var fallbackAttributeText = result.FallbackAttribute?.ToString(CultureInfo.InvariantCulture) ?? "none";
-        var fallbackHrText = result.FallbackHResult.HasValue
-            ? FormatHResult(result.FallbackHResult.Value)
-            : "none";
-        var captionColorText = result.CaptionColor.HasValue
-            ? FormatColorRef(result.CaptionColor.Value)
-            : "none";
-        var captionHrText = result.CaptionColorHResult.HasValue
-            ? FormatHResult(result.CaptionColorHResult.Value)
-            : "none";
-        var textColorText = result.TextColor.HasValue
-            ? FormatColorRef(result.TextColor.Value)
-            : "none";
-        var textHrText = result.TextColorHResult.HasValue
-            ? FormatHResult(result.TextColorHResult.Value)
-            : "none";
+        var titleBarManagedByOsText = result.TitleBarManagedByOs.ToString().ToLowerInvariant();
 
         var message =
             $"stage=app_theme event=apply source={source} theme={themeText} title=\"{titleText}\" hwnd={handleText} " +
-            $"dark_title_bar_requested={result.DarkTitleBarRequested.ToString().ToLowerInvariant()} " +
-            $"dark_title_bar_applied={result.DarkTitleBarApplied.ToString().ToLowerInvariant()} " +
-            $"preferred_attr={preferredAttributeText} preferred_hr={preferredHrText} " +
-            $"fallback_attr={fallbackAttributeText} fallback_hr={fallbackHrText} " +
-            $"caption_color={captionColorText} caption_hr={captionHrText} " +
-            $"text_color={textColorText} text_hr={textHrText}.";
+            $"title_bar_managed_by_os={titleBarManagedByOsText}.";
 
         if (_logger is not null)
         {
@@ -2229,10 +2204,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     }
 
     private static string EscapeLogValue(string? value) => (value ?? string.Empty).Replace("\"", "'");
-
-    private static string FormatHResult(int value) => $"0x{unchecked((uint)value):X8}";
-
-    private static string FormatColorRef(uint value) => $"0x{value:X8}";
 
     private void InitializeLogBuffer()
     {

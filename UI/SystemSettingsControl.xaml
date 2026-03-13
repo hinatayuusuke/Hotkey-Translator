@@ -20,7 +20,7 @@
                                         <ComboBoxItem Content="Light" Tag="Light" />
                                     </ComboBox>
                                 </StackPanel>
-                                <TextBlock Text="NOTE: Applies to the app client area and the standard Windows title bar."
+                                <TextBlock Text="NOTE: Applies to the app client area. The standard Windows title bar follows OS settings."
                                            Style="{StaticResource HelpTextStyle}"
                                            Margin="0,4,0,0" />
                                 <Separator Margin="0,10,0,8" />

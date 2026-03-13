@@ -21410,6 +21410,38 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --project .\Hotkey-Translator.csproj` を 8 秒間起動し、`Hotkey-Translator` プロセスが生存することを確認後に停止
 
+**2026-03-13 22:43 (Asia/Taipei) — Revert title bar styling to OS-standard rendering**
+
+### Summary
+- DWM のタイトルバー色指定を撤回し、標準タイトルバーの描画を Windows に完全に委ねる構成へ戻した。
+
+### Context / Goal
+- `DWMWA_USE_IMMERSIVE_DARK_MODE` / `DWMWA_CAPTION_COLOR` / `DWMWA_TEXT_COLOR` はすべて成功していたが、実環境ではなおアプリ名が視認できなかった。
+- タイトルバーの見た目統一より、OS 標準の安定したタイトル文字描画を優先する方針へ切り替えた。
+
+### Changes
+- `AppThemeController` から DWM タイトルバー属性設定を削除し、クライアント領域のテーマ適用だけを残した。
+- テーマ適用ログは `title_bar_managed_by_os=true` を出す形へ簡略化した。
+- System 設定画面の NOTE 文を、標準タイトルバーは OS 設定に従う説明へ更新した。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — DWM タイトルバー属性設定を削除し、OS 標準管理へ戻した。
+- `MainWindow.xaml.cs` — `stage=app_theme` ログを OS 管理前提の内容へ変更した。
+- `UI/SystemSettingsControl.xaml` — テーマ説明文を現行挙動に合わせて更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- アプリ本体のクライアント領域はテーマ切替に従うが、標準 Windows タイトルバーの色と文字描画は OS 設定に従う。
+- ランタイムログでは、タイトルバーが OS 管理に戻っていることを確認できる。
+
+### Risk & Mitigation
+- Risk: ダークモード時にクライアント領域とタイトルバーの見た目が揃わなくなる。
+- Mitigation: タイトル文字の可視性と OS 標準挙動の安定性を優先し、非クライアント領域の独自制御を外した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- ビルドは成功。`Hotkey-Translator.exe` が起動中だったため `apphost.exe` コピーの再試行警告は出たが、エラーはなし
+
 **2026-03-13 22:32 (Asia/Taipei) — Force DWM caption and title text colors**
 
 ### Summary
