@@ -19,8 +19,16 @@ public sealed class BooleanToGridLengthConverter : IValueConverter
             return FalseLength;
         }
 
-        // NOTE: "star" parameter lets one converter serve fixed-height rows and star-sized pane columns.
-        if (string.Equals(parameter as string, "star", StringComparison.OrdinalIgnoreCase))
+        var parameterText = parameter as string;
+
+        // NOTE: "star" and weighted star parameters let one converter serve fixed-height rows
+        // and fixed-ratio pane columns without introducing a second converter.
+        if (TryParseStarLength(parameterText, out var starLength))
+        {
+            return starLength;
+        }
+
+        if (string.Equals(parameterText, "star", StringComparison.OrdinalIgnoreCase))
         {
             return new GridLength(1, GridUnitType.Star);
         }
@@ -36,5 +44,35 @@ public sealed class BooleanToGridLengthConverter : IValueConverter
         }
 
         return false;
+    }
+
+    private static bool TryParseStarLength(string? parameterText, out GridLength starLength)
+    {
+        starLength = default;
+        if (string.IsNullOrWhiteSpace(parameterText))
+        {
+            return false;
+        }
+
+        if (!parameterText.EndsWith('*'))
+        {
+            return false;
+        }
+
+        var weightText = parameterText[..^1];
+        if (weightText.Length == 0)
+        {
+            starLength = new GridLength(1, GridUnitType.Star);
+            return true;
+        }
+
+        if (!double.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out var weight)
+            || weight <= 0)
+        {
+            return false;
+        }
+
+        starLength = new GridLength(weight, GridUnitType.Star);
+        return true;
     }
 }

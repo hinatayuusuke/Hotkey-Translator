@@ -21125,6 +21125,38 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` を実行
 - ビルドは `obj\Debug\net8.0-windows10.0.22621.0\App.g.cs` / `Hotkey-Translator_MarkupCompile.cache` へのアクセス拒否で失敗し、今回変更のコンパイル確認までは未完了
+
+**2026-03-13 21:48 (Asia/Taipei) — Remove bottom drawer resize splitter**
+
+### Summary
+- 下段の `Preview` / `Log` 間にあるリサイズ用スプリッターを廃止し、固定比率レイアウトへ変更した。
+
+### Context / Goal
+- `GridSplitter` は用途が限られる一方で、ダークテーマ上では白い縦線として強く目立っていた。
+- 下段ドロワーの見た目を簡潔にしつつ、ログ側をやや広めに確保した固定レイアウトへ寄せたかった。
+
+### Changes
+- `RuntimeLogsControl` から `GridSplitter` とその表示制御を削除した。
+- `Preview` と `Log` の列幅を `2*:3*` の固定比率に変更した。
+- 既存の `BooleanToGridLengthConverter` に重み付き `*` 指定を解釈する処理を追加した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — 下段ドロワーの列構成を固定比率へ変更し、`GridSplitter` を削除した。
+- `Converters/BooleanToGridLengthConverter.cs` — `2*` や `3*` のような重み付き `GridLength` パラメーターを解釈できるよう拡張した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` と `Log` の境界にドラッグ可能な白い棒は表示されなくなる。
+- 両ペイン表示時は `Preview:Log = 2:3` の比率で固定され、ログ側が少し広く表示される。
+- 片側ペインのみ表示時は従来どおり、非表示側の列幅が `0` になり表示側が領域を占有する。
+
+### Risk & Mitigation
+- Risk: 一部ユーザーは手動リサイズでログやプレビューを極端に広げたい場合がある。
+- Mitigation: 実用上の情報量が多い `Log` を広めにした固定比率へ調整し、通常利用での視認性を優先した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` を実行
+- ビルドは `Tools\WinRtLanguagePackElevator\obj\Debug\WinRtLanguagePackElevator.sourcelink.json` へのアクセス拒否で失敗し、今回変更のコンパイル確認までは未完了
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**

@@ -8,7 +8,6 @@
              mc:Ignorable="d">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
-        <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
         <local:BooleanToGridLengthConverter x:Key="BottomDrawerRowHeightConverter"
                                             TrueLength="300"
                                             FalseLength="0" />
@@ -22,9 +21,8 @@
             Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
         <Grid>
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=2*}" />
+                <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=3*}" />
             </Grid.ColumnDefinitions>
 
             <ui:Card Grid.Column="0"
@@ -72,31 +70,7 @@
                 </Grid>
             </ui:Card>
 
-            <GridSplitter Grid.Column="1"
-                          Width="6"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Stretch"
-                          ResizeBehavior="PreviousAndNext"
-                          ResizeDirection="Columns">
-                <GridSplitter.Style>
-                    <Style TargetType="GridSplitter">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Value="True">
-                                <DataTrigger.Binding>
-                                    <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                        <Binding Path="BottomPreviewPaneVisible" />
-                                        <Binding Path="BottomLogPaneVisible" />
-                                    </MultiBinding>
-                                </DataTrigger.Binding>
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </GridSplitter.Style>
-            </GridSplitter>
-
-            <ui:Card Grid.Column="2"
+            <ui:Card Grid.Column="1"
                      MinWidth="280"
                      Padding="12"
                      Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
