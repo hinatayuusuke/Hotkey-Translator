@@ -21035,3 +21035,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet run --project .\Hotkey-Translator.csproj` で例外なく起動し、プロセス `Hotkey-Translator` のウィンドウ表示を確認
+
+**2026-03-13 18:05 (Asia/Taipei) — Restore WPF UI title bar controls**
+
+### Summary
+- `FluentWindow` に `TitleBar` を追加し、ドラッグとウィンドウ操作ボタンを復元した。
+
+### Context / Goal
+- `ExtendsContentIntoTitleBar="True"` により標準タイトルバーを隠したが、代替の `TitleBar` を配置していなかった。
+- 既存レイアウトを崩さず、`WPF UI` の前提に沿ってドラッグ・最小化・終了を使える状態へ戻したかった。
+
+### Changes
+- `MainWindow` の最上段にタイトルバー用の行を追加した。
+- `wpfui:TitleBar` を配置し、既存コンテンツ群を1行下へ移動した。
+- Busy オーバーレイの `RowSpan` を新しい行構成に合わせて更新した。
+
+### Files Touched
+- `MainWindow.xaml` — `TitleBar` を追加し、グリッド行番号を調整した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ウィンドウ上部に `WPF UI` のタイトルバーが表示され、ドラッグ、最小化、最大化、終了が使えるようになった。
+- 既存の本文レイアウトや設定画面構成には変更がない。
+
+### Risk & Mitigation
+- Risk: タイトルバー行の追加で全体の縦方向余白が少し変わる可能性がある。
+- Mitigation: タイトルバー専用に `Auto` 行を追加し、既存レイアウトは行番号の繰り下げだけに留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v normal`
+- `dotnet run --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認

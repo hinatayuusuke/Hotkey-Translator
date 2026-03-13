@@ -38,6 +38,7 @@
     </wpfui:FluentWindow.Resources>
     <Grid x:Name="RootLayout" Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="{Binding DataContext.IsBottomPanelOpen, ElementName=RootLayout, Converter={StaticResource BottomDrawerRowHeightConverter}}" />
             <RowDefinition Height="Auto" />
@@ -47,7 +48,12 @@
             <ColumnDefinition Width="*" MinWidth="640" />
         </Grid.ColumnDefinitions>
 
-        <Border Grid.Row="0"
+        <wpfui:TitleBar Grid.Row="0"
+                        Grid.ColumnSpan="2"
+                        Title="Hotkey Translator"
+                        Margin="0,0,0,12" />
+
+        <Border Grid.Row="1"
                 Grid.Column="0"
                 Margin="0,0,12,0"
                 Padding="10"
@@ -75,7 +81,7 @@
             </Grid>
         </Border>
 
-        <TabControl Grid.Row="0"
+        <TabControl Grid.Row="1"
                     Grid.Column="1"
                     Background="Transparent"
                     Style="{StaticResource HeaderlessTabControlStyle}"
@@ -174,13 +180,13 @@
         </TabControl>
 
         <ui:RuntimeLogsControl x:Name="RuntimeLogsControl"
-                               Grid.Row="1"
+                               Grid.Row="2"
                                Grid.ColumnSpan="2"
                                Margin="0,8,0,0"
                                OcrPreviewClicked="OnOcrPreviewClicked"
                                PinnedPreviewClicked="OnPinnedPreviewClicked" />
 
-        <Border Grid.Row="2"
+        <Border Grid.Row="3"
                 Grid.ColumnSpan="2"
                 Margin="0,8,0,0"
                 Background="{DynamicResource ShellFooterBackgroundBrush}"
@@ -208,7 +214,7 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
+        <Grid Grid.RowSpan="4" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
             <Border Background="{DynamicResource ShellBusyOverlayBrush}"
                     BorderBrush="{DynamicResource ShellCardBorderBrush}"
