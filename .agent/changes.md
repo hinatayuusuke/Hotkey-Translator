@@ -21234,6 +21234,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `HelpTextStyle` / `MutedTextStyle` の参照箇所を再検索し、説明文だけが `HelpTextStyle` に移っていることを確認
+
+**2026-03-13 22:03 (Asia/Taipei) — Round sidebar selection highlight**
+
+### Summary
+- 左サイドバーの選択ハイライトとホバー背景が丸角で描画されるようにした。
+
+### Context / Goal
+- サイドバー項目は背景色だけ変更しており、既定テンプレートの都合で選択ハイライトが四角いままだった。
+- サイドバー全体のカード調デザインに合わせて、選択状態も丸角にそろえたかった。
+
+### Changes
+- `SidebarListBoxItemStyle` に `ControlTemplate` を追加し、背景描画を丸角 `Border` 経由に変更した。
+- ホバー・選択時の既存 `Background` トリガーはそのまま活かし、見た目だけを丸角化した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — サイドバー `ListBoxItem` のテンプレートを追加し、背景を `CornerRadius=10` の `Border` で描画するようにした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 左メニューの選択項目とホバー時の背景が、角の立った矩形ではなく丸角ハイライトで表示される。
+- サイドバーの余白や選択ロジック自体は変わらない。
+
+### Risk & Mitigation
+- Risk: `ListBoxItem` 既定テンプレート由来の細かな状態表示が失われる可能性がある。
+- Mitigation: テンプレートは背景描画と `ContentPresenter` に絞った最小構成にし、既存のスタイルトリガーをそのまま使う形に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- ビルドは成功。`Hotkey-Translator.exe` が起動中だったため `apphost.exe` コピーの再試行警告は出たが、エラーはなし
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
