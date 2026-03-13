@@ -21263,6 +21263,64 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - ビルドは成功。`Hotkey-Translator.exe` が起動中だったため `apphost.exe` コピーの再試行警告は出たが、エラーはなし
+
+**2026-03-13 22:09 (Asia/Taipei) — Add sidebar selection accent bar**
+
+### Summary
+- サイドバーの選択項目に左アクセントバーを追加し、パネル背景とハイライトの差を強めた。
+
+### Context / Goal
+- サイドパネル背景と選択ハイライトが近い色域にあり、背景色だけでは選択状態の識別が弱かった。
+- 背景色を過度に強くせず、ライト/ダーク両モードで安定して見分けられる選択表現を足したかった。
+
+### Changes
+- `SidebarListBoxItemStyle` のテンプレートに左アクセントバー領域を追加した。
+- 選択時のみ `SystemAccentColorPrimaryBrush` の細いバーを表示するトリガーを追加した。
+- 既存の丸角ハイライトと項目余白は維持するため、コンテンツ側の `Padding` を明示的に残した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — サイドバー `ListBoxItem` テンプレートへ選択アクセントバーを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 左サイドバーで選択中の項目は、背景ハイライトに加えて左側の細いアクセントバーでも識別できる。
+- パネル背景とハイライト色が近い場面でも、選択状態の視認性が上がる。
+
+### Risk & Mitigation
+- Risk: アクセントバーの色が強すぎると、サイドバー内でそこだけ目立ちすぎる可能性がある。
+- Mitigation: 幅 3px の細いバーに限定し、背景色は据え置きのまま補助的な識別子として追加した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `UI\ThemeResources.xaml` のテンプレート内に `SelectionAccent` と選択時可視化トリガーが追加されていることを確認
+
+**2026-03-13 22:13 (Asia/Taipei) — Fix sidebar accent bar visibility**
+
+### Summary
+- サイドバーの選択アクセントバーが見えなかった原因を修正し、実際に表示されるようにした。
+
+### Context / Goal
+- 選択アクセントバー自体はテンプレートに追加されていたが、列幅より大きい左マージンのため描画領域外に押し出されていた。
+- レイアウトを崩さず、細いアクセントバーが確実に見えるようにしたかった。
+
+### Changes
+- `SelectionAccent` の左マージンを削除し、アクセントバーを 6px 列の中央で描画するようにした。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — `SelectionAccent` のマージンを `0,8,0,8` に変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- サイドバーで選択中の項目に、左側の細いアクセントバーが表示される。
+- 項目全体の横位置や既存の余白バランスは維持される。
+
+### Risk & Mitigation
+- Risk: アクセントバーが背景に近い色だと、環境によっては目立ちが弱い可能性がある。
+- Mitigation: レイアウト上の不可視要因を先に解消し、配色調整が必要かどうかは表示確認後に判断できる状態にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `UI\ThemeResources.xaml` で `SelectionAccent` のマージンが `0,8,0,8` になっていることを確認
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
