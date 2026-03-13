@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:Hotkey_Translator"
         xmlns:ui="clr-namespace:Hotkey_Translator.UI"
         mc:Ignorable="d"
-        Title="Hotkey Translator" Height="740" Width="1080">
+        Title="Hotkey Translator" Height="860" Width="1025">
     <Window.Resources>
         <local:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
