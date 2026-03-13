@@ -4,7 +4,6 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
-             xmlns:common="clr-namespace:Hotkey_Translator.UI.Common"
              mc:Ignorable="d">
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
@@ -97,61 +96,11 @@
                           Header="Log"
                           MinWidth="280"
                           Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <Grid Margin="4">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" />
-                        </Grid.RowDefinitions>
-
-                        <common:FormSection Header="Logging settings"
-                                            Description="Runtime and OCR performance logging stay here so setup-oriented pages do not mix with diagnostic controls.">
-                            <common:FormSection.SectionContent>
-                                <StackPanel>
-                                    <common:LabeledFieldRow Label="Enable logging"
-                                                            LabelWidth="120"
-                                                            Description="Writes runtime and diagnostic messages to the log pane.">
-                                        <common:LabeledFieldRow.FieldContent>
-                                            <CheckBox Content="Enabled"
-                                                      IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        </common:LabeledFieldRow.FieldContent>
-                                    </common:LabeledFieldRow>
-
-                                    <common:LabeledFieldRow Label="OCR perf log"
-                                                            LabelWidth="120"
-                                                            Description="Captures OCR timing entries when logging is enabled.">
-                                        <common:LabeledFieldRow.FieldContent>
-                                            <CheckBox Content="Enabled"
-                                                      IsEnabled="{Binding Settings.EnableLogging}"
-                                                      IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        </common:LabeledFieldRow.FieldContent>
-                                    </common:LabeledFieldRow>
-
-                                    <common:LabeledFieldRow Label="Threshold (ms)"
-                                                            LabelWidth="120"
-                                                            Description="Only timings slower than this value are written to the perf log.">
-                                        <common:LabeledFieldRow.FieldContent>
-                                            <TextBox Width="80"
-                                                     Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                                                <TextBox.IsEnabled>
-                                                    <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                                        <Binding Path="Settings.EnableLogging" />
-                                                        <Binding Path="Settings.EnableOcrPerfLog" />
-                                                    </MultiBinding>
-                                                </TextBox.IsEnabled>
-                                            </TextBox>
-                                        </common:LabeledFieldRow.FieldContent>
-                                    </common:LabeledFieldRow>
-                                </StackPanel>
-                            </common:FormSection.SectionContent>
-                        </common:FormSection>
-
-                        <TextBox x:Name="LogBox"
-                                 Grid.Row="1"
-                                 Margin="0,10,0,0"
-                                 IsReadOnly="True"
-                                 TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto" />
-                    </Grid>
+                    <TextBox x:Name="LogBox"
+                             Margin="4"
+                             IsReadOnly="True"
+                             TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto" />
                 </GroupBox>
             </Grid>
         </Border>

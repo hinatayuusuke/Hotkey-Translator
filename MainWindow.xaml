@@ -1485,10 +1485,32 @@
                                            Foreground="DimGray"
                                            TextWrapping="Wrap"
                                            Margin="0,4,0,0" />
-                                <TextBlock Text="Logging settings moved to Runtime / Logs so diagnostic controls stay near the log pane."
-                                           Foreground="DimGray"
-                                           TextWrapping="Wrap"
-                                           Margin="0,6,0,0" />
+                                <CheckBox x:Name="EnableLoggingCheck" Content="Enable logging" Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <CheckBox x:Name="EnableOcrPerfLogCheck" Content="Enable OCR perf log" Margin="0,6,0,0"
+                                          IsEnabled="{Binding Settings.EnableLogging}"
+                                          IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
+                                    <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
+                                             Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                        <TextBox.IsEnabled>
+                                            <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                <Binding Path="Settings.EnableLogging" />
+                                                <Binding Path="Settings.EnableOcrPerfLog" />
+                                            </MultiBinding>
+                                        </TextBox.IsEnabled>
+                                        <TextBox.Style>
+                                            <Style TargetType="TextBox">
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
+                                                        <Setter Property="Foreground" Value="DimGray" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBox.Style>
+                                    </TextBox>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
                     </Grid>

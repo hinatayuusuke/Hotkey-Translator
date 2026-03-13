@@ -18931,6 +18931,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj`
+
+**2026-03-13 11:40 (Asia/Taipei) — Restore logging settings to system panel**
+
+### Summary
+- `Log` 表示欄とログ起動設定欄の責務を分離し直し、ログ起動設定を `System` サイド設定へ戻した。
+
+### Context / Goal
+- `Runtime / Logs` へ移した logging settings は、表示欄と起動設定欄を同一責務として扱ってしまっていた。
+- ユーザー意図に合わせて、`Log` は表示専用、logging settings はサイド設定の構成項目へ戻す必要があった。
+
+### Changes
+- `System` セクションに `Enable logging`、`Enable OCR perf log`、`Threshold (ms)` を復元した。
+- `RuntimeLogsControl` から logging settings ブロックを削除し、`LogBox` のみを持つ表示専用構成に戻した。
+
+### Files Touched
+- `MainWindow.xaml` — `System` セクションへ logging settings を戻した。
+- `UI/RuntimeLogsControl.xaml` — `Log` ペインから logging settings を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 下部 `Log` ペインは再びログ表示専用となり、ログ起動設定はサイドパネルの `System` から変更する形に戻った。
+
+### Risk & Mitigation
+- Risk: `Runtime / Logs` に残すべき項目と `System` に置くべき項目が今後また混ざる可能性がある。
+- Mitigation: `Log` は表示、logging settings はサイド設定という責務分離を明記して今後の移設判断基準にする。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `rg -n "stage=vision_geometry_hybrid event=summary|TryBuildSplitOutputsForVision|GeometryRunCandidate|NormalizedProjection" .\Services\VisionGeometryHybridAligner.cs`
 **2026-03-10 22:39 (Asia/Taipei) — VisionLLM hybrid の synthetic 改行維持**
 
