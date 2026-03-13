@@ -20776,3 +20776,83 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:24 (Asia/Taipei) — Compress overview quick controls and current setup**
+
+### Summary
+- `Overview` の `Quick Controls` と `Current Setup` を横方向へ詰めて、高さをさらに圧縮した。
+
+### Context / Goal
+- `Overview` の縦ブロック構成は維持できていたが、上2ブロックはまだ改行が多く、横幅を使い切れていなかった。
+- まずは情報量の少ない `Quick Controls` と `Current Setup` を優先して、名前と値を同一行へ寄せたかった。
+
+### Changes
+- `Quick Controls` の見出し行を `Quick Controls` と `Primary operations` の横並びにした。
+- 各 quick control を `操作名 + キー` の1行表示へ変更し、フォントサイズと余白を調整した。
+- `Current Setup` を `2列 x 3行` の配置に変更し、`Translation`、`Hook / Fullscreen`、`ROI status` を右列へ移した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Quick Controls` と `Current Setup` の内部レイアウトを横方向に圧縮した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` 上部の2ブロックが短くなり、主要操作と現在状態をよりコンパクトに確認できるようになった。
+- 設定内容やコマンド動作には変更はない。
+
+### Risk & Mitigation
+- Risk: キー表示を1行化したことで、視認性が少し下がる可能性がある。
+- Mitigation: キー文字列は引き続き太字で残し、まずは `Quick Controls` と `Current Setup` のみを対象にして影響を限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:27 (Asia/Taipei) — Enlarge quick control hotkey text**
+
+### Summary
+- `Overview` の `Quick Controls` で、ホットキー文字列のフォントサイズを大きくした。
+
+### Context / Goal
+- `Quick Controls` を1行化した結果、情報密度は上がったが、キー表示の主操作感が少し弱くなっていた。
+- 操作名とキーを横並びのまま、キーだけは目立つ状態へ戻したかった。
+
+### Changes
+- `QuickControlGestureStyle` のフォントサイズを `16` から `22` に引き上げた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Quick Controls` のキー表示スタイルを強調した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Quick Controls` のホットキー文字列が目立つようになり、主操作として認識しやすくなった。
+- レイアウトや機能の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: キー表示を大きくしすぎると1行レイアウトで詰まりやすくなる可能性がある。
+- Mitigation: 今回はキー表示だけを拡大し、項目数や列構成は変えていないため影響を限定している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:29 (Asia/Taipei) — Enlarge quick control labels**
+
+### Summary
+- `Overview` の `Quick Controls` で、操作ラベル側のフォントサイズも大きくした。
+
+### Context / Goal
+- ホットキー文字列を大きくしたあと、操作ラベルとの差が開きすぎて見え方のバランスが少し崩れていた。
+- `Quick Controls` 全体を主操作として見せるため、ラベル側も少し強めたかった。
+
+### Changes
+- `QuickControlNameStyle` に `FontSize=18` を追加した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Quick Controls` のラベル表示サイズを引き上げた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Quick Controls` の操作ラベルが読みやすくなり、キー表示とのバランスが改善した。
+- 機能やレイアウト構造は変わらない。
+
+### Risk & Mitigation
+- Risk: ラベルも拡大したことで、横並びレイアウトで詰まりやすくなる可能性がある。
+- Mitigation: フォントサイズだけの調整に留め、列数や項目数は変えていないため影響を限定している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

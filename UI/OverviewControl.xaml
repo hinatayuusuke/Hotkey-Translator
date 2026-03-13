@@ -30,26 +30,37 @@
             <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
         <Style x:Key="QuickControlNameStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="#555555" />
-            <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
         <Style x:Key="QuickControlGestureStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="20" />
+            <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Margin" Value="0" />
             <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
 
     <StackPanel Margin="0,6,0,0" Width="840" HorizontalAlignment="Left">
         <Border Style="{StaticResource OverviewBlockBorderStyle}">
             <StackPanel>
-                <TextBlock Text="Quick Controls" Style="{StaticResource OverviewBlockTitleStyle}" />
-                <TextBlock Text="Primary operations"
-                           FontSize="16"
-                           FontWeight="Bold"
-                           Margin="0,0,0,10" />
+                <Grid Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Quick Controls" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
+                    <TextBlock Grid.Column="2"
+                               Text="Primary operations"
+                               FontSize="16"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center" />
+                </Grid>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -61,22 +72,22 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Grid.Column="0">
+                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
                         <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
                         <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Row="0" Grid.Column="2">
+                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
                         <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
                         <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Grid.Column="0">
+                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal">
                         <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
                         <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                     </StackPanel>
 
-                    <StackPanel Grid.Row="1" Grid.Column="2">
+                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal">
                         <TextBlock Text="Lock window" Style="{StaticResource QuickControlNameStyle}" />
                         <TextBlock Text="{Binding LockWindowHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                     </StackPanel>
@@ -109,12 +120,12 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="120" />
+                        <ColumnDefinition Width="240" />
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="Auto" />
@@ -122,16 +133,18 @@
 
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Capture" Style="{StaticResource OverviewLabelStyle}" />
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CaptureModeSummary}" Style="{StaticResource OverviewValueStyle}" />
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="Translation" Style="{StaticResource OverviewLabelStyle}" />
+                    <TextBlock Grid.Row="0" Grid.Column="4" Text="{Binding TranslationRouteSummary}" Style="{StaticResource OverviewValueStyle}" />
+
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" Style="{StaticResource OverviewLabelStyle}" />
                     <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CaptureProviderSummary}" Style="{StaticResource OverviewValueStyle}" />
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="Hook / Fullscreen" Style="{StaticResource OverviewLabelStyle}" />
+                    <TextBlock Grid.Row="1" Grid.Column="4" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
                     <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OcrEngineSummary}" Style="{StaticResource OverviewValueStyle}" />
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Translation" Style="{StaticResource OverviewLabelStyle}" />
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding TranslationRouteSummary}" Style="{StaticResource OverviewValueStyle}" />
-                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Hook / Fullscreen" Style="{StaticResource OverviewLabelStyle}" />
-                    <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
-                    <TextBlock Grid.Row="5" Grid.Column="0" Text="ROI status" Style="{StaticResource OverviewLabelStyle}" />
-                    <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding RuntimeStatus.RoiStatusMessage}" Style="{StaticResource OverviewValueStyle}" />
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="ROI status" Style="{StaticResource OverviewLabelStyle}" />
+                    <TextBlock Grid.Row="2" Grid.Column="4" Text="{Binding RuntimeStatus.RoiStatusMessage}" Style="{StaticResource OverviewValueStyle}" />
                 </Grid>
             </StackPanel>
         </Border>
