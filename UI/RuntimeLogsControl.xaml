@@ -34,13 +34,11 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <StackPanel Margin="0,0,0,8">
-                        <TextBlock Text="Preview" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
-                        <TextBlock Text="OCR preprocessing and pinned capture output"
-                                   Style="{StaticResource HelpTextStyle}" />
-                    </StackPanel>
+                    <TextBlock Text="Preview"
+                               Style="{StaticResource SectionTitleTextStyle}"
+                               Margin="0,0,0,8" />
                     <TabControl Grid.Row="1"
-                                MinHeight="195">
+                                MinHeight="220">
                         <TabItem Header="OCR">
                             <Grid MinHeight="140"
                                   Cursor="Hand"
@@ -88,11 +86,9 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <StackPanel Margin="0,0,0,8">
-                        <TextBlock Text="Log" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
-                        <TextBlock Text="Runtime status and diagnostics"
-                                   Style="{StaticResource HelpTextStyle}" />
-                    </StackPanel>
+                    <TextBlock Text="Log"
+                               Style="{StaticResource SectionTitleTextStyle}"
+                               Margin="0,0,0,8" />
                     <TextBox x:Name="LogBox"
                              Grid.Row="1"
                              IsReadOnly="True"

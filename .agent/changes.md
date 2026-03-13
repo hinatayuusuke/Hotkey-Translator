@@ -21981,6 +21981,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、`Preview` がタブ構成に戻り、空状態でも本文領域の高さが確保されていることを確認した。
 
+**2026-03-13 23:45 (Asia/Taipei) — Remove preview/log helper descriptions to free body space**
+
+### Summary
+- 下段の `Preview` / `Log` カードから補足説明文を削除し、本文に使える縦スペースを増やした。
+
+### Context / Goal
+- `Preview` と `Log` の役割は見出しだけで十分伝わる一方、補足文が固定で高さを消費していた。
+- 下段は縦方向の余裕が少ないため、説明文より本文表示面積を優先したかった。
+
+### Changes
+- `RuntimeLogsControl` の `Preview` / `Log` 見出し下にあった補足テキストを削除した。
+- 見出しだけ残し、既存の余白は最小限に維持した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — `Preview` / `Log` の補足説明文を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` と `Log` の本文表示領域が少し広くなる。
+- 下段パネルの情報密度が上がり、空状態やログ本文に使える縦スペースが増える。
+
+### Risk & Mitigation
+- Risk: 初見ユーザーには `Preview` / `Log` の用途説明が画面上から消える。
+- Mitigation: 見出し自体は残し、`Preview` 側は空状態メッセージ、`Log` 側は本文内容そのものが役割説明を補完する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`（起動中の `Hotkey-Translator.exe` により `apphost.exe` コピー再試行警告あり、ビルド自体は成功）
+
 **2026-03-13 23:21 (Asia/Taipei) — Align empty preview hints toward the top**
 
 ### Summary
