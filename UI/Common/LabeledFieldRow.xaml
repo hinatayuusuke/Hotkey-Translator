@@ -24,7 +24,7 @@
                        Text="{Binding Description, ElementName=Root}">
                 <TextBlock.Style>
                     <Style TargetType="TextBlock"
-                           BasedOn="{StaticResource MutedTextStyle}">
+                           BasedOn="{StaticResource HelpTextStyle}">
                         <Setter Property="Visibility" Value="Visible" />
                         <Style.Triggers>
                             <Trigger Property="Text" Value="">

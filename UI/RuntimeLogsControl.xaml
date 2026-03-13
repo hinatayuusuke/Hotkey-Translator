@@ -37,7 +37,7 @@
                     <StackPanel Margin="0,0,0,8">
                         <TextBlock Text="Preview" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
                         <TextBlock Text="OCR preprocessing and pinned capture output"
-                                   Style="{StaticResource MutedTextStyle}" />
+                                   Style="{StaticResource HelpTextStyle}" />
                     </StackPanel>
                     <TabControl Grid.Row="1">
                     <TabItem Header="OCR">
@@ -46,7 +46,7 @@
                             <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
                             <TextBlock x:Name="OcrPreprocessPreviewHint"
                                        Text="Run OCR to update preview."
-                                       Style="{StaticResource MutedTextStyle}"
+                                       Style="{StaticResource HelpTextStyle}"
                                        TextAlignment="Center"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
@@ -58,7 +58,7 @@
                             <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
                             <TextBlock x:Name="PinnedCaptureThumbnailHint"
                                        Text="No fixed target"
-                                       Style="{StaticResource MutedTextStyle}"
+                                       Style="{StaticResource HelpTextStyle}"
                                        TextAlignment="Center"
                                        HorizontalAlignment="Center"
                                        VerticalAlignment="Center" />
@@ -80,7 +80,7 @@
                     <StackPanel Margin="0,0,0,8">
                         <TextBlock Text="Log" Style="{StaticResource SectionTitleTextStyle}" Margin="0" />
                         <TextBlock Text="Runtime status and diagnostics"
-                                   Style="{StaticResource MutedTextStyle}" />
+                                   Style="{StaticResource HelpTextStyle}" />
                     </StackPanel>
                     <TextBox x:Name="LogBox"
                              Grid.Row="1"

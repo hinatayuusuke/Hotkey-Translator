@@ -30,6 +30,13 @@
         <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
+    <Style x:Key="HelpTextStyle"
+           TargetType="{x:Type TextBlock}"
+           BasedOn="{StaticResource MutedTextStyle}">
+        <!-- WHY: Help text should stay readable in both themes without competing with labels. -->
+        <Setter Property="Opacity" Value="0.88" />
+    </Style>
+
     <Style x:Key="SidebarListBoxStyle" TargetType="{x:Type ListBox}">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />

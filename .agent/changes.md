@@ -21195,6 +21195,45 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `UI\*.xaml` / `UI\Common\*.xaml` 内の `Foreground="DimGray"` を再検索し、説明文用途の固定色が残っていないことを確認
+
+**2026-03-13 22:01 (Asia/Taipei) — Soften help text emphasis in dark mode**
+
+### Summary
+- 説明文専用の `HelpTextStyle` を追加し、ダークモードで主張しすぎていた補足文をほんの少しだけ弱めた。
+
+### Context / Goal
+- `MutedTextStyle` へ統一したことで説明文の可読性は改善したが、ダークモードではラベルに近い強さに見えていた。
+- テーマ追従は維持したまま、説明文だけを一段弱くして視線の優先順位を整えたかった。
+
+### Changes
+- `ThemeResources.xaml` に `MutedTextStyle` を継承する `HelpTextStyle` を追加し、`Opacity=0.88` を設定した。
+- 補足文、NOTE 文、プレビュー/ログの説明文、共通フォーム説明文を `MutedTextStyle` から `HelpTextStyle` へ差し替えた。
+- `OverviewMutedTextStyle` のような別用途の副次テキストはそのまま維持した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — 説明文専用の `HelpTextStyle` を追加した。
+- `UI/SystemSettingsControl.xaml` — NOTE 文を `HelpTextStyle` へ変更した。
+- `UI/HotkeysControl.xaml` — 補足文を `HelpTextStyle` へ変更した。
+- `UI/OcrEnginesControl.xaml` — 説明文を `HelpTextStyle` へ変更した。
+- `UI/OcrSettingsControl.xaml` — NOTE 文と案内文を `HelpTextStyle` へ変更した。
+- `UI/TranslationControl.xaml` — 補足文を `HelpTextStyle` へ変更した。
+- `UI/VisionLlmSettingsControl.xaml` — 説明文を `HelpTextStyle` へ変更した。
+- `UI/RuntimeLogsControl.xaml` — サブ説明文とプレースホルダー文言を `HelpTextStyle` へ変更した。
+- `UI/Common/FormSection.xaml` — 共通説明文を `HelpTextStyle` ベースへ変更した。
+- `UI/Common/LabeledFieldRow.xaml` — 共通フィールド説明文を `HelpTextStyle` ベースへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ライト/ダーク両モードで説明文はテーマ追従を維持しつつ、主ラベルやメニュー項目より一段控えめに表示される。
+- 画面全体のテキスト階層がはっきりし、説明文が必要以上に目立たなくなる。
+
+### Risk & Mitigation
+- Risk: 弱めすぎると再び読みにくく感じる可能性がある。
+- Mitigation: 色相は変えず、`Secondary` 色に対して軽い不透明度調整だけを加える最小変更に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `HelpTextStyle` / `MutedTextStyle` の参照箇所を再検索し、説明文だけが `HelpTextStyle` に移っていることを確認
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**

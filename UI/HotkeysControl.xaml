@@ -11,7 +11,7 @@
                                           Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableRawInputHotkeys, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <TextBlock Text="NOTE: Use this when some apps ignore standard RegisterHotKey."
-                                           Style="{StaticResource MutedTextStyle}"
+                                           Style="{StaticResource HelpTextStyle}"
                                            Margin="0,2,0,0" />
                                 <Grid Margin="0,6,0,0">
                                     <Grid.ColumnDefinitions>
@@ -205,7 +205,7 @@
                                     </StackPanel>
                                 </Grid>
                                 <TextBlock Text="Note: Win key is not supported."
-                                           Style="{StaticResource MutedTextStyle}"
+                                           Style="{StaticResource HelpTextStyle}"
                                            Margin="0,8,0,0" />
     </StackPanel>
 </UserControl>
