@@ -20856,3 +20856,33 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:34 (Asia/Taipei) — Tighten overview alignment and remove current pair**
+
+### Summary
+- `Overview` の中央余白と改行をさらに減らし、`Current pair` を削除して比較イメージに近づけた。
+
+### Context / Goal
+- 直前の `Overview` はブロック構造は整ったが、まだ中央の空きと一部の縦積みが残っていた。
+- `Current pair` のような重複情報を減らしつつ、`Quick Controls`、`Current Setup`、`Language & Actions`、`Hook / Fullscreen` の整列感を上げたかった。
+
+### Changes
+- `Language & Actions` から `Current pair` 表示を削除した。
+- `Quick Controls` の操作行を列揃えしやすい `Grid` ベースへ変え、左右列の間隔を縮めた。
+- `Current Setup` の左右セット間隔を詰め、中央の余白を減らした。
+- `Language & Actions` の左右列間隔をさらに縮めた。
+- `Hook / Fullscreen` の `Mode summary` と状態値を同じ行に並べた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Overview` の上部整列、`Current pair` 削除、中央余白圧縮、Hook 要約の1行化を行った。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` は比較イメージに近い横方向の整列になり、不要な1段が減って全体の高さが短くなった。
+- 設定値やコマンドの動作は変わらない。
+
+### Risk & Mitigation
+- Risk: 列間隔を詰めたことで、長い文字列がある項目では窮屈に見える可能性がある。
+- Mitigation: 今回は `Overview` のみを対象にし、既定ウィンドウ幅前提で列幅を保ちながら中央余白だけを縮めている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

@@ -48,10 +48,10 @@
     <StackPanel Margin="0,6,0,0" Width="840" HorizontalAlignment="Left">
         <Border Style="{StaticResource OverviewBlockBorderStyle}">
             <StackPanel>
-                <Grid Margin="0,0,0,8">
+                <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="18" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Quick Controls" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
@@ -64,7 +64,7 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -72,25 +72,41 @@
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                    <Grid Grid.Row="0" Grid.Column="0" Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
-                        <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
-                    </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                    </Grid>
 
-                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal">
+                    <Grid Grid.Row="0" Grid.Column="2" Margin="0,0,0,2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
-                        <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
-                    </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                    </Grid>
 
-                    <StackPanel Grid.Row="1" Grid.Column="0" Orientation="Horizontal">
+                    <Grid Grid.Row="1" Grid.Column="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
-                        <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
-                    </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                    </Grid>
 
-                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal">
+                    <Grid Grid.Row="1" Grid.Column="2">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
                         <TextBlock Text="Lock window" Style="{StaticResource QuickControlNameStyle}" />
-                        <TextBlock Text="{Binding LockWindowHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
-                    </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding LockWindowHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
+                    </Grid>
                 </Grid>
 
                 <Border Margin="0,2,0,0"
@@ -120,8 +136,8 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="120" />
-                        <ColumnDefinition Width="240" />
-                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="250" />
+                        <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="140" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
@@ -155,8 +171,8 @@
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="24" />
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="12" />
+                        <ColumnDefinition Width="330" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
@@ -239,13 +255,6 @@
                             </TextBox>
                         </Grid>
 
-                        <TextBlock Text="Current pair" Style="{StaticResource OverviewLabelStyle}" />
-                        <TextBlock Style="{StaticResource OverviewValueStyle}">
-                            <Run Text="{Binding SourceLanguageSummary, Mode=OneWay}" />
-                            <Run Text=" -> " />
-                            <Run Text="{Binding TargetLanguageSummary, Mode=OneWay}" />
-                        </TextBlock>
-
                         <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
                         <ComboBox Width="280"
                                   Margin="0,0,0,6"
@@ -259,7 +268,7 @@
                             <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
                         </ComboBox>
 
-                        <StackPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
                             <TextBlock x:Name="WinRtLanguagePackStatusText"
                                        VerticalAlignment="Center"
                                        Style="{StaticResource OverviewMutedTextStyle}"
@@ -387,8 +396,14 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" />
-                        <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" Margin="0,0,8,0" />
+                            <TextBlock Grid.Column="1" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" Margin="0" VerticalAlignment="Center" />
+                        </Grid>
                         <CheckBox Content="Enable Graphics Hook pipeline"
                                   Margin="0,0,0,4"
                                   IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
