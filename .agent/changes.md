@@ -21097,3 +21097,63 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
+
+**2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
+
+### Summary
+- サイドパネルの `ListBoxItem` を `WPF UI` 既定スタイル継承へ戻し、文字色とテーマ反映を復元した。
+
+### Context / Goal
+- サイドパネルは背景だけダークテーマに追従していたが、文字色が標準テーマ色になっていなかった。
+- 原因は自前テンプレートで `ListBoxItem` の既定スタイル情報を消していたことだったため、`WPF UI` 既定スタイルをベースに戻したかった。
+
+### Changes
+- `SidebarListBoxItemStyle` に `BasedOn="{StaticResource {x:Type ListBoxItem}}"` を追加した。
+- 自前の `ControlTemplate` を削除し、背景と選択状態だけをプロパティ/トリガーで上書きする構成へ変更した。
+- 前景色を `TextFillColorPrimaryBrush` に合わせた。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — サイドパネルの `ListBoxItem` スタイルを `WPF UI` 既定スタイル継承へ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- サイドパネルの文字色がダーク/ライトテーマに追従するようになった。
+- 選択やホバーの見た目は維持しつつ、文字色や既定のコントロール表現は `WPF UI` 側に委ねる構成になった。
+
+### Risk & Mitigation
+- Risk: `WPF UI` 既定テンプレートの余白やアニメーションが部分的に戻る可能性がある。
+- Mitigation: 余白、背景、選択状態は引き続きこのスタイル側で最小限上書きしている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 18:55 (Asia/Taipei) — Move SystemThemeWatcher unwatch to closing phase**
+
+### Summary
+- `SystemThemeWatcher.UnWatch(this)` を `Closed` から `Closing` へ移し、正常終了時の未処理例外を解消した。
+
+### Context / Goal
+- ウィンドウを通常操作で閉じた際に、終了コードが異常値となり正常終了していなかった。
+- 調査の結果、`Closed` 時点では HWND が無効化されており、`SystemThemeWatcher.UnWatch(this)` が `Could not get window handle.` で落ちていた。
+
+### Changes
+- `Closing += OnClosing` を追加した。
+- `OnClosing` で `SystemThemeWatcher.UnWatch(this)` を実行するようにした。
+- `OnClosed` から `SystemThemeWatcher.UnWatch(this)` を削除した。
+
+### Files Touched
+- `MainWindow.xaml.cs` — `SystemThemeWatcher.UnWatch(this)` の実行タイミングを `Closed` から `Closing` に移した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 通常のウィンドウクローズ時に、未処理例外で落ちず正常終了するようになった。
+- テーマ監視の解除はウィンドウハンドルが生きているタイミングで行われる。
+
+### Risk & Mitigation
+- Risk: `Closing` はキャンセル可能イベントのため、将来的に終了キャンセルを入れる場合はタイミングを再検討する必要がある。
+- Mitigation: 現状は終了キャンセル処理が存在せず、`UnWatch` の責務も軽いため最小かつ妥当な移動に留めている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `Hotkey-Translator.exe` を起動し `CloseMainWindow()` で終了確認
+- 終了コード `0` を確認

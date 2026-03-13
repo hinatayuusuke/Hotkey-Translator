@@ -263,7 +263,14 @@ public partial class MainWindow : FluentWindow, IMainWindowViewBridge, ISettings
         sceneChangeController = _sceneChangeController;
         PopulateHotkeyKeyBoxes();
         Loaded += OnLoaded;
+        Closing += OnClosing;
         Closed += OnClosed;
+    }
+
+    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    {
+        // WHY: WPF UI requires a live HWND when unwatching; Closed is too late in the teardown sequence.
+        SystemThemeWatcher.UnWatch(this);
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -423,7 +430,6 @@ public partial class MainWindow : FluentWindow, IMainWindowViewBridge, ISettings
     private void OnClosed(object? sender, EventArgs e)
     {
         _isClosing = true;
-        SystemThemeWatcher.UnWatch(this);
         EnsureMirrorOverlayTopmostTimerActive(false);
         _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
         _roiPresetPreviewClearTimer.Stop();
