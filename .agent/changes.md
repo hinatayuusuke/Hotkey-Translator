@@ -21409,6 +21409,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --project .\Hotkey-Translator.csproj` を 8 秒間起動し、`Hotkey-Translator` プロセスが生存することを確認後に停止
+
+**2026-03-13 22:32 (Asia/Taipei) — Force DWM caption and title text colors**
+
+### Summary
+- 標準タイトルバーのアプリ名が見えない問題に対して、DWM のキャプション背景色と文字色を明示設定するようにした。
+
+### Context / Goal
+- 調査ログから `DWMWA_USE_IMMERSIVE_DARK_MODE` 自体は成功していたが、タイトルバー背景と文字色の最終決定は Windows 側に委ねられており、タイトル文字が見えない配色になっていた。
+- 標準タイトルバーは DWM 描画のまま維持しつつ、タイトル文字の可視性を安定させたかった。
+
+### Changes
+- `AppThemeController` に `DWMWA_CAPTION_COLOR` と `DWMWA_TEXT_COLOR` の適用を追加した。
+- ダーク時は暗いキャプション背景 + 白文字、ライト時は明るいキャプション背景 + 黒文字を明示するようにした。
+- `stage=app_theme` ログへ `caption_color` / `caption_hr` / `text_color` / `text_hr` を追加した。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — DWM の caption/text 色設定と結果返却を追加した。
+- `MainWindow.xaml.cs` — テーマ適用ログへ caption/text 色の情報を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 標準タイトルバーの背景色と文字色がテーマ切替時に明示制御され、アプリ名が見えない配色になりにくくなる。
+- ランタイムログから `UseImmersiveDarkMode` に加えて `caption/text` の DWM 適用結果も確認できる。
+
+### Risk & Mitigation
+- Risk: Windows のアクセント/個人設定よりアプリ側のタイトルバー色を優先するため、OS 標準配色から少し外れる場合がある。
+- Mitigation: ライト/ダークそれぞれで標準に近い無難なキャプション色を使い、標準タイトルバー描画自体は DWM に任せたままにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --project .\Hotkey-Translator.csproj` を 8 秒間起動し、`Hotkey-Translator` プロセスが生存することを確認後に停止
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**

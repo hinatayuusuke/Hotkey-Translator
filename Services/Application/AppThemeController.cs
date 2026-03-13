@@ -16,13 +16,24 @@ internal readonly record struct AppThemeApplyResult(
     int? PreferredAttribute,
     int? PreferredHResult,
     int? FallbackAttribute,
-    int? FallbackHResult);
+    int? FallbackHResult,
+    uint? CaptionColor,
+    int? CaptionColorHResult,
+    uint? TextColor,
+    int? TextColorHResult);
 
 internal sealed class AppThemeController
 {
     // COMPAT: Windows 11 uses attribute 20, while older Windows 10 builds may only honor 19.
     private const int DwmUseImmersiveDarkModeAttribute = 20;
     private const int DwmUseImmersiveDarkModeLegacyAttribute = 19;
+    private const int DwmCaptionColorAttribute = 35;
+    private const int DwmTextColorAttribute = 36;
+
+    private static readonly uint DarkCaptionColor = ToColorRef(31, 31, 31);
+    private static readonly uint LightCaptionColor = ToColorRef(243, 243, 243);
+    private static readonly uint DarkTextColor = ToColorRef(255, 255, 255);
+    private static readonly uint LightTextColor = ToColorRef(0, 0, 0);
 
     public AppThemeApplyResult Apply(AppSettings settings, Window window)
     {
@@ -45,6 +56,8 @@ internal sealed class AppThemeController
         bool useDarkTitleBar)
     {
         var handle = new WindowInteropHelper(window).Handle;
+        var captionColor = useDarkTitleBar ? DarkCaptionColor : LightCaptionColor;
+        var textColor = useDarkTitleBar ? DarkTextColor : LightTextColor;
         if (handle == IntPtr.Zero)
         {
             return new AppThemeApplyResult(
@@ -55,33 +68,41 @@ internal sealed class AppThemeController
                 PreferredAttribute: null,
                 PreferredHResult: null,
                 FallbackAttribute: null,
-                FallbackHResult: null);
+                FallbackHResult: null,
+                CaptionColor: captionColor,
+                CaptionColorHResult: null,
+                TextColor: textColor,
+                TextColorHResult: null);
         }
 
         var preferredHr = SetDwmWindowAttribute(handle, DwmUseImmersiveDarkModeAttribute, useDarkTitleBar);
-        if (preferredHr == 0)
+        int? fallbackAttribute = null;
+        int? fallbackHr = null;
+        var darkTitleBarApplied = preferredHr == 0;
+        if (!darkTitleBarApplied)
         {
-            return new AppThemeApplyResult(
-                applicationTheme,
-                handle,
-                useDarkTitleBar,
-                DarkTitleBarApplied: true,
-                PreferredAttribute: DwmUseImmersiveDarkModeAttribute,
-                PreferredHResult: preferredHr,
-                FallbackAttribute: null,
-                FallbackHResult: null);
+            fallbackAttribute = DwmUseImmersiveDarkModeLegacyAttribute;
+            fallbackHr = SetDwmWindowAttribute(handle, DwmUseImmersiveDarkModeLegacyAttribute, useDarkTitleBar);
+            darkTitleBarApplied = fallbackHr == 0;
         }
 
-        var fallbackHr = SetDwmWindowAttribute(handle, DwmUseImmersiveDarkModeLegacyAttribute, useDarkTitleBar);
+        // WHY: Some Windows configurations accept immersive dark mode but still choose a caption
+        // palette that hides the title text, so we explicitly set caption/text colors as a fallback-safe default.
+        var captionColorHr = SetDwmColorAttribute(handle, DwmCaptionColorAttribute, captionColor);
+        var textColorHr = SetDwmColorAttribute(handle, DwmTextColorAttribute, textColor);
         return new AppThemeApplyResult(
             applicationTheme,
             handle,
             useDarkTitleBar,
-            DarkTitleBarApplied: fallbackHr == 0,
+            DarkTitleBarApplied: darkTitleBarApplied,
             PreferredAttribute: DwmUseImmersiveDarkModeAttribute,
             PreferredHResult: preferredHr,
-            FallbackAttribute: DwmUseImmersiveDarkModeLegacyAttribute,
-            FallbackHResult: fallbackHr);
+            FallbackAttribute: fallbackAttribute,
+            FallbackHResult: fallbackHr,
+            CaptionColor: captionColor,
+            CaptionColorHResult: captionColorHr,
+            TextColor: textColor,
+            TextColorHResult: textColorHr);
     }
 
     private static int SetDwmWindowAttribute(IntPtr handle, int attribute, bool enabled)
@@ -89,6 +110,15 @@ internal sealed class AppThemeController
         var value = enabled ? 1 : 0;
         return DwmSetWindowAttribute(handle, attribute, ref value, Marshal.SizeOf<int>());
     }
+
+    private static int SetDwmColorAttribute(IntPtr handle, int attribute, uint colorRef)
+    {
+        var value = unchecked((int)colorRef);
+        return DwmSetWindowAttribute(handle, attribute, ref value, Marshal.SizeOf<int>());
+    }
+
+    private static uint ToColorRef(byte red, byte green, byte blue) =>
+        (uint)(red | (green << 8) | (blue << 16));
 
     [DllImport("dwmapi.dll")]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
