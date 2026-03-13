@@ -9,8 +9,8 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 
 ## 2. ゴール / 非ゴール
 ### ゴール
-- オーバーレイの表示挙動を、設定コンソールから迷わず調整できること
-- OCR / Translation / Hook / Hotkey / Runtime 状態の責務が画面上で明確に分かれること
+- オーバーレイの表示挙動と Hook / Fullscreen の成立条件を、設定コンソールから迷わず調整できること
+- OCR / Translation / Hook / Fullscreen / Hotkey / Runtime 状態の責務が画面上で明確に分かれること
 - 設定変更後に、Preview / Log / テスト操作で結果をすぐ検証できること
 - 高密度な設定画面でも、項目の意味と影響範囲が読み取りやすいこと
 - 標準コントロールの操作感を壊さずにモダンな見た目へ寄せられること
@@ -51,6 +51,7 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - `Capture`
 - `OCR`
 - `Translation`
+- `Hook / Fullscreen`
 - `Overlay Behavior`
 - `Hotkeys`
 - `Runtime / Logs`
@@ -64,9 +65,16 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - 現在の source / target language
 - source / target language の即時変更
 - language swap
+- 現在の hook active / inactive
+- 現在の fullscreen / mirror fullscreen 状態
+- opacity
+- font size
+- fixed ROI overlay mode
+- 主要ホットキーの要約
+- 現在無効な主要ホットキーとその理由
 - オーバーレイ状態
 - 主な hotkey 一覧
-- `Run test`, `Select ROI`, `Open log` などの即時操作
+- `Run test`, `Select ROI` などの即時操作
 
 #### Capture
 - 取得対象、ROI、固定対象、取得方式
@@ -85,6 +93,14 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - 言語設定の詳細
 - ローカル翻訳系ランタイムの基本制御
 
+#### Hook / Fullscreen
+- Hook pipeline の有効化
+- Hook API / fallback / overlay rendering
+- launcher と起動連携
+- Steam launch options
+- mirror fullscreen と仮想フルスクリーン運用
+- 対象アプリごとの成立性に関わる主要設定
+
 #### Overlay Behavior
 - オーバーレイの表示条件
 - Auto Translate 条件
@@ -95,15 +111,18 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - ホットキー一覧
 - 入力経路
 - 対象アプリ操作中に影響の大きいトグルを集約する
+- 操作リファレンスとして、各ホットキーが何を起こすかを明示する
+- 現在の割り当て、機能、無効条件、注意事項を確認できるようにする
 
 #### Runtime / Logs
 - Preview
 - Log
+- ログ設定
 - 現在状態
 - エラー時の判断に必要な情報
 
 #### Advanced
-- Hook の詳細設定
+- Hook の診断系設定
 - エンジンごとの高度なパラメータ
 - 通常運用では触らない項目
 
@@ -116,8 +135,13 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 ### 5.5 Overview に置くべき主要設定
 - `Overview` には、現在の構成を誤認しやすく、かつ変更頻度の高い主要設定だけを置く
 - 特に言語選択は、オーバーレイ結果へ直接影響し、テスト操作とも近いため `Overview` に含める
+- Hook / Fullscreen の現在状態も、対象アプリで利用可能かを左右するため `Overview` に要約表示する
+- opacity, font size, fixed ROI overlay mode のような見た目へ直結する項目は `Overview` に含める
+- ホットキー主体のアプリであるため、主要ホットキーと現在使えない操作の理由も `Overview` に含める
 - ただし `Overview` に置くのは最小限の言語ペア操作に留める
 - 翻訳エンジン優先順位、詳細ランタイム設定、詳細な言語関連オプションは `Translation` に残す
+- Hook の主要設定は独立カテゴリへ置き、診断専用項目だけを `Advanced` に残す
+- ログ閲覧やログ設定は一般ユーザーの常用操作ではないため、`Runtime / Logs` に集約する
 
 ## 6. インターフェース設計
 ### 6.1 レイアウトルール
@@ -128,7 +152,7 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - 危険な設定や検証向け設定は muted ではなく注意表示で区別する
 
 ### 6.2 Basic / Advanced 分離
-- `VisionLLM`, `PaddleOCR`, `Llama.cpp`, `Hook` は `Basic` と `Advanced` を分ける
+- `VisionLLM`, `PaddleOCR`, `Llama.cpp`, `Hook / Fullscreen` は `Basic` と `Advanced` を分ける
 - 日常的に触る項目だけを最初に見せる
 - 調整用途の数値パラメータは Expander または別セクションへ分離する
 
@@ -136,6 +160,13 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 - Preview / Log は補助 UI ではなく、設定変更の検証ペインとして扱う
 - 開閉式の drawer でもよいが、存在感は弱めすぎない
 - OCR 前処理プレビューは `OCR` 設定との因果が見える位置づけにする
+
+### 6.4 ホットキーの伝え方
+- 説明を別ドキュメントへ逃がすのではなく、UI 内で常に辿れる形にする
+- `Overview` には `Quick Controls` 相当の領域を置き、主要ホットキーとその機能を常設表示する
+- `Hotkeys` は単なる割り当て編集画面ではなく、操作リファレンスも兼ねる
+- ホットキーが無効な場合は、無反応にせず理由を UI 上で示す
+- 状態依存で使えない操作は、現在状態と結びつけて説明する
 
 ## 7. 実装手順
 ### Step 1. 画面責務を再分類する
@@ -156,6 +187,8 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 ### Step 4. `Overview` と `Runtime / Logs` を整える
 - 常用設定ではなく、現状確認とテスト操作に特化させる
 - Preview / Log を「検証のための場所」として再定義する
+- 見た目へ直結する quick display settings は `Overview` へ、ログ閲覧とログ設定は `Runtime / Logs` へ分離する
+- `Overview` に主要ホットキーの要約と、現在無効な操作の理由表示を追加する
 
 ### Step 5. `OCR` と `Translation` を整理する
 - 項目数が多く、設定コンソールとしての価値が高い領域を先に整理する
@@ -164,6 +197,12 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 ### Step 6. `Overlay Behavior`, `Hotkeys`, `Advanced` を整理する
 - 頻度の低い設定は後段でよい
 - 高度設定は通常設定から視覚的に分離する
+- `Hotkeys` は設定画面に加えて、操作リファレンスとしても成立する構成にする
+
+### Step 6.5. `Hook / Fullscreen` を独立カテゴリとして整理する
+- 独占フルスクリーン対応や仮想フルスクリーン運用を、主要機能として扱う
+- 通常運用で触る項目と診断系項目を分離する
+- 対象アプリごとに必要になる設定を、`Advanced` ではなく到達しやすい位置へ置く
 
 ### Step 7. 最後にテーマと見た目を整える
 - 標準コントロールの自然な操作を優先する
@@ -179,12 +218,15 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 
 ### 可観測性
 - 失敗時に Preview / Log / 状態表示で判断できること
+- ホットキーが効かない場合に、現在状態と理由を UI から判断できること
 
 ### 互換性
 - 既存設定ファイルとの整合を保ちつつ UI 再編を行う
 
 ### 運用
-- テスト操作、再起動要否、現在の有効構成が UI から読み取れること
+- テスト操作、再起動要否、現在の有効構成、Hook / Fullscreen の成立状態が UI から読み取れること
+- 一般ユーザー向けの即時調整項目と、調査向けのログ導線が混在しないこと
+- ホットキー中心の操作体系を、UI 内の常設ガイドだけで追えること
 
 ## 9. リスクと緩和策
 - Risk: カテゴリ再編で既存利用者の muscle memory が変わる
@@ -192,6 +234,12 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 
 - Risk: 詳細設定を隠しすぎると調整作業が増える
 - Mitigation: `Advanced` へ完全移動せず、Basic の近くから Expander で到達可能にする
+
+- Risk: Hook を高度設定扱いすると、独占フルスクリーン系の主要ユースケースで到達性が悪くなる
+- Mitigation: Hook を独立カテゴリ化し、通常運用に必要な項目を `Hook / Fullscreen` に集約する
+
+- Risk: ホットキー主体なのに操作説明が UI 内で見えないと、押しても反応しないと誤解されやすい
+- Mitigation: `Overview` に主要ホットキー一覧と無効理由を表示し、`Hotkeys` を操作リファレンスとして整備する
 
 - Risk: 見た目だけ先に変えると保守性が改善しない
 - Mitigation: 最初にページ分割と共通フォーム化を行い、その後でテーマを入れる
@@ -207,7 +255,9 @@ UI モダン化の目的は、一般的なランチャー風の見た目に寄�
 ## 11. Definition of Done
 - `MainWindow` が設定コンソールとして役割分離されている
 - `Overview` が構成サマリとテスト操作に特化している
-- `OCR` / `Translation` / `Overlay Behavior` / `Hotkeys` / `Runtime / Logs` / `Advanced` の責務が明確である
+- `OCR` / `Translation` / `Hook / Fullscreen` / `Overlay Behavior` / `Hotkeys` / `Runtime / Logs` / `Advanced` の責務が明確である
+- `Overview` に見た目へ直結する quick display settings が整理され、ログ設定は `Runtime / Logs` に集約されている
+- 主要ホットキーと状態依存の無効理由が UI 内で追える
 - 日常設定と詳細設定が視覚的に分離されている
 - Preview / Log が設定変更の検証ペインとして機能している
 - 標準コントロールの操作感を壊さずに、見た目が一貫している

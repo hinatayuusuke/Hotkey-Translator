@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -58,6 +59,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         _requestSettingsSave = requestSettingsSave;
         Settings = settings;
         RuntimeStatus = runtimeStatus;
+        Settings.PropertyChanged += OnOverviewDependencyChanged;
+        RuntimeStatus.PropertyChanged += OnOverviewDependencyChanged;
         LlamaModelOptions = new ObservableCollection<LlamaModelOption>();
         VisionLlmModelOptions = new ObservableCollection<LlamaModelOption>();
         VisionLlmMmprojOptions = new ObservableCollection<LlamaModelOption>();
@@ -129,6 +132,128 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public IRelayCommand ToggleLogPaneCommand { get; }
 
     public IAsyncRelayCommand SaveSettingsCommand { get; }
+
+    public string CaptureModeSummary => Settings.CaptureModeTag switch
+    {
+        "Screen" => "Screen capture",
+        _ => "Active window capture"
+    };
+
+    public string CaptureProviderSummary
+    {
+        get
+        {
+            var provider = Settings.CaptureProviderTag switch
+            {
+                "Wgc" => "WGC",
+                "Dxgi" => "DXGI",
+                _ => "GDI"
+            };
+
+            return Settings.IsCaptureProviderFixed ? $"{provider} (fixed only)" : provider;
+        }
+    }
+
+    public string OcrEngineSummary => Settings.OcrEngineTag switch
+    {
+        "Paddle" => "PaddleOCR (uv)",
+        "PaddleVllm" => "PaddleOCR-VL (gRPC)",
+        "Ndl" => "NDLOCR-Lite (gRPC)",
+        "VisionLlm" => "VisionLLM (gRPC)",
+        _ => "WinRT (Windows)"
+    };
+
+    public string TranslationRouteSummary
+    {
+        get
+        {
+            var routes = new List<string>();
+
+            if (Settings.EnableDeepL)
+            {
+                routes.Add("DeepL");
+            }
+
+            if (Settings.EnableGemini)
+            {
+                routes.Add("Gemini");
+            }
+
+            if (Settings.EnableLlamaCppTranslation)
+            {
+                routes.Add("Llama.cpp");
+            }
+
+            if (Settings.EnableVisionLlmSharedLocalTranslation)
+            {
+                routes.Add("VisionLLM local");
+            }
+
+            return routes.Count == 0 ? "No translation engine enabled" : string.Join(" + ", routes);
+        }
+    }
+
+    public string SourceLanguageSummary => FormatLanguage(Settings.SourceLanguageTag, Settings.SourceLanguageCustom);
+
+    public string TargetLanguageSummary => FormatLanguage(Settings.TargetLanguageTag, Settings.TargetLanguageCustom);
+
+    public string HookStatusSummary
+    {
+        get
+        {
+            if (Settings.EnableGraphicsHookPipeline)
+            {
+                var api = Settings.GraphicsHookApiTag switch
+                {
+                    "Dx9" => "DX9",
+                    "Vulkan" => "Vulkan",
+                    _ => "DX11"
+                };
+
+                var overlay = Settings.GraphicsHookOverlayEnabled ? "overlay on" : "overlay off";
+                return $"Graphics Hook ({api}, {overlay})";
+            }
+
+            if (Settings.EnableMirrorFullscreenMode)
+            {
+                return "Mirror fullscreen (Magpie)";
+            }
+
+            return "Off";
+        }
+    }
+
+    public string OverlayStatusSummary =>
+        RuntimeStatus.IsBusy ? RuntimeStatus.BusyMessage : RuntimeStatus.TranslationStatusMessage;
+
+    public string RunOnceHotkeySummary => $"Run OCR / Translate: {FormatHotkey(Settings.HotkeyRunOnceKey, Settings.HotkeyRunOnceCtrl, Settings.HotkeyRunOnceAlt, Settings.HotkeyRunOnceShift)}";
+
+    public string ToggleOverlayHotkeySummary => $"Toggle overlay: {FormatHotkey(Settings.HotkeyToggleOverlayKey, Settings.HotkeyToggleOverlayCtrl, Settings.HotkeyToggleOverlayAlt, Settings.HotkeyToggleOverlayShift)}";
+
+    public string SelectRoiHotkeySummary => $"Select ROI: {FormatHotkey(Settings.HotkeySelectRoiKey, Settings.HotkeySelectRoiCtrl, Settings.HotkeySelectRoiAlt, Settings.HotkeySelectRoiShift)}";
+
+    public string ToggleMirrorFullscreenHotkeySummary => $"Mirror fullscreen: {FormatHotkey(Settings.HotkeyToggleMirrorFullscreenKey, Settings.HotkeyToggleMirrorFullscreenCtrl, Settings.HotkeyToggleMirrorFullscreenAlt, Settings.HotkeyToggleMirrorFullscreenShift)}";
+
+    public bool HasOverviewHotkeyWarning => !string.IsNullOrWhiteSpace(OverviewHotkeyWarning);
+
+    public string OverviewHotkeyWarning
+    {
+        get
+        {
+            if (Settings.EnableGraphicsHookPipeline)
+            {
+                // WHY: Lock/unlock target hotkeys do not work while the Graphics Hook pipeline owns capture routing.
+                return "Graphics Hook is active, so lock/unlock fixed target hotkeys are unavailable.";
+            }
+
+            if (!Settings.EnableRoi)
+            {
+                return "ROI is disabled. Auto-translate and ROI-specific flows will use the full capture area.";
+            }
+
+            return string.Empty;
+        }
+    }
 
     public void ResetTranslationPriority(IEnumerable<string> values)
     {
@@ -348,5 +473,63 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         {
             _suppressBottomDrawerSync = false;
         }
+    }
+
+    private void OnOverviewDependencyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        OnPropertyChanged(nameof(CaptureModeSummary));
+        OnPropertyChanged(nameof(CaptureProviderSummary));
+        OnPropertyChanged(nameof(OcrEngineSummary));
+        OnPropertyChanged(nameof(TranslationRouteSummary));
+        OnPropertyChanged(nameof(SourceLanguageSummary));
+        OnPropertyChanged(nameof(TargetLanguageSummary));
+        OnPropertyChanged(nameof(HookStatusSummary));
+        OnPropertyChanged(nameof(OverlayStatusSummary));
+        OnPropertyChanged(nameof(RunOnceHotkeySummary));
+        OnPropertyChanged(nameof(ToggleOverlayHotkeySummary));
+        OnPropertyChanged(nameof(SelectRoiHotkeySummary));
+        OnPropertyChanged(nameof(ToggleMirrorFullscreenHotkeySummary));
+        OnPropertyChanged(nameof(OverviewHotkeyWarning));
+        OnPropertyChanged(nameof(HasOverviewHotkeyWarning));
+    }
+
+    private static string FormatLanguage(string tag, string customValue)
+    {
+        if (string.Equals(tag, "custom", StringComparison.OrdinalIgnoreCase))
+        {
+            return string.IsNullOrWhiteSpace(customValue) ? "Custom" : $"Custom ({customValue.Trim()})";
+        }
+
+        return tag switch
+        {
+            "en" => "English",
+            "ja" => "Japanese",
+            "zh-Hant" => "Chinese (Traditional)",
+            "zh-Hans" => "Chinese (Simplified)",
+            "ru" => "Russian",
+            _ => tag
+        };
+    }
+
+    private static string FormatHotkey(string key, bool ctrl, bool alt, bool shift)
+    {
+        var parts = new List<string>(4);
+        if (ctrl)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (alt)
+        {
+            parts.Add("Alt");
+        }
+
+        if (shift)
+        {
+            parts.Add("Shift");
+        }
+
+        parts.Add(string.IsNullOrWhiteSpace(key) ? "(unassigned)" : key.Trim());
+        return string.Join("+", parts);
     }
 }

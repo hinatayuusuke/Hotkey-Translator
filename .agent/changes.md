@@ -19817,6 +19817,95 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
 - 文書更新のみ。コード実装・画面検証は未実施。
+
+**2026-03-13 00:14 (Asia/Taipei) — Add hotkey guidance strategy to settings console doc**
+
+### Summary
+- ホットキー主体アプリとして、操作伝達を UI 内の常設ガイドで行う方針を UI 推奨文書へ追記した。
+
+### Context / Goal
+- このアプリは対象アプリ側でホットキー操作するのが主であり、設定コンソール側で「何を押すと何が起きるか」を常に辿れる必要がある。
+- 別ドキュメント前提ではなく、`Overview` と `Hotkeys` で操作説明を成立させる方針を明文化したかった。
+
+### Changes
+- `Overview` に主要ホットキー要約と、現在無効な主要ホットキーの理由表示を追加した。
+- `Hotkeys` を割り当て編集だけでなく、操作リファレンスも兼ねる位置づけにした。
+- ホットキー無効時の理由表示を、インターフェース設計、実装手順、非機能要件、リスク、DoD に反映した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — ホットキーの伝え方、常設ガイド、無効理由表示、`Hotkeys` の操作リファレンス化を追記した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 設計では、ホットキー説明を `Overview` と `Hotkeys` に常設する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: `Overview` に情報を載せすぎると、構成サマリの可読性が落ちる。
+- Mitigation: 主要ホットキーと無効理由に限定し、完全な一覧と詳細説明は `Hotkeys` 側に寄せる方針を明記した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書更新のみ。コード実装・画面検証は未実施。
+
+**2026-03-13 00:08 (Asia/Taipei) — Refine overview quick settings and move log controls**
+
+### Summary
+- `Overview` に見た目へ直結する quick settings を追加し、ログ導線とログ設定は `Runtime / Logs` へ集約する方針へ UI 推奨文書を更新した。
+
+### Context / Goal
+- `Overview` は一般ユーザーがすぐに結果差を確認できる主要設定へ絞る方が、設定コンソールとして分かりやすい。
+- 一方でログは常用操作ではないため、即時調整項目と混在させず `Runtime / Logs` 側へ寄せたかった。
+
+### Changes
+- `Overview` に `opacity`、`font size`、`fixed ROI overlay mode` を追加した。
+- `Overview` から `Open log` を外した。
+- `Runtime / Logs` にログ設定を追加し、ログ関連導線をここへ集約する方針を追記した。
+- `Overview` と `Runtime / Logs` の責務分離を、実装手順、運用要件、DoD に反映した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — `Overview` の quick display settings と `Runtime / Logs` のログ関連責務を更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 設計では、見た目調整は `Overview`、ログ閲覧とログ設定は `Runtime / Logs` へ配置する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: `Overview` に quick settings を追加しすぎると、構成サマリとしての簡潔さが薄れる可能性がある。
+- Mitigation: 追加対象を見た目へ直結する 3 項目に限定し、ログ関連は `Runtime / Logs` 側へ分離した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書更新のみ。コード実装・画面検証は未実施。
+
+**2026-03-13 00:02 (Asia/Taipei) — Promote Hook to top-level settings category in UI doc**
+
+### Summary
+- Hook を `Advanced` 扱いではなく、独立した上位カテゴリ `Hook / Fullscreen` として扱う方針へ UI 推奨文書を更新した。
+
+### Context / Goal
+- Hook は独占フルスクリーン対応や仮想フルスクリーン運用を成立させる主要機能であり、単なる高度設定ではない。
+- 通常運用でも到達しやすい位置に置くべき機能として、文書上のカテゴリ設計を修正したかった。
+
+### Changes
+- 推奨ナビゲーション構成に `Hook / Fullscreen` を追加した。
+- `Overview` に Hook / Fullscreen の現在状態要約を追加した。
+- `Hook / Fullscreen` の役割を独立節として追加し、`Advanced` は診断系設定中心へ整理した。
+- 実装手順、非機能要件、リスク、DoD を Hook 独立前提に更新した。
+
+### Files Touched
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` — Hook を独立上位カテゴリとして扱う情報設計と責務分離へ更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- コード変更は未実施。今後の UI 設計では、Hook / Fullscreen を主要機能として独立配置する判断材料が増えた。
+
+### Risk & Mitigation
+- Risk: Hook を主要カテゴリへ引き上げることで、全体ナビゲーション項目数が増える。
+- Mitigation: `Overview` には状態要約のみを置き、通常運用で必要な主要設定だけを `Hook / Fullscreen` に集約する方針を明記した。
+
+### Tests / Verification
+- `Get-Content .\Doc\Wpf_SettingsConsole_Modernization_Recommendation.md -Encoding UTF8`
+- 文書更新のみ。コード実装・画面検証は未実施。
 >>>>>>> 2bc7f20e78b3a24ede5366153dd6192342540ffa
 
 **2026-03-12 20:11 (Asia/Taipei) — Refine VisionLLM line classification plan**
@@ -19943,3 +20032,65 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -v minimal
 - 実機の VisionLLM model/mmproj mismatch 再現確認は未実施。
+
+**2026-03-13 10:09 (Asia/Taipei) — Implement overview prototype on Home tab**
+
+### Summary
+- `Home` タブ先頭に Step 1.5 用の `Overview` プロトタイプを実装し、設定コンソール再編の見え方を実機で確認できる状態にした。
+
+### Context / Goal
+- `Doc/Wpf_SettingsConsole_Modernization_Recommendation.md` を踏まえ、全体再編前に `Overview` だけを先行実装して情報密度と導線を確認したかった。
+- 既存の設定保存・動作は崩さず、現在構成サマリ、言語、見た目調整、Hook 状態、主要ホットキーの見せ方を先に試したかった。
+
+### Changes
+- `Home` タブ先頭へ `Overview` プロトタイプを追加し、`Current Setup`、`Language & Actions`、`Quick Display Settings`、`Hook / Fullscreen`、`Quick Controls` のカードを配置した。
+- `MainWindowViewModel` に `Overview` 用の集約表示プロパティを追加し、設定変更や runtime 状態更新に追従してサマリ表示が更新されるようにした。
+- 既存 `Home` の詳細クイック設定群は比較用として残し、プロトタイプ期間中も従来操作を継続できるようにした。
+
+### Files Touched
+- `MainWindow.xaml` — `Home` タブ先頭に `Overview` プロトタイプ、軽量スタイル、カード構成、主要ホットキー警告表示を追加した。
+- `ViewModels/MainWindowViewModel.cs` — `Overview` 向けの capture/OCR/translation/hook/hotkey summary と警告表示ロジックを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- アプリ起動時の `Home` タブで、新しい `Overview` 風レイアウトをすぐ確認できるようになった。
+- 既存の設定機能は残しているため、従来の `Home` 内操作も継続可能である。
+
+### Risk & Mitigation
+- Risk: プロトタイプ期間中は `Overview` と従来の `Home` 詳細操作が同一画面に共存し、情報量が多く見える可能性がある。
+- Mitigation: `Overview` を画面先頭へ置き、従来 UI は「legacy quick settings」として明示的に区切った。
+- Risk: 集約表示プロパティの通知漏れでサマリが更新されない可能性がある。
+- Mitigation: `SettingsViewModel` と `RuntimeStatusViewModel` の `PropertyChanged` を購読し、`Overview` 依存プロパティを一括で再通知するようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- 画面の手動見た目確認は未実施。
+
+**2026-03-13 10:23 (Asia/Taipei) — Fix Overview startup binding crash**
+
+### Summary
+- `Overview` プロトタイプ追加後に `dotnet run` で起動直後に落ちる問題を修正した。
+
+### Context / Goal
+- `dotnet run` 実行時、WPF が `MainWindow` 初期化中に読み取り専用プロパティへの不正な TwoWay バインドで例外終了していた。
+- 起動失敗原因を特定し、`Overview` 試作をそのまま起動確認できる状態へ戻したかった。
+
+### Changes
+- `MainWindow.xaml` の `Current pair` 表示で使っていた `Run.Text` バインドを `Mode=OneWay` に修正した。
+- 例外再現後に残留していた起動済みプロセスを停止し、再ビルドで修正後の整合を確認した。
+
+### Files Touched
+- `MainWindow.xaml` — `SourceLanguageSummary` / `TargetLanguageSummary` の `Run.Text` バインドを読み取り専用プロパティに適した `OneWay` に修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `dotnet run` での起動直後クラッシュは解消され、WPF ウィンドウが通常どおり起動する状態になった。
+- 以後の再ビルドも、起動済みプロセスを残さなければ正常に完了する。
+
+### Risk & Mitigation
+- Risk: `Overview` 内の他の読み取り専用サマリ表示でも、Control ごとの既定バインドモード差異で同種の問題が起こる可能性がある。
+- Mitigation: 読み取り専用集約プロパティを `Run` などへバインドする箇所は `Mode=OneWay` を明示する方針で扱う。
+
+### Tests / Verification
+- `dotnet run --project .\Hotkey-Translator.csproj` — 修正前は読み取り専用プロパティへの TwoWay バインド例外で起動失敗、修正後はアプリ起動でプロセス待機に変化した。
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
