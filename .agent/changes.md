@@ -21863,6 +21863,234 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-14 00:36 (Asia/Taipei) — Reduce whitespace inside the language swap icon by tightening path coordinates**
+
+### Summary
+- 言語交換アイコンの `Path` 座標を外側へ広げ、同じボタン内で線が大きく見えるようにした。
+
+### Context / Goal
+- ボタン自体を大きくしても、アイコン形状の余白が多いため見た目の改善が弱かった。
+- 位置やボタンサイズは維持したまま、アイコン内部の占有率だけを上げたかった。
+
+### Changes
+- 左側の縦線と上向き矢印を外側へ広げるように `Path` 座標を調整した。
+- 右側の縦線と下向き矢印も同様に外側へ広げ、アイコン全体の余白を削った。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 言語交換アイコンの `Path` 座標を詰めた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 交換アイコンは同じボタンサイズのまま、線と矢印がより大きく見える。
+- ボタン位置や周辺レイアウトは変わらない。
+
+### Risk & Mitigation
+- Risk: 外側へ広げすぎると、小サイズ表示時に窮屈に見える可能性がある。
+- Mitigation: 今回は 24x24 キャンバス内に収めたまま、端まで使い切る方向に限定して微調整した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:33 (Asia/Taipei) — Enlarge the language swap button for visual verification**
+
+### Summary
+- 言語交換ボタンの位置は変えず、ボタン自体を `34x34` に拡大した。
+
+### Context / Goal
+- アイコンだけを拡大しても見た目の変化が弱く、原因がボタン枠側かを切り分けたかった。
+- まずはボタン自体を大きくし、視認性が上がるかを確認できる状態にしたかった。
+
+### Changes
+- `OverviewControl` の交換ボタンサイズを `28x28` から `34x34` へ変更した。
+- ボタン位置やアイコン形状はそのまま維持した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 言語交換ボタンのサイズを拡大した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 交換ボタンは同じ位置のまま、クリック領域と見た目のサイズが大きくなる。
+- 周辺フォームのレイアウト構造は変わらない。
+
+### Risk & Mitigation
+- Risk: ボタンだけ大きくなることで、Source/Target の間で少し浮いて見える可能性がある。
+- Mitigation: 今回は検証目的のサイズ変更に限定し、位置やグリッド構造には手を入れていない。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:29 (Asia/Taipei) — Enlarge the language swap icon without moving the button**
+
+### Summary
+- 言語交換ボタンの位置は変えず、アイコンだけをさらに大きくした。
+
+### Context / Goal
+- 現在の問題は主にアイコンの視認性不足で、まず位置を触らずにアイコンサイズだけ確認したかった。
+- ボタンレイアウトを維持したまま、交換操作だと認識しやすい見た目へ寄せたかった。
+
+### Changes
+- `OverviewControl` の交換ボタン内 `Viewbox` を `18x18` から `22x22` へ拡大した。
+- 内部の SVG 由来 `Path` 形状は維持し、占有率だけを上げた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 交換アイコンの表示サイズを拡大した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 交換ボタンは同じ位置のまま、アイコンだけが大きく見える。
+- ボタンのレイアウトや周囲のフォーム寸法は変わらない。
+
+### Risk & Mitigation
+- Risk: 28x28 ボタン内でアイコンが窮屈に見える可能性がある。
+- Mitigation: 今回は `Path` 形状自体は変えず、サイズだけを段階的に上げて確認しやすくした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:18 (Asia/Taipei) — Increase the size of the custom language swap icon**
+
+### Summary
+- 言語交換ボタンのベクターアイコンを一段大きくして、視認性を上げた。
+
+### Context / Goal
+- ベクター化した交換アイコン自体の方向性は良かったが、ボタン内で少し小さく見えていた。
+- ボタン枠は変えずに、アイコンだけを拡大して視認性を改善したかった。
+
+### Changes
+- `OverviewControl` の交換ボタン内 `Viewbox` を `14x14` から `18x18` へ拡大した。
+- 内部 `Canvas` も `16x16` から `20x20` へ合わせて拡大した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 交換アイコンの表示サイズを拡大した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 言語交換アイコンがボタン内で一段大きく表示され、交換操作として認識しやすくなる。
+- ボタンの位置やレイアウト寸法は変わらない。
+
+### Risk & Mitigation
+- Risk: 大きくしすぎると 28x28 ボタン内で余白が窮屈に見える可能性がある。
+- Mitigation: 今回はボタンサイズ自体は変えず、1 段階の拡大に限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`（起動中の `Hotkey-Translator.exe` により `apphost.exe` コピー再試行警告あり、ビルド自体は成功）
+
+**2026-03-14 00:27 (Asia/Taipei) — Replace the language swap icon with the provided SVG-style stroke paths**
+
+### Summary
+- 言語交換ボタンのアイコンを、ユーザー指定の SVG 形状に対応する `Path` 群へ差し替えた。
+
+### Context / Goal
+- 既存の自作ベクターアイコンは方向性は合っていたが、形状としてはまだ意図とずれていた。
+- 提示された SVG の上下交換アイコンを、WPF でそのまま再現したかった。
+
+### Changes
+- `OverviewControl` の交換ボタン内アイコンを、4 本の `Stroke` ベース `Path` で構成する上下交換アイコンへ変更した。
+- 色はブラウザ用 CSS ではなく、WPF の `DynamicResource TextFillColorPrimaryBrush` でテーマ追従させた。
+- 線端と線結合は SVG 指定に合わせて `Round` にそろえた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 交換ボタンのアイコン形状を、指定 SVG に対応する `Path` 群へ置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 言語交換ボタンは、より明確な上下交換アイコンで表示される。
+- ライト/ダーク両テーマで、テキスト色資源に追従して見える。
+
+### Risk & Mitigation
+- Risk: SVG の 24x24 ベース形状を小ボタンへ縮小しているため、実画面で線の密度がまだ微調整必要な可能性がある。
+- Mitigation: `Path` 化したことで、今後は線の長さ・太さ・余白を個別に詰められる状態にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:16 (Asia/Taipei) — Replace the language swap glyph with a custom vector icon**
+
+### Summary
+- 言語交換ボタンの文字アイコンをやめ、`Path` で描く上下交換アイコンへ置き換えた。
+
+### Context / Goal
+- 記号ベースのアイコンは見た目が不安定で、文字化けも起きていた。
+- ボタン位置は維持したまま、確実に交換操作に見える専用アイコンへ差し替えたかった。
+
+### Changes
+- `OverviewControl` の交換ボタン内を `TextBlock` から `Viewbox + Path` 構成へ変更した。
+- 上下の矢印を 2 本描くシンプルなベクターアイコンに置き換えた。
+- 再構成時に壊れていた言語選択 `ComboBoxItem` の表示名を安全な英語表記へ修正した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 交換ボタンのアイコンをベクター化し、壊れていた言語項目を修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 言語交換ボタンはフォント依存しない上下交換アイコンで表示される。
+- Source / Target の言語候補表示名は `Japanese`、`Traditional Chinese`、`Simplified Chinese`、`Russian` の英語表記になる。
+
+### Risk & Mitigation
+- Risk: 交換アイコンの線量や余白が、実画面ではまだ強すぎるまたは弱すぎる可能性がある。
+- Mitigation: `Path` ベースにしたことで、今後はフォントや文字化けに依存せず形状だけを微調整できる状態にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:10 (Asia/Taipei) — Correct the language swap button position without changing layout metrics**
+
+### Summary
+- 言語交換ボタンの見た目だけを下へずらし、レイアウト行高は元に戻した。
+
+### Context / Goal
+- 前回の調整ではグリッド行を増やしたため、ボタン位置だけでなくレイアウト自体が崩れていた。
+- レイアウト寸法は変えずに、ボタンだけを `Source` と `Target` の間に見える位置へ調整し直したかった。
+
+### Changes
+- `OverviewControl` の追加行定義を削除し、元の 1 行グリッド構成へ戻した。
+- 交換ボタンは `RenderTransform` で下方向へ視覚移動させ、レイアウト計算に影響しないようにした。
+- アイコンは MDL2 グリフをやめ、縦方向の交換が確実に伝わる `⇅` へ差し替えた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 言語交換ボタンの位置調整方法とアイコンを修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 言語交換ボタンは `Source` と `Target` の間寄りに見える一方、コンボボックスや入力欄のレイアウト寸法は変わらない。
+- アイコンは上下交換として読みやすくなる。
+
+### Risk & Mitigation
+- Risk: `RenderTransform` による視覚移動は、フォントや DPI によって最適位置がわずかに変わる可能性がある。
+- Mitigation: 今回はレイアウト破壊を避けることを優先し、位置調整量は最小の固定オフセットに留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 00:07 (Asia/Taipei) — Shift the language swap button downward and use a clearer vertical swap glyph**
+
+### Summary
+- 言語交換ボタンの位置を少し下へずらし、`Source` と `Target` の間に見えるようにした。
+
+### Context / Goal
+- 交換ボタンが `Source language` の付属ボタンに見えやすく、2 つの言語設定を入れ替える操作として読みにくかった。
+- 全体レイアウトは崩さずに、ボタン位置だけを下げて関係性を分かりやすくしたかった。
+
+### Changes
+- `OverviewControl` の言語設定グリッドに行定義を追加し、交換ボタンを下方向へ移動した。
+- ボタンは既存の列構成を維持したまま、`Source` と `Target` の間寄りに見える位置へ再配置した。
+- アイコンをより交換操作らしい縦方向のグリフへ変更した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 言語交換ボタンの位置とアイコンを調整した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 言語交換ボタンは少し下に配置され、`Source` と `Target` の入れ替え操作として認識しやすくなる。
+- 言語選択コンボボックスやカスタム入力欄の幅・列構成は変わらない。
+
+### Risk & Mitigation
+- Risk: 行定義追加により、Source 側のカスタム入力欄表示時に縦位置バランスが変わる可能性がある。
+- Mitigation: 列幅は一切変更せず、ボタン位置だけを移動する最小変更に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-13 23:27 (Asia/Taipei) — Keep preview content top-aligned even when an image is present**
 
 ### Summary

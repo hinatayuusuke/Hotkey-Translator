@@ -181,25 +181,52 @@
                                       SelectedValuePath="Tag"
                                       SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="English" Tag="en" />
-                                <ComboBoxItem Content="日本語" Tag="ja" />
-                                <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
-                                <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
-                                <ComboBoxItem Content="Русский" Tag="ru" />
+                                <ComboBoxItem Content="Japanese" Tag="ja" />
+                                <ComboBoxItem Content="Traditional Chinese" Tag="zh-Hant" />
+                                <ComboBoxItem Content="Simplified Chinese" Tag="zh-Hans" />
+                                <ComboBoxItem Content="Russian" Tag="ru" />
                                 <ComboBoxItem Content="Custom..." Tag="custom" />
                             </ComboBox>
                             <Button Grid.Column="1"
-                                    Width="28"
-                                    Height="28"
+                                    Width="42"
+                                    Height="42"
                                     Margin="6,0,0,0"
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
                                     Command="{Binding SwapLanguagesCommand}"
                                     ToolTip="Swap languages">
-                                <TextBlock FontFamily="Segoe MDL2 Assets"
-                                           FontSize="16"
-                                           Text="&#xE117;"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                <Button.RenderTransform>
+                                    <TranslateTransform Y="22" />
+                                </Button.RenderTransform>
+                                <Viewbox Width="22"
+                                         Height="22"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center">
+                                    <Canvas Width="24" Height="24">
+                                        <Path Data="M6 21V3"
+                                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" />
+                                        <Path Data="M2 7l4-4 4 4"
+                                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              StrokeLineJoin="Round" />
+                                        <Path Data="M18 3v18"
+                                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round" />
+                                        <Path Data="M14 17l4 4 4-4"
+                                              Stroke="{DynamicResource TextFillColorPrimaryBrush}"
+                                              StrokeThickness="2"
+                                              StrokeStartLineCap="Round"
+                                              StrokeEndLineCap="Round"
+                                              StrokeLineJoin="Round" />
+                                    </Canvas>
+                                </Viewbox>
                             </Button>
                             <TextBox Grid.Column="2"
                                      Margin="8,0,0,0"
@@ -227,10 +254,10 @@
                                       SelectedValuePath="Tag"
                                       SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="English" Tag="en" />
-                                <ComboBoxItem Content="日本語" Tag="ja" />
-                                <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
-                                <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
-                                <ComboBoxItem Content="Русский" Tag="ru" />
+                                <ComboBoxItem Content="Japanese" Tag="ja" />
+                                <ComboBoxItem Content="Traditional Chinese" Tag="zh-Hant" />
+                                <ComboBoxItem Content="Simplified Chinese" Tag="zh-Hans" />
+                                <ComboBoxItem Content="Russian" Tag="ru" />
                                 <ComboBoxItem Content="Custom..." Tag="custom" />
                             </ComboBox>
                             <TextBox Grid.Column="1"
