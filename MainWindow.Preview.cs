@@ -45,15 +45,15 @@ public partial class MainWindow
 
     private void OnOcrPreviewClicked(object sender, MouseButtonEventArgs e)
     {
-        _previewZoomCoordinator.ShowOrActivate(OcrPreprocessPreviewImage.Source);
+        _previewZoomCoordinator.ShowOrActivate(RuntimeLogsControl.OcrPreviewSource);
         e.Handled = true;
     }
 
     private void OnPinnedPreviewClicked(object sender, MouseButtonEventArgs e)
     {
-        if (PinnedCaptureThumbnailImage.Source != null)
+        if (RuntimeLogsControl.PinnedPreviewSource != null)
         {
-            _previewZoomCoordinator.ShowOrActivate(PinnedCaptureThumbnailImage.Source);
+            _previewZoomCoordinator.ShowOrActivate(RuntimeLogsControl.PinnedPreviewSource);
         }
 
         e.Handled = true;
@@ -84,23 +84,14 @@ public partial class MainWindow
 
     private void ApplyPreviewBitmapSource(BitmapSource source)
     {
-        OcrPreprocessPreviewImage.Source = source;
-        OcrPreprocessPreviewHint.Visibility = Visibility.Collapsed;
+        RuntimeLogsControl.SetOcrPreview(source);
         _previewZoomCoordinator.UpdateImage(source);
     }
 
     // WHY: Pinned capture must stay independent from OCR preview updates to avoid cross-refresh side effects.
     private void SetPinnedCaptureThumbnail(BitmapSource? source, string message)
     {
-        PinnedCaptureThumbnailImage.Source = source;
-        if (source == null)
-        {
-            PinnedCaptureThumbnailHint.Text = string.IsNullOrWhiteSpace(message) ? "No fixed target" : message;
-            PinnedCaptureThumbnailHint.Visibility = Visibility.Visible;
-            return;
-        }
-
-        PinnedCaptureThumbnailHint.Visibility = Visibility.Collapsed;
+        RuntimeLogsControl.SetPinnedThumbnail(source, message);
     }
 
     private static bool TryCapturePinnedThumbnail(long hwndValue, out BitmapSource? source, out string reason)

@@ -149,7 +149,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             this,
             Dispatcher,
             () => _mainWindowViewModel.IsBottomPanelOpen,
-            () => BottomDrawerBorder.ActualHeight,
+            () => RuntimeLogsControl.DrawerActualHeight,
             DrawerAutoResizeFallbackHeight,
             DrawerAutoResizeTolerance);
         _drawerLayoutController.SyncStartupState();
@@ -173,7 +173,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _logger,
             AppendLog);
         _magpieSessionController.ActiveStateChanged += OnMirrorSessionActiveStateChanged;
-        _uiLogViewAdapter = new UiLogViewAdapter(() => LogBox, MaxLogLines);
+        _uiLogViewAdapter = new UiLogViewAdapter(() => RuntimeLogsControl.LogTextBox, MaxLogLines);
         _uiLogController = new UiLogController(Dispatcher, _uiLogViewAdapter.FlushPayload, LogFlushIntervalMs);
         _winRtLanguagePackUiController = new WinRtLanguagePackUiController(
             this,

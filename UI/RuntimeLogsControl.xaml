@@ -1,0 +1,174 @@
+<UserControl x:Class="Hotkey_Translator.UI.RuntimeLogsControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:common="clr-namespace:Hotkey_Translator.UI.Common"
+             mc:Ignorable="d">
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
+        <local:BooleanToGridLengthConverter x:Key="BottomDrawerRowHeightConverter"
+                                            TrueLength="300"
+                                            FalseLength="0" />
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="{Binding IsBottomPanelOpen, Converter={StaticResource BottomDrawerRowHeightConverter}}" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Border x:Name="BottomDrawerBorder"
+                Grid.Row="0"
+                BorderBrush="#33000000"
+                BorderThickness="1"
+                Padding="8"
+                Background="#06000000"
+                MinHeight="140"
+                Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                </Grid.ColumnDefinitions>
+
+                <GroupBox Grid.Column="0"
+                          Header="Preview"
+                          MinWidth="220"
+                          Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TabControl Margin="4">
+                        <TabItem Header="OCR">
+                            <Grid Cursor="Hand"
+                                  MouseLeftButtonUp="OnOcrPreviewClicked">
+                                <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
+                                <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                           Text="Run OCR to update preview."
+                                           Foreground="DimGray"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                        <TabItem Header="Pinned">
+                            <Grid Cursor="Hand"
+                                  MouseLeftButtonUp="OnPinnedPreviewClicked">
+                                <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
+                                <TextBlock x:Name="PinnedCaptureThumbnailHint"
+                                           Text="No fixed target"
+                                           Foreground="DimGray"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                </GroupBox>
+
+                <GridSplitter Grid.Column="1"
+                              Width="6"
+                              HorizontalAlignment="Stretch"
+                              VerticalAlignment="Stretch"
+                              ResizeBehavior="PreviousAndNext"
+                              ResizeDirection="Columns">
+                    <GridSplitter.Style>
+                        <Style TargetType="GridSplitter">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Value="True">
+                                    <DataTrigger.Binding>
+                                        <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                            <Binding Path="BottomPreviewPaneVisible" />
+                                            <Binding Path="BottomLogPaneVisible" />
+                                        </MultiBinding>
+                                    </DataTrigger.Binding>
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </GridSplitter.Style>
+                </GridSplitter>
+
+                <GroupBox Grid.Column="2"
+                          Header="Log"
+                          MinWidth="280"
+                          Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <Grid Margin="4">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <common:FormSection Header="Logging settings"
+                                            Description="Runtime and OCR performance logging stay here so setup-oriented pages do not mix with diagnostic controls.">
+                            <common:FormSection.SectionContent>
+                                <StackPanel>
+                                    <common:LabeledFieldRow Label="Enable logging"
+                                                            LabelWidth="120"
+                                                            Description="Writes runtime and diagnostic messages to the log pane.">
+                                        <common:LabeledFieldRow.FieldContent>
+                                            <CheckBox Content="Enabled"
+                                                      IsChecked="{Binding Settings.EnableLogging, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </common:LabeledFieldRow.FieldContent>
+                                    </common:LabeledFieldRow>
+
+                                    <common:LabeledFieldRow Label="OCR perf log"
+                                                            LabelWidth="120"
+                                                            Description="Captures OCR timing entries when logging is enabled.">
+                                        <common:LabeledFieldRow.FieldContent>
+                                            <CheckBox Content="Enabled"
+                                                      IsEnabled="{Binding Settings.EnableLogging}"
+                                                      IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        </common:LabeledFieldRow.FieldContent>
+                                    </common:LabeledFieldRow>
+
+                                    <common:LabeledFieldRow Label="Threshold (ms)"
+                                                            LabelWidth="120"
+                                                            Description="Only timings slower than this value are written to the perf log.">
+                                        <common:LabeledFieldRow.FieldContent>
+                                            <TextBox Width="80"
+                                                     Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                                <TextBox.IsEnabled>
+                                                    <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                                        <Binding Path="Settings.EnableLogging" />
+                                                        <Binding Path="Settings.EnableOcrPerfLog" />
+                                                    </MultiBinding>
+                                                </TextBox.IsEnabled>
+                                            </TextBox>
+                                        </common:LabeledFieldRow.FieldContent>
+                                    </common:LabeledFieldRow>
+                                </StackPanel>
+                            </common:FormSection.SectionContent>
+                        </common:FormSection>
+
+                        <TextBox x:Name="LogBox"
+                                 Grid.Row="1"
+                                 Margin="0,10,0,0"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto" />
+                    </Grid>
+                </GroupBox>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="1"
+                Margin="0,8,0,0"
+                BorderBrush="#33000000"
+                BorderThickness="1"
+                Padding="8,4">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Preview" Command="{Binding TogglePreviewPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <Button Content="Log" Command="{Binding ToggleLogPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+    </Grid>
+</UserControl>

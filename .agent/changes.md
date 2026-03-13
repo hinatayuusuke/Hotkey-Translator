@@ -18892,6 +18892,45 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒のタイムアウトまで起動継続することを確認
+
+**2026-03-13 11:37 (Asia/Taipei) — Split runtime/logs into dedicated control**
+
+### Summary
+- `Runtime / Logs` 相当の下部 drawer とステータスバーを `RuntimeLogsControl` に切り出し、最小の共通フォーム部品を追加した。
+
+### Context / Goal
+- `Overview` の次の段階として、`MainWindow.xaml` からもう 1 つ責務の明確な塊を外し、ページ分割のパターンを増やしたかった。
+- ログ設定が `System` に混在していたため、診断系操作を log pane の近くへ寄せたかった。
+
+### Changes
+- `UI/RuntimeLogsControl.xaml` と `UI/RuntimeLogsControl.xaml.cs` を追加し、Preview / Log drawer と下部ステータスバーを移動した。
+- `UI/Common/FormSection` と `UI/Common/LabeledFieldRow` を追加し、`RuntimeLogsControl` 内の logging settings で使用する最小フォーム部品を用意した。
+- `System` セクションから logging settings を外し、`Runtime / Logs` へ移動したことを案内する文言へ置き換えた。
+- `MainWindow.xaml.cs` と `MainWindow.Preview.cs` は、新しい control 経由で log box / preview image / pinned thumbnail を扱うよう更新した。
+
+### Files Touched
+- `UI/RuntimeLogsControl.xaml` — 下部 Preview / Log drawer、logging settings、ステータスバーを追加した。
+- `UI/RuntimeLogsControl.xaml.cs` — preview click イベントと log / preview 要素の参照窓口を追加した。
+- `UI/Common/FormSection.xaml` — セクション見出しと説明文をまとめる最小共通部品を追加した。
+- `UI/Common/FormSection.xaml.cs` — `FormSection` の依存関係プロパティを追加した。
+- `UI/Common/LabeledFieldRow.xaml` — ラベル付き入力行の最小共通部品を追加した。
+- `UI/Common/LabeledFieldRow.xaml.cs` — `LabeledFieldRow` の依存関係プロパティを追加した。
+- `MainWindow.xaml` — 既存の下部 drawer / footer を `RuntimeLogsControl` へ置換し、`System` から logging settings を外した。
+- `MainWindow.xaml.cs` — drawer height と log adapter の参照先を `RuntimeLogsControl` に切り替えた。
+- `MainWindow.Preview.cs` — preview / pinned thumbnail の更新先を `RuntimeLogsControl` に切り替えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Preview / Log の見た目と基本操作は維持しつつ、logging settings が log pane の近くへ移動した。
+- `MainWindow.xaml` は下部ランタイム領域の詳細を持たなくなり、今後のページ分割を進めやすくなった。
+
+### Risk & Mitigation
+- Risk: `MainWindow` の partial code-behind が名前付き要素へ直接触っている箇所を見落とすと、preview や log 更新が壊れる。
+- Mitigation: `RuntimeLogsControl` に参照窓口と click イベントを用意し、`MainWindow.Preview.cs` と adapter 初期化をすべてそこ経由へ切り替えた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj`
 - `rg -n "stage=vision_geometry_hybrid event=summary|TryBuildSplitOutputsForVision|GeometryRunCandidate|NormalizedProjection" .\Services\VisionGeometryHybridAligner.cs`
 **2026-03-10 22:39 (Asia/Taipei) — VisionLLM hybrid の synthetic 改行維持**
 
