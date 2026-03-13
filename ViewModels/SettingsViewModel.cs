@@ -104,6 +104,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableGraphicsHookDiagFileSink;
     [ObservableProperty] private bool _enableGraphicsHookLauncher;
     [ObservableProperty] private string _resourceBudgetProfileTag = "Balanced";
+    [ObservableProperty] private string _appThemeModeTag = "Dark";
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
     [ObservableProperty] private bool _enableSceneChangeQuietWindow;
     [ObservableProperty] private string _phashThresholdText = string.Empty;
@@ -278,6 +279,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableGraphicsHookPerfDiagLog = settings.EnableGraphicsHookPerfDiagLog;
             EnableGraphicsHookDiagFileSink = settings.EnableGraphicsHookDiagFileSink;
             EnableGraphicsHookLauncher = settings.EnableGraphicsHookLauncher;
+            AppThemeModeTag = settings.ThemeMode == AppThemeMode.Light ? "Light" : "Dark";
             ResourceBudgetProfileTag = settings.ResourceBudgetProfile switch
             {
                 GraphicsResourceBudgetProfile.LowVram => "LowVram",
@@ -435,6 +437,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableGraphicsHookPerfDiagLog = EnableGraphicsHookPerfDiagLog;
         settings.EnableGraphicsHookDiagFileSink = EnableGraphicsHookDiagFileSink;
         settings.EnableGraphicsHookLauncher = EnableGraphicsHookLauncher;
+        settings.ThemeMode = string.Equals(AppThemeModeTag, "Light", StringComparison.OrdinalIgnoreCase)
+            ? AppThemeMode.Light
+            : AppThemeMode.Dark;
         settings.ResourceBudgetProfile = ResourceBudgetProfileTag switch
         {
             "LowVram" => GraphicsResourceBudgetProfile.LowVram,
@@ -1035,6 +1040,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableGraphicsHookDiagFileSinkChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookLauncherChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnAppThemeModeTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnResourceBudgetProfileTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookLauncherExePathChanged(string value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookLauncherArgsChanged(string value) => RequestSaveOnValueChange();

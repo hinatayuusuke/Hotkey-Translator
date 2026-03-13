@@ -21399,3 +21399,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
+
+**2026-03-13 20:33 (Asia/Taipei) — Add manual app theme switching with DWM title bar theming**
+
+### Summary
+- 標準タイトルバーを維持したまま、アプリ本体のライト/ダーク切り替えと DWM タイトルバー配色連動を追加した。
+
+### Context / Goal
+- `FluentWindow` を外すと、OS 標準タイトルバーは戻る一方で `SystemThemeWatcher` に依存していたダークテーマ適用も外れていた。
+- 標準タイトルバーの操作性を維持したまま、クライアント領域とタイトルバーの配色を手動切り替えできるようにしたかった。
+
+### Changes
+- `AppSettings` に保存対象の `ThemeMode` を追加し、設定ファイルへ永続化できるようにした。
+- `SettingsViewModel` と `SystemSettingsControl` にテーマ選択 UI を追加した。
+- `AppThemeController` を新設し、`WPF UI` のアプリテーマ適用と DWM のダークタイトルバー設定を一元化した。
+- `MainWindow` の初期化、設定反映、保存後再反映の各タイミングでテーマ適用処理を呼ぶようにした。
+
+### Files Touched
+- `Models/AppSettings.cs` — 手動テーマ切り替え状態を保存する `AppThemeMode` と `ThemeMode` を追加した。
+- `ViewModels/SettingsViewModel.cs` — テーマ選択値の読み込み、保存、変更時の自動保存連動を追加した。
+- `UI/SystemSettingsControl.xaml` — System 設定画面にテーマ選択 UI と補足文を追加した。
+- `Services/Application/AppThemeController.cs` — クライアント領域テーマ適用と DWM タイトルバー配色切り替えを実装した。
+- `MainWindow.xaml.cs` — ウィンドウ生成後と設定反映時に `AppThemeController` を呼ぶようにした。
+- `App.xaml` — 初期テーマをダークへ寄せ、起動直後の見た目と保存設定の既定値をそろえた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- System 画面の Theme からアプリ本体のライト/ダークを切り替えられる。
+- 標準 Windows タイトルバーを使ったまま、ダーク選択時は DWM にダークタイトルバーを要求する。
+- 設定は `settings.json` に保存され、次回起動時にも引き継がれる。
+
+### Risk & Mitigation
+- Risk: DWM のダークタイトルバー属性は OS ビルド差分があり、環境によっては適用されない場合がある。
+- Mitigation: Windows 11 系の属性 `20` を優先しつつ、旧 Windows 10 系の属性 `19` へフォールバックする実装にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。

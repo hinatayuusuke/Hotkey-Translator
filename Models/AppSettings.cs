@@ -40,10 +40,18 @@ public enum VerticalColumnOrder
     LeftToRight = 1
 }
 
+public enum AppThemeMode
+{
+    // COMPAT: Persisted to settings.json; keep numeric values stable.
+    Dark = 0,
+    Light = 1
+}
+
 public sealed class AppSettings
 {
     public List<RoiPreset> RoiPresets { get; set; } = new();
     public int ActiveRoiPresetIndex { get; set; }
+    public AppThemeMode ThemeMode { get; set; } = AppThemeMode.Dark;
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }
     public NormalizedRect? NormalizedRoi { get; set; }

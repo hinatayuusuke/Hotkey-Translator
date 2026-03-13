@@ -50,6 +50,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly MainWindowRunCoordinator _runCoordinator;
     private readonly WinRtOcrLanguagePackCoordinator _winRtLanguagePackCoordinator;
     private readonly BusyOverlayController _busyOverlayController;
+    private readonly AppThemeController _appThemeController = new();
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
     private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
@@ -109,6 +110,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
+        _appThemeController.Apply(_settingsService.Settings, this);
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
@@ -268,6 +270,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
+        _appThemeController.Apply(_settingsService.Settings, this);
         _wmMagpieScalingChanged = _magpieSessionController.MagpieScalingChangedMessageId;
         _mainHwndSource = PresentationSource.FromVisual(this) as HwndSource;
         _mainHwndSource?.AddHook(WndProc);
@@ -1436,6 +1439,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplySettingsToUi(AppSettings settings)
     {
         _isApplyingSettings = true;
+        _appThemeController.Apply(settings, this);
         EnsureRoiPresetSlots(settings);
         ReloadLlamaModelOptions(settings);
         ReloadVisionLlmModelOptions(settings);
@@ -1712,6 +1716,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void ApplyRuntimeStateAfterSave(AppSettings settings)
     {
         // WHY: Rehydrate VM from normalized settings so invalid text input is corrected in bound controls.
+        _appThemeController.Apply(settings, this);
         EnsureRoiPresetSlots(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         SyncRoiPresetSlotUi(settings);
