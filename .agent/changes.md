@@ -21863,6 +21863,38 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-13 23:14 (Asia/Taipei) — Restore DWM dark title-bar hints on top of dictionary-based theme switching**
+
+### Summary
+- `ThemesDictionary` 差し替え方式は維持したまま、標準タイトルバーへ DWM のダーク配色ヒントを戻した。
+
+### Context / Goal
+- `ApplicationThemeManager.Apply(...)` を外したことでタイトル文字は戻ったが、非アクティブ時の標準タイトルバーがライト配色へ戻っていた。
+- 標準タイトルバーのアプリ名表示を壊さずに、ダークテーマ時のタイトルバー配色も暗色へ寄せたかった。
+
+### Changes
+- `AppThemeController` で `ThemesDictionary` 差し替え後に `DWMWA_USE_IMMERSIVE_DARK_MODE`、`DWMWA_CAPTION_COLOR`、`DWMWA_TEXT_COLOR` を設定するようにした。
+- HWND 未生成時は DWM 呼び出しを行わないようにし、起動初期の安全性を維持した。
+- System 設定画面の補足文を、標準タイトルバーにも OS 対応範囲で反映される説明へ更新した。
+
+### Files Touched
+- `Services/Application/AppThemeController.cs` — DWM タイトルバー配色ヒントを再導入し、辞書差し替え方式と共存させた。
+- `UI/SystemSettingsControl.xaml` — テーマ設定の補足文を実装内容に合わせて更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ダークテーマ選択時、標準タイトルバーは OS 管理のままアプリ名表示を維持しつつ、アクティブ/非アクティブの見た目が暗色寄りになる。
+- ライトテーマ選択時は明色キャプションと黒文字へ戻る。
+
+### Risk & Mitigation
+- Risk: DWM のキャプション色指定は Windows ビルド差やテーマ設定の影響を受ける可能性がある。
+- Mitigation: クライアント領域テーマ切り替えは `ThemesDictionary` 差し替えのまま維持し、DWM 側は失敗してもウィンドウ表示自体は壊さない最小設定に限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe` を起動し、タイトル文字が維持されることを確認した。
+- 別ウィンドウを前面に出した状態でスクリーンショットを取得し、非アクティブ時もタイトルバーが暗色のままであることを確認した。
+
 **2026-03-13 23:07 (Asia/Taipei) — Replace WPF-UI theme apply path to preserve standard title text**
 
 ### Summary

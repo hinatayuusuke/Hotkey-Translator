@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using Hotkey_Translator.Models;
@@ -14,6 +15,15 @@ internal readonly record struct AppThemeApplyResult(
 
 internal sealed class AppThemeController
 {
+    private const int DwmwaUseImmersiveDarkMode = 20;
+    private const int DwmwaUseImmersiveDarkModeLegacy = 19;
+    private const int DwmwaCaptionColor = 35;
+    private const int DwmwaTextColor = 36;
+    private const int DarkCaptionColor = 0x001F1F1F;
+    private const int LightCaptionColor = 0x00F3F3F3;
+    private const int DarkTextColor = 0x00FFFFFF;
+    private const int LightTextColor = 0x00000000;
+
     public AppThemeApplyResult Apply(AppSettings settings, Window window)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -25,8 +35,9 @@ internal sealed class AppThemeController
 
         ApplyThemeResources(applicationTheme);
         var handle = new WindowInteropHelper(window).Handle;
-        // WHY: Rely on the OS-standard non-client rendering because explicit DWM title-bar attributes
-        // hid the app name on some environments even when the calls succeeded.
+        ApplyStandardTitleBarTheme(handle, applicationTheme);
+        // WHY: Keep the standard non-client/title-bar rendering so the app name remains visible,
+        // while using DWM only to hint the caption colors that should track the selected app theme.
         return new AppThemeApplyResult(
             applicationTheme,
             handle,
@@ -63,4 +74,28 @@ internal sealed class AppThemeController
             Theme = applicationTheme
         });
     }
+
+    private static void ApplyStandardTitleBarTheme(IntPtr handle, ApplicationTheme applicationTheme)
+    {
+        if (handle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        var useDarkMode = applicationTheme == ApplicationTheme.Dark ? 1 : 0;
+        _ = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref useDarkMode, sizeof(int));
+        _ = DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkModeLegacy, ref useDarkMode, sizeof(int));
+
+        var captionColor = applicationTheme == ApplicationTheme.Dark ? DarkCaptionColor : LightCaptionColor;
+        var textColor = applicationTheme == ApplicationTheme.Dark ? DarkTextColor : LightTextColor;
+        _ = DwmSetWindowAttribute(handle, DwmwaCaptionColor, ref captionColor, sizeof(int));
+        _ = DwmSetWindowAttribute(handle, DwmwaTextColor, ref textColor, sizeof(int));
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(
+        IntPtr hwnd,
+        int attribute,
+        ref int value,
+        int valueSize);
 }
