@@ -20747,3 +20747,32 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:20 (Asia/Taipei) — Compact overview blocks with internal two-column layout**
+
+### Summary
+- `Overview` の縦ブロック構成は維持しつつ、各ブロック内部を 2 列中心に組み直して高さを圧縮した。
+
+### Context / Goal
+- 前回の `Overview` は読み順は明確になったが、1列寄りにしすぎて全体が縦長になっていた。
+- 参考イメージに合わせて、ブロック自体は縦積みのまま、各ブロック内部だけを 2 列化して改行と余白を減らしたかった。
+
+### Changes
+- ブロックの `Padding`、見出し下余白、項目下マージンを縮めた。
+- `Language & Actions` を左列の言語/OCR系と右列の translation/ROI/actions 系に分けた。
+- `Translation engines` を 3 列、`Run test / Select ROI` を 2 列で並べて高さを削減した。
+- `Quick Display Settings` と `Hook / Fullscreen` も内部 2 列構成へ変更した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `Overview` の各ブロック内部を 2 列中心に再配置し、余白を圧縮した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` は縦ブロックの読みやすさを保ったまま、全体の高さが短くなり、既定ウィンドウ幅での収まりが改善した。
+- 設定内容や WinRT install 導線、ROI 操作などの機能は変わらない。
+
+### Risk & Mitigation
+- Risk: 内部 2 列化により、狭い幅では右列の項目が窮屈に見える可能性がある。
+- Mitigation: 既定ウィンドウ幅を基準に列幅を固定し、全体は引き続き `ScrollViewer` 配下で表示する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`

@@ -8,13 +8,13 @@
         <Style x:Key="OverviewBlockBorderStyle" TargetType="Border">
             <Setter Property="BorderBrush" Value="#33000000" />
             <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="Padding" Value="16" />
-            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="Padding" Value="12" />
+            <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
         <Style x:Key="OverviewBlockTitleStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="18" />
             <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,12" />
+            <Setter Property="Margin" Value="0,0,0,8" />
         </Style>
         <Style x:Key="OverviewMutedTextStyle" TargetType="TextBlock">
             <Setter Property="Foreground" Value="DimGray" />
@@ -27,7 +27,7 @@
         </Style>
         <Style x:Key="OverviewValueStyle" TargetType="TextBlock">
             <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Margin" Value="0,0,0,6" />
         </Style>
         <Style x:Key="QuickControlNameStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
@@ -37,7 +37,7 @@
         <Style x:Key="QuickControlGestureStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="20" />
             <Setter Property="FontWeight" Value="Bold" />
-            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Margin" Value="0,0,0,6" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
     </UserControl.Resources>
@@ -49,11 +49,11 @@
                 <TextBlock Text="Primary operations"
                            FontSize="16"
                            FontWeight="Bold"
-                           Margin="0,0,0,12" />
+                           Margin="0,0,0,10" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="20" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -82,7 +82,7 @@
                     </StackPanel>
                 </Grid>
 
-                <Border Margin="0,4,0,0"
+                <Border Margin="0,2,0,0"
                         Padding="10"
                         Background="#11C97A00"
                         BorderBrush="#55C97A00"
@@ -108,7 +108,7 @@
                 <TextBlock Text="Current Setup" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="120" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
@@ -139,228 +139,266 @@
         <Border Style="{StaticResource OverviewBlockBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Language &amp; Actions" Style="{StaticResource OverviewBlockTitleStyle}" />
-
-                <TextBlock Text="Source language" Style="{StaticResource OverviewLabelStyle}" />
-                <Grid Margin="0,0,0,8">
+                <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160" />
-                        <ColumnDefinition Width="36" />
-                        <ColumnDefinition Width="120" />
                         <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="300" />
                     </Grid.ColumnDefinitions>
-                    <ComboBox Grid.Column="0"
-                              SelectedValuePath="Tag"
-                              SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                        <ComboBoxItem Content="English" Tag="en" />
-                        <ComboBoxItem Content="日本語" Tag="ja" />
-                        <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
-                        <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
-                        <ComboBoxItem Content="Русский" Tag="ru" />
-                        <ComboBoxItem Content="Custom..." Tag="custom" />
-                    </ComboBox>
-                    <Button Grid.Column="1"
-                            Width="28"
-                            Height="28"
-                            Margin="6,0,0,0"
-                            HorizontalAlignment="Left"
-                            VerticalAlignment="Center"
-                            Command="{Binding SwapLanguagesCommand}"
-                            ToolTip="Swap languages">
-                        <TextBlock FontFamily="Segoe MDL2 Assets"
-                                   FontSize="16"
-                                   Text="&#xE117;"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center" />
-                    </Button>
-                    <TextBox Grid.Column="2"
-                             Margin="8,0,0,0"
-                             Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Settings.SourceLanguageTag}" Value="custom">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Source language" Style="{StaticResource OverviewLabelStyle}" />
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="36" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      SelectedValuePath="Tag"
+                                      SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                <ComboBoxItem Content="English" Tag="en" />
+                                <ComboBoxItem Content="日本語" Tag="ja" />
+                                <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
+                                <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
+                                <ComboBoxItem Content="Русский" Tag="ru" />
+                                <ComboBoxItem Content="Custom..." Tag="custom" />
+                            </ComboBox>
+                            <Button Grid.Column="1"
+                                    Width="28"
+                                    Height="28"
+                                    Margin="6,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Command="{Binding SwapLanguagesCommand}"
+                                    ToolTip="Swap languages">
+                                <TextBlock FontFamily="Segoe MDL2 Assets"
+                                           FontSize="16"
+                                           Text="&#xE117;"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Button>
+                            <TextBox Grid.Column="2"
+                                     Margin="8,0,0,0"
+                                     Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Settings.SourceLanguageTag}" Value="custom">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </Grid>
+
+                        <TextBlock Text="Target language" Style="{StaticResource OverviewLabelStyle}" />
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="160" />
+                                <ColumnDefinition Width="120" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      SelectedValuePath="Tag"
+                                      SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                <ComboBoxItem Content="English" Tag="en" />
+                                <ComboBoxItem Content="日本語" Tag="ja" />
+                                <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
+                                <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
+                                <ComboBoxItem Content="Русский" Tag="ru" />
+                                <ComboBoxItem Content="Custom..." Tag="custom" />
+                            </ComboBox>
+                            <TextBox Grid.Column="1"
+                                     Margin="8,0,0,0"
+                                     Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Settings.TargetLanguageTag}" Value="custom">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </Grid>
+
+                        <TextBlock Text="Current pair" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Style="{StaticResource OverviewValueStyle}">
+                            <Run Text="{Binding SourceLanguageSummary, Mode=OneWay}" />
+                            <Run Text=" -> " />
+                            <Run Text="{Binding TargetLanguageSummary, Mode=OneWay}" />
+                        </TextBlock>
+
+                        <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
+                        <ComboBox Width="280"
+                                  Margin="0,0,0,6"
+                                  HorizontalAlignment="Left"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding Settings.OcrEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
+                            <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                            <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
+                            <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
+                            <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
+                        </ComboBox>
+
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="WinRtLanguagePackStatusText"
+                                       VerticalAlignment="Center"
+                                       Style="{StaticResource OverviewMutedTextStyle}"
+                                       Visibility="Collapsed" />
+                            <Button x:Name="InstallWinRtLanguagePackButton"
+                                    Content="Install"
+                                    Margin="10,0,0,0"
+                                    Padding="10,2"
+                                    Visibility="Collapsed"
+                                    Click="OnInstallWinRtLanguagePackClicked" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
+                        <UniformGrid Columns="3" Margin="0,0,0,6">
+                            <CheckBox Content="DeepL"
+                                      Margin="0,0,8,0"
+                                      IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox Content="Gemini"
+                                      Margin="0,0,8,0"
+                                      IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox Content="LlamaCpp"
+                                      IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </UniformGrid>
+
+                        <TextBlock Text="ROI" Style="{StaticResource OverviewLabelStyle}" />
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="120" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0"
+                                      Width="120"
+                                      HorizontalAlignment="Left"
+                                      VerticalAlignment="Center"
+                                      ItemsSource="{Binding RoiPresetSlotItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                      SelectedIndex="{Binding SelectedRoiPresetSlotIndex, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                      SelectionChanged="OnOverviewRoiPresetSlotSelectionChanged" />
+                            <CheckBox Grid.Column="1"
+                                      Content="Enable ROI"
+                                      Margin="12,0,0,0"
+                                      VerticalAlignment="Center"
+                                      IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+
+                        <TextBlock Text="Actions" Style="{StaticResource OverviewLabelStyle}" />
+                        <UniformGrid Columns="2">
+                            <Button Content="Run test"
+                                    Width="120"
+                                    Margin="0,0,8,0"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding RunOnceCommand}" />
+                            <Button Content="Select ROI"
+                                    Width="120"
+                                    HorizontalAlignment="Left"
+                                    Command="{Binding SelectRoiCommand}" />
+                        </UniformGrid>
+                    </StackPanel>
                 </Grid>
-
-                <TextBlock Text="Target language" Style="{StaticResource OverviewLabelStyle}" />
-                <Grid Margin="0,0,0,10">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="160" />
-                        <ColumnDefinition Width="120" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <ComboBox Grid.Column="0"
-                              SelectedValuePath="Tag"
-                              SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                        <ComboBoxItem Content="English" Tag="en" />
-                        <ComboBoxItem Content="日本語" Tag="ja" />
-                        <ComboBoxItem Content="繁體中文" Tag="zh-Hant" />
-                        <ComboBoxItem Content="简体中文" Tag="zh-Hans" />
-                        <ComboBoxItem Content="Русский" Tag="ru" />
-                        <ComboBoxItem Content="Custom..." Tag="custom" />
-                    </ComboBox>
-                    <TextBox Grid.Column="1"
-                             Margin="8,0,0,0"
-                             Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Setter Property="Visibility" Value="Collapsed" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding Settings.TargetLanguageTag}" Value="custom">
-                                        <Setter Property="Visibility" Value="Visible" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
-                </Grid>
-
-                <TextBlock Text="Current pair" Style="{StaticResource OverviewLabelStyle}" />
-                <TextBlock Style="{StaticResource OverviewValueStyle}">
-                    <Run Text="{Binding SourceLanguageSummary, Mode=OneWay}" />
-                    <Run Text=" -> " />
-                    <Run Text="{Binding TargetLanguageSummary, Mode=OneWay}" />
-                </TextBlock>
-
-                <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
-                <ComboBox Width="300"
-                          Margin="0,0,0,8"
-                          HorizontalAlignment="Left"
-                          SelectedValuePath="Tag"
-                          SelectedValue="{Binding Settings.OcrEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                    <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
-                    <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
-                    <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
-                    <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
-                    <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
-                </ComboBox>
-
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <TextBlock x:Name="WinRtLanguagePackStatusText"
-                               VerticalAlignment="Center"
-                               Style="{StaticResource OverviewMutedTextStyle}"
-                               Visibility="Collapsed" />
-                    <Button x:Name="InstallWinRtLanguagePackButton"
-                            Content="Install"
-                            Margin="10,0,0,0"
-                            Padding="10,2"
-                            Visibility="Collapsed"
-                            Click="OnInstallWinRtLanguagePackClicked" />
-                </StackPanel>
-
-                <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
-                <WrapPanel Margin="0,0,0,10">
-                    <CheckBox Content="DeepL"
-                              Margin="0,0,12,6"
-                              IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <CheckBox Content="Gemini"
-                              Margin="0,0,12,6"
-                              IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <CheckBox Content="LlamaCpp"
-                              Margin="0,0,12,6"
-                              IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </WrapPanel>
-
-                <TextBlock Text="ROI slot" Style="{StaticResource OverviewLabelStyle}" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <ComboBox Width="120"
-                              VerticalAlignment="Center"
-                              ItemsSource="{Binding RoiPresetSlotItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                              SelectedIndex="{Binding SelectedRoiPresetSlotIndex, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                              SelectionChanged="OnOverviewRoiPresetSlotSelectionChanged" />
-                    <CheckBox Content="Enable ROI"
-                              Margin="12,0,0,0"
-                              VerticalAlignment="Center"
-                              IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </StackPanel>
-
-                <WrapPanel>
-                    <Button Content="Run test"
-                            Width="120"
-                            Margin="0,0,8,0"
-                            Command="{Binding RunOnceCommand}" />
-                    <Button Content="Select ROI"
-                            Width="120"
-                            Command="{Binding SelectRoiCommand}" />
-                </WrapPanel>
             </StackPanel>
         </Border>
 
         <Border Style="{StaticResource OverviewBlockBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Quick Display Settings" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="260" />
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Overlay font size" Style="{StaticResource OverviewLabelStyle}" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <Slider Width="240"
-                            Minimum="8"
-                            Maximum="96"
-                            IsSnapToTickEnabled="True"
-                            TickFrequency="1"
-                            SmallChange="1"
-                            LargeChange="2"
-                            Value="{Binding Settings.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Width="48"
-                               Margin="8,0,0,0"
-                               VerticalAlignment="Center"
-                               TextAlignment="Right"
-                               Text="{Binding Settings.OverlayFontSize, StringFormat={}{0:F1}}" />
-                </StackPanel>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Overlay font size" Style="{StaticResource OverviewLabelStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Slider Width="240"
+                                    Minimum="8"
+                                    Maximum="96"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="1"
+                                    SmallChange="1"
+                                    LargeChange="2"
+                                    Value="{Binding Settings.OverlayFontSize, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Width="48"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Right"
+                                       Text="{Binding Settings.OverlayFontSize, StringFormat={}{0:F1}}" />
+                        </StackPanel>
+                    </StackPanel>
 
-                <TextBlock Text="Overlay opacity" Style="{StaticResource OverviewLabelStyle}" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <Slider Width="240"
-                            Minimum="0"
-                            Maximum="1"
-                            IsSnapToTickEnabled="True"
-                            TickFrequency="0.05"
-                            SmallChange="0.01"
-                            LargeChange="0.1"
-                            Value="{Binding Settings.OverlayBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                    <TextBlock Width="48"
-                               Margin="8,0,0,0"
-                               VerticalAlignment="Center"
-                               TextAlignment="Right"
-                               Text="{Binding Settings.OverlayBackgroundOpacity, StringFormat={}{0:F2}}" />
-                </StackPanel>
-
-                <CheckBox Content="Fixed ROI overlay mode"
-                          IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Overlay opacity" Style="{StaticResource OverviewLabelStyle}" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                            <Slider Width="180"
+                                    Minimum="0"
+                                    Maximum="1"
+                                    IsSnapToTickEnabled="True"
+                                    TickFrequency="0.05"
+                                    SmallChange="0.01"
+                                    LargeChange="0.1"
+                                    Value="{Binding Settings.OverlayBackgroundOpacity, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <TextBlock Width="48"
+                                       Margin="8,0,0,0"
+                                       VerticalAlignment="Center"
+                                       TextAlignment="Right"
+                                       Text="{Binding Settings.OverlayBackgroundOpacity, StringFormat={}{0:F2}}" />
+                        </StackPanel>
+                        <CheckBox Content="Fixed ROI overlay mode"
+                                  IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
+                </Grid>
             </StackPanel>
         </Border>
 
         <Border Style="{StaticResource OverviewBlockBorderStyle}">
             <StackPanel>
                 <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="24" />
+                        <ColumnDefinition Width="280" />
+                    </Grid.ColumnDefinitions>
 
-                <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" />
-                <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
+                        <CheckBox Content="Enable Graphics Hook pipeline"
+                                  Margin="0,0,0,4"
+                                  IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <CheckBox Content="Enable hook overlay rendering"
+                                  IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
+                                  IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    </StackPanel>
 
-                <CheckBox Content="Enable Graphics Hook pipeline"
-                          Margin="0,0,0,6"
-                          IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <CheckBox Content="Enable mirror fullscreen mode"
-                          Margin="0,0,0,6"
-                          IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <CheckBox Content="Enable hook overlay rendering"
-                          Margin="0,0,0,10"
-                          IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
-                          IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-
-                <TextBlock Text="Hook API" Style="{StaticResource OverviewLabelStyle}" />
-                <ComboBox Width="180"
-                          SelectedValuePath="Tag"
-                          SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                    <ComboBoxItem Content="DX11" Tag="Dx11" />
-                    <ComboBoxItem Content="DX9" Tag="Dx9" />
-                    <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
-                </ComboBox>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Mirror mode" Style="{StaticResource OverviewLabelStyle}" />
+                        <CheckBox Content="Enable mirror fullscreen mode"
+                                  Margin="0,0,0,10"
+                                  IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <TextBlock Text="Hook API" Style="{StaticResource OverviewLabelStyle}" />
+                        <ComboBox Width="180"
+                                  SelectedValuePath="Tag"
+                                  SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                            <ComboBoxItem Content="DX11" Tag="Dx11" />
+                            <ComboBoxItem Content="DX9" Tag="Dx9" />
+                            <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
+                        </ComboBox>
+                    </StackPanel>
+                </Grid>
             </StackPanel>
         </Border>
     </StackPanel>
