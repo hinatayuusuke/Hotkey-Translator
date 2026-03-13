@@ -13,111 +13,88 @@
                                             FalseLength="0" />
     </UserControl.Resources>
 
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="{Binding IsBottomPanelOpen, Converter={StaticResource BottomDrawerRowHeightConverter}}" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
+    <Border x:Name="BottomDrawerBorder"
+            BorderBrush="#33000000"
+            BorderThickness="1"
+            Padding="8"
+            Background="#06000000"
+            MinHeight="140"
+            Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
+            </Grid.ColumnDefinitions>
 
-        <Border x:Name="BottomDrawerBorder"
-                Grid.Row="0"
-                BorderBrush="#33000000"
-                BorderThickness="1"
-                Padding="8"
-                Background="#06000000"
-                MinHeight="140"
-                Visibility="{Binding IsBottomPanelOpen, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="{Binding BottomPreviewPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="{Binding BottomLogPaneVisible, Converter={StaticResource BottomDrawerRowHeightConverter}, ConverterParameter=star}" />
-                </Grid.ColumnDefinitions>
+            <GroupBox Grid.Column="0"
+                      Header="Preview"
+                      MinWidth="220"
+                      Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TabControl Margin="4">
+                    <TabItem Header="OCR">
+                        <Grid Cursor="Hand"
+                              MouseLeftButtonUp="OnOcrPreviewClicked">
+                            <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
+                            <TextBlock x:Name="OcrPreprocessPreviewHint"
+                                       Text="Run OCR to update preview."
+                                       Foreground="DimGray"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="Pinned">
+                        <Grid Cursor="Hand"
+                              MouseLeftButtonUp="OnPinnedPreviewClicked">
+                            <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
+                            <TextBlock x:Name="PinnedCaptureThumbnailHint"
+                                       Text="No fixed target"
+                                       Foreground="DimGray"
+                                       TextAlignment="Center"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       TextWrapping="Wrap" />
+                        </Grid>
+                    </TabItem>
+                </TabControl>
+            </GroupBox>
 
-                <GroupBox Grid.Column="0"
-                          Header="Preview"
-                          MinWidth="220"
-                          Visibility="{Binding BottomPreviewPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <TabControl Margin="4">
-                        <TabItem Header="OCR">
-                            <Grid Cursor="Hand"
-                                  MouseLeftButtonUp="OnOcrPreviewClicked">
-                                <Image x:Name="OcrPreprocessPreviewImage" Stretch="Uniform" />
-                                <TextBlock x:Name="OcrPreprocessPreviewHint"
-                                           Text="Run OCR to update preview."
-                                           Foreground="DimGray"
-                                           TextAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap" />
-                            </Grid>
-                        </TabItem>
-                        <TabItem Header="Pinned">
-                            <Grid Cursor="Hand"
-                                  MouseLeftButtonUp="OnPinnedPreviewClicked">
-                                <Image x:Name="PinnedCaptureThumbnailImage" Stretch="Uniform" />
-                                <TextBlock x:Name="PinnedCaptureThumbnailHint"
-                                           Text="No fixed target"
-                                           Foreground="DimGray"
-                                           TextAlignment="Center"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center"
-                                           TextWrapping="Wrap" />
-                            </Grid>
-                        </TabItem>
-                    </TabControl>
-                </GroupBox>
+            <GridSplitter Grid.Column="1"
+                          Width="6"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Stretch"
+                          ResizeBehavior="PreviousAndNext"
+                          ResizeDirection="Columns">
+                <GridSplitter.Style>
+                    <Style TargetType="GridSplitter">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Value="True">
+                                <DataTrigger.Binding>
+                                    <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
+                                        <Binding Path="BottomPreviewPaneVisible" />
+                                        <Binding Path="BottomLogPaneVisible" />
+                                    </MultiBinding>
+                                </DataTrigger.Binding>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </GridSplitter.Style>
+            </GridSplitter>
 
-                <GridSplitter Grid.Column="1"
-                              Width="6"
-                              HorizontalAlignment="Stretch"
-                              VerticalAlignment="Stretch"
-                              ResizeBehavior="PreviousAndNext"
-                              ResizeDirection="Columns">
-                    <GridSplitter.Style>
-                        <Style TargetType="GridSplitter">
-                            <Setter Property="Visibility" Value="Collapsed" />
-                            <Style.Triggers>
-                                <DataTrigger Value="True">
-                                    <DataTrigger.Binding>
-                                        <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
-                                            <Binding Path="BottomPreviewPaneVisible" />
-                                            <Binding Path="BottomLogPaneVisible" />
-                                        </MultiBinding>
-                                    </DataTrigger.Binding>
-                                    <Setter Property="Visibility" Value="Visible" />
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </GridSplitter.Style>
-                </GridSplitter>
-
-                <GroupBox Grid.Column="2"
-                          Header="Log"
-                          MinWidth="280"
-                          Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
-                    <TextBox x:Name="LogBox"
-                             Margin="4"
-                             IsReadOnly="True"
-                             TextWrapping="Wrap"
-                             VerticalScrollBarVisibility="Auto" />
-                </GroupBox>
-            </Grid>
-        </Border>
-
-        <Border Grid.Row="1"
-                Margin="0,8,0,0"
-                BorderBrush="#33000000"
-                BorderThickness="1"
-                Padding="8,4">
-            <DockPanel LastChildFill="False">
-                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                    <Button Content="Preview" Command="{Binding TogglePreviewPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
-                    <Button Content="Log" Command="{Binding ToggleLogPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
-                    <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />
-                </StackPanel>
-            </DockPanel>
-        </Border>
-    </Grid>
+            <GroupBox Grid.Column="2"
+                      Header="Log"
+                      MinWidth="280"
+                      Visibility="{Binding BottomLogPaneVisible, Converter={StaticResource BooleanToVisibilityConverter}}">
+                <TextBox x:Name="LogBox"
+                         Margin="4"
+                         IsReadOnly="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto" />
+            </GroupBox>
+        </Grid>
+    </Border>
 </UserControl>

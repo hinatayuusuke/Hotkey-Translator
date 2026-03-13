@@ -1520,11 +1520,26 @@
 
         <ui:RuntimeLogsControl x:Name="RuntimeLogsControl"
                                Grid.Row="1"
-                               Grid.RowSpan="2"
                                Grid.ColumnSpan="2"
                                Margin="0,8,0,0"
                                OcrPreviewClicked="OnOcrPreviewClicked"
                                PinnedPreviewClicked="OnPinnedPreviewClicked" />
+
+        <Border Grid.Row="2"
+                Grid.ColumnSpan="2"
+                Margin="0,8,0,0"
+                BorderBrush="#33000000"
+                BorderThickness="1"
+                Padding="8,4">
+            <DockPanel LastChildFill="False">
+                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="Preview" Command="{Binding TogglePreviewPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <Button Content="Log" Command="{Binding ToggleLogPaneCommand}" Padding="8,0" Margin="0,0,8,0" />
+                    <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
 
         <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="Transparent" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">

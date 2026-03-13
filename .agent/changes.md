@@ -18859,6 +18859,36 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 
+**2026-03-13 11:44 (Asia/Taipei) — Restore footer controls outside runtime drawer**
+
+### Summary
+- `Preview` / `Log` ボタンとステータス表示を `MainWindow` 最下段へ戻し、常時見えるフッター導線を復元した。
+
+### Context / Goal
+- `RuntimeLogsControl` へフッターまで含めたことで、`Preview` / `Log` ボタンとステータス表示が常時見える位置から外れていた。
+- 実行状態と下部 drawer への導線は回帰扱いなので、表示専用 drawer と常設フッターを分離し直す必要があった。
+
+### Changes
+- `RuntimeLogsControl` は下部 drawer だけを持つ構成に戻した。
+- `MainWindow.xaml` の root grid 最下段へ、`Translation status`、`Preview` / `Log` ボタン、ROI ステータスを持つフッターを復元した。
+
+### Files Touched
+- `MainWindow.xaml` — 常設フッターを root grid の `Grid.Row=2` に戻した。
+- `UI/RuntimeLogsControl.xaml` — フッター部分を削除し、drawer 表示専用に戻した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Preview` / `Log` ボタンと実行ステータスが、drawer の開閉状態に関係なく常時見えるようになった。
+- `RuntimeLogsControl` は `Preview` / `Log` 表示の責務に限定された。
+
+### Risk & Mitigation
+- Risk: `Runtime / Logs` の責務境界が再び曖昧になる可能性がある。
+- Mitigation: drawer は表示、フッターは常設導線、logging settings は `System` という 3 分割を維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 15 秒タイムアウトまで起動継続を確認
+
 **2026-03-13 11:23 (Asia/Taipei) — Extract overview prototype into UserControl**
 
 ### Summary
