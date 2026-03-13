@@ -58,7 +58,8 @@
                                             </MultiBinding>
                                         </TextBox.IsEnabled>
                                         <TextBox.Style>
-                                            <Style TargetType="TextBox">
+                                            <Style TargetType="TextBox"
+                                                   BasedOn="{StaticResource {x:Type TextBox}}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrPerfLogThresholdBox, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />

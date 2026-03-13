@@ -21096,6 +21096,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-13 21:44 (Asia/Taipei) — Preserve themed TextBox style for log threshold input**
+
+### Summary
+- `Log threshold (ms)` 入力欄がダークモードに追従しない問題を、既定のテーマ `TextBox` スタイルを継承する形に修正した。
+
+### Context / Goal
+- `Log threshold (ms)` の `TextBox` は、無効時の文字色変更のためにローカル `Style` を持っていた。
+- その `Style` が既定テーマの `TextBox` スタイルを上書きし、ダークモードの見た目が失われていたため、テーマ追従を維持しつつ既存の無効時表示も保ちたかった。
+
+### Changes
+- `OcrPerfLogThresholdBox` のローカル `Style` に `BasedOn="{StaticResource {x:Type TextBox}}"` を追加した。
+- 既定テーマのテンプレートとブラシを継承したまま、無効時のみ `Foreground=DimGray` を適用する構成にした。
+
+### Files Touched
+- `UI/SystemSettingsControl.xaml` — `Log threshold (ms)` 入力欄の `TextBox` スタイルをテーマ継承ベースへ修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ダークモード時でも `Log threshold (ms)` の入力欄が他のテーマ対応コントロールと同じ配色・見た目で表示される。
+- `Enable logging` または `Enable OCR perf log` が無効なときのグレーアウト表示は維持される。
+
+### Risk & Mitigation
+- Risk: 既定 `TextBox` スタイルの解決順によっては、環境差分で意図しない見た目になる可能性がある。
+- Mitigation: `WPF UI` の既定 `TextBox` スタイルを明示的に継承する最小変更に限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` を実行
+- ビルドは `obj\Debug\net8.0-windows10.0.22621.0\App.g.cs` / `Hotkey-Translator_MarkupCompile.cache` へのアクセス拒否で失敗し、今回変更のコンパイル確認までは未完了
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` でウィンドウ起動を確認
 
 **2026-03-13 18:47 (Asia/Taipei) — Restore themed sidebar text rendering**
@@ -21399,6 +21428,34 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
+
+**2026-03-13 21:35 (Asia/Taipei) — Fix dark mode status bar text color**
+
+### Summary
+- ダークモード時に下段ステータスバーの文字色が背景に埋もれる問題を修正した。
+
+### Context / Goal
+- テーマ切り替え自体は適用されていたが、下段ステータスバーの文字色だけがテーマ資源を参照していなかった。
+- ダークモードでも翻訳状態と ROI 状態の文字が確実に読めるようにしたかった。
+
+### Changes
+- `MainWindow.xaml` のステータスバー内 `TextBlock` に `TextFillColorPrimaryBrush` を適用した。
+- 翻訳状態メッセージと ROI 状態メッセージの両方をダーク/ライトテーマ追従にそろえた。
+
+### Files Touched
+- `MainWindow.xaml` — 下段ステータスバーの文字色をテーマ資源へバインドした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- ダークモード時でも、下段ステータスバーの `Translation status` と `ROI` 表示が背景に埋もれず可読になる。
+- ライトモードでは同じテーマ資源を通るため、既存の配色整合性を維持する。
+
+### Risk & Mitigation
+- Risk: 下段バー内の他の文字要素との色バランスが変わる可能性がある。
+- Mitigation: 影響範囲をステータスメッセージの `TextBlock` 2 箇所に限定し、既存テーマ資源のみを使った。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
 **2026-03-13 20:33 (Asia/Taipei) — Add manual app theme switching with DWM title bar theming**
 

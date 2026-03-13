@@ -185,7 +185,8 @@
                 CornerRadius="12"
                 Padding="12,8">
             <DockPanel LastChildFill="False">
-                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}" />
+                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}"
+                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Command="{Binding TogglePreviewPaneCommand}" Padding="12,4" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
@@ -199,7 +200,9 @@
                             <TextBlock Text="Log" />
                         </StackPanel>
                     </Button>
-                    <TextBlock VerticalAlignment="Center" Text="{Binding RuntimeStatus.RoiStatusMessage}" />
+                    <TextBlock VerticalAlignment="Center"
+                               Text="{Binding RuntimeStatus.RoiStatusMessage}"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
                 </StackPanel>
             </DockPanel>
         </Border>
