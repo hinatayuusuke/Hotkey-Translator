@@ -2,9 +2,9 @@ using System.Windows.Controls;
 
 namespace Hotkey_Translator.UI;
 
-public partial class AutoTranslateControl : UserControl
+public partial class OverlayBehaviorControl : UserControl
 {
-    public AutoTranslateControl()
+    public OverlayBehaviorControl()
     {
         InitializeComponent();
     }

@@ -332,10 +332,5 @@
                 </StackPanel>
             </GroupBox>
         </WrapPanel>
-
-        <Separator Margin="0,6,0,10" />
-        <TextBlock Text="Legacy quick settings below remain available during the prototype."
-                   Style="{StaticResource OverviewMutedTextStyle}"
-                   Margin="0,0,0,10" />
     </StackPanel>
 </UserControl>

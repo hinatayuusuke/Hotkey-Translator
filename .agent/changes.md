@@ -18905,6 +18905,117 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 起動が継続することを確認
 
+**2026-03-13 14:12 (Asia/Taipei) — Document UserControl redistribution map**
+
+### Summary
+- 現在の全設定 `UserControl` と legacy 設定の再配分先を整理した設計メモを追加した。
+
+### Context / Goal
+- `Overview` から legacy 設定を削除する前に、どの設定をどの `UserControl` の正規 owner にするかを先に固定したかった。
+- まだ `Home` タブに残っている capture / overlay readability 系設定の行き先を決め、次の実装順を明確にしたかった。
+
+### Changes
+- 現在の `UserControl` 一覧と役割を棚卸しした。
+- 各 `UserControl` が今持っている `Settings.*` 項目を整理した。
+- `CaptureControl` を新規作成し、`AutoTranslateControl` を最終的に `OverlayBehaviorControl` へ置き換える方針を明記した。
+- `Overview` は quick access 専用、各カテゴリ側を正規 owner にする方針を文書化した。
+
+### Files Touched
+- `Doc/Wpf_UserControl_Redistribution_Map.md` — 現在の全 `UserControl`、設定項目、再配分先、新規作成方針を整理した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実装変更はまだない。
+- 次に `CaptureControl` と `OverlayBehaviorControl` を作る際の判断基準が固定された。
+
+### Risk & Mitigation
+- Risk: `Overview` の quick access と各カテゴリの正規 owner が曖昧なままだと、設定の重複配置が続く。
+- Mitigation: 文書で `Overview` は quick access 専用、各カテゴリ側を正規 owner と明示した。
+
+### Tests / Verification
+- `Get-Content -Path Doc/Wpf_UserControl_Redistribution_Map.md -Encoding UTF8`
+
+**2026-03-13 14:34 (Asia/Taipei) — Add capture and overlay behavior controls**
+
+### Summary
+- `CaptureControl` と `OverlayBehaviorControl` を追加し、`Overview` に残っていた対象設定を移した。
+
+### Context / Goal
+- `Doc/Wpf_UserControl_Redistribution_Map.md` の方針に沿って、`CaptureModeTag / CaptureProviderTag / IsCaptureProviderFixed` と overlay readability 系設定を `Overview` から外したかった。
+- `Overview` は主要運用設定に集中させ、サイドパネル側に詳細設定を持たせたかった。
+
+### Changes
+- 新規 `UI/CaptureControl.xaml` と `UI/CaptureControl.xaml.cs` を追加し、capture mode / provider / fixed only と ROI 詳細を移した。
+- 新規 `UI/OverlayBehaviorControl.xaml` と `UI/OverlayBehaviorControl.xaml.cs` を追加し、scene change / auto-translate に overlay readability 設定を統合した。
+- `MainWindow.xaml` の `Home` タブから legacy capture / OCR / translation / overlay 設定ブロックを削除し、`Home` は `OverviewControl` のみに整理した。
+- サイドバーへ `Capture` と `Overlay Behavior` を反映し、settings category index を 1 つずつ繰り下げた。
+- `OcrSettingsControl` に WinRT language pack status / install button を移し、`MainWindow.xaml.cs` から control 参照でつなぎ直した。
+- ROI slot の items source / selected index 同期先を `OverviewControl` と `CaptureControl` の両方へ広げた。
+- 使わなくなった `UI/AutoTranslateControl.xaml` と `UI/AutoTranslateControl.xaml.cs` を削除した。
+- `Doc/Wpf_UserControl_Redistribution_Map.md` を現在の実装状態に合わせて更新した。
+
+### Files Touched
+- `MainWindow.xaml` — `Home` から legacy 設定を除去し、`Capture` / `Overlay Behavior` パネルを追加した。
+- `MainWindow.xaml.cs` — ROI slot と WinRT language pack UI の接続先を新しい controls に切り替えた。
+- `UI/CaptureControl.xaml` — capture 詳細設定 UI を新規追加した。
+- `UI/CaptureControl.xaml.cs` — ROI slot 連携用の依存関係プロパティとイベントを追加した。
+- `UI/OverlayBehaviorControl.xaml` — overlay readability と scene change 設定 UI を新規追加した。
+- `UI/OverlayBehaviorControl.xaml.cs` — `OverlayBehaviorControl` の code-behind を追加した。
+- `UI/OcrSettingsControl.xaml` — WinRT OCR runtime status と install button を追加した。
+- `UI/OcrSettingsControl.xaml.cs` — WinRT install click の中継と control 参照プロパティを追加した。
+- `UI/OverviewControl.xaml` — legacy note を削除した。
+- `UI/AutoTranslateControl.xaml` — 未使用になったため削除した。
+- `UI/AutoTranslateControl.xaml.cs` — 未使用になったため削除した。
+- `Doc/Wpf_UserControl_Redistribution_Map.md` — 実装後の current state に合わせて更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Home` は `Overview` 中心の画面になり、capture 詳細と readability 詳細はサイドパネル側から開く構成になった。
+- `Capture` と `Overlay Behavior` が新しい設定カテゴリとして利用可能になった。
+- WinRT language pack の状態表示と install 導線は `OCR Settings` 側へ移動した。
+
+### Risk & Mitigation
+- Risk: settings category index の繰り下げで、サイドバーと表示パネルの対応がずれる可能性がある。
+- Mitigation: `MainWindow.xaml` の sidebar item 順と `ConverterParameter` を揃え、`SelectedSidebarIndex -> SelectedSettingsCategoryIndex` の既存規則をそのまま使った。
+- Risk: ROI slot と WinRT UI の接続先変更で既存コードが null 参照になる可能性がある。
+- Mitigation: 専用 control 側へ依存関係プロパティと control 参照プロパティを追加し、既存ハンドラを再利用する形に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal -p:UseAppHost=false`
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — 起動が継続することを確認
+- `Get-Content -Path Doc/Wpf_UserControl_Redistribution_Map.md -Encoding UTF8`
+
+**2026-03-13 14:20 (Asia/Taipei) — Adjust redistribution map for overview-first settings**
+
+### Summary
+- `Overview` を主要運用設定の primary owner とする前提で、再配分文書を修正した。
+
+### Context / Goal
+- OCR エンジン選択や言語選択は詳細設定側へ移すより `Overview` に残す方がアプリの使い方に合っている。
+- `CaptureModeTag / CaptureProviderTag / Fixed only` だけを `CaptureControl` へ出し、他は `Overview` 主体にしたかった。
+
+### Changes
+- `OverviewControl` の位置づけを quick access 専用から、主要運用設定の primary owner へ修正した。
+- `Source / Target language`、translation engine enable、`OcrEngineTag`、主要 overlay quick settings を `Overview` 残しに変更した。
+- `CaptureModeTag / CaptureProviderTag / IsCaptureProviderFixed` だけを `CaptureControl` 側へ寄せる方針に整理した。
+- 文書内の重複していた `OcrEngineTag` の記述を整理した。
+
+### Files Touched
+- `Doc/Wpf_UserControl_Redistribution_Map.md` — `Overview` 主体の再配分方針へ調整した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実装変更はまだない。
+- 次の `CaptureControl` / `OverlayBehaviorControl` 実装時に、`Overview` から移す項目を最小限にできる。
+
+### Risk & Mitigation
+- Risk: `Overview` に主要設定を残しすぎると、詳細設定との境界が曖昧になる可能性がある。
+- Mitigation: `Capture` と readability 詳細だけを明確に分離し、`Overview` は日常運用で触る値に限定する。
+
+### Tests / Verification
+- `Get-Content -Path Doc/Wpf_UserControl_Redistribution_Map.md -Encoding UTF8`
+
 **2026-03-13 13:38 (Asia/Taipei) — Archive Hook fullscreen help text**
 
 ### Summary

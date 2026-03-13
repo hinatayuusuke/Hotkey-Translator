@@ -110,8 +110,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
-        RoiPresetSlotBox.ItemsSource = roiPresetSlotOptions;
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
+        CaptureControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
@@ -187,8 +187,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             AppendLog,
             () => IsLoaded,
             () => _isClosing,
-            WinRtLanguagePackStatusText,
-            InstallWinRtLanguagePackButton);
+            OcrSettingsControl.WinRtLanguagePackStatusTextBlock,
+            OcrSettingsControl.InstallWinRtLanguagePackButtonElement);
         _winRtLanguagePackCoordinator = new WinRtOcrLanguagePackCoordinator(
             () => _logger,
             new WindowsCapabilityInstaller(() => _logger),
@@ -1072,8 +1072,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         try
         {
             var selectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
-            RoiPresetSlotBox.SelectedIndex = selectedIndex;
             OverviewControl.SelectedRoiPresetSlotIndex = selectedIndex;
+            CaptureControl.SelectedRoiPresetSlotIndex = selectedIndex;
         }
         finally
         {
