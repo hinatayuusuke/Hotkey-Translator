@@ -20692,3 +20692,29 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+**2026-03-13 15:08 (Asia/Taipei) — Remove redundant hook status text**
+
+### Summary
+- `Hook / Fullscreen` パネル先頭の Hook オンオフ要約表示を削除した。
+
+### Context / Goal
+- Hook 状態の要約はすでに `Overview` に表示しており、`Hook / Fullscreen` パネル先頭で重複表示する必要がなくなっていた。
+- 詳細設定画面では状態要約より設定項目を優先して見せたかった。
+
+### Changes
+- `HookFullscreenControl` 先頭の `HookStatusSummary` 表示を削除した。
+
+### Files Touched
+- `UI/HookFullscreenControl.xaml` — 見出し直下の Hook 状態要約テキストを削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Hook / Fullscreen` パネル先頭の冗長な `Off` / `On` 表示がなくなり、設定項目が上に詰まった。
+- Hook 状態の要約は引き続き `Overview` で確認できる。
+
+### Risk & Mitigation
+- Risk: Hook 状態を詳細画面でも先頭で見たい場合は一手増える。
+- Mitigation: 状態要約は `Overview` に残し、詳細画面では重複を減らして視認性を優先した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
