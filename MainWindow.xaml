@@ -27,7 +27,7 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="TabControl">
                         <Border BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
+                                BorderThickness="0"
                                 Background="{TemplateBinding Background}">
                             <ContentPresenter ContentSource="SelectedContent" Margin="{TemplateBinding Padding}" />
                         </Border>

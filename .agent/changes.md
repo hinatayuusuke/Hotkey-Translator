@@ -21157,3 +21157,30 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `Hotkey-Translator.exe` を起動し `CloseMainWindow()` で終了確認
 - 終了コード `0` を確認
+
+**2026-03-13 19:01 (Asia/Taipei) — Remove headerless tab container border**
+
+### Summary
+- ヘッダーレス `TabControl` テンプレートに残っていた外枠線を削除した。
+
+### Context / Goal
+- メインコンテンツ全体の周囲に白っぽい大枠線が表示されていた。
+- 原因は `HeaderlessTabControlStyle` のテンプレート内 `Border` が `TabControl` の既定境界線を引き継いでいたためで、見た目上不要な枠を消したかった。
+
+### Changes
+- `HeaderlessTabControlStyle` のテンプレートで、`BorderThickness` を `0` に変更した。
+
+### Files Touched
+- `MainWindow.xaml` — ヘッダーレス `TabControl` の外枠線を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- メインコンテンツ領域を囲む白い外枠線が表示されなくなる。
+- タブ切替の機能やレイアウト構造には影響しない。
+
+### Risk & Mitigation
+- Risk: `TabControl` 側で枠線による区切りを前提にしていた場合、境界が薄く感じる可能性がある。
+- Mitigation: 現状この `TabControl` は表示用ヘッダーを持たないコンテナ用途なので、装飾削除の影響は限定的である。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
