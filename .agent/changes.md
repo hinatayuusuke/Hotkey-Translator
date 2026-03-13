@@ -21863,6 +21863,35 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
 
+**2026-03-14 01:59 (Asia/Taipei) — Make Overview columns expand with window width**
+
+### Summary
+- Overview の固定幅を外し、左右ブロックがウィンドウ幅に追従して広がるようにした。
+
+### Context / Goal
+- `MainWindow` の横幅を広げても `Overview` の左右ブロックが固定幅のままで、表示密度だけが変わらなかった。
+- 横幅拡張時は自然に広がりつつ、狭い幅ではレイアウトが潰れすぎない下限も持たせたかった。
+
+### Changes
+- `OverviewControl` のルート幅を固定値からスクロール領域の実幅バインドへ変更した。
+- 各セクションの 2 カラムレイアウトを固定 `390` から `*` 配分へ変え、左右カラムに `MinWidth` を追加した。
+- 非自明な幅追従の意図が分かるように `WHY` コメントを追加した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — ルート `StackPanel` を可変幅化し、各 2 カラム定義を `* + MinWidth` ベースへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` はウィンドウ横幅の拡大に合わせて左右ブロックが広がる。
+- 狭い幅では左 340 / 右 300 の最小幅を維持しようとするため、内容が過度に圧縮されにくくなる。
+
+### Risk & Mitigation
+- Risk: 非常に狭い幅では `MinWidth` 制約により横方向スクロールや詰まり感が出る可能性がある。
+- Mitigation: 既存の `ScrollViewer` を維持し、内容が崩れるより先に最小幅で踏みとどまる構成にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 01:14 (Asia/Taipei) — Update overview action panel layout**
 
 ### Summary

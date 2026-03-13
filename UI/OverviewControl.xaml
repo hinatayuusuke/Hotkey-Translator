@@ -47,22 +47,25 @@
         </Style>
     </UserControl.Resources>
 
-    <StackPanel Margin="0,6,0,0" Width="780" HorizontalAlignment="Left">
+    <!-- WHY: Bind to the scroll viewport so Overview expands with the window while column MinWidth guards against over-compression. -->
+    <StackPanel Margin="0,6,0,0"
+                Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=ScrollContentPresenter}, FallbackValue=780}"
+                HorizontalAlignment="Stretch">
         <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
                 <Grid Margin="0,0,0,6">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Quick Controls" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
                 </Grid>
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
@@ -114,9 +117,9 @@
                 <TextBlock Text="Current Setup" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
                     <Grid Grid.Column="0">
                         <Grid.ColumnDefinitions>
@@ -164,9 +167,9 @@
                 <TextBlock Text="Language &amp; Actions" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
@@ -363,9 +366,9 @@
                 <TextBlock Text="Quick Display Settings" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
@@ -416,9 +419,9 @@
                 <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="390" />
+                        <ColumnDefinition Width="*" MinWidth="340" />
                         <ColumnDefinition Width="12" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
