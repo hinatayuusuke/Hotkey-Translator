@@ -110,6 +110,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
         RoiPresetSlotBox.ItemsSource = BuildRoiPresetSlotOptions();
+        OverviewRoiPresetSlotBox.ItemsSource = BuildRoiPresetSlotOptions();
         _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
@@ -1000,7 +1001,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        var slotIndex = RoiPresetSlotBox.SelectedIndex;
+        if (sender is not ComboBox comboBox)
+        {
+            return;
+        }
+
+        var slotIndex = comboBox.SelectedIndex;
         if (slotIndex < 0)
         {
             return;
@@ -1064,7 +1070,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _isApplyingRoiPresetSlotSelection = true;
         try
         {
-            RoiPresetSlotBox.SelectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+            var selectedIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
+            RoiPresetSlotBox.SelectedIndex = selectedIndex;
+            OverviewRoiPresetSlotBox.SelectedIndex = selectedIndex;
         }
         finally
         {

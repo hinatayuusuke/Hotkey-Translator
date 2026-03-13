@@ -196,6 +196,42 @@
                                         <Run Text="{Binding TargetLanguageSummary, Mode=OneWay}" />
                                     </TextBlock>
 
+                                    <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
+                                    <ComboBox Margin="0,0,0,10"
+                                              SelectedValuePath="Tag"
+                                              SelectedValue="{Binding Settings.OcrEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                        <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
+                                        <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
+                                        <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
+                                        <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
+                                        <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
+                                    </ComboBox>
+
+                                    <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
+                                    <WrapPanel Margin="0,0,0,10">
+                                        <CheckBox Content="DeepL"
+                                                  Margin="0,0,12,6"
+                                                  IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox Content="Gemini"
+                                                  Margin="0,0,12,6"
+                                                  IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox Content="LlamaCpp"
+                                                  Margin="0,0,12,6"
+                                                  IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </WrapPanel>
+
+                                    <TextBlock Text="ROI slot" Style="{StaticResource OverviewLabelStyle}" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                        <ComboBox x:Name="OverviewRoiPresetSlotBox"
+                                                  Width="120"
+                                                  VerticalAlignment="Center"
+                                                  SelectionChanged="OnRoiPresetSlotBoxSelectionChanged" />
+                                        <CheckBox Content="Enable ROI"
+                                                  Margin="12,0,0,0"
+                                                  VerticalAlignment="Center"
+                                                  IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
                                     <WrapPanel Margin="0,0,0,8">
                                         <Button Content="Run test"
                                                 Width="120"

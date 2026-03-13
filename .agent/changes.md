@@ -20094,3 +20094,37 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet run --project .\Hotkey-Translator.csproj` — 修正前は読み取り専用プロパティへの TwoWay バインド例外で起動失敗、修正後はアプリ起動でプロセス待機に変化した。
 - `dotnet build .\Hotkey-Translator.csproj -v minimal`
+
+**2026-03-13 10:32 (Asia/Taipei) — Add engine toggles and ROI slot to Overview**
+
+### Summary
+- `Overview` プロトタイプに OCR エンジン選択、翻訳エンジン有効化、ROI スロット選択を追加した。
+
+### Context / Goal
+- `Overview` には見た目調整だけでなく、日常運用で最も切り替える主要ルート設定も必要だった。
+- 具体的には OCR エンジン、翻訳エンジン有効化、ROI スロットを `Overview` から直接触れるようにしたかった。
+
+### Changes
+- `Overview` の `Language & Actions` カードへ OCR エンジン選択 UI を追加した。
+- `DeepL`、`Gemini`、`LlamaCpp` の有効化チェックを `Overview` に追加した。
+- `Overview` 用の ROI スロット `ComboBox` を追加し、既存の ROI スロット UI と同じ選択状態を同期するようにした。
+- ROI スロット変更ハンドラを sender ベースにして、複数 UI から同じ処理を安全に呼べるようにした。
+
+### Files Touched
+- `MainWindow.xaml` — `Overview` カードに OCR エンジン、翻訳エンジン、ROI スロットの操作 UI を追加した。
+- `MainWindow.xaml.cs` — `Overview` 側 ROI スロット `ComboBox` の初期化と、既存 ROI スロット UI との同期処理を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `Overview` から OCR エンジン、主要翻訳エンジンの有効化、ROI スロットを直接切り替えられるようになった。
+- 既存の下部 quick settings と ROI スロット UI も引き続き動作し、選択状態は同期される。
+
+### Risk & Mitigation
+- Risk: `Overview` と legacy UI の両方に近い設定が存在し、一時的に情報が重複して見える。
+- Mitigation: ROI スロットは両 UI の選択状態を同期し、プロトタイプ段階として比較しやすい構成に留めた。
+- Risk: `dotnet run` はビルド済みでも別プロセスのファイルロックで失敗することがある。
+- Mitigation: 起動確認は `dotnet run --no-build --project .\Hotkey-Translator.csproj` でも実施し、XAML 起動自体は継続していることを確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal`
+- `dotnet run --no-build --project .\Hotkey-Translator.csproj` — タイムアウトまで継続し、起動直後クラッシュがないことを確認。
