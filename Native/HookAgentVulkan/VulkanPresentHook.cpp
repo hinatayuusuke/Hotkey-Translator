@@ -278,6 +278,19 @@ namespace ht::hook::vulkan
             }
         }
 
+        bool ShouldLogCaptureSkipImmediately(CaptureSkipReason reason)
+        {
+            switch (reason)
+            {
+                case CaptureSkipReason::QueueNotFound:
+                case CaptureSkipReason::SwapchainNotFound:
+                case CaptureSkipReason::DeviceNotFound:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         std::string WideToUtf8(const std::wstring& value)
         {
             if (value.empty())
@@ -560,6 +573,16 @@ namespace ht::hook::vulkan
 
             rt.captureSkipPendingCount[idx]++;
             const auto now = NowQpc();
+            if (rt.captureSkipPendingCount[idx] == 1 && ShouldLogCaptureSkipImmediately(reason))
+            {
+                // WHY: Queue/device/swapchain misses explain "presentCount increases but frame map never appears".
+                // Emit the first hit immediately so field logs show the root cause without relying on interval batching.
+                DebugLog(
+                    "stage=hook_vulkan event=capture_skip_first reason=%s detail=%s.",
+                    CaptureSkipReasonToString(reason),
+                    detail != nullptr ? detail : "none");
+            }
+
             if (!ShouldEmitDiagLog(now, rt.qpcFreq, rt.captureSkipLastLogQpc[idx], kDiagLogMinIntervalMs))
             {
                 return;

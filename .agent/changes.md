@@ -1832,6 +1832,36 @@
 - `cmake --build .\Native\build --config Debug --target HookHost -j 4`
 - `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
 
+**2026-03-15 04:51 (Asia/Taipei) — Add first-hit Vulkan capture skip diagnostics**
+
+### Summary
+- x86 Vulkan で `presentCount` は進むのに frame map が出ないケースを切り分けるため、queue/device/swapchain 不足の first-hit ログを追加した。
+
+### Context / Goal
+- `SKShinoviVersus` では `hook_state=Attached` 後に `presentCount` が増えているのに、`Hook shared frame mapping not found` で capture が失敗していた。
+- 既存の `capture_skip` は interval batching 前提で、現場ログから最初の失敗理由を拾いにくかった。
+
+### Changes
+- `QueueNotFound` / `SwapchainNotFound` / `DeviceNotFound` については、最初の 1 回目を `capture_skip_first` として即時出力するようにした。
+- 既存の集約 `capture_skip` ログは残しつつ、初回原因だけを別イベントで見えるようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Vulkan capture skip の first-hit 診断ログを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 Vulkan で frame map が作られないケースでも、最初の root cause が `hook_vulkan` ログに残る。
+- 通常成功ケースへの挙動変更はなく、ログが 1 行増えるだけ。
+
+### Risk & Mitigation
+- Risk: 失敗タイトルでは `hook_vulkan` ログが少し増える。
+- Mitigation: 即時出力は first-hit の主要 3 理由に限定し、既存の interval batching はそのまま残した。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
+
 **2026-03-15 04:18 (Asia/Taipei) — Add launcher signature diagnostics**
 
 ### Summary
