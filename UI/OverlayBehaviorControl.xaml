@@ -21,7 +21,7 @@
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Small text sensitivity" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SmallTextThresholdSlider"
-                    Width="200"
+                    Width="{StaticResource SliderStandardWidth}"
                     Minimum="8"
                     Maximum="48"
                     IsSnapToTickEnabled="True"
@@ -95,7 +95,7 @@
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Scene change threshold" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeThresholdSlider"
-                    Width="200"
+                    Width="{StaticResource SliderStandardWidth}"
                     Minimum="0"
                     Maximum="1"
                     IsSnapToTickEnabled="True"
@@ -127,7 +127,7 @@
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Watch interval (ms)" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeWatchIntervalSlider"
-                    Width="200"
+                    Width="{StaticResource SliderStandardWidth}"
                     Minimum="200"
                     Maximum="5000"
                     IsSnapToTickEnabled="True"
@@ -159,7 +159,7 @@
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Watcher pHash threshold" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeWatchPhashSlider"
-                    Width="200"
+                    Width="{StaticResource SliderStandardWidth}"
                     Minimum="0"
                     Maximum="64"
                     IsSnapToTickEnabled="True"

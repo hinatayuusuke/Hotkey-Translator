@@ -21097,6 +21097,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-14 16:19 (Asia/Taipei) — Standardize slider widths across settings UI**
+
+### Summary
+- 設定 UI の主要スライダー幅を共通リソース化し、全体を短めの標準幅へ統一した。
+
+### Context / Goal
+- スライダー値表示の間隔を整えた後も、画面ごとにスライダー自体の長さが `180` / `200` / `240` でばらついていた。
+- 1 か所の調整で全体の長さを再調整できるようにしつつ、UI を少し引き締めたかった。
+
+### Changes
+- `ThemeResources` に `SliderStandardWidth` を追加し、標準スライダー幅を `180` として定義した。
+- `Overview`、`OCR Settings`、`Overlay Behavior`、`OCR Engines` の固定幅スライダーを共通リソース参照へ置き換えた。
+- `Overview` の `Overlay font size` も `240` から標準幅へそろえ、全体のスライダー長を統一した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — 共通スライダー幅リソースを追加した。
+- `UI/OverviewControl.xaml` — overlay font size / opacity スライダーを共通幅参照へ変更した。
+- `UI/OcrSettingsControl.xaml` — OCR tuning / preprocess / input の各スライダーを共通幅参照へ変更した。
+- `UI/OverlayBehaviorControl.xaml` — overlay / scene change 系スライダーを共通幅参照へ変更した。
+- `UI/OcrEnginesControl.xaml` — confidence threshold スライダーを共通幅参照へ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 設定 UI の主要スライダーが同じ長さで表示され、画面全体の見た目が引き締まる。
+- 今後スライダー幅を調整したい場合は共通リソース 1 か所の変更で反映できる。
+- 値表示や設定保存、実行ロジックには影響しない。
+
+### Risk & Mitigation
+- Risk: 一部画面では従来より短くなったことで、項目によっては少し窮屈に見える可能性がある。
+- Mitigation: 初回は `180` に留め、ラベル幅と値表示幅は維持して操作性の低下を避けた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 16:00 (Asia/Taipei) — Tighten slider value spacing across settings UI**
 
 ### Summary

@@ -374,7 +374,7 @@
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Overlay font size" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Slider Width="240"
+                            <Slider Width="{StaticResource SliderStandardWidth}"
                                     Minimum="8"
                                     Maximum="96"
                                     IsSnapToTickEnabled="True"
@@ -390,7 +390,7 @@
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Overlay opacity" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                            <Slider Width="180"
+                            <Slider Width="{StaticResource SliderStandardWidth}"
                                     Minimum="0"
                                     Maximum="1"
                                     IsSnapToTickEnabled="True"

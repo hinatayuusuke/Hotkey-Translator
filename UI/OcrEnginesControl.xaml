@@ -84,7 +84,7 @@
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
                                       <TextBlock Text="Confidence threshold" Width="200" VerticalAlignment="Center" />
                                       <Slider x:Name="PaddleConfidenceThresholdSlider"
-                                              Width="200"
+                                              Width="{StaticResource SliderStandardWidth}"
                                               Minimum="0"
                                               Maximum="1"
                                               IsSnapToTickEnabled="True"

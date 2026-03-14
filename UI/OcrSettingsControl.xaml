@@ -56,7 +56,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Horizontal merge strength" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="HorizontalMergeStrengthSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
                                             Maximum="100"
                                             IsSnapToTickEnabled="True"
@@ -71,7 +71,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Vertical merge strength" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="VerticalMergeStrengthSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
                                             Maximum="100"
                                             IsSnapToTickEnabled="True"
@@ -115,7 +115,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Low threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassLowThresholdSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -147,7 +147,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="High threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassHighThresholdSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -179,7 +179,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrBinarizationThresholdSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -220,7 +220,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Gamma" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrGammaSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.6"
                                             Maximum="1.8"
                                             IsSnapToTickEnabled="True"
@@ -246,7 +246,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Contrast" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrContrastSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.5"
                                             Maximum="2.0"
                                             IsSnapToTickEnabled="True"
@@ -279,7 +279,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="Downsample scale" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrDownsampleScaleSlider"
-                                            Width="200"
+                                            Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.3"
                                             Maximum="1.0"
                                             IsSnapToTickEnabled="True"
