@@ -38,7 +38,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private double _overlayFontSize;
     [ObservableProperty] private double _overlayBackgroundOpacity;
     [ObservableProperty] private double _smallTextThresholdPx;
-    [ObservableProperty] private double _sceneChangeThreshold;
     [ObservableProperty] private double _sceneChangeWatchIntervalMs;
     [ObservableProperty] private double _sceneChangeWatchPhashThreshold;
     [ObservableProperty] private double? _phashThresholdValue;
@@ -350,7 +349,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
             OverlayFontSize = settings.OverlayFontSize;
             OverlayBackgroundOpacity = settings.OverlayBackgroundOpacity;
             SmallTextThresholdPx = settings.SmallTextThresholdPx;
-            SceneChangeThreshold = settings.SceneChangeThreshold;
             SceneChangeWatchIntervalMs = settings.SceneChangeWatchIntervalMs;
             SceneChangeWatchPhashThreshold = settings.SceneChangeWatchPhashThreshold;
             AssignHotkeySettings(settings);
@@ -664,7 +662,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.OverlayFontSize = Math.Round(OverlayFontSize, 1);
         settings.OverlayBackgroundOpacity = Math.Round(OverlayBackgroundOpacity, 2);
         settings.SmallTextThresholdPx = Math.Round(SmallTextThresholdPx, 1);
-        settings.SceneChangeThreshold = SceneChangeThreshold;
         settings.SceneChangeWatchIntervalMs = (int)Math.Round(SceneChangeWatchIntervalMs);
         settings.SceneChangeWatchPhashThreshold = (int)Math.Round(SceneChangeWatchPhashThreshold);
         settings.SourceLanguage = ResolveLanguageTag(SourceLanguageTag, SourceLanguageCustom);
@@ -764,7 +761,6 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnOverlayFontSizeChanged(double value) => RequestSaveOnValueChange();
     partial void OnOverlayBackgroundOpacityChanged(double value) => RequestSaveOnValueChange();
     partial void OnSmallTextThresholdPxChanged(double value) => RequestSaveOnValueChange();
-    partial void OnSceneChangeThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnSceneChangeWatchIntervalMsChanged(double value) => RequestSaveOnValueChange();
     partial void OnSceneChangeWatchPhashThresholdChanged(double value) => RequestSaveOnValueChange();
     partial void OnSourceLanguageTagChanged(string value) => RequestSaveOnValueChange();

@@ -93,38 +93,6 @@
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
                   IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Scene change threshold" Width="170" VerticalAlignment="Center" />
-            <Slider x:Name="SceneChangeThresholdSlider"
-                    Width="{StaticResource SliderStandardWidth}"
-                    Minimum="0"
-                    Maximum="1"
-                    IsSnapToTickEnabled="True"
-                    TickFrequency="0.05"
-                    SmallChange="0.01"
-                    LargeChange="0.1"
-                    Value="{Binding Settings.SceneChangeThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                <Slider.IsEnabled>
-                    <MultiBinding Converter="{StaticResource BooleanOrMultiConverter}">
-                        <Binding Path="Settings.EnableSceneChangeAutoHide" />
-                        <Binding Path="Settings.EnableSceneChangeAutoTranslate" />
-                    </MultiBinding>
-                </Slider.IsEnabled>
-            </Slider>
-            <TextBlock
-                       Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock"
-                           BasedOn="{StaticResource SliderValueDecimalTextStyle}">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ElementName=SceneChangeThresholdSlider, Path=IsEnabled}" Value="False">
-                                <Setter Property="Foreground" Value="DimGray" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </StackPanel>
-        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
             <TextBlock Text="Watch interval (ms)" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeWatchIntervalSlider"
                     Width="{StaticResource SliderStandardWidth}"

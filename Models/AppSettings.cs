@@ -115,7 +115,6 @@ public sealed class AppSettings
     public bool EnableMirrorFullscreenMode { get; set; } = false;
     public int MagpieProfileIndex { get; set; } = 0;
     public bool EnableSceneChangeTextWeighted { get; set; } = false;
-    public double SceneChangeThreshold { get; set; } = 0.2;
     public int SceneChangeWatchIntervalMs { get; set; } = 1000;
     public int SceneChangeWatchPhashThreshold { get; set; } = 8;
     public bool EnableSceneChangeSemanticGate { get; set; } = true;

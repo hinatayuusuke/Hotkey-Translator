@@ -1764,6 +1764,39 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-14 17:42 (Asia/Taipei) — Remove unused scene change threshold setting**
+
+### Summary
+- 実行経路で未使用だった `SceneChangeThreshold` を設定モデル、ViewModel、UI から削除した。
+
+### Context / Goal
+- `Scene change threshold` は画面上に露出していたが、実際の watcher 判定は `SceneChangeWatchPhashThreshold` を使っており機能していなかった。
+- 効かない設定を残すと誤解を生むため、scene change 関連設定を実使用項目へ整理したかった。
+
+### Changes
+- `Models/AppSettings.cs` から `SceneChangeThreshold` を削除した。
+- `ViewModels/SettingsViewModel.cs` から対応する `ObservableProperty`、設定ロード、設定保存、変更監視を削除した。
+- `UI/OverlayBehaviorControl.xaml` から `Scene change threshold` スライダー行を削除した。
+
+### Files Touched
+- `Models/AppSettings.cs` — 未使用の `SceneChangeThreshold` 設定を削除した。
+- `ViewModels/SettingsViewModel.cs` — `SceneChangeThreshold` の ViewModel 管理を削除した。
+- `UI/OverlayBehaviorControl.xaml` — 未使用設定のスライダー UI を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Overlay Behavior 画面から `Scene change threshold` が消え、scene change 調整は実際に使われる watcher 系設定へ集約される。
+- 既存の watcher 判定ロジック自体の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 既存 `settings.json` に残っている `SceneChangeThreshold` キーは無視されるが、利用者が削除理由を把握していない可能性がある。
+- Mitigation: 実装は未使用設定の削除に限定し、実際に効く `Watcher pHash threshold` は維持した。
+
+### Tests / Verification
+- `rg -n "SceneChangeThreshold\\b" Models ViewModels UI Services -S`
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+- 通常の `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` は実行中の `Hotkey-Translator.exe` によるファイルロックで失敗
+
 **2026-03-14 17:19 (Asia/Taipei) — Fix overview translation engine checkbox clipping**
 
 ### Summary
