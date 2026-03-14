@@ -44,8 +44,10 @@ namespace ht::hook::vulkan
         constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300u;
 #if defined(_WIN64)
         constexpr bool kEnableDirectDeviceExportHooks = true;
+        constexpr bool kEnableDirectCreateDeviceExportHook = true;
 #else
         constexpr bool kEnableDirectDeviceExportHooks = false;
+        constexpr bool kEnableDirectCreateDeviceExportHook = true;
 #endif
 
         enum class CaptureSkipReason : std::size_t
@@ -2956,12 +2958,16 @@ namespace ht::hook::vulkan
             "vkDestroyInstance",
             reinterpret_cast<void*>(&Hook_vkDestroyInstance),
             reinterpret_cast<void**>(&rt.originalDestroyInstance));
-        if (kEnableDirectDeviceExportHooks)
+        if (kEnableDirectCreateDeviceExportHook)
         {
             hookedAny |= hookAndLog(
                 "vkCreateDevice",
                 reinterpret_cast<void*>(&Hook_vkCreateDevice),
                 reinterpret_cast<void**>(&rt.originalCreateDevice));
+        }
+
+        if (kEnableDirectDeviceExportHooks)
+        {
             hookedAny |= hookAndLog(
                 "vkDestroyDevice",
                 reinterpret_cast<void*>(&Hook_vkDestroyDevice),
@@ -2997,10 +3003,21 @@ namespace ht::hook::vulkan
         }
         else
         {
-            // WHY: Some 32-bit loader exports in DXVK-backed titles are unstable to patch directly; procaddr hooks still cover device-level entry points.
-            DebugLogInstall(
-                "stage=hook_vulkan event=install_hook_plan path=procaddr_only scope=device_level reason=x86_direct_export_unstable pid=%lu.",
-                static_cast<unsigned long>(GetCurrentProcessId()));
+            if (kEnableDirectCreateDeviceExportHook)
+            {
+                // WHY: Some 32-bit loader exports in DXVK-backed titles are unstable to patch directly.
+                // Restoring only vkCreateDevice keeps install risk smaller while recovering device registration.
+                DebugLogInstall(
+                    "stage=hook_vulkan event=install_hook_plan path=mixed scope=device_level direct=vkCreateDevice fallback=procaddr_only reason=x86_direct_export_unstable pid=%lu.",
+                    static_cast<unsigned long>(GetCurrentProcessId()));
+            }
+            else
+            {
+                // WHY: Some 32-bit loader exports in DXVK-backed titles are unstable to patch directly; procaddr hooks still cover device-level entry points.
+                DebugLogInstall(
+                    "stage=hook_vulkan event=install_hook_plan path=procaddr_only scope=device_level reason=x86_direct_export_unstable pid=%lu.",
+                    static_cast<unsigned long>(GetCurrentProcessId()));
+            }
         }
 
         if (!hookedAny)

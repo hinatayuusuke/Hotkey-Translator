@@ -23963,3 +23963,33 @@ efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-15 06:04 (Asia/Taipei) — Enable mixed x86 Vulkan install mode for vkCreateDevice**
+
+### Summary
+- x86 Vulkan の install を mixed mode にして、`vkCreateDevice` だけ direct export hook を復帰した。
+
+### Context / Goal
+- x86 `procaddr_only` では `vkCreateDevice` を取り逃し、`device_not_found` で共有フレームを書けないタイトルがあった。
+- 以前の x86 DXVK install crash を全面再導入せず、device 登録だけを安定して拾えるか確認したかった。
+
+### Changes
+- x86 でも `vkCreateDevice` だけは install 時に direct export hook するよう分離した。
+- 他の device-level export hook は従来どおり x86 では無効のままにし、install plan ログを `mixed` / `procaddr_only` で分岐表示するようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — x86 の install 計画を `vkCreateDevice` direct + その他 procaddr-only の mixed mode に変更し、理由ログを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 Vulkan タイトルで `vkCreateDevice` を direct export hook できる場合、`rt.devices` の初期登録が早く入りやすくなる。
+- x86 の `vkGetDeviceQueue` 以降は従来どおり procaddr 経路と backfill に依存する。
+
+### Risk & Mitigation
+- Risk: 以前の x86 install 不安定性が `vkCreateDevice` hook だけでも再発する可能性がある。
+- Mitigation: direct export hook は `vkCreateDevice` のみに限定し、他の device-level export patch は無効のままに留めた。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- x86/x64 とも app 出力先 DLL の SHA256 が native build 出力と一致することを確認
