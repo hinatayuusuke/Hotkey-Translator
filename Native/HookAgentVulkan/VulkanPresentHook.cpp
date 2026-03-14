@@ -38,6 +38,7 @@ namespace ht::hook::vulkan
         constexpr std::uint32_t kOverlayMaxBlocks = 64u;
         constexpr std::uint64_t kDiagLogMinIntervalMs = 1000u;
         constexpr std::uint64_t kDiagSummaryIntervalMs = 2000u;
+        constexpr DWORD kActivityProbeDelayMs = 4000u;
         constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500u;
         constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200u;
         constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300u;
@@ -200,6 +201,15 @@ namespace ht::hook::vulkan
             std::uint64_t lastWriteFrameOkQpc = 0;
             std::uint64_t lastWriteFrameFailQpc = 0;
             std::uint64_t lastQueuePresentEnterLogQpc = 0;
+
+            std::atomic_bool activityProbeScheduled{false};
+            std::atomic_ullong instanceProcAddrHitCount{0};
+            std::atomic_ullong deviceProcAddrHitCount{0};
+            std::atomic_ullong createInstanceHitCount{0};
+            std::atomic_ullong createDeviceHitCount{0};
+            std::atomic_ullong createSwapchainHitCount{0};
+            std::atomic_ullong acquireImageHitCount{0};
+            std::atomic_ullong queuePresentHitCount{0};
         };
 
         VulkanRuntime g_rt;
@@ -436,6 +446,80 @@ namespace ht::hook::vulkan
             OutputDebugStringA(buffer);
             OutputDebugStringA("\n");
             AppendDiagFileLine(buffer);
+        }
+
+        DWORD WINAPI ActivityProbeThreadProc(LPVOID)
+        {
+            Sleep(kActivityProbeDelayMs);
+
+            auto& rt = g_rt;
+            const auto instanceProcHits = rt.instanceProcAddrHitCount.load(std::memory_order_relaxed);
+            const auto deviceProcHits = rt.deviceProcAddrHitCount.load(std::memory_order_relaxed);
+            const auto createInstanceHits = rt.createInstanceHitCount.load(std::memory_order_relaxed);
+            const auto createDeviceHits = rt.createDeviceHitCount.load(std::memory_order_relaxed);
+            const auto createSwapchainHits = rt.createSwapchainHitCount.load(std::memory_order_relaxed);
+            const auto acquireHits = rt.acquireImageHitCount.load(std::memory_order_relaxed);
+            const auto presentHits = rt.queuePresentHitCount.load(std::memory_order_relaxed);
+
+            const auto vulkanModule = GetModuleHandleW(L"vulkan-1.dll");
+            const auto dxgiModule = GetModuleHandleW(L"dxgi.dll");
+            const auto d3d9Module = GetModuleHandleW(L"d3d9.dll");
+            const auto d3d11Module = GetModuleHandleW(L"d3d11.dll");
+
+            std::lock_guard<std::mutex> lock(rt.mutex);
+            DebugLog(
+                "stage=hook_vulkan event=activity_probe pid=%lu delayMs=%lu directHooks=%d instanceProcHits=%llu deviceProcHits=%llu createInstanceHits=%llu createDeviceHits=%llu createSwapchainHits=%llu acquireHits=%llu presentHits=%llu instance=%p devices=%zu queues=%zu swapchains=%zu originals.gipa=%p originals.gdpa=%p originals.createDevice=%p originals.createSwapchain=%p originals.acquire=%p originals.present=%p modules.vulkan=%d modules.dxgi=%d modules.d3d9=%d modules.d3d11=%d.",
+                static_cast<unsigned long>(GetCurrentProcessId()),
+                static_cast<unsigned long>(kActivityProbeDelayMs),
+                kEnableDirectDeviceExportHooks ? 1 : 0,
+                static_cast<unsigned long long>(instanceProcHits),
+                static_cast<unsigned long long>(deviceProcHits),
+                static_cast<unsigned long long>(createInstanceHits),
+                static_cast<unsigned long long>(createDeviceHits),
+                static_cast<unsigned long long>(createSwapchainHits),
+                static_cast<unsigned long long>(acquireHits),
+                static_cast<unsigned long long>(presentHits),
+                rt.instance,
+                rt.devices.size(),
+                rt.queues.size(),
+                rt.swapchains.size(),
+                reinterpret_cast<void*>(rt.originalGetInstanceProcAddr),
+                reinterpret_cast<void*>(rt.originalGetDeviceProcAddr),
+                reinterpret_cast<void*>(rt.originalCreateDevice),
+                reinterpret_cast<void*>(rt.originalCreateSwapchainKHR),
+                reinterpret_cast<void*>(rt.originalAcquireNextImageKHR),
+                reinterpret_cast<void*>(rt.originalQueuePresentKHR),
+                vulkanModule != nullptr ? 1 : 0,
+                dxgiModule != nullptr ? 1 : 0,
+                d3d9Module != nullptr ? 1 : 0,
+                d3d11Module != nullptr ? 1 : 0);
+
+            return 0;
+        }
+
+        void ScheduleActivityProbe()
+        {
+            auto& rt = g_rt;
+            bool expected = false;
+            if (!rt.activityProbeScheduled.compare_exchange_strong(expected, true, std::memory_order_relaxed))
+            {
+                return;
+            }
+
+            // WHY: DXVK では attach 成功後に呼び出し経路が silent failure になるケースがあり、数秒後の要約ログで
+            //       「procaddr が一度も通っていない」のか「procaddr は通るが present まで進まない」のかを切り分ける。
+            const HANDLE thread = CreateThread(nullptr, 0, &ActivityProbeThreadProc, nullptr, 0, nullptr);
+            if (thread == nullptr)
+            {
+                rt.activityProbeScheduled.store(false, std::memory_order_relaxed);
+                DebugLogInstall(
+                    "stage=hook_vulkan event=activity_probe_schedule_failed pid=%lu gle=%lu.",
+                    static_cast<unsigned long>(GetCurrentProcessId()),
+                    static_cast<unsigned long>(GetLastError()));
+                return;
+            }
+
+            CloseHandle(thread);
         }
 
         bool ShouldEmitDiagLog(std::uint64_t nowQpc, std::uint64_t qpcFreq, std::uint64_t& lastQpc, std::uint64_t intervalMs)
@@ -785,6 +869,14 @@ namespace ht::hook::vulkan
             rt.lastWriteFrameOkQpc = 0;
             rt.lastWriteFrameFailQpc = 0;
             rt.lastQueuePresentEnterLogQpc = 0;
+            rt.activityProbeScheduled.store(false, std::memory_order_relaxed);
+            rt.instanceProcAddrHitCount.store(0, std::memory_order_relaxed);
+            rt.deviceProcAddrHitCount.store(0, std::memory_order_relaxed);
+            rt.createInstanceHitCount.store(0, std::memory_order_relaxed);
+            rt.createDeviceHitCount.store(0, std::memory_order_relaxed);
+            rt.createSwapchainHitCount.store(0, std::memory_order_relaxed);
+            rt.acquireImageHitCount.store(0, std::memory_order_relaxed);
+            rt.queuePresentHitCount.store(0, std::memory_order_relaxed);
             g_loggedFirstCreateDeviceHit.store(false);
             g_loggedFirstCreateSwapchainHit.store(false);
 
@@ -2246,6 +2338,7 @@ namespace ht::hook::vulkan
         VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetDeviceProcAddr(VkDevice device, const char* functionName)
         {
             auto& rt = g_rt;
+            rt.deviceProcAddrHitCount.fetch_add(1, std::memory_order_relaxed);
             PFN_vkVoidFunction resolved = nullptr;
             if (rt.originalGetDeviceProcAddr != nullptr)
             {
@@ -2315,6 +2408,7 @@ namespace ht::hook::vulkan
         VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetInstanceProcAddr(VkInstance instance, const char* functionName)
         {
             auto& rt = g_rt;
+            rt.instanceProcAddrHitCount.fetch_add(1, std::memory_order_relaxed);
             PFN_vkVoidFunction resolved = nullptr;
             if (rt.originalGetInstanceProcAddr != nullptr)
             {
@@ -2362,6 +2456,7 @@ namespace ht::hook::vulkan
             VkInstance* instance)
         {
             auto& rt = g_rt;
+            rt.createInstanceHitCount.fetch_add(1, std::memory_order_relaxed);
             const auto original = rt.originalCreateInstance;
             if (original == nullptr)
             {
@@ -2409,6 +2504,7 @@ namespace ht::hook::vulkan
             const VkAllocationCallbacks* allocator,
             VkDevice* device)
         {
+            g_rt.createDeviceHitCount.fetch_add(1, std::memory_order_relaxed);
             if (!g_loggedFirstCreateDeviceHit.exchange(true))
             {
                 DebugLog(
@@ -2495,6 +2591,7 @@ namespace ht::hook::vulkan
             const VkAllocationCallbacks* allocator,
             VkSwapchainKHR* swapchain)
         {
+            g_rt.createSwapchainHitCount.fetch_add(1, std::memory_order_relaxed);
             if (!g_loggedFirstCreateSwapchainHit.exchange(true))
             {
                 const std::uint32_t width = (createInfo != nullptr) ? createInfo->imageExtent.width : 0u;
@@ -2559,6 +2656,7 @@ namespace ht::hook::vulkan
             std::uint32_t* imageIndex)
         {
             auto& rt = g_rt;
+            rt.acquireImageHitCount.fetch_add(1, std::memory_order_relaxed);
             const auto original = rt.originalAcquireNextImageKHR;
             if (original == nullptr)
             {
@@ -2580,6 +2678,7 @@ namespace ht::hook::vulkan
             std::uint32_t* imageIndex)
         {
             auto& rt = g_rt;
+            rt.acquireImageHitCount.fetch_add(1, std::memory_order_relaxed);
             const auto original = rt.originalAcquireNextImage2KHR;
             if (original == nullptr)
             {
@@ -2598,6 +2697,7 @@ namespace ht::hook::vulkan
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* presentInfo)
         {
             auto& rt = g_rt;
+            rt.queuePresentHitCount.fetch_add(1, std::memory_order_relaxed);
             PFN_vkQueuePresentKHR original = nullptr;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
@@ -2777,6 +2877,7 @@ namespace ht::hook::vulkan
         rt.hookSuccessIndicatorDone = false;
         rt.hookSuccessIndicatorStartQpc = 0;
         rt.installed.store(true);
+        ScheduleActivityProbe();
         DebugLogInstall(
             "stage=hook_vulkan event=install_hook_result result=ok pid=%lu qpcFreq=%llu.",
             static_cast<unsigned long>(GetCurrentProcessId()),

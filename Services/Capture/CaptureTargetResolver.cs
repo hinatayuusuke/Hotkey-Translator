@@ -49,8 +49,26 @@ internal sealed class CaptureTargetResolver
         }
 
         _lastResolvedTargetHwnd = IntPtr.Zero;
-        TrackCaptureTargetResolution($"Fixed capture target invalid; fallback to active window. Reason: {reason ?? "unknown"}.");
+        TrackCaptureTargetResolution(
+            $"Fixed capture target invalid; fallback to active window. {BuildFixedTargetContext(settings)} reason={reason ?? "unknown"}.");
         return request;
+    }
+
+    private static string BuildFixedTargetContext(AppSettings settings)
+    {
+        var hwnd = settings.FixedCaptureWindowHandle != 0
+            ? $"hwnd=0x{settings.FixedCaptureWindowHandle:X}"
+            : "hwnd=0x0";
+        var pid = settings.FixedCaptureWindowProcessId > 0
+            ? $"pid={settings.FixedCaptureWindowProcessId}"
+            : "pid=0";
+        var className = string.IsNullOrWhiteSpace(settings.FixedCaptureWindowClassName)
+            ? "class=(empty)"
+            : $"class=\"{settings.FixedCaptureWindowClassName}\"";
+        var title = string.IsNullOrWhiteSpace(settings.FixedCaptureWindowTitle)
+            ? "title=(empty)"
+            : $"title=\"{settings.FixedCaptureWindowTitle}\"";
+        return $"{hwnd} {pid} {className} {title}";
     }
 
     private static bool TryResolveMirrorScalingWindow(AppSettings settings, out IntPtr hwnd)
