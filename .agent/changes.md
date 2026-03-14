@@ -1736,6 +1736,142 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 22:19 (Asia/Taipei) — Implement x86 Dx11/Vulkan hook host selection**
+
+### Summary
+- x86 の Dx11 / Vulkan ターゲットで same-bitness の Host / Agent を選ぶ実装へ更新し、x86 Dx11 の native 成果物出力まで通した。
+
+### Context / Goal
+- x86 タイトルで Dx11 / Vulkan Hook が `Remote_LoadLibraryW_failed` で失敗しており、bitness 不一致の Host / Agent 選択を解消したかった。
+- x86 用の Dx11 / Vulkan Agent を runtime で正しく参照し、不足時は Attach 前に明示的に失敗させたかった。
+
+### Changes
+- `GraphicsHookClientService` で Dx11 / Vulkan も target bitness に応じて Host / Agent を選ぶようにし、bitness 不明時は fail fast するようにした。
+- `MainWindow` の事前チェックを拡張し、Dx11 / Vulkan でも x86 Host / Agent の不足を通知できるようにした。
+- `HookAgentDx11` と `HookAgentVulkan` の CMake 出力先を x86 ビルド時 `HookHost/bin/x86` に切り替えるようにした。
+- ポータブル配布パス要件ドキュメントに x86 Host / Agent 構成を追記した。
+
+### Files Touched
+- `Services/Hook/GraphicsHookClientService.cs` — x86 Dx11/Vulkan の Host / Agent 解決、存在チェック、bitness 不明時の fail fast を追加した。
+- `MainWindow.xaml.cs` — Dx11 / Vulkan の x86 Host / Agent 不足を事前警告できるようにした。
+- `Native/HookAgentDx11/CMakeLists.txt` — x86 ビルド成果物を `HookHost/bin/x86` へ出すようにした。
+- `Native/HookAgentVulkan/CMakeLists.txt` — x86 ビルド成果物を `HookHost/bin/x86` へ出すようにした。
+- `Doc/Portable_Distribution_Path_Requirements.md` — x86 Host / Agent を含む配布構成へ更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 の Dx11 / Vulkan ターゲットでは、x64 Host ではなく x86 Host / Agent を選ぶようになった。
+- x86 Agent が不足している場合、注入失敗まで進まず `agent_missing(...)` で早期に失敗する。
+- x86 Dx11 は native ビルド済みのため、`HookAgentDx11.dll` が `Native/HookHost/bin/x86` に配置される。
+
+### Risk & Mitigation
+- Risk: x86 Vulkan は 32bit の Vulkan import library がない環境ではビルドできない。
+- Mitigation: 実装側は x86 パス選択と出力先対応まで完了しており、環境に 32bit Vulkan SDK を追加すれば同じ構成でビルドできる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `cmake --build .\Native\build_x86 --config Release --target HookHost HookAgentDx11 -j 4`
+- `cmake --build .\Native\build --config Release --target HookAgentDx11 HookAgentVulkan HookHost -j 4`
+- `cmake --build .\Native\build_x86 --config Release --target HookAgentDx11 HookAgentVulkan HookHost -j 4` は一部未完了
+- 理由: `HookAgentVulkan` の x86 リンク時に `K:\Development\VulkanSDK\Lib\vulkan-1.lib` が x64 版で、32bit import library 不足により失敗
+
+**2026-03-14 22:42 (Asia/Taipei) — Harden Vulkan CMake library resolution**
+
+### Summary
+- `HookAgentVulkan` の CMake を修正し、明示 override / `VULKAN_SDK` / `find_package` の順で include/lib を解決して選択パスをログ出力するようにした。
+
+### Context / Goal
+- x86 Vulkan ビルドで意図しない import library を掴んでいる疑いがあり、CMake 側で使用する include/lib を明示的に制御したかった。
+- Win32 時に `Lib32` 優先へ寄せつつ、選ばれた SDK パスをビルドログから追える状態にしたかった。
+
+### Changes
+- `Native/HookAgentVulkan/CMakeLists.txt` に include/lib override 用の cache 変数を追加した。
+- `Vulkan::Vulkan` 依存をやめ、CMake が解決した import library ファイルを直接リンクするようにした。
+- Win32 時は `find_package(Vulkan)` の結果から `Lib32/vulkan-1.lib` を優先的に選び直すようにした。
+- 解決した include/lib が不完全なら target を skip し、選択パスは `message(STATUS ...)` で出すようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/CMakeLists.txt` — Vulkan include/lib 解決ロジックを強化し、build-time diagnostics を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x64 Vulkan ビルドでは使用する include/lib パスがログに出るようになった。
+- x86 Vulkan ビルドでは、不完全な include/lib 解決時に曖昧なリンク失敗へ進まず、configure 時点で skip される。
+
+### Risk & Mitigation
+- Risk: `K:\Development\VulkanSDK32` のようなカスタム配置がこのセッションから見えない場合、x86 override 検証を再現できない。
+- Mitigation: `HT_VULKAN_INCLUDE_DIR_OVERRIDE` / `HT_VULKAN_LIBRARY_OVERRIDE` を設け、見えているセッションでは明示パスで再現できるようにした。
+
+### Tests / Verification
+- `cmake -S .\Native -B .\Native\build -G "Visual Studio 17 2022" -A x64`
+- `cmake --build .\Native\build --config Release --target HookAgentVulkan HookHost -j 4`
+- 結果: x64 Vulkan は `HookAgentVulkan include: K:/Development/VulkanSDK/include` / `library: K:/Development/VulkanSDK/Lib/vulkan-1.lib` を出して成功
+- `cmake -S .\Native -B .\Native\build_x86 -G "Visual Studio 17 2022" -A Win32 -DHT_VULKAN_INCLUDE_DIR_OVERRIDE="K:\Development\VulkanSDK32\Include" -DHT_VULKAN_LIBRARY_OVERRIDE="K:\Development\VulkanSDK32\Lib\vulkan-1.lib"`
+- 結果: このセッションからは `K:\Development\VulkanSDK32` が存在確認できず、x86 側は `Resolved Vulkan include/lib pair is incomplete` で skip
+
+**2026-03-14 22:45 (Asia/Taipei) — Align Vulkan CMake with shared SDK root**
+
+### Summary
+- `HookAgentVulkan` の x86/x64 で同じ `K:\Development\VulkanSDK` ルートを使えるよう CMake を調整し、x86 では `Lib32` 不足を明示的に検出する形へ整理した。
+
+### Context / Goal
+- x86 と x64 で別 SDK ルートを前提にするのではなく、同じ `K:\Development\VulkanSDK` 配下の `Lib` / `Lib32` を切り替える想定へ合わせたかった。
+- x86 ビルド時に古い cache の Vulkan パスへ戻る挙動を止め、指定した SDK ルートだけで判定したかった。
+
+### Changes
+- `Native/HookAgentVulkan/CMakeLists.txt` に `HT_VULKAN_SDK_ROOT_OVERRIDE` を追加し、同一 SDK ルートから x64 は `Lib`、x86 は `Lib32` を解決するようにした。
+- SDK root override や include/lib override を指定した場合は、古い `find_package(Vulkan)` cache へフォールバックしないようにした。
+- x86 で `Lib32\vulkan-1.lib` が無い場合、どの include/lib を見に行ったかを含めて warning を出し、target 自体を生成しないようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/CMakeLists.txt` — shared SDK root override と fail-fast な x86 `Lib32` 判定を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x64 Vulkan は `K:\Development\VulkanSDK\Lib\vulkan-1.lib` を使って従来どおりビルドできる。
+- x86 Vulkan は `K:\Development\VulkanSDK\Lib32\vulkan-1.lib` が存在しない限り、曖昧なリンク失敗ではなく configure 時点で skip される。
+
+### Risk & Mitigation
+- Risk: `K:\Development\VulkanSDK` に `Lib32` が無い環境では、x86 `HookAgentVulkan` は生成されない。
+- Mitigation: warning に実際の参照パスを出すようにし、SDK 側に `Lib32\vulkan-1.lib` を追加すべきことがログから分かるようにした。
+
+### Tests / Verification
+- `cmake -S .\Native -B .\Native\build -G "Visual Studio 17 2022" -A x64 -DHT_VULKAN_SDK_ROOT_OVERRIDE="K:\Development\VulkanSDK"`
+- `cmake --build .\Native\build --config Release --target HookAgentVulkan HookHost -j 4`
+- 結果: x64 は `HookAgentVulkan include: K:/Development/VulkanSDK/Include` / `library: K:/Development/VulkanSDK/Lib/vulkan-1.lib` を出して成功
+- `cmake -S .\Native -B .\Native\build_x86_fresh -G "Visual Studio 17 2022" -A Win32 -DHT_VULKAN_SDK_ROOT_OVERRIDE="K:\Development\VulkanSDK"`
+- 結果: x86 は `include='K:/Development/VulkanSDK/Include', lib='K:/Development/VulkanSDK/Lib32/vulkan-1.lib'` の warning を出して `HookAgentVulkan` target を skip
+- `cmake --build "G:\APP Local\Hotkey-Translator\Native\build_x86_fresh" --config Release --target HookHost -j 4`
+- 結果: x86 `HookHost.exe` は生成成功、`HookAgentVulkan.vcxproj` は skip のため未生成
+
+**2026-03-14 22:13 (Asia/Taipei) — Add x86 Dx11/Vulkan hook implementation plan**
+
+### Summary
+- x86 の Dx11 / Vulkan Hook 対応方針を `Doc/` に整理し、推奨実装の方向性を明文化した。
+
+### Context / Goal
+- x86 タイトルで Dx11 / Vulkan Hook が失敗しており、実装修正前に推奨アーキテクチャと最小実装方針を固めたかった。
+- cross-bitness 注入を避け、同一 bitness の Host / Agent 構成へ寄せる方針を共有できる状態にしたかった。
+
+### Changes
+- `Doc/GraphicsHook_X86_Dx11_Vulkan_Implementation_Plan.md` を新規追加し、ゴール、非ゴール、実装手順、リスク、DoD を整理した。
+- x86 Dx11 / Vulkan では `x86 Host + x86 Agent` を使う推奨方針と、CMake / HostSelection 修正点を明記した。
+
+### Files Touched
+- `Doc/GraphicsHook_X86_Dx11_Vulkan_Implementation_Plan.md` — x86 Dx11/Vulkan Hook 対応の実装案を新規作成した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- x86 Dx11 / Vulkan 対応を実装する際の判断基準と変更範囲が明確になった。
+
+### Risk & Mitigation
+- Risk: 実装時に最終的なビルド制約や配置制約が計画とずれる可能性がある。
+- Mitigation: 実装時はこの計画を起点にしつつ、x86 ビルド成果物と最終配置を優先確認する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+
 **2026-03-14 18:46 (Asia/Taipei) — Align VisionLLM auto-download plan with mmproj alias strategy**
 
 ### Summary

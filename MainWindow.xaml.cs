@@ -99,6 +99,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const string FixedHookHostX86RelativePath = "Native\\HookHost\\bin\\x86\\HookHost.exe";
     private const string FixedHookAgentDx9RelativePath = "Native\\HookHost\\bin\\HookAgentDx9.dll";
     private const string FixedHookAgentDx9X86RelativePath = "Native\\HookHost\\bin\\x86\\HookAgentDx9.dll";
+    private const string FixedHookAgentDx11RelativePath = "Native\\HookHost\\bin\\HookAgentDx11.dll";
+    private const string FixedHookAgentDx11X86RelativePath = "Native\\HookHost\\bin\\x86\\HookAgentDx11.dll";
+    private const string FixedHookAgentVulkanRelativePath = "Native\\HookHost\\bin\\HookAgentVulkan.dll";
+    private const string FixedHookAgentVulkanX86RelativePath = "Native\\HookHost\\bin\\x86\\HookAgentVulkan.dll";
     private const string FixedMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
     private const string FixedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
 
@@ -1869,12 +1873,26 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (settings.EnableGraphicsHookPipeline)
         {
             ShowMissingBinaryDialogIfNeeded("bin_hookhost_missing", FixedHookHostRelativePath, "Graphics hook");
+            if (settings.GraphicsHookApi is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan)
+            {
+                // WHY: Runtime chooses host/agent by target bitness, so both x86/x64 payloads must be present for supported APIs.
+                ShowMissingBinaryDialogIfNeeded("bin_hookhost_x86_missing", FixedHookHostX86RelativePath, "Graphics hook (x86 host)");
+            }
+
             if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9)
             {
-                // WHY: Dx9 は x86/x64 両方を配布して runtime で切り替えるため、両系統を事前チェックする。
-                ShowMissingBinaryDialogIfNeeded("bin_hookhost_x86_missing", FixedHookHostX86RelativePath, "Graphics hook (x86 host)");
                 ShowMissingBinaryDialogIfNeeded("bin_hook_dx9_x64_missing", FixedHookAgentDx9RelativePath, "Graphics hook DX9 agent (x64)");
                 ShowMissingBinaryDialogIfNeeded("bin_hook_dx9_x86_missing", FixedHookAgentDx9X86RelativePath, "Graphics hook DX9 agent (x86)");
+            }
+            else if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx11)
+            {
+                ShowMissingBinaryDialogIfNeeded("bin_hook_dx11_x64_missing", FixedHookAgentDx11RelativePath, "Graphics hook DX11 agent (x64)");
+                ShowMissingBinaryDialogIfNeeded("bin_hook_dx11_x86_missing", FixedHookAgentDx11X86RelativePath, "Graphics hook DX11 agent (x86)");
+            }
+            else if (settings.GraphicsHookApi == GraphicsHookApiKind.Vulkan)
+            {
+                ShowMissingBinaryDialogIfNeeded("bin_hook_vulkan_x64_missing", FixedHookAgentVulkanRelativePath, "Graphics hook Vulkan agent (x64)");
+                ShowMissingBinaryDialogIfNeeded("bin_hook_vulkan_x86_missing", FixedHookAgentVulkanX86RelativePath, "Graphics hook Vulkan agent (x86)");
             }
         }
 

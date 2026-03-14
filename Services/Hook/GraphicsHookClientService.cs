@@ -18,6 +18,10 @@ internal sealed class GraphicsHookClientService : IDisposable
     private const string FixedHookHostRelativePathX86 = "Native\\HookHost\\bin\\x86\\HookHost.exe";
     private const string FixedHookAgentDx9RelativePathX64 = "Native\\HookHost\\bin\\HookAgentDx9.dll";
     private const string FixedHookAgentDx9RelativePathX86 = "Native\\HookHost\\bin\\x86\\HookAgentDx9.dll";
+    private const string FixedHookAgentDx11RelativePathX64 = "Native\\HookHost\\bin\\HookAgentDx11.dll";
+    private const string FixedHookAgentDx11RelativePathX86 = "Native\\HookHost\\bin\\x86\\HookAgentDx11.dll";
+    private const string FixedHookAgentVulkanRelativePathX64 = "Native\\HookHost\\bin\\HookAgentVulkan.dll";
+    private const string FixedHookAgentVulkanRelativePathX86 = "Native\\HookHost\\bin\\x86\\HookAgentVulkan.dll";
     private const uint ProcessQueryLimitedInformation = 0x1000;
     private const ushort ImageFileMachineUnknown = 0x0000;
     private const ushort ImageFileMachineI386 = 0x014c;
@@ -55,16 +59,16 @@ internal sealed class GraphicsHookClientService : IDisposable
 
     private readonly struct HostSelection
     {
-        public HostSelection(string hostPath, string dx9AgentPath, ProcessBitness targetBitness, GraphicsHookApiKind api)
+        public HostSelection(string hostPath, string agentPath, ProcessBitness targetBitness, GraphicsHookApiKind api)
         {
             HostPath = hostPath;
-            Dx9AgentPath = dx9AgentPath;
+            AgentPath = agentPath;
             TargetBitness = targetBitness;
             Api = api;
         }
 
         public string HostPath { get; }
-        public string Dx9AgentPath { get; }
+        public string AgentPath { get; }
         public ProcessBitness TargetBitness { get; }
         public GraphicsHookApiKind Api { get; }
     }
@@ -171,7 +175,7 @@ internal sealed class GraphicsHookClientService : IDisposable
                 effectiveOverlayEnabled,
                 _runtimeConfigFlags);
             _loggerAccessor()?.Info(
-                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} bitness={FormatBitness(hostSelection.TargetBitness)} host=\"{hostSelection.HostPath}\" agent=\"{hostSelection.Dx9AgentPath}\" fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
+                $"stage=graphics_hook event=attach_requested pid={_attachedPid} api={_attachedApi} bitness={FormatBitness(hostSelection.TargetBitness)} host=\"{hostSelection.HostPath}\" agent=\"{hostSelection.AgentPath}\" fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveOverlayEnabled}.");
         }
         catch (OperationCanceledException)
         {
@@ -375,15 +379,16 @@ internal sealed class GraphicsHookClientService : IDisposable
     private bool TryResolveHostSelection(AppSettings settings, int pid, out HostSelection selection, out string? failureReason)
     {
         var targetBitness = GetProcessBitness(pid, out var bitnessReason);
-        if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9 && targetBitness == ProcessBitness.Unknown)
+        if (RequiresTargetBitness(settings.GraphicsHookApi) && targetBitness == ProcessBitness.Unknown)
         {
+            // WHY: Dx9/Dx11/Vulkan need same-bitness host/agent selection; guessing here tends to fail later as Remote_LoadLibraryW_failed.
             failureReason = $"target_bitness_unknown({bitnessReason ?? "unknown"})";
             selection = default;
             return false;
         }
 
-        var hostPath = ResolveHostPath(targetBitness, settings.GraphicsHookApi);
-        var agentPath = ResolveDx9AgentPath(targetBitness, settings.GraphicsHookApi);
+        var hostPath = ResolveHostPath(targetBitness);
+        var agentPath = ResolveAgentPath(targetBitness, settings.GraphicsHookApi);
 
         if (!File.Exists(hostPath))
         {
@@ -392,7 +397,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             return false;
         }
 
-        if (settings.GraphicsHookApi == GraphicsHookApiKind.Dx9 && !File.Exists(agentPath))
+        if (!string.IsNullOrEmpty(agentPath) && !File.Exists(agentPath))
         {
             failureReason = $"agent_missing({agentPath})";
             selection = default;
@@ -406,10 +411,15 @@ internal sealed class GraphicsHookClientService : IDisposable
         return true;
     }
 
-    private static string ResolveHostPath(ProcessBitness targetBitness, GraphicsHookApiKind api)
+    private static bool RequiresTargetBitness(GraphicsHookApiKind api)
     {
-        // WHY: Dx9 のみ x86 Host を選択する。Dx11/Vulkan は既存の x64 Host 配置を維持する。
-        if (api == GraphicsHookApiKind.Dx9 && targetBitness == ProcessBitness.X86)
+        return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+    }
+
+    private static string ResolveHostPath(ProcessBitness targetBitness)
+    {
+        // WHY: HookHost itself must match the target bitness because the current injector does not support cross-bitness remote calls.
+        if (targetBitness == ProcessBitness.X86)
         {
             return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePathX86));
         }
@@ -417,16 +427,22 @@ internal sealed class GraphicsHookClientService : IDisposable
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, FixedHookHostRelativePathX64));
     }
 
-    private static string ResolveDx9AgentPath(ProcessBitness targetBitness, GraphicsHookApiKind api)
+    private static string ResolveAgentPath(ProcessBitness targetBitness, GraphicsHookApiKind api)
     {
-        if (api != GraphicsHookApiKind.Dx9)
+        var useX86 = targetBitness == ProcessBitness.X86;
+        var relativePath = api switch
+        {
+            GraphicsHookApiKind.Dx9 => useX86 ? FixedHookAgentDx9RelativePathX86 : FixedHookAgentDx9RelativePathX64,
+            GraphicsHookApiKind.Dx11 => useX86 ? FixedHookAgentDx11RelativePathX86 : FixedHookAgentDx11RelativePathX64,
+            GraphicsHookApiKind.Vulkan => useX86 ? FixedHookAgentVulkanRelativePathX86 : FixedHookAgentVulkanRelativePathX64,
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrEmpty(relativePath))
         {
             return string.Empty;
         }
 
-        var relativePath = targetBitness == ProcessBitness.X86
-            ? FixedHookAgentDx9RelativePathX86
-            : FixedHookAgentDx9RelativePathX64;
         return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, relativePath));
     }
 

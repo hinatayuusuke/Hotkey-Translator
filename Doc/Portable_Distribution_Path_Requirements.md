@@ -15,6 +15,13 @@
       bin/
         HookHost.exe
         HookAgentDx11.dll
+        HookAgentDx9.dll
+        HookAgentVulkan.dll
+        x86/
+          HookHost.exe
+          HookAgentDx11.dll
+          HookAgentDx9.dll
+          HookAgentVulkan.dll
   Tools/
     Magpie/
       Magpie.Core.exe
@@ -56,7 +63,7 @@
 ```
 
 ## settings.json 推奨値（相対固定）
-- `Dx11HookHostPath = Native\\HookHost\\bin\\HookHost.exe`
+- HookHost / Agent は runtime で target bitness に応じて `bin` と `bin\\x86` を切り替える前提です。
 - `MagpieCorePath = Tools\\Magpie\\Magpie.Core.exe`
 - `PaddleGrpcProjectDir = OcrService`
 - `PaddleVlGrpcProjectDir = OcrServiceVL`
