@@ -210,9 +210,9 @@
             </StackPanel>
         </Border>
 
-        <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
+        <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="Transparent" Panel.ZIndex="10"
               Visibility="{Binding RuntimeStatus.IsBusy, Converter={StaticResource BooleanToVisibilityConverter}}">
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+            <Border Background="{DynamicResource BusyDialogBackgroundBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     Padding="24"

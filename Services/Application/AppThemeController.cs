@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using System.Windows.Media;
 using Hotkey_Translator.Models;
 using Wpf.Ui.Appearance;
 using Wpf.Ui.Markup;
@@ -15,6 +16,7 @@ internal readonly record struct AppThemeApplyResult(
 
 internal sealed class AppThemeController
 {
+    private const string BusyDialogBackgroundBrushKey = "BusyDialogBackgroundBrush";
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaUseImmersiveDarkModeLegacy = 19;
     private const int DwmwaCaptionColor = 35;
@@ -66,6 +68,7 @@ internal sealed class AppThemeController
             {
                 Theme = applicationTheme
             };
+            ApplyCustomThemeResources(resources, applicationTheme);
             return;
         }
 
@@ -73,6 +76,18 @@ internal sealed class AppThemeController
         {
             Theme = applicationTheme
         });
+        ApplyCustomThemeResources(resources, applicationTheme);
+    }
+
+    private static void ApplyCustomThemeResources(ResourceDictionary resources, ApplicationTheme applicationTheme)
+    {
+        // WHY: WPF-UI card brushes can render with theme translucency, but the busy dialog must stay fully opaque
+        // while still tracking the selected light/dark theme.
+        var brush = new SolidColorBrush(applicationTheme == ApplicationTheme.Dark
+            ? Color.FromRgb(0x2B, 0x2B, 0x2B)
+            : Color.FromRgb(0xF8, 0xF8, 0xF8));
+        brush.Freeze();
+        resources[BusyDialogBackgroundBrushKey] = brush;
     }
 
     private static void ApplyStandardTitleBarTheme(IntPtr handle, ApplicationTheme applicationTheme)

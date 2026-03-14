@@ -1830,7 +1830,151 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+
+**2026-03-14 18:14 (Asia/Taipei) — Roll back busy modal surface experiment**
+
+### Summary
+- busy モーダルの背景・ダイアログ本体に対する直近の見た目変更を `MainWindow.xaml` でロールバックした。
+
+### Context / Goal
+- `ControlFillColorSecondaryBrush` へ差し替えても中央モーダルが半透明のまま見えるという報告があり、見た目変更の方向性が原因切り分けを難しくしていた。
+- まず既知の元状態へ戻し、その上で透け感の原因候補をコード上から整理したかった。
+
+### Changes
+- `MainWindow.xaml` の busy オーバーレイを元の `Background="#12000000"` に戻した。
+- `MainWindow.xaml` の busy ダイアログ本体背景を元の `CardBackgroundFillColorDefaultBrush` に戻した。
+
+### Files Touched
+- `MainWindow.xaml` — busy モーダル関連の直近変更を元の状態へ戻した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy モーダルの見た目は、今回の透過調整前の状態へ戻る。
+- この時点では新しい見た目改善は入っていない。
+
+### Risk & Mitigation
+- Risk: 見た目の問題自体は未解決のまま残る。
+- Mitigation: `MainWindow` には `AllowsTransparency` や backdrop 適用がなく、`AppThemeController` もテーマ辞書差し替えとタイトルバー色変更だけであることを確認し、原因候補をテーマ Brush 側へ絞り込んだ。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+- `rg -n "AllowsTransparency|Opacity=|WindowBackdrop|BackgroundManager|CardBackgroundFillColorDefaultBrush|ControlFillColorSecondaryBrush" MainWindow.xaml Services\Application UI -S`
+
+**2026-03-14 18:16 (Asia/Taipei) — Add dedicated opaque brush for busy dialog**
+
+### Summary
+- busy モーダル本体に専用の不透明 Brush を導入し、背面を見せたまま中央ダイアログだけを確実に不透明化した。
+
+### Context / Goal
+- WPF-UI のカード系 Brush を流用すると、busy ダイアログ本体が半透明に見える可能性があった。
+- 要件は「メインウィンドウは背面に見える」「中央の busy ダイアログ本体は透けない」だったため、テーマ追従しつつアルファ 255 の専用 Brush が必要だった。
+
+### Changes
+- `UI/ThemeResources.xaml` に `BusyDialogBackgroundBrush` を追加した。
+- `Services/Application/AppThemeController.cs` でテーマ適用時に `BusyDialogBackgroundBrush` を Light/Dark それぞれの不透明色へ差し替える処理を追加した。
+- `MainWindow.xaml` の busy オーバーレイ外側レイヤーを `Transparent` にし、中央 `Border` 背景を `BusyDialogBackgroundBrush` に変更した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — busy モーダル用の Brush キーを追加した。
+- `Services/Application/AppThemeController.cs` — busy モーダル専用 Brush をテーマ連動で更新する処理を追加した。
+- `MainWindow.xaml` — busy モーダルの背面表示と中央ダイアログ不透明化を両立するよう更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy 中でも後ろのメインウィンドウは見える。
+- 中央の busy ダイアログ本体はライト/ダーク両モードで不透明表示になる。
+
+### Risk & Mitigation
+- Risk: 新しい専用色が既存テーマより少し浮いて見える可能性がある。
+- Mitigation: Light/Dark ごとに近いサーフェス色を選び、テーマ切り替え時は `AppThemeController` で同期更新する実装にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+
+**2026-03-14 18:10 (Asia/Taipei) — Make busy dialog surface opaque**
+
+### Summary
+- busy モーダルの中央ダイアログ本体を、半透明寄りのカード背景から不透明なサーフェス背景へ変更した。
+
+### Context / Goal
+- 外側レイヤーは透明化済みで背面のメインウィンドウは見えるようになったが、中央の busy ダイアログ本体はまだ半透明に見えていた。
+- 要件は「背面は見える」「ダイアログ本体は透けない」だったため、中央カードだけを不透明化する必要があった。
+
+### Changes
+- `MainWindow.xaml` の busy ダイアログ `Border` 背景を `CardBackgroundFillColorDefaultBrush` から `ControlFillColorSecondaryBrush` へ変更した。
+- WHY: 既存テーマ Brush の中でより不透明なサーフェス色を使い、ライト/ダーク両モードに追従させた。
+
+### Files Touched
+- `MainWindow.xaml` — busy ダイアログ本体の背景 Brush を不透明寄りのサーフェスへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy モーダルの中央ダイアログ本体が透けず、背面だけが見える見た目になる。
+- ライト/ダーク切り替え時も既存テーマ Brush のまま追従する。
+
+### Risk & Mitigation
+- Risk: `ControlFillColorSecondaryBrush` のテーマ実装差で、想定よりコントラストが強く見える可能性がある。
+- Mitigation: 新規固定色は導入せず、既存 UI 全体で使っているサーフェス Brush を流用して整合性を優先した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+
+**2026-03-14 18:07 (Asia/Taipei) — Keep busy dialog opaque while showing main window behind it**
+
+### Summary
+- busy モーダルの中央カードは不透明のまま維持しつつ、背面のメインウィンドウが見えるよう全画面レイヤーを透明化した。
+
+### Context / Goal
+- 対象は翻訳テキスト overlay ではなく、メインウィンドウ中央に出る busy モーダル。
+- 要件は「モーダル自体は不透明」「後ろのメインウィンドウは見える」の両立だったため、外側レイヤーだけ透明に戻す必要があった。
+
+### Changes
+- `MainWindow.xaml` の busy モーダル用全画面 `Grid` の背景を `{DynamicResource ApplicationBackgroundBrush}` から `Transparent` へ変更した。
+- WHY: WPF では `Transparent` 背景でもヒットテスト対象になるため、背面を見せつつ入力ブロックは維持できる。
+
+### Files Touched
+- `MainWindow.xaml` — busy モーダル外側レイヤーを透明化し、中央カードだけ不透明のまま残した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy 中でも後ろのメインウィンドウ内容を視認できる。
+- 中央の busy ダイアログは従来どおり不透明で表示され、背面操作は引き続きブロックされる。
+
+### Risk & Mitigation
+- Risk: 背面が見えることで、busy 状態に気付きにくくなる可能性がある。
+- Mitigation: 中央カードの不透明背景、進捗バー、BusyMessage はそのまま維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
 - `rg -n "Overlay Behavior|Auto Translate|Overlay" MainWindow.xaml UI\OverlayBehaviorControl.xaml UI\OverlayControl.xaml -S`
+
+**2026-03-14 18:04 (Asia/Taipei) — Make busy modal background opaque and theme-aware**
+
+### Summary
+- MainWindow 中央の busy モーダル背景を半透明固定色から、テーマ追従の不透明背景へ変更した。
+
+### Context / Goal
+- 対象は翻訳テキスト overlay ではなく、`RuntimeStatus.IsBusy` 時にメインウィンドウ中央へ出る進捗モーダル。
+- 半透明の黒幕はライトモードとの相性が悪く、busy 状態の画面としても中途半端だったため、不透明でテーマに沿う見た目へ寄せたかった。
+
+### Changes
+- `MainWindow.xaml` の busy オーバーレイ背景を `#12000000` から `{DynamicResource ApplicationBackgroundBrush}` へ変更した。
+- WHY: 既存の WPF-UI テーマ Brush を使うことで、ライト/ダーク切り替えへ自然に追従させた。
+
+### Files Touched
+- `MainWindow.xaml` — busy モーダルの全画面背景を不透明かつテーマ連動の Brush に変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy モーダル表示中は背景が透けず、ライト/ダーク両モードで一貫した不透明画面になる。
+- 中央カードは既存のカード背景のままなので、画面状態の切り替わりがより明確になる。
+
+### Risk & Mitigation
+- Risk: 不透明化により、busy 中の背面コンテキストが完全に見えなくなる。
+- Mitigation: 対象を `IsBusy` 時の一時モーダルに限定し、中央カードのメッセージと進捗をそのまま維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
 
 **2026-03-14 17:19 (Asia/Taipei) — Fix overview translation engine checkbox clipping**
 

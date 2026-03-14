@@ -4,6 +4,7 @@
                     xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml">
     <sys:Double x:Key="SliderStandardWidth">180</sys:Double>
     <CornerRadius x:Key="ShellCardCornerRadius">14</CornerRadius>
+    <SolidColorBrush x:Key="BusyDialogBackgroundBrush" Color="#FF2B2B2B" />
 
     <Style x:Key="ShellSurfaceBorderStyle" TargetType="{x:Type Border}">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
