@@ -5,11 +5,11 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Capture" FontWeight="SemiBold" />
+        <TextBlock Text="Capture" Style="{StaticResource SectionTitleTextStyle}" />
         <Grid Margin="0,6,0,0" HorizontalAlignment="Left">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="120" />
-                <ColumnDefinition Width="280" />
+                <ColumnDefinition Width="140" />
+                <ColumnDefinition Width="320" />
                 <ColumnDefinition Width="80" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
@@ -19,7 +19,7 @@
 
             <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" VerticalAlignment="Center" />
             <ComboBox Grid.Row="0" Grid.Column="1"
-                      Width="200"
+                      Width="220"
                       HorizontalAlignment="Left"
                       SelectedValuePath="Tag"
                       SelectedValue="{Binding Settings.CaptureModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -29,7 +29,7 @@
 
             <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" VerticalAlignment="Center" Margin="0,6,0,0" />
             <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
-                <ComboBox Width="200"
+                <ComboBox Width="220"
                           HorizontalAlignment="Left"
                           SelectedValuePath="Tag"
                           SelectedValue="{Binding Settings.CaptureProviderTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">

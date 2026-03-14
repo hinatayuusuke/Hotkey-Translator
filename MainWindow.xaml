@@ -9,6 +9,7 @@
         Title="Hotkey Translator"
         Height="868"
         Width="1025"
+        FontSize="14"
         Background="{DynamicResource ApplicationBackgroundBrush}">
     <Window.Resources>
         <local:IntToVisibilityConverter x:Key="IntToVisibilityConverter" />

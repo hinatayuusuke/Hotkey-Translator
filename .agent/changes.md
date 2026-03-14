@@ -21097,6 +21097,48 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-14 15:35 (Asia/Taipei) — Increase settings UI typography baseline**
+
+### Summary
+- 設定 UI 全体の基準フォントを引き上げ、狭い固定幅レイアウトを合わせて補正した。
+
+### Context / Goal
+- 設定画面全体で本文やラベルが小さく感じられ、Overview 以外の画面で特に密度が高く見えていた。
+- 文字サイズだけを拡大して崩すのではなく、既存の WPF UI テーマを維持したまま可読性を上げたかった。
+
+### Changes
+- `MainWindow` の継承フォントサイズを上げ、全設定画面の本文・入力・ボタンへ一括反映した。
+- 共通見出しスタイルと補助テキストサイズを調整し、各設定画面のセクション見出しを統一した。
+- `Capture`、`Overview`、`OCR`、`Overlay`、`Hook`、`Translation`、`VisionLLM`、`System`、`Hotkey` で固定幅ラベルや入力欄を広げ、拡大後の窮屈さを抑えた。
+
+### Files Touched
+- `MainWindow.xaml` — 設定 UI 全体へ継承される基準フォントサイズを追加した。
+- `UI/ThemeResources.xaml` — 見出しサイズ、補助テキストサイズ、サイドバー項目の内側余白を調整した。
+- `UI/Common/FormSection.xaml` — 共通セクション見出しを新しい見出しスタイルへ寄せた。
+- `UI/CaptureControl.xaml` — タイトルを見出しスタイルへ統一し、ラベル列と入力欄の幅を拡大した。
+- `UI/OverviewControl.xaml` — カード内余白、見出しサイズ、Quick Controls 表示、主要フォーム幅を拡大した。
+- `UI/HookFullscreenControl.xaml` — ローカル見出しスタイルを共通化し、ラベル列とランチャー入力欄を広げた。
+- `UI/OcrSettingsControl.xaml` — 各セクション見出し、ラベル列、スライダー幅を拡大した。
+- `UI/OverlayBehaviorControl.xaml` — セクション見出しと各しきい値行の幅を拡大した。
+- `UI/OcrEnginesControl.xaml` — 見出し、ラベル列、モデル選択・数値入力の幅を拡大した。
+- `UI/HotkeysControl.xaml` — セクション見出し、項目列、キー選択コンボボックスの幅を拡大した。
+- `UI/SystemSettingsControl.xaml` — 見出し、ラベル列、テーマ・プロファイル選択幅を拡大した。
+- `UI/TranslationControl.xaml` — 見出し、ラベル列、Llama 設定フォーム幅を拡大した。
+- `UI/VisionLlmSettingsControl.xaml` — 見出し、ラベル列、VisionLLM 設定フォーム幅を拡大した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- MainWindow 配下の設定 UI で本文・ラベル・入力の表示が一段大きくなり、既存の配色やテーマ構成は維持される。
+- 一部画面ではラベル列と入力欄の幅が広がるため、同じウィンドウサイズでも行の窮屈さが減る。
+- Overlay 表示ロジックや保存設定フォーマットには影響しない。
+
+### Risk & Mitigation
+- Risk: 文字拡大により一部の固定幅行で折り返しや窮屈さが残る可能性がある。
+- Mitigation: ラベル幅と入力幅を併せて調整し、少なくともビルド時の XAML 整合性を確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-13 21:44 (Asia/Taipei) — Preserve themed TextBox style for log threshold input**
 
 ### Summary

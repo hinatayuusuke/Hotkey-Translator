@@ -5,12 +5,9 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
     <UserControl.Resources>
-        <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,4" />
-        </Style>
+        <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionTitleTextStyle}" />
         <Style x:Key="FieldLabelStyle" TargetType="TextBlock">
-            <Setter Property="Width" Value="150" />
+            <Setter Property="Width" Value="170" />
             <Setter Property="VerticalAlignment" Value="Center" />
         </Style>
     </UserControl.Resources>
@@ -25,12 +22,12 @@
 
         <Grid Margin="0,0,0,6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Hook API" Style="{StaticResource FieldLabelStyle}" />
             <ComboBox Grid.Column="1"
-                      Width="220"
+                      Width="240"
                       HorizontalAlignment="Left"
                       IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                       SelectedValuePath="Tag"
@@ -52,7 +49,7 @@
 
         <Grid Margin="0,0,0,6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="160" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
@@ -84,13 +81,13 @@
 
         <Grid Margin="0,0,0,6">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="390" />
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="430" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Launcher EXE" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
-                     Width="380"
+                     Width="420"
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
                      Text="{Binding Settings.GraphicsHookLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -104,13 +101,13 @@
 
         <Grid Margin="0,0,0,2">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
-                <ColumnDefinition Width="390" />
+                <ColumnDefinition Width="170" />
+                <ColumnDefinition Width="430" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Launcher args" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
-                     Width="380"
+                     Width="420"
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
                      Text="{Binding Settings.GraphicsHookLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -124,7 +121,7 @@
 
         <Grid Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Grid.Column="0" Text="Steam launch" Style="{StaticResource FieldLabelStyle}" />
@@ -142,7 +139,7 @@
 
         <Grid Margin="0,0,0,0">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="150" />
+                <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="160" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>

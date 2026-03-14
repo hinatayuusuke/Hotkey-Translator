@@ -7,7 +7,7 @@
              mc:Ignorable="d">
     <StackPanel>
         <TextBlock Text="{Binding Header, ElementName=Root}"
-                   FontWeight="SemiBold" />
+                   Style="{StaticResource SectionTitleTextStyle}" />
         <TextBlock Margin="0,4,0,0"
                    TextWrapping="Wrap"
                    Text="{Binding Description, ElementName=Root}">

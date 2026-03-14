@@ -9,11 +9,11 @@
         <local:BooleanAndMultiConverter x:Key="BooleanAndMultiConverter" />
     </UserControl.Resources>
     <StackPanel>
-                                <TextBlock Text="Appearance" FontWeight="SemiBold" />
+                                <TextBlock Text="Appearance" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Theme" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Theme" Width="170" VerticalAlignment="Center" />
                                     <ComboBox x:Name="AppThemeModeBox"
-                                              Width="160"
+                                              Width="180"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.AppThemeModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <ComboBoxItem Content="Dark" Tag="Dark" />
@@ -24,11 +24,11 @@
                                            Style="{StaticResource HelpTextStyle}"
                                            Margin="0,4,0,0" />
                                 <Separator Margin="0,10,0,8" />
-                                <TextBlock Text="Performance" FontWeight="SemiBold" />
+                                <TextBlock Text="Performance" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="VRAM budget profile" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="VRAM budget profile" Width="170" VerticalAlignment="Center" />
                                     <ComboBox x:Name="ResourceBudgetProfileBox"
-                                              Width="160"
+                                              Width="180"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.ResourceBudgetProfileTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <ComboBoxItem Content="Low VRAM" Tag="LowVram" />
@@ -46,7 +46,7 @@
                                           IsEnabled="{Binding Settings.EnableLogging}"
                                           IsChecked="{Binding Settings.EnableOcrPerfLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Log threshold (ms)" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Log threshold (ms)" Width="170" VerticalAlignment="Center" />
                                     <TextBox x:Name="OcrPerfLogThresholdBox" Width="80"
                                              Text="{Binding Settings.OcrPerfLogThresholdText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                         <TextBox.IsEnabled>

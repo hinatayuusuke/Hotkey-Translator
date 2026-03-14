@@ -5,7 +5,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
     <StackPanel>
-                                  <TextBlock Text="VisionLLM (Local VLM)" FontWeight="SemiBold" />
+                                  <TextBlock Text="VisionLLM (Local VLM)" Style="{StaticResource SectionTitleTextStyle}" />
                                   <TextBlock Text="VisionLLM starts automatically when OCR engine is set to VisionLLM."
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,4,0,0" />
@@ -13,16 +13,16 @@
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,6,0,0" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Model" Width="120" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="VisionLlmModelBox" Width="320"
+                                      <TextBlock Text="Model" Width="140" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="VisionLlmModelBox" Width="360"
                                                 ItemsSource="{Binding VisionLlmModelOptions}"
                                                 DisplayMemberPath="Display"
                                                 SelectedValuePath="Value"
                                                 SelectedValue="{Binding Settings.VisionLlmSelectedModelFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="MMProj" Width="120" VerticalAlignment="Center" />
-                                      <ComboBox x:Name="VisionLlmMmprojBox" Width="320"
+                                      <TextBlock Text="MMProj" Width="140" VerticalAlignment="Center" />
+                                      <ComboBox x:Name="VisionLlmMmprojBox" Width="360"
                                                 ItemsSource="{Binding VisionLlmMmprojOptions}"
                                                 DisplayMemberPath="Display"
                                                 SelectedValuePath="Value"
@@ -30,44 +30,44 @@
                                       <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadVisionLlmModelsCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Runtime control" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Runtime control" Width="140" VerticalAlignment="Center" />
                                       <Button Content="Apply &amp; Restart" Width="150" Command="{Binding RestartVisionLlmCommand}" />
                                       <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopVisionLlmCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="HTTP host" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="HTTP host" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmHostBox" Width="120"
                                                Text="{Binding Settings.VisionLlmHostText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Port" Width="40" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="Port" Width="52" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmPortBox" Width="80"
                                                Text="{Binding Settings.VisionLlmPortText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Context size" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Context size" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmContextSizeBox" Width="80"
                                                Text="{Binding Settings.VisionLlmContextSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="GPU layers" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="GPU layers" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmGpuLayersBox" Width="80"
                                                Text="{Binding Settings.VisionLlmGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Threads" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Threads" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmThreadsBox" Width="80"
                                                Text="{Binding Settings.VisionLlmThreadsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Parallel" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="Parallel" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmParallelBox" Width="80"
                                                Text="{Binding Settings.VisionLlmParallelText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Batch size" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Batch size" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmBatchSizeBox" Width="80"
                                                Text="{Binding Settings.VisionLlmBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Max tokens" Width="80" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="Max tokens" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmMaxTokensBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max image side" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Max image side" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
@@ -83,9 +83,9 @@
                                             Margin="0,8,0,0"
                                             IsChecked="{Binding Settings.EnableVisionGeometryHybridOcr, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Hybrid base OCR" Width="120" VerticalAlignment="Center" />
+                                      <TextBlock Text="Hybrid base OCR" Width="140" VerticalAlignment="Center" />
                                       <ComboBox x:Name="VisionGeometryHybridBaseEngineBox"
-                                                Width="140"
+                                                Width="160"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.VisionGeometryHybridBaseEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                 IsEnabled="{Binding Settings.EnableVisionGeometryHybridOcr}">

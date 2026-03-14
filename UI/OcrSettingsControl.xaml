@@ -18,9 +18,9 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
 
-                                <TextBlock Text="OCR Tuning" FontWeight="SemiBold" />
+                                <TextBlock Text="OCR Tuning" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="pHash threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="pHash threshold" Width="170" VerticalAlignment="Center" />
                                     <ui:NumberBox x:Name="PhashThresholdBox"
                                                   Width="100"
                                                   MaxDecimalPlaces="0"
@@ -30,7 +30,7 @@
                                                   Value="{Binding Settings.PhashThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="IoU threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="IoU threshold" Width="170" VerticalAlignment="Center" />
                                     <ui:NumberBox x:Name="IouThresholdBox"
                                                   Width="100"
                                                   MaxDecimalPlaces="2"
@@ -40,8 +40,8 @@
                                                   Value="{Binding Settings.IouThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Writing mode" Width="150" VerticalAlignment="Center" />
-                                    <ComboBox x:Name="VerticalModeOverrideBox" Width="180"
+                                    <TextBlock Text="Writing mode" Width="170" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="VerticalModeOverrideBox" Width="200"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.VerticalModeOverrideTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                         <ComboBoxItem Content="Auto" Tag="Auto" />
@@ -54,9 +54,9 @@
                                           Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.EnableSimpleMergeTuning, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Horizontal merge strength" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Horizontal merge strength" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="HorizontalMergeStrengthSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0"
                                             Maximum="100"
                                             IsSnapToTickEnabled="True"
@@ -72,9 +72,9 @@
                                                Text="{Binding ElementName=HorizontalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Vertical merge strength" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Vertical merge strength" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="VerticalMergeStrengthSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0"
                                             Maximum="100"
                                             IsSnapToTickEnabled="True"
@@ -93,7 +93,7 @@
                                            Style="{StaticResource HelpTextStyle}"
                                            Margin="0,4,0,0" />
                                 <Separator Margin="0,10,0,8" />
-                                <TextBlock Text="OCR Preprocess (Binarization)" FontWeight="SemiBold" />
+                                <TextBlock Text="OCR Preprocess (Binarization)" Style="{StaticResource SectionTitleTextStyle}" />
                                 <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableOcrBinarization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0"
@@ -119,9 +119,9 @@
                                     </CheckBox.IsEnabled>
                                 </CheckBox>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Low threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Low threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassLowThresholdSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -150,9 +150,9 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="High threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="High threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassHighThresholdSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -181,9 +181,9 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Threshold" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Threshold" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrBinarizationThresholdSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0"
                                             Maximum="255"
                                             IsSnapToTickEnabled="True"
@@ -221,9 +221,9 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Gamma" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Gamma" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrGammaSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0.6"
                                             Maximum="1.8"
                                             IsSnapToTickEnabled="True"
@@ -246,9 +246,9 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Contrast" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Contrast" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrContrastSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0.5"
                                             Maximum="2.0"
                                             IsSnapToTickEnabled="True"
@@ -272,15 +272,15 @@
                                 </StackPanel>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                <TextBlock Text="OCR Input" FontWeight="SemiBold" />
+                                <TextBlock Text="OCR Input" Style="{StaticResource SectionTitleTextStyle}" />
                                 <CheckBox x:Name="EnableOcrDownsamplingCheck"
                                           Content="Downsample OCR input"
                                           Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableOcrDownsampling, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Downsample scale" Width="150" VerticalAlignment="Center" />
+                                    <TextBlock Text="Downsample scale" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrDownsampleScaleSlider"
-                                            Width="180"
+                                            Width="200"
                                             Minimum="0.3"
                                             Maximum="1.0"
                                             IsSnapToTickEnabled="True"

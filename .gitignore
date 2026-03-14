@@ -68,6 +68,8 @@ Code-Reference/
 Tools/Magpie/effects/
 Tools/Magpie/cache/
 log/
+Reference/
+
 # User-specific files
 *.rsuser
 *.suo
