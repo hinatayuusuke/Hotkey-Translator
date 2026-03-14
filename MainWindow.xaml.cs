@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -296,7 +297,16 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _registeredTranslationProviderNames = translationProviders.Select(provider => provider.Name).ToList();
         ApplySettingsToUi(settings);
         CheckAndShowPrerequisiteDialogs(settings);
-        settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+        var bootstrapConfirmation = await ConfirmResourceBootstrapAsync(settings, ResourceBootstrapIntent.AppLoad).ConfigureAwait(true);
+        settingsChanged |= bootstrapConfirmation.SettingsChanged;
+        if (bootstrapConfirmation.Approved)
+        {
+            settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+        }
+        else
+        {
+            AppendLog("Resource host startup skipped because setup/download was canceled.");
+        }
         if (settingsChanged)
         {
             await _settingsService.SaveAsync().ConfigureAwait(true);
@@ -1253,6 +1263,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     }
 
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
+    Task<ResourceBootstrapConfirmationResult> ISettingsUiBridge.ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent) =>
+        ConfirmResourceBootstrapAsync(settings, intent);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
     bool ISettingsUiBridge.TryValidateResourceHostBudget(AppSettings settings, out string? message) =>
@@ -1266,6 +1278,100 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     void ISettingsUiBridge.ClearSceneChangeAutoTranslatePending(string reason) =>
         ClearSceneChangeAutoTranslatePending(reason);
+
+    private Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(
+        AppSettings settings,
+        ResourceBootstrapIntent intent)
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            return Dispatcher.InvokeAsync(() => ConfirmResourceBootstrapAsync(settings, intent)).Task.Unwrap();
+        }
+
+        var plan = _resourceHostFacade.BuildBootstrapPlan(settings);
+        if (!plan.RequiresConfirmation)
+        {
+            return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: false));
+        }
+
+        var message = BuildResourceBootstrapConfirmationMessage(plan, intent);
+        var result = MessageBox.Show(
+            this,
+            message,
+            "Download confirmation",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendLog("Resource setup/download canceled by user.");
+            return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: false, SettingsChanged: false));
+        }
+
+        var settingsChanged = false;
+        var approvals = settings.ApprovedResourceBootstrapKeys ??= new List<string>();
+        foreach (var approvalKey in plan.Items
+                     .Select(static item => item.ApprovalKey)
+                     .Where(static key => !string.IsNullOrWhiteSpace(key)))
+        {
+            if (approvals.Contains(approvalKey!, StringComparer.Ordinal))
+            {
+                continue;
+            }
+
+            approvals.Add(approvalKey!);
+            settingsChanged = true;
+        }
+
+        return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: settingsChanged));
+    }
+
+    private static string BuildResourceBootstrapConfirmationMessage(
+        ResourceBootstrapPlan plan,
+        ResourceBootstrapIntent intent)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine("Starting the selected OCR/translation resources requires setup or model downloads.");
+        builder.AppendLine();
+
+        foreach (var item in plan.Items)
+        {
+            var category = item.IsDefinite ? "Will run" : "May run";
+            builder.Append("- ");
+            builder.Append(item.DisplayName);
+            builder.Append(": ");
+            builder.Append(category);
+            builder.Append(' ');
+            builder.Append(item.Detail);
+            if (item.KnownDownloadBytes is > 0)
+            {
+                builder.Append(" Known model download: ");
+                builder.Append(FormatByteSize(item.KnownDownloadBytes.Value));
+                builder.Append('.');
+            }
+
+            builder.AppendLine();
+        }
+
+        builder.AppendLine();
+        builder.Append(intent == ResourceBootstrapIntent.SettingsSave
+            ? "Select OK to continue. Select Cancel to cancel this settings change and restore the previous settings."
+            : "Select OK to continue. Select Cancel to skip starting these resource hosts for now.");
+        return builder.ToString().TrimEnd();
+    }
+
+    private static string FormatByteSize(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+        var value = (double)bytes;
+        var unitIndex = 0;
+        while (value >= 1024 && unitIndex < units.Length - 1)
+        {
+            value /= 1024;
+            unitIndex++;
+        }
+
+        return $"{value:0.##} {units[unitIndex]}";
+    }
 
     private Rect ResolveSpinnerAnchorScreenRect(AppSettings settings)
     {
@@ -1701,15 +1807,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return _settingsChangeScheduler.FlushAsync();
     }
 
-    private async Task SaveSettingsImmediatelyAsync()
+    private async Task<bool> SaveSettingsImmediatelyAsync()
     {
         _settingsChangeScheduler.CancelPending();
-        await SaveSettingsCoreAsync().ConfigureAwait(true);
+        return await _settingsUiController.SaveFromUiAsync().ConfigureAwait(true);
     }
 
-    private Task SaveSettingsCoreAsync()
+    private async Task SaveSettingsCoreAsync()
     {
-        return _settingsUiController.SaveFromUiAsync();
+        await _settingsUiController.SaveFromUiAsync().ConfigureAwait(true);
     }
 
     private void ApplyViewModelInputToSettings(AppSettings settings)

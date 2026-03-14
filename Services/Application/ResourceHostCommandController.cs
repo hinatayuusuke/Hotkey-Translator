@@ -12,7 +12,7 @@ internal sealed class ResourceHostCommandController
     private readonly Func<bool> _isRunInProgress;
     private readonly Func<AppSettings> _settingsAccessor;
     private readonly Action<AppSettings, bool> _syncSettingsToView;
-    private readonly Func<Task> _saveSettingsImmediatelyAsync;
+    private readonly Func<Task<bool>> _saveSettingsImmediatelyAsync;
     private readonly Action<bool, string?> _setBusyOverlay;
     private readonly Action<string> _appendLog;
     private readonly Action<string> _showLoadFailure;
@@ -24,7 +24,7 @@ internal sealed class ResourceHostCommandController
         Func<bool> isRunInProgress,
         Func<AppSettings> settingsAccessor,
         Action<AppSettings, bool> syncSettingsToView,
-        Func<Task> saveSettingsImmediatelyAsync,
+        Func<Task<bool>> saveSettingsImmediatelyAsync,
         Action<bool, string?> setBusyOverlay,
         Action<string> appendLog,
         Action<string> showLoadFailure,
@@ -59,7 +59,11 @@ internal sealed class ResourceHostCommandController
             settings.EnableLlamaCppTranslation = true;
             _syncSettingsToView(settings, true);
 
-            await _saveSettingsImmediatelyAsync().ConfigureAwait(true);
+            if (!await _saveSettingsImmediatelyAsync().ConfigureAwait(true))
+            {
+                _appendLog("Llama.cpp restart canceled before resource setup/download.");
+                return;
+            }
             _appendLog("Llama.cpp restarted.");
         }
         catch (Exception ex)
@@ -89,7 +93,11 @@ internal sealed class ResourceHostCommandController
             settings.EnableLlamaCppTranslation = false;
             _syncSettingsToView(settings, true);
 
-            await _saveSettingsImmediatelyAsync().ConfigureAwait(true);
+            if (!await _saveSettingsImmediatelyAsync().ConfigureAwait(true))
+            {
+                _appendLog("llama-server stop canceled before resource setup/download.");
+                return;
+            }
             _appendLog("llama-server stopped.");
         }
         catch (Exception ex)
@@ -115,7 +123,11 @@ internal sealed class ResourceHostCommandController
         try
         {
             _setBusyOverlay(true, "Restarting VisionLLM...");
-            await _saveSettingsImmediatelyAsync().ConfigureAwait(true);
+            if (!await _saveSettingsImmediatelyAsync().ConfigureAwait(true))
+            {
+                _appendLog("VisionLLM restart canceled before resource setup/download.");
+                return;
+            }
 
             var settings = _settingsAccessor();
             _resourceHostFacade.StopVisionLlm();
@@ -181,7 +193,11 @@ internal sealed class ResourceHostCommandController
         try
         {
             _setBusyOverlay(true, "Applying OCR settings and restarting host...");
-            await _saveSettingsImmediatelyAsync().ConfigureAwait(true);
+            if (!await _saveSettingsImmediatelyAsync().ConfigureAwait(true))
+            {
+                _appendLog("OCR host restart canceled before resource setup/download.");
+                return;
+            }
 
             var settings = _settingsAccessor();
             if (settings.OcrEngine == OcrEngineKind.Paddle)

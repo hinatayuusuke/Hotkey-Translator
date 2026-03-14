@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
@@ -17,6 +20,15 @@ internal sealed class ResourceHostFacade : IDisposable
     private const string HostIdNdl = "ndl_grpc";
     private const string HostIdVisionLlm = "vision_llm_grpc";
     private const string HostIdLlama = "llama_grpc";
+    private const string LlamaProjectRelativePath = "TranslationServiceLlama";
+    private const string VisionProjectRelativePath = "OcrServiceVisionLlm";
+    private const string SharedModelsRelativePath = "TranslationServiceLlama\\LlamaCpp\\Models";
+    private const string LlamaManifestFileName = "model_manifest.json";
+    private const string VisionManifestFileName = "model_manifest.json";
+    private static readonly JsonSerializerOptions ManifestJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
 
     private readonly Func<AppLogger?> _loggerAccessor;
     private readonly Action<bool, string?> _setBusyOverlay;
@@ -315,6 +327,31 @@ internal sealed class ResourceHostFacade : IDisposable
         return true;
     }
 
+    public ResourceBootstrapPlan BuildBootstrapPlan(AppSettings settings)
+    {
+        var items = new List<ResourceBootstrapItem>();
+        foreach (var requiredHost in BuildRequiredHosts(settings))
+        {
+            switch (requiredHost.HostId)
+            {
+                case HostIdLlama:
+                    TryAddLlamaBootstrapItem(items, settings);
+                    break;
+                case HostIdVisionLlm:
+                    TryAddVisionBootstrapItem(items, settings);
+                    break;
+                case HostIdPaddle:
+                    TryAddPaddleBootstrapItem(items, settings);
+                    break;
+                case HostIdPaddleVl:
+                    TryAddPaddleVlBootstrapItem(items, settings);
+                    break;
+            }
+        }
+
+        return new ResourceBootstrapPlan(items);
+    }
+
     private void StopHostsNoLongerNeeded()
     {
         StopIfUnused(HostIdPaddle, _paddleGrpcHost.IsRunning, StopPaddle);
@@ -482,7 +519,284 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaGrpcPort);
     }
 
+    private void TryAddLlamaBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    {
+        var projectDir = ResolveAppRelativePath(LlamaProjectRelativePath);
+        var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
+        var manifestPath = Path.Combine(projectDir, LlamaManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            return;
+        }
+
+        var manifest = ReadLlamaManifest(manifestPath);
+        if (manifest is null)
+        {
+            return;
+        }
+
+        var selectedModelFileName = new LlamaModelCatalog().NormalizeModelFileName(
+            settings.LlamaSelectedModelFileName,
+            manifest.Filename);
+        var isDefaultSelection = string.Equals(selectedModelFileName, manifest.Filename, StringComparison.OrdinalIgnoreCase);
+        var modelPath = Path.Combine(ResolveAppRelativePath(SharedModelsRelativePath), selectedModelFileName);
+        var needsModelDownload = isDefaultSelection &&
+            !ModelAssetProvisioner.TryValidateAsset(
+                modelPath,
+                new ModelAssetDescriptor(
+                    manifest.Filename,
+                    manifest.DownloadUrl,
+                    manifest.Sha256,
+                    manifest.SizeBytes),
+                out _);
+        if (!needsRuntimeSetup && !needsModelDownload)
+        {
+            return;
+        }
+
+        var details = new List<string>();
+        if (needsRuntimeSetup)
+        {
+            details.Add("Python runtime setup");
+        }
+
+        if (needsModelDownload)
+        {
+            details.Add("default translation model download");
+        }
+
+        items.Add(new ResourceBootstrapItem(
+            "Llama.cpp",
+            $"Will start {string.Join(" and ", details)} before the host can run.",
+            IsDefinite: true,
+            KnownDownloadBytes: needsModelDownload ? manifest.SizeBytes : null,
+            ApprovalKey: null));
+    }
+
+    private void TryAddVisionBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    {
+        var projectDir = ResolveAppRelativePath(VisionProjectRelativePath);
+        var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
+        var manifestPath = Path.Combine(projectDir, VisionManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            return;
+        }
+
+        var manifest = ReadVisionManifest(manifestPath);
+        if (manifest?.Model is null || manifest.Mmproj is null)
+        {
+            return;
+        }
+
+        var selectedModelFileName = SettingsHostNormalizer.NormalizeVisionLlmModelFileName(settings.VisionLlmSelectedModelFileName);
+        var selectedMmprojFileName = SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(settings.VisionLlmSelectedMmprojFileName);
+        var usesManifestAssets =
+            string.Equals(selectedModelFileName, manifest.Model.LocalFileName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(selectedMmprojFileName, manifest.Mmproj.LocalFileName, StringComparison.OrdinalIgnoreCase);
+        var sharedModelsDir = ResolveAppRelativePath(SharedModelsRelativePath);
+        var needsModelDownload = false;
+        var needsMmprojDownload = false;
+        if (usesManifestAssets)
+        {
+            needsModelDownload = !ModelAssetProvisioner.TryValidateAsset(
+                Path.Combine(sharedModelsDir, selectedModelFileName),
+                manifest.Model.ToDescriptor(),
+                out _);
+            needsMmprojDownload = !ModelAssetProvisioner.TryValidateAsset(
+                Path.Combine(sharedModelsDir, selectedMmprojFileName),
+                manifest.Mmproj.ToDescriptor(),
+                out _);
+        }
+
+        if (!needsRuntimeSetup && !needsModelDownload && !needsMmprojDownload)
+        {
+            return;
+        }
+
+        var details = new List<string>();
+        if (needsRuntimeSetup)
+        {
+            details.Add("Python runtime setup");
+        }
+
+        if (needsModelDownload || needsMmprojDownload)
+        {
+            details.Add("VisionLLM model file download");
+        }
+
+        long? knownBytes = null;
+        if (needsModelDownload || needsMmprojDownload)
+        {
+            knownBytes = 0;
+            if (needsModelDownload && manifest.Model.SizeBytes is > 0)
+            {
+                knownBytes += manifest.Model.SizeBytes.Value;
+            }
+
+            if (needsMmprojDownload && manifest.Mmproj.SizeBytes is > 0)
+            {
+                knownBytes += manifest.Mmproj.SizeBytes.Value;
+            }
+        }
+
+        items.Add(new ResourceBootstrapItem(
+            "VisionLLM OCR",
+            $"Will start {string.Join(" and ", details)} before the host can run.",
+            IsDefinite: true,
+            KnownDownloadBytes: knownBytes > 0 ? knownBytes : null,
+            ApprovalKey: null));
+    }
+
+    private void TryAddPaddleBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    {
+        var projectDir = ResolveAppRelativePath("OcrService");
+        var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
+        var usesLibraryManagedModels = string.IsNullOrWhiteSpace(settings.PaddleModelDir);
+        if (!needsRuntimeSetup && !usesLibraryManagedModels)
+        {
+            return;
+        }
+
+        var approvalKey =
+            $"paddle_ocr|lang={PaddleModelResolver.ResolvePaddleLanguage(settings.SourceLanguage)}|det={PaddleModelResolver.NormalizeDetectionModelName(settings.PaddleTextDetectionModelName)}|rec={PaddleModelResolver.ResolveRecognitionModelForExecution(settings.PaddleTextRecognitionModelName, settings.SourceLanguage)}|managed={(usesLibraryManagedModels ? "yes" : "no")}";
+        if (IsBootstrapApprovalGranted(settings, approvalKey))
+        {
+            return;
+        }
+
+        var details = new List<string>();
+        if (needsRuntimeSetup)
+        {
+            details.Add("Python runtime setup");
+        }
+
+        if (usesLibraryManagedModels)
+        {
+            details.Add("PaddleOCR model download depending on local cache");
+        }
+
+        items.Add(new ResourceBootstrapItem(
+            "PaddleOCR",
+            $"May start {string.Join(" and ", details)} before OCR becomes available.",
+            IsDefinite: false,
+            KnownDownloadBytes: null,
+            ApprovalKey: approvalKey));
+    }
+
+    private void TryAddPaddleVlBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    {
+        var projectDir = ResolveAppRelativePath("OcrServiceVL");
+        var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
+        var pipelineVersion = string.IsNullOrWhiteSpace(settings.PaddleVlPipelineVersion) ? "v1.5" : settings.PaddleVlPipelineVersion.Trim();
+        var precision = string.IsNullOrWhiteSpace(settings.PaddleVlPrecision) ? "fp32" : settings.PaddleVlPrecision.Trim().ToLowerInvariant();
+        var approvalKey = $"paddle_vl|pipeline={pipelineVersion}|precision={precision}|hpi={(settings.PaddleVlEnableHpi ? "yes" : "no")}";
+        if (IsBootstrapApprovalGranted(settings, approvalKey))
+        {
+            return;
+        }
+
+        var details = new List<string>();
+        if (needsRuntimeSetup)
+        {
+            details.Add("Python runtime setup");
+        }
+
+        details.Add($"PaddleOCR-VL pipeline download for {pipelineVersion} depending on local cache");
+        items.Add(new ResourceBootstrapItem(
+            "PaddleOCR-VL",
+            $"May start {string.Join(" and ", details)} before OCR becomes available.",
+            IsDefinite: false,
+            KnownDownloadBytes: null,
+            ApprovalKey: approvalKey));
+    }
+
+    private static bool IsBootstrapApprovalGranted(AppSettings settings, string approvalKey)
+    {
+        var approvals = settings.ApprovedResourceBootstrapKeys ??= new List<string>();
+        return approvals.Any(existing => string.Equals(existing, approvalKey, StringComparison.Ordinal));
+    }
+
+    private static string ResolveAppRelativePath(string path)
+    {
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, path));
+    }
+
+    private static LlamaModelManifest? ReadLlamaManifest(string manifestPath)
+    {
+        try
+        {
+            var text = File.ReadAllText(manifestPath);
+            return JsonSerializer.Deserialize<LlamaModelManifest>(text, ManifestJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static VisionBootstrapManifest? ReadVisionManifest(string manifestPath)
+    {
+        try
+        {
+            var text = File.ReadAllText(manifestPath);
+            return JsonSerializer.Deserialize<VisionBootstrapManifest>(text, ManifestJsonOptions);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
     private readonly record struct RequiredHost(string HostId, string DisplayName, int Weight);
+
+    private sealed class LlamaModelManifest
+    {
+        [JsonPropertyName("filename")]
+        public string Filename { get; init; } = string.Empty;
+
+        [JsonPropertyName("download_url")]
+        public string DownloadUrl { get; init; } = string.Empty;
+
+        [JsonPropertyName("sha256")]
+        public string Sha256 { get; init; } = string.Empty;
+
+        [JsonPropertyName("size_bytes")]
+        public long? SizeBytes { get; init; }
+    }
+
+    private sealed class VisionBootstrapManifest
+    {
+        [JsonPropertyName("model")]
+        public VisionBootstrapAssetManifest? Model { get; init; }
+
+        [JsonPropertyName("mmproj")]
+        public VisionBootstrapAssetManifest? Mmproj { get; init; }
+    }
+
+    private sealed class VisionBootstrapAssetManifest
+    {
+        [JsonPropertyName("local_filename")]
+        public string LocalFileName { get; init; } = string.Empty;
+
+        [JsonPropertyName("download_url")]
+        public string DownloadUrl { get; init; } = string.Empty;
+
+        [JsonPropertyName("sha256")]
+        public string Sha256 { get; init; } = string.Empty;
+
+        [JsonPropertyName("size_bytes")]
+        public long? SizeBytes { get; init; }
+
+        public ModelAssetDescriptor ToDescriptor()
+        {
+            return new ModelAssetDescriptor(
+                LocalFileName,
+                DownloadUrl,
+                Sha256,
+                SizeBytes);
+        }
+    }
 
     private readonly record struct HostRuntimeState(
         string HostId,

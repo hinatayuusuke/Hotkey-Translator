@@ -12,6 +12,7 @@ internal interface ISettingsUiBridge
     bool IsLoaded { get; }
     bool IsApplyingSettings { get; set; }
     void ApplyRuntimeStateAfterSave(AppSettings settings);
+    Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
     bool TryValidateResourceHostBudget(AppSettings settings, out string? message);
@@ -48,11 +49,11 @@ internal sealed class SettingsUiController
         return result.Changed;
     }
 
-    public async Task SaveFromUiAsync()
+    public async Task<bool> SaveFromUiAsync()
     {
         if (_bridge.IsApplyingSettings || !_bridge.IsLoaded)
         {
-            return;
+            return false;
         }
 
         var previousApplyingState = _bridge.IsApplyingSettings;
@@ -69,12 +70,23 @@ internal sealed class SettingsUiController
                 _bridge.SyncSettingsToView(previousSettings, true);
                 _bridge.ShowLoadFailure(budgetFailureMessage ?? "Resource host VRAM budget exceeded.");
                 _bridge.AppendLog("Settings change rejected: resource host VRAM budget exceeded.");
-                return;
+                return false;
             }
 
             if (!settings.EnableSceneChangeAutoTranslate)
             {
                 _bridge.ClearSceneChangeAutoTranslatePending("auto-translate disabled");
+            }
+
+            var bootstrapConfirmation = await _bridge
+                .ConfirmResourceBootstrapAsync(settings, ResourceBootstrapIntent.SettingsSave)
+                .ConfigureAwait(true);
+            if (!bootstrapConfirmation.Approved)
+            {
+                _settingsService.ReplaceSettings(previousSettings);
+                _bridge.SyncSettingsToView(previousSettings, true);
+                _bridge.AppendLog("Settings change canceled before resource setup/download.");
+                return false;
             }
 
             _bridge.ApplyRuntimeStateAfterSave(settings);
@@ -83,6 +95,7 @@ internal sealed class SettingsUiController
             _bridge.AppendLog("Settings saved.");
             _bridge.TryUpdateHotkeys(settings);
             _bridge.UpdateAutoHideWatcher(settings);
+            return true;
         }
         finally
         {

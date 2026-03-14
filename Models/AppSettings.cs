@@ -202,6 +202,7 @@ public sealed class AppSettings
     public bool VisionGeometryAllowSyntheticFallback { get; set; } = true;
     public bool EnableVisionLlmDiagFileLog { get; set; } = false;
     public string VisionLlmDiagLogPath { get; set; } = string.Empty;
+    public List<string> ApprovedResourceBootstrapKeys { get; set; } = new();
     public string FlorenceProjectDir { get; set; } = "Tools\\Florence2";
     public string FlorenceUvPath { get; set; } = "uv";
     public string FlorenceModelName { get; set; } = "microsoft/Florence-2-large";

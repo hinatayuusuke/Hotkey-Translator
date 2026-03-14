@@ -1808,6 +1808,46 @@
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `bin\Debug\net8.0-windows10.0.22621.0\OcrServiceVisionLlm\model_manifest.json` が生成物側にも存在し、UTF-8 内容が source と一致することを確認した。
 
+**2026-03-14 19:23 (Asia/Taipei) — Add bootstrap confirmation before resource downloads**
+
+### Summary
+- PaddleOCR / PaddleOCR-VL / Llama.cpp / VisionLLM の初回セットアップやモデルダウンロード前に確認ダイアログを出すフローを実装した。
+
+### Context / Goal
+- モデルや runtime のダウンロードが自動で始まる前に、ユーザーが開始可否を選べるようにしたかった。
+- 設定画面からの変更時は、キャンセルしたら設定を元に戻し、起動時は設定を変えずに host 起動だけスキップしたかった。
+
+### Changes
+- `ResourceHostFacade` に bootstrap planner を追加し、Llama.cpp / VisionLLM の確定ダウンロード判定と、PaddleOCR / PaddleOCR-VL の事前警告判定を集約した。
+- `MainWindow` に確認ダイアログ生成と approval key 保存を追加し、起動時 auto-start 前にも同じ確認を通すようにした。
+- `SettingsUiController` に確認フローを組み込み、キャンセル時は `previousSettings` を復元して UI も戻すようにした。
+- `ResourceHostCommandController` と `SaveSettingsImmediatelyAsync` を `bool` 返却に変更し、手動 restart 系の操作も確認キャンセルで中断できるようにした。
+- `AppSettings` に `ApprovedResourceBootstrapKeys` を追加し、PaddleOCR / PaddleOCR-VL の「可能性あり」警告は同一条件で毎回出さないようにした。
+
+### Files Touched
+- `Services/Application/ResourceBootstrapConfirmation.cs` — 確認結果と dialog 用 plan item の型を追加した。
+- `Services/Application/ResourceHostFacade.cs` — 必要 host から bootstrap plan を組み立てる判定を追加した。
+- `Services/Application/SettingsUiController.cs` — 設定保存前の確認と cancel 時ロールバックを追加した。
+- `Services/Application/ResourceHostCommandController.cs` — 手動 restart/save 系が cancel を受けて中断できるようにした。
+- `MainWindow.xaml.cs` — 起動時 auto-start 前の確認ダイアログ、approval key 付与、確認文面生成を追加した。
+- `Models/AppSettings.cs` — 承認済み bootstrap key の永続化プロパティを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- VisionLLM / Llama.cpp の確定ダウンロードや、PaddleOCR / PaddleOCR-VL の初回セットアップ可能性がある場合、起動前に OK/Cancel ダイアログが出る。
+- 設定画面からの変更で Cancel を選ぶと、その保存は中止され、変更前の設定に戻る。
+- アプリ起動時に Cancel を選ぶと、設定は維持したまま、その回の resource host 起動だけをスキップする。
+- PaddleOCR と PaddleOCR-VL は別の approval key で扱い、片方を承認してももう片方の警告は独立して出る。
+
+### Risk & Mitigation
+- Risk: PaddleOCR 系はライブラリ内部ダウンロードのため、実際には不要でも初回警告が出る可能性がある。
+- Mitigation: 厳密判定ではなく「可能性あり」の警告として扱い、承認後は `ApprovedResourceBootstrapKeys` で同条件の再表示を抑制した。
+- Risk: 起動時に Cancel すると host が立ち上がらず、後続の OCR 実行で失敗する可能性がある。
+- Mitigation: 起動時 cancel は設定を変えずに host 起動だけスキップし、ログへ理由を残す形にした。明示 restart で再試行できる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 17:35 (Asia/Taipei) — Simplify overview bottom bar to preview and log only**
 
 ### Summary
