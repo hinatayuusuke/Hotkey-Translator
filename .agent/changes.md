@@ -1797,6 +1797,41 @@
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
 - 通常の `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` は実行中の `Hotkey-Translator.exe` によるファイルロックで失敗
 
+**2026-03-14 17:53 (Asia/Taipei) — Split overlay settings from auto translate**
+
+### Summary
+- `Overlay Behavior` を `Overlay` と `Auto Translate` に分離し、overlay readability 設定を専用カテゴリへ移した。
+
+### Context / Goal
+- 既存の `Overlay Behavior` は overlay readability と scene change auto-translate 条件が混在しており、カテゴリ名と中身が一致していなかった。
+- `Overlay` は表示品質、`Auto Translate` は自動実行条件という責務に分けたかった。
+
+### Changes
+- `MainWindow.xaml` のサイドバーへ `Overlay` を追加し、既存の `Overlay Behavior` 表示名を `Auto Translate` に変更した。
+- `UI/OverlayControl.xaml` と `UI/OverlayControl.xaml.cs` を新規追加し、overlay readability 設定を移した。
+- `UI/OverlayBehaviorControl.xaml` から overlay readability 設定を削除し、auto-hide / auto-translate / quiet window / watcher 設定だけを残した。
+- Settings カテゴリのインデックスを 1 つ後ろへ調整し、`Hook` 以降の表示マッピングを更新した。
+
+### Files Touched
+- `MainWindow.xaml` — サイドバー項目と Settings パネルの構成を `Overlay` / `Auto Translate` 分離後の並びへ更新した。
+- `UI/OverlayControl.xaml` — overlay readability 用の新しい設定 UI を追加した。
+- `UI/OverlayControl.xaml.cs` — `OverlayControl` のコードビハインドを追加した。
+- `UI/OverlayBehaviorControl.xaml` — auto translate 専用の設定 UI に整理した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Settings 画面に `Overlay` カテゴリが増え、overlay readability 設定はそこへ移動する。
+- 既存の `Overlay Behavior` 相当カテゴリは `Auto Translate` となり、自動実行条件だけを扱う。
+- 設定値やバインディング先は変えていないため、保存済み設定の意味自体は変わらない。
+
+### Risk & Mitigation
+- Risk: カテゴリ追加により `SelectedSettingsCategoryIndex` の並びが変わるため、表示先の対応付けを壊す可能性がある。
+- Mitigation: サイドバー項目数と各 `SettingsPanel*` の `ConverterParameter` を同時に更新し、XAML ビルドで確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+- `rg -n "Overlay Behavior|Auto Translate|Overlay" MainWindow.xaml UI\OverlayBehaviorControl.xaml UI\OverlayControl.xaml -S`
+
 **2026-03-14 17:19 (Asia/Taipei) — Fix overview translation engine checkbox clipping**
 
 ### Summary

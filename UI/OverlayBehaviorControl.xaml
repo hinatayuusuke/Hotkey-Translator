@@ -11,42 +11,7 @@
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
     </UserControl.Resources>
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Overlay readability" Style="{StaticResource SectionTitleTextStyle}" />
-        <CheckBox Content="Stabilize overlay font size"
-                  Margin="0,6,0,0"
-                  IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Boost readability for small OCR boxes"
-                  Margin="0,4,0,0"
-                  IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Small text sensitivity" Width="170" VerticalAlignment="Center" />
-            <Slider x:Name="SmallTextThresholdSlider"
-                    Width="{StaticResource SliderStandardWidth}"
-                    Minimum="8"
-                    Maximum="48"
-                    IsSnapToTickEnabled="True"
-                    TickFrequency="1"
-                    SmallChange="1"
-                    LargeChange="2"
-                    IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
-                    Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <TextBlock
-                       Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock"
-                           BasedOn="{StaticResource SliderValueDecimalTextStyle}">
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
-                                <Setter Property="Foreground" Value="DimGray" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </StackPanel>
-
-        <Separator Margin="0,10,0,8" />
-        <TextBlock Text="Scene Change Automation" Style="{StaticResource SectionTitleTextStyle}" />
+        <TextBlock Text="Auto Translate" Style="{StaticResource SectionTitleTextStyle}" />
         <CheckBox Content="Enable auto-hide on scene change"
                   Margin="0,6,0,0"
                   IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />

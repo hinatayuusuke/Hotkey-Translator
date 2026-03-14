@@ -63,7 +63,8 @@
                     <ListBoxItem Content="OCR Settings" />
                     <ListBoxItem Content="OCREngines" />
                     <ListBoxItem Content="VisionLLM" />
-                    <ListBoxItem Content="Overlay Behavior" />
+                    <ListBoxItem Content="Overlay" />
+                    <ListBoxItem Content="Auto Translate" />
                     <ListBoxItem Content="Hook" />
                     <ListBoxItem Content="Translation" />
                     <ListBoxItem Content="Hotkey" />
@@ -101,7 +102,8 @@
                                     <ListBoxItem Content="OCR Settings" />
                                     <ListBoxItem Content="OCREngines" />
                                     <ListBoxItem Content="VisionLLM" />
-                                    <ListBoxItem Content="Overlay Behavior" />
+                                    <ListBoxItem Content="Overlay" />
+                                    <ListBoxItem Content="Auto Translate" />
                                     <ListBoxItem Content="Hook" />
                                     <ListBoxItem Content="Translation" />
                                     <ListBoxItem Content="Hotkey" />
@@ -133,15 +135,21 @@
                                   <ui:VisionLlmSettingsControl />
                               </StackPanel>
 
-                              <StackPanel x:Name="SettingsPanelOverlayBehavior"
+                              <StackPanel x:Name="SettingsPanelOverlay"
                                           Margin="0,12,0,0"
                                           Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=4}">
+                                  <ui:OverlayControl />
+                              </StackPanel>
+
+                              <StackPanel x:Name="SettingsPanelAutoTranslate"
+                                          Margin="0,12,0,0"
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
                                   <ui:OverlayBehaviorControl />
                               </StackPanel>
 
                               <StackPanel x:Name="SettingsPanelHook"
                                           Margin="0,12,0,0"
-                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=5}">
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=6}">
                                   <ui:HookFullscreenControl BrowseLauncherClicked="OnBrowseGraphicsHookLauncherExeClicked"
                                                             LaunchClicked="OnLaunchGraphicsHookLauncherClicked"
                                                             CopySteamLaunchOptionsClicked="OnCopySteamLaunchOptionsClicked" />
@@ -149,19 +157,19 @@
 
                               <StackPanel x:Name="SettingsPanelTranslation"
                                           Margin="0,12,0,0"
-                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=6}">
+                                          Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=7}">
                                   <ui:TranslationControl />
                               </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelHotkeys"
                                         Margin="0,12,0,0"
-                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=7}">
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=8}">
                                 <ui:HotkeysControl x:Name="HotkeysControl" />
                             </StackPanel>
 
                             <StackPanel x:Name="SettingsPanelSystem"
                                         Margin="0,12,0,0"
-                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=8}">
+                                        Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=9}">
                                 <ui:SystemSettingsControl />
                             </StackPanel>
                         </StackPanel>
