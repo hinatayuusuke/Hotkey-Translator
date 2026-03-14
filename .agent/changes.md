@@ -1764,6 +1764,34 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-14 17:23 (Asia/Taipei) — Promote quick controls into 2x2 cards**
+
+### Summary
+- Overview の Quick Controls を 2x2 のカードレイアウトへ変更し、主要ホットキーが視認しやすい見た目にした。
+
+### Context / Goal
+- Quick Controls は上部にあるものの、テキスト行として並んでおり他の情報ブロックに埋もれやすかった。
+- 操作起点として目立たせつつ、既存のホットキー表示内容は変えずに視線誘導だけを強めたかった。
+
+### Changes
+- `UI/OverviewControl.xaml` に Quick Controls 用カードスタイルを追加した。
+- Quick Controls の 4 項目を 2x2 の `Border` カードへ組み替え、操作名とホットキーを縦配置にした。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — Quick Controls を 2x2 カード表示へ変更し、カード用スタイルと文字サイズを調整した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Overview 上部で Quick Controls が 4 枚のカードとして表示され、ホットキーが以前より大きく見える。
+- 操作内容やバインディングは変わらず、見た目だけが変化する。
+
+### Risk & Mitigation
+- Risk: カード化によりセクションの縦方向の占有面積が増え、狭い画面で下要素の表示位置が少し下がる可能性がある。
+- Mitigation: 2x2 の固定構成に留め、1 項目ごとの情報量は増やさず高さを抑えた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 16:52 (Asia/Taipei) — Implement GoogleWeb translation provider**
 
 ### Summary
