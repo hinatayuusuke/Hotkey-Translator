@@ -193,7 +193,7 @@ public sealed class AppSettings
     public int VisionLlmBatchSize { get; set; } = 1024;
     public int VisionLlmMaxTokens { get; set; } = 1024;
     public string VisionLlmSelectedModelFileName { get; set; } = "Qwen3.5-4B-Q4_K_M.gguf";
-    public string VisionLlmSelectedMmprojFileName { get; set; } = "4Bmmproj-F16.gguf";
+    public string VisionLlmSelectedMmprojFileName { get; set; } = "mmproj-Qwen3.5-4B-BF16.gguf";
     public int VisionLlmMaxImageSide { get; set; } = 768;
     public bool EnableVisionLlmSharedLocalTranslation { get; set; } = true;
     public bool EnableVisionGeometryHybridOcr { get; set; } = false;

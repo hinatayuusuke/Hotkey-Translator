@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -43,7 +42,6 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         "cublas64_12.dll",
         "cublasLt64_12.dll",
     };
-    private static readonly HttpClient DownloadClient = new() { Timeout = Timeout.InfiniteTimeSpan };
     private static readonly JsonSerializerOptions ManifestJsonOptions = new(JsonSerializerDefaults.Web)
     {
         PropertyNameCaseInsensitive = true
@@ -454,10 +452,10 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private static string BuildRuntimeFingerprint(string projectDir, string pyprojectPath, string manifestPath)
     {
         var builder = new StringBuilder();
-        builder.AppendLine(ComputeFileSha256(pyprojectPath));
+        builder.AppendLine(ModelAssetProvisioner.ComputeFileSha256(pyprojectPath));
         var lockPath = Path.Combine(projectDir, "uv.lock");
-        builder.AppendLine(File.Exists(lockPath) ? ComputeFileSha256(lockPath) : "<missing-uv-lock>");
-        builder.AppendLine(ComputeFileSha256(manifestPath));
+        builder.AppendLine(File.Exists(lockPath) ? ModelAssetProvisioner.ComputeFileSha256(lockPath) : "<missing-uv-lock>");
+        builder.AppendLine(ModelAssetProvisioner.ComputeFileSha256(manifestPath));
         var fingerprintBytes = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
         return Convert.ToHexString(fingerprintBytes);
     }
@@ -495,119 +493,17 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
             throw new InvalidDataException($"Model manifest is missing required fields: {manifestPath}");
         }
 
-        var expectedFileName = manifest.Filename.Trim();
-        var actualFileName = Path.GetFileName(modelPath);
-        if (!string.Equals(expectedFileName, actualFileName, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException(
-                $"Model manifest filename mismatch. Expected '{actualFileName}', got '{expectedFileName}'.");
-        }
-
-        if (TryValidateModel(modelPath, manifest, out _))
-        {
-            _logger?.Info($"Llama model is ready: {modelPath}");
-            return;
-        }
-
-        var modelDir = Path.GetDirectoryName(modelPath) ?? throw new InvalidOperationException("Model directory is invalid.");
-        Directory.CreateDirectory(modelDir);
-        var lockPath = $"{modelPath}.lock";
-        await using var lockHandle = await AcquireExclusiveLockAsync(lockPath, cancellationToken).ConfigureAwait(false);
-
-        // WHY: Another process may complete the download while we waited on the lock.
-        if (TryValidateModel(modelPath, manifest, out _))
-        {
-            _logger?.Info($"Llama model became ready while waiting for lock: {modelPath}");
-            return;
-        }
-
-        var tempPath = $"{modelPath}.tmp";
-        if (File.Exists(tempPath))
-        {
-            File.Delete(tempPath);
-        }
-
-        _logger?.Info($"Downloading model: {manifest.DownloadUrl}");
-        using var response = await DownloadClient.GetAsync(
-            manifest.DownloadUrl,
-            HttpCompletionOption.ResponseHeadersRead,
+        var asset = new ModelAssetDescriptor(
+            manifest.Filename.Trim(),
+            manifest.DownloadUrl.Trim(),
+            manifest.Sha256.Trim(),
+            manifest.SizeBytes);
+        await ModelAssetProvisioner.EnsureAssetAsync(
+            asset,
+            modelPath,
+            assetTag: "llama_model",
+            log: message => _logger?.Info(message),
             cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        await using (var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-        await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
-        {
-            await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
-        }
-
-        if (!TryValidateModel(tempPath, manifest, out var reason))
-        {
-            File.Delete(tempPath);
-            throw new InvalidDataException($"Downloaded model validation failed: {reason}");
-        }
-
-        File.Move(tempPath, modelPath, true);
-        _logger?.Info($"Model download complete: {modelPath}");
-    }
-
-    private static bool TryValidateModel(string modelPath, ModelManifest manifest, out string reason)
-    {
-        reason = string.Empty;
-        if (!File.Exists(modelPath))
-        {
-            reason = "missing file";
-            return false;
-        }
-
-        var info = new FileInfo(modelPath);
-        if (info.Length <= 0)
-        {
-            reason = "empty file";
-            return false;
-        }
-
-        if (manifest.SizeBytes is > 0 && info.Length != manifest.SizeBytes.Value)
-        {
-            reason = $"size mismatch (expected {manifest.SizeBytes.Value}, actual {info.Length})";
-            return false;
-        }
-
-        var actualSha = ComputeFileSha256(modelPath);
-        if (!string.Equals(actualSha, manifest.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            reason = $"sha256 mismatch (expected {manifest.Sha256}, actual {actualSha})";
-            return false;
-        }
-
-        return true;
-    }
-
-    private static string ComputeFileSha256(string path)
-    {
-        using var stream = File.OpenRead(path);
-        var hash = SHA256.HashData(stream);
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
-
-    private static async Task<FileStream> AcquireExclusiveLockAsync(string lockPath, CancellationToken cancellationToken)
-    {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(10);
-        while (true)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-            }
-            catch (IOException)
-            {
-                if (DateTimeOffset.UtcNow >= deadline)
-                {
-                    throw new TimeoutException($"Timed out waiting for lock: {lockPath}");
-                }
-
-                await Task.Delay(250, cancellationToken).ConfigureAwait(false);
-            }
-        }
     }
 
     private static void TryKill(Process process)

@@ -1736,6 +1736,78 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 18:46 (Asia/Taipei) — Align VisionLLM auto-download plan with mmproj alias strategy**
+
+### Summary
+- VisionLLM の自動ダウンロード計画を、HF 実ファイル名とローカル alias 名を分離する方針へ更新した。
+
+### Context / Goal
+- Qwen 4B/9B の mmproj が Hugging Face 上では同名で見えるため、同一 `Models` フォルダでの衝突回避方針を明文化したかった。
+- 既存のローカル命名と今後の自動ダウンロード実装が矛盾しないよう、計画書全体の整合性を取りたかった。
+
+### Changes
+- `Doc/VisionLlm_ModelAutoDownload_Implementation_Plan.md` を更新し、ダウンロード元 URL とローカル保存 alias 名を分離する設計へ修正した。
+- 既定値、manifest、移行、リスク、Definition of Done を見直し、4B/9B mmproj 共存前提で整合を取った。
+
+### Files Touched
+- `Doc/VisionLlm_ModelAutoDownload_Implementation_Plan.md` — mmproj 命名衝突を避ける alias 保存方式へ計画を更新し、関連節の前提と完了条件を揃えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 今後の VisionLLM 自動ダウンロード実装では、HF の実ファイル名ではなくローカル alias 名を設定・保存の正本として扱う方針が明確になった。
+
+### Risk & Mitigation
+- Risk: 実装時に manifest の `local_filename` と設定既定値がずれると、取得済みでも起動失敗する可能性がある。
+- Mitigation: 計画書内で `AppSettings` / `Normalizer` / UI / manifest の既定値一致を完了条件として明記した。
+
+### Tests / Verification
+- `Doc/VisionLlm_ModelAutoDownload_Implementation_Plan.md` を UTF-8 で再読し、概要・前提・manifest 設計・互換性・DoD が alias 保存方針で一貫していることを確認した。
+
+**2026-03-14 18:55 (Asia/Taipei) — Implement VisionLLM model auto download**
+
+### Summary
+- VisionLLM 起動前に 4B モデルと mmproj を manifest ベースで自動取得する処理を実装した。
+
+### Context / Goal
+- VisionLLM は model / mmproj 未配置だと起動時に即失敗しており、初回導入で手動配置が必要だった。
+- 4B と 9B の mmproj が Hugging Face 上では同名で衝突するため、ローカル alias 名で安全に共存できる自動取得を入れたかった。
+
+### Changes
+- `VisionLlmGrpcHost` に `OnBeforeStartAsync` を追加し、`uv sync` と Vision 用 asset の事前保証を起動前に実行するようにした。
+- 共通の `ModelAssetProvisioner` を追加し、SHA256 検証、排他ロック、`.tmp` 経由の原子的配置、既存ファイル検証を実装した。
+- Vision 用 `model_manifest.json` を追加し、Hugging Face の `download_url` とローカル `local_filename` を分離して 4B 用 alias 保存を定義した。
+- Vision の既定 model/mmproj 名を 4B + `mmproj-Qwen3.5-4B-BF16.gguf` に統一し、旧 generic mmproj 名は新 alias へ正規化するようにした。
+- Vision smoke test の既定 model/mmproj も新既定へ合わせた。
+- 既存 `LlamaGrpcHost` の単一モデル自動取得は新 helper を使うよう整理し、ダウンロード検証ロジックの実装を寄せた。
+
+### Files Touched
+- `Services/ModelAssetProvisioner.cs` — GGUF asset の検証・排他ダウンロード・既存ファイル確認を行う共通 helper を追加した。
+- `Services/VisionLlmGrpcHost.cs` — VisionLLM の起動前 `uv sync`、manifest 読み込み、model/mmproj 自動取得、カスタム選択時の fail fast を実装した。
+- `Services/LlamaGrpcHost.cs` — 既存 llama モデル取得が共通 helper を使うように整理した。
+- `OcrServiceVisionLlm/model_manifest.json` — 4B model と mmproj の取得元 URL、ローカル alias 名、SHA256、サイズを定義した。
+- `Services/Settings/SettingsHostNormalizer.cs` — VisionLLM の既定値を 4B 用に統一し、旧 mmproj 名を新 alias 名へ移行する正規化を追加した。
+- `Models/AppSettings.cs` — VisionLLM の既定 mmproj 名を新 alias へ更新した。
+- `MainWindow.xaml.cs` — UI 側の VisionLLM 既定 mmproj 名を新 alias へ更新した。
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — smoke test の既定 model/mmproj を新既定へ更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- VisionLLM を既定の 4B 設定で起動したとき、必要な GGUF と mmproj が未配置でも起動前に自動取得される。
+- 旧 `4Bmmproj-F16.gguf` / `mmproj-F16.gguf` / `mmproj-BF16.gguf` を設定していた環境は、新しい `mmproj-Qwen3.5-4B-BF16.gguf` へ正規化される。
+- 4B と 9B の mmproj は同一 `Models` フォルダで alias 名により共存できる。
+- ユーザーが既定以外の Vision model/mmproj を指定した場合は自動取得せず、ローカル配置前提で明示的に失敗する。
+
+### Risk & Mitigation
+- Risk: Hugging Face 側の URL やハッシュが将来変わると自動取得が失敗する。
+- Mitigation: `OcrServiceVisionLlm/model_manifest.json` に URL・SHA256・サイズを固定し、更新箇所を manifest 1 か所へ閉じ込めた。
+- Risk: `local_filename` と設定既定値が将来ずれると、取得済みでも起動時に別名を見に行って失敗する。
+- Mitigation: `AppSettings` / `SettingsHostNormalizer` / `MainWindow` / manifest の既定値を同じ alias 名へ揃え、旧既定名は正規化で寄せた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+- `bin\Debug\net8.0-windows10.0.22621.0\OcrServiceVisionLlm\model_manifest.json` が生成物側にも存在し、UTF-8 内容が source と一致することを確認した。
+
 **2026-03-14 17:35 (Asia/Taipei) — Simplify overview bottom bar to preview and log only**
 
 ### Summary

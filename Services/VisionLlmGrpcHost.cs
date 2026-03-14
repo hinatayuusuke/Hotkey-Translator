@@ -1,6 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using Grpc.Net.Client;
@@ -15,12 +19,19 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
 {
     private const string FixedProjectRelativePath = "OcrServiceVisionLlm";
     private const string FixedServerScriptName = "server.py";
+    private const string ManifestFileName = "model_manifest.json";
+    private const string UvSyncStateFileName = ".uv-sync.state";
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string SharedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
     private const string SharedLlamaModelsRelativePath = "TranslationServiceLlama\\LlamaCpp\\Models";
+    private static readonly JsonSerializerOptions ManifestJsonOptions = new(JsonSerializerDefaults.Web)
+    {
+        PropertyNameCaseInsensitive = true
+    };
     private readonly object _lock = new();
     private int? _trackedLlamaServerPid;
     private string? _trackedLlamaServerPath;
+    private AppLogger? _logger => Logger;
 
     public VisionLlmGrpcHost(Func<AppLogger?>? loggerAccessor = null)
         : base(loggerAccessor)
@@ -32,6 +43,14 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
     protected override bool IsEnabled(AppSettings settings)
     {
         return settings.EnableVisionLlmGrpcHost;
+    }
+
+    protected override async Task OnBeforeStartAsync(AppSettings settings, CancellationToken cancellationToken)
+    {
+        var projectDir = ResolveProjectDirectory();
+        var uvPath = ResolveUvExecutablePath();
+        await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
+        await EnsureVisionLlmAssetsAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
     protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
@@ -57,8 +76,12 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         }
 
         var modelsDir = ResolvePath(SharedLlamaModelsRelativePath);
-        var modelPath = Path.Combine(modelsDir, SettingsHostNormalizer.NormalizeVisionLlmModelFileName(settings.VisionLlmSelectedModelFileName));
-        var mmprojPath = Path.Combine(modelsDir, SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(settings.VisionLlmSelectedMmprojFileName));
+        var modelPath = Path.Combine(
+            modelsDir,
+            SettingsHostNormalizer.NormalizeVisionLlmModelFileName(settings.VisionLlmSelectedModelFileName));
+        var mmprojPath = Path.Combine(
+            modelsDir,
+            SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(settings.VisionLlmSelectedMmprojFileName));
         if (!File.Exists(modelPath))
         {
             throw new FileNotFoundException($"VisionLLM model not found: {modelPath}");
@@ -129,6 +152,151 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
 
         var process = StartProcessWithLogging(startInfo, "VisionLlmGrpc");
         return Task.FromResult(process);
+    }
+
+    private async Task EnsurePythonRuntimeAsync(string projectDir, string uvPath, CancellationToken cancellationToken)
+    {
+        var pyprojectPath = Path.Combine(projectDir, "pyproject.toml");
+        var manifestPath = Path.Combine(projectDir, ManifestFileName);
+        if (!File.Exists(pyprojectPath))
+        {
+            throw new FileNotFoundException($"pyproject.toml not found: {pyprojectPath}");
+        }
+
+        if (!File.Exists(manifestPath))
+        {
+            throw new FileNotFoundException($"Vision model manifest not found: {manifestPath}");
+        }
+
+        var fingerprint = BuildRuntimeFingerprint(projectDir, pyprojectPath, manifestPath);
+        var statePath = Path.Combine(projectDir, UvSyncStateFileName);
+        var venvPath = Path.Combine(projectDir, ".venv");
+        if (Directory.Exists(venvPath) && File.Exists(statePath))
+        {
+            var cachedFingerprint = (await File.ReadAllTextAsync(statePath, cancellationToken).ConfigureAwait(false)).Trim();
+            if (string.Equals(cachedFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                _logger?.Info("Skip uv sync for VisionLLM runtime: fingerprint unchanged.");
+                return;
+            }
+        }
+
+        _logger?.Info("Running uv sync for VisionLLM runtime.");
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = uvPath,
+            WorkingDirectory = projectDir,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
+        startInfo.ArgumentList.Add("sync");
+        startInfo.ArgumentList.Add("--project");
+        startInfo.ArgumentList.Add(projectDir);
+
+        using var process = new Process { StartInfo = startInfo };
+        var output = new StringBuilder();
+        var errors = new StringBuilder();
+        process.OutputDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                output.AppendLine(args.Data);
+                _logger?.Info($"[VisionLlm uv] {args.Data}");
+            }
+        };
+        process.ErrorDataReceived += (_, args) =>
+        {
+            if (!string.IsNullOrWhiteSpace(args.Data))
+            {
+                errors.AppendLine(args.Data);
+                _logger?.Info($"[VisionLlm uv] {args.Data}");
+            }
+        };
+
+        if (!process.Start())
+        {
+            throw new InvalidOperationException("Failed to start VisionLLM uv sync.");
+        }
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            throw;
+        }
+
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"VisionLLM uv sync failed with exit code {process.ExitCode}.{Environment.NewLine}{errors}{output}");
+        }
+
+        await File.WriteAllTextAsync(statePath, fingerprint, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static string BuildRuntimeFingerprint(string projectDir, string pyprojectPath, string manifestPath)
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(ModelAssetProvisioner.ComputeFileSha256(pyprojectPath));
+        var lockPath = Path.Combine(projectDir, "uv.lock");
+        builder.AppendLine(File.Exists(lockPath) ? ModelAssetProvisioner.ComputeFileSha256(lockPath) : "<missing-uv-lock>");
+        builder.AppendLine(ModelAssetProvisioner.ComputeFileSha256(manifestPath));
+        var fingerprintBytes = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
+        return Convert.ToHexString(fingerprintBytes);
+    }
+
+    private async Task EnsureVisionLlmAssetsAsync(AppSettings settings, CancellationToken cancellationToken)
+    {
+        var projectDir = ResolveProjectDirectory();
+        var manifestPath = Path.Combine(projectDir, ManifestFileName);
+        if (!File.Exists(manifestPath))
+        {
+            throw new FileNotFoundException($"Vision model manifest not found: {manifestPath}");
+        }
+
+        var manifestText = await File.ReadAllTextAsync(manifestPath, cancellationToken).ConfigureAwait(false);
+        var manifest = JsonSerializer.Deserialize<VisionModelManifest>(manifestText, ManifestJsonOptions)
+            ?? throw new InvalidDataException($"Invalid Vision model manifest: {manifestPath}");
+        if (manifest.Model is null || manifest.Mmproj is null)
+        {
+            throw new InvalidDataException($"Vision model manifest is missing model or mmproj entries: {manifestPath}");
+        }
+
+        var selectedModelFileName = SettingsHostNormalizer.NormalizeVisionLlmModelFileName(settings.VisionLlmSelectedModelFileName);
+        var selectedMmprojFileName = SettingsHostNormalizer.NormalizeVisionLlmMmprojFileName(settings.VisionLlmSelectedMmprojFileName);
+        var modelPath = Path.Combine(ResolvePath(SharedLlamaModelsRelativePath), selectedModelFileName);
+        var mmprojPath = Path.Combine(ResolvePath(SharedLlamaModelsRelativePath), selectedMmprojFileName);
+        var useManifestAssets =
+            string.Equals(selectedModelFileName, manifest.Model.LocalFileName, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(selectedMmprojFileName, manifest.Mmproj.LocalFileName, StringComparison.OrdinalIgnoreCase);
+        if (!useManifestAssets)
+        {
+            ModelAssetProvisioner.EnsureExistingNonEmptyFile(modelPath, "Selected VisionLLM model");
+            ModelAssetProvisioner.EnsureExistingNonEmptyFile(mmprojPath, "Selected VisionLLM mmproj");
+            _logger?.Info($"Using user-selected VisionLLM assets: model={modelPath} mmproj={mmprojPath}");
+            return;
+        }
+
+        await ModelAssetProvisioner.EnsureAssetAsync(
+            manifest.Model.ToDescriptor(),
+            modelPath,
+            assetTag: "vision_model",
+            log: message => _logger?.Info(message),
+            cancellationToken).ConfigureAwait(false);
+        await ModelAssetProvisioner.EnsureAssetAsync(
+            manifest.Mmproj.ToDescriptor(),
+            mmprojPath,
+            assetTag: "vision_mmproj",
+            log: message => _logger?.Info(message),
+            cancellationToken).ConfigureAwait(false);
     }
 
     protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
@@ -243,6 +411,21 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         return resolved;
     }
 
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(true);
+            }
+        }
+        catch
+        {
+            // Ignore kill failures on cancellation.
+        }
+    }
+
     private static string ResolveDiagLogPath(AppSettings settings)
     {
         if (!string.IsNullOrWhiteSpace(settings.VisionLlmDiagLogPath))
@@ -355,6 +538,39 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         catch
         {
             return false;
+        }
+    }
+
+    private sealed class VisionModelManifest
+    {
+        [JsonPropertyName("model")]
+        public VisionModelAssetManifest? Model { get; init; }
+
+        [JsonPropertyName("mmproj")]
+        public VisionModelAssetManifest? Mmproj { get; init; }
+    }
+
+    private sealed class VisionModelAssetManifest
+    {
+        [JsonPropertyName("local_filename")]
+        public string LocalFileName { get; init; } = string.Empty;
+
+        [JsonPropertyName("download_url")]
+        public string DownloadUrl { get; init; } = string.Empty;
+
+        [JsonPropertyName("sha256")]
+        public string Sha256 { get; init; } = string.Empty;
+
+        [JsonPropertyName("size_bytes")]
+        public long? SizeBytes { get; init; }
+
+        public ModelAssetDescriptor ToDescriptor()
+        {
+            return new ModelAssetDescriptor(
+                LocalFileName.Trim(),
+                DownloadUrl.Trim(),
+                Sha256.Trim(),
+                SizeBytes);
         }
     }
 }

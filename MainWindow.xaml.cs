@@ -89,7 +89,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const string DefaultVisionLlmModelFileName = "Qwen3.5-4B-Q4_K_M.gguf";
-    private const string DefaultVisionLlmMmprojFileName = "4Bmmproj-F16.gguf";
+    private const string DefaultVisionLlmMmprojFileName = "mmproj-Qwen3.5-4B-BF16.gguf";
     private const int MirrorOverlayTopmostResyncIntervalMs = 500;
     private const int RoiPresetSlotCount = 10;
     private const int RoiPresetPreviewDurationMs = 1000;

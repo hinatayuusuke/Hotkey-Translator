@@ -7,8 +7,14 @@ namespace Hotkey_Translator.Services.Settings;
 internal static class SettingsHostNormalizer
 {
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
-    private const string DefaultVisionLlmModelFileName = "Qwen3.5-9B-Q4_K_M.gguf";
-    private const string DefaultVisionLlmMmprojFileName = "mmproj-F16.gguf";
+    private const string DefaultVisionLlmModelFileName = "Qwen3.5-4B-Q4_K_M.gguf";
+    private const string DefaultVisionLlmMmprojFileName = "mmproj-Qwen3.5-4B-BF16.gguf";
+    private static readonly string[] LegacyDefaultVisionLlmMmprojFileNames =
+    {
+        "4Bmmproj-F16.gguf",
+        "mmproj-F16.gguf",
+        "mmproj-BF16.gguf"
+    };
 
     public static bool NormalizeLlamaSettings(AppSettings settings)
     {
@@ -129,8 +135,17 @@ internal static class SettingsHostNormalizer
     public static string NormalizeVisionLlmMmprojFileName(string? value)
     {
         var fileName = Path.GetFileName((value ?? string.Empty).Trim());
-        return string.IsNullOrWhiteSpace(fileName) ||
-               !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase))
+        {
+            return DefaultVisionLlmMmprojFileName;
+        }
+
+        // COMPAT: Older defaults used generic mmproj names that collide between 4B and 9B on Hugging Face.
+        // Rewrite them to the model-specific local alias so existing settings migrate onto the new layout.
+        return Array.Exists(
+                LegacyDefaultVisionLlmMmprojFileNames,
+                legacyName => string.Equals(legacyName, fileName, StringComparison.OrdinalIgnoreCase))
             ? DefaultVisionLlmMmprojFileName
             : fileName;
     }
