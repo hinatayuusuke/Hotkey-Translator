@@ -225,6 +225,16 @@ namespace ht::hook::vulkan
             return std::clamp(fps, kMinCaptureFps, kMaxCaptureFps);
         }
 
+        std::uint64_t SwapchainHandleToLogValue(VkSwapchainKHR swapchain)
+        {
+            // WHY: Vulkan non-dispatchable handles are pointer-typed on 64-bit builds and integer-typed on 32-bit builds.
+#if defined(VK_USE_64_BIT_PTR_DEFINES) && VK_USE_64_BIT_PTR_DEFINES
+            return static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(swapchain));
+#else
+            return static_cast<std::uint64_t>(swapchain);
+#endif
+        }
+
         const char* CaptureSkipReasonToString(CaptureSkipReason reason)
         {
             switch (reason)
@@ -901,7 +911,9 @@ namespace ht::hook::vulkan
                 const auto now = NowQpc();
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
                 {
-                    DebugLog("stage=hook_vulkan event=ensure_swapchain_images fail reason=device_null swapchain=%p.", swapchain);
+                    DebugLog(
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=device_null swapchain=0x%llX.",
+                        static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)));
                 }
                 return false;
             }
@@ -923,9 +935,9 @@ namespace ht::hook::vulkan
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=get_swapchain_images_missing device=%p swapchain=%p.",
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=get_swapchain_images_missing device=%p swapchain=0x%llX.",
                         info.device,
-                        swapchain);
+                        static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)));
                 }
                 return false;
             }
@@ -938,11 +950,11 @@ namespace ht::hook::vulkan
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=query_count_failed vk=%d count=%u device=%p swapchain=%p.",
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=query_count_failed vk=%d count=%u device=%p swapchain=0x%llX.",
                         static_cast<int>(countResult),
                         imageCount,
                         info.device,
-                        swapchain);
+                        static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)));
                 }
                 return false;
             }
@@ -955,11 +967,11 @@ namespace ht::hook::vulkan
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastSwapchainEnsureFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=fetch_images_failed vk=%d count=%u device=%p swapchain=%p.",
+                        "stage=hook_vulkan event=ensure_swapchain_images fail reason=fetch_images_failed vk=%d count=%u device=%p swapchain=0x%llX.",
                         static_cast<int>(fillResult),
                         imageCount,
                         info.device,
-                        swapchain);
+                        static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)));
                 }
                 return false;
             }
@@ -1676,7 +1688,13 @@ namespace ht::hook::vulkan
             if (swapIt == rt.swapchains.end())
             {
                 char detail[128]{};
-                (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "swapchain=%p swapchainCount=%zu", swapchain, rt.swapchains.size());
+                (void)_snprintf_s(
+                    detail,
+                    sizeof(detail),
+                    _TRUNCATE,
+                    "swapchain=0x%llX swapchainCount=%zu",
+                    static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)),
+                    rt.swapchains.size());
                 LogCaptureSkipLocked(rt, CaptureSkipReason::SwapchainNotFound, detail);
                 return false;
             }
@@ -1693,8 +1711,8 @@ namespace ht::hook::vulkan
                     detail,
                     sizeof(detail),
                     _TRUNCATE,
-                    "swapchain=%p imageIndex=%u imageCount=%zu",
-                    swapchain,
+                    "swapchain=0x%llX imageIndex=%u imageCount=%zu",
+                    static_cast<unsigned long long>(SwapchainHandleToLogValue(swapchain)),
                     imageIndex,
                     swapInfo.images.size());
                 LogCaptureSkipLocked(rt, CaptureSkipReason::SwapchainImagesMissing, detail);

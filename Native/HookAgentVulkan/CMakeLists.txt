@@ -58,6 +58,7 @@ message(STATUS "HookAgentVulkan include: ${HT_VULKAN_INCLUDE_DIR}")
 message(STATUS "HookAgentVulkan library: ${HT_VULKAN_LIBRARY}")
 
 add_library(HookAgentVulkan SHARED
+    HookAgentVulkan.def
     dllmain.cpp
     VulkanPresentHook.cpp
     ../HookCommon/SharedFrameWriter.cpp

@@ -1,4 +1,5 @@
 add_library(HookAgentDx11 SHARED
+    HookAgentDx11.def
     dllmain.cpp
     Dx11PresentHook.cpp
     ../HookCommon/SharedFrameWriter.cpp

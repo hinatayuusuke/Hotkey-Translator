@@ -1,0 +1,6 @@
+LIBRARY "HookAgentVulkan"
+EXPORTS
+    InstallVulkanHook
+    UninstallVulkanHook
+    InstallVulkanHookThread
+    UninstallVulkanHookThread

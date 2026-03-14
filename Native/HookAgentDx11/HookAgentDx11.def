@@ -1,0 +1,6 @@
+LIBRARY "HookAgentDx11"
+EXPORTS
+    InstallDx11Hook
+    UninstallDx11Hook
+    InstallDx11HookThread
+    UninstallDx11HookThread

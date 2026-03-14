@@ -1736,6 +1736,70 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 23:19 (Asia/Taipei) — Fix x86 Vulkan swapchain log handle formatting**
+
+### Summary
+- x86 Vulkan ビルドで出ていた `VkSwapchainKHR` の `%p` 型警告を、handle の bitness-safe なログ変換へ修正した。
+
+### Context / Goal
+- x86 `HookAgentVulkan.dll` はビルドできる状態になったが、`VkSwapchainKHR` を `%p` で出しているログが warning を出していた。
+- x86/x64 の両方で安全に swapchain handle をログへ出せるようにしたかった。
+
+### Changes
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` に `VkSwapchainKHR` をログ用 `uint64_t` へ変換する helper を追加した。
+- `swapchain=%p` を使っていた `_snprintf_s` / `DebugLog` の 6 箇所を `swapchain=0x%llX` 形式へ置き換えた。
+- helper は `VK_USE_64_BIT_PTR_DEFINES` に合わせて pointer/integer の両定義を処理するようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — x86 で warning を出していた swapchain handle ログを bitness-safe に修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Vulkan runtime のログ表記が `swapchain=0x...` に変わる。
+- x86 Vulkan ビルド時の `VkSwapchainKHR` と `%p` の型警告は解消される。
+
+### Risk & Mitigation
+- Risk: ログ表記の変更で既存の手動 grep パターンがずれる可能性がある。
+- Mitigation: `swapchain=` キー自体は維持し、値だけを pointer 表現互換の 16進数へ寄せた。
+
+### Tests / Verification
+- `cmake --build "G:\APP Local\Hotkey-Translator\Native\build_x86_sdk32" --config Release --target HookAgentVulkan -j 4`
+- 結果: x86 `HookAgentVulkan.dll` の再ビルド成功。今回の `%p` / `VkSwapchainKHR` warning は再発しなかった。
+
+**2026-03-14 23:27 (Asia/Taipei) — Add fixed export names for x86 Dx11/Vulkan agents**
+
+### Summary
+- x86 で `GetProcAddress("Install*HookThread")` が失敗しないよう、Dx11/Vulkan agent の export 名を `.def` で固定した。
+
+### Context / Goal
+- x86 Vulkan attach は DLL 注入後に `InstallVulkanHookThread` の解決で失敗しており、`__stdcall` の export 名装飾を除去したかった。
+- Dx11 も同じ export 方式だったため、同時に undecorated export を保証したかった。
+
+### Changes
+- `Native/HookAgentDx11/HookAgentDx11.def` を追加し、Dx11 hook install/uninstall export を明示定義した。
+- `Native/HookAgentVulkan/HookAgentVulkan.def` を追加し、Vulkan hook install/uninstall export を明示定義した。
+- `Native/HookAgentDx11/CMakeLists.txt` と `Native/HookAgentVulkan/CMakeLists.txt` に `.def` を組み込んだ。
+
+### Files Touched
+- `Native/HookAgentDx11/HookAgentDx11.def` — Dx11 agent の export 名を undecorated で固定した。
+- `Native/HookAgentVulkan/HookAgentVulkan.def` — Vulkan agent の export 名を undecorated で固定した。
+- `Native/HookAgentDx11/CMakeLists.txt` — Dx11 agent ビルドへ `.def` を追加した。
+- `Native/HookAgentVulkan/CMakeLists.txt` — Vulkan agent ビルドへ `.def` を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 で `HookHost` が `InstallDx11HookThread` / `InstallVulkanHookThread` を名前解決できるようになる。
+- x64 の既存 export 名にも影響はあるが、名前は同じままで互換方向の変更。
+
+### Risk & Mitigation
+- Risk: `.def` 追加で export セットを固定するため、将来 export を増減する際に `.def` 更新漏れが起きる可能性がある。
+- Mitigation: Dx9 と同じ運用にそろえ、hook install/uninstall export を `.def` で明示管理する形に統一した。
+
+### Tests / Verification
+- `cmake --build "G:\APP Local\Hotkey-Translator\Native\build_x86" --config Release --target HookAgentDx11 HookAgentVulkan HookHost -j 4`
+- `cmake --build "G:\APP Local\Hotkey-Translator\Native\build" --config Release --target HookAgentDx11 HookAgentVulkan HookHost -j 4`
+- 結果: x86/x64 ともに Dx11/Vulkan/HookHost のビルド成功
+
 **2026-03-14 22:19 (Asia/Taipei) — Implement x86 Dx11/Vulkan hook host selection**
 
 ### Summary
