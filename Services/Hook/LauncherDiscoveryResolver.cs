@@ -37,7 +37,7 @@ internal sealed class LauncherDiscoveryResolver
                 {
                     lastObservedPid = candidate.ProcessId;
                     _loggerAccessor()?.Info(
-                        $"stage=graphics_hook event=discovery_candidate pid={candidate.ProcessId} hwnd=0x{candidate.Hwnd.ToInt64():X} class=\"{SanitizeForLog(candidate.WindowClass)}\" title=\"{SanitizeForLog(candidate.WindowTitle)}\" exe=\"{SanitizeForLog(candidate.ExePath)}\" monitorSized={(candidate.IsMonitorSized ? 1 : 0)}.");
+                        $"stage=graphics_hook event=discovery_candidate pid={candidate.ProcessId} hwnd=0x{candidate.Hwnd.ToInt64():X} class=\"{SanitizeForLog(candidate.WindowClass)}\" classLen={candidate.WindowClassLength} title=\"{SanitizeForLog(candidate.WindowTitle)}\" titleLen={candidate.WindowTitleLength} exe=\"{SanitizeForLog(candidate.ExePath)}\" monitorSized={(candidate.IsMonitorSized ? 1 : 0)}.");
                 }
 
                 bestCandidate = candidate;
@@ -109,7 +109,9 @@ internal sealed class LauncherDiscoveryResolver
                 process.ProcessName,
                 exePath,
                 window.WindowClass,
+                window.WindowClassLength,
                 window.WindowTitle,
+                window.WindowTitleLength,
                 window.Width,
                 window.Height,
                 true,

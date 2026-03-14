@@ -797,11 +797,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             else
             {
                 signature = BuildDiscoveredSignature(discovery, targetExePath, settings.GraphicsHookApi);
+                AppendLog(
+                    $"stage=graphics_hook event=discovery_signature_prepare source={source} pid={discovery.ProcessId} hwnd=0x{discovery.Hwnd.ToInt64():X} class=\"{discovery.WindowClass}\" classLen={discovery.WindowClass.Length} title=\"{discovery.WindowTitle}\" titleLen={discovery.WindowTitle.Length}.");
                 await _launcherTargetSignatureRegistry
                     .SaveOrUpdateAsync(signature, cancellationToken)
                     .ConfigureAwait(true);
                 AppendLog(
-                    $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\".");
+                    $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\" classCount={signature.WindowClassAllowList.Length} title=\"{signature.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty}\" titleCount={signature.WindowTitleContainsAny.Length}.");
                 await CommitResolvedLauncherTargetAsync(
                         settings,
                         discovery,

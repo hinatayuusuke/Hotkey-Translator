@@ -1771,6 +1771,37 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 04:18 (Asia/Taipei) — Add launcher signature diagnostics**
+
+### Summary
+- discovery candidate と signature 保存直前の値を比較できる診断ログを追加した。
+
+### Context / Goal
+- `vkcube` や `SKShinoviVersus` の launcher signature が `V` / `S` のような 1文字 class/title で保存される原因を切り分けたかった。
+- 取得時点で短いのか、保存前後で壊れるのかをログだけで判断できるようにしたかった。
+
+### Changes
+- discovery candidate ログに `classLen` と `titleLen` を追加し、Win32 API が返した文字列長をそのまま出すようにした。
+- discovery から signature を保存する直前に、`resolution.WindowClass` / `WindowTitle` の値と長さを出す `discovery_signature_prepare` ログを追加した。
+- `discovery_saved` ログにも保存された class/title と配列数を含め、保存後の値を比較しやすくした。
+
+### Files Touched
+- `Services/Hook/LauncherTargetResolver.cs` — top-level window 列挙結果に class/title 長を含めるようにした。
+- `Services/Hook/LauncherDiscoveryResolver.cs` — discovery candidate ログへ class/title 長を追加した。
+- `MainWindow.xaml.cs` — signature 保存直前と保存直後の診断ログを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher discovery 実行時のログ量が少し増える。
+- 保存済み signature の class/title が 1文字になる問題について、取得段階か保存段階かをログで切り分けられる。
+
+### Risk & Mitigation
+- Risk: launcher 起動時のログが増え、通常運用では少し見づらくなる。
+- Mitigation: 今回の追加は診断目的で、出力箇所を discovery 周辺に限定している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-15 04:10 (Asia/Taipei) — Reset launcher signatures for clean discovery retest**
 
 ### Summary

@@ -134,7 +134,9 @@ internal sealed class LauncherTargetResolver
                 process.ProcessName,
                 process.ExePath,
                 window.WindowClass,
+                window.WindowClassLength,
                 window.WindowTitle,
+                window.WindowTitleLength,
                 window.Width,
                 window.Height,
                 window.IsForeground,
@@ -326,12 +328,16 @@ internal static class LauncherTargetResolverSupport
                 return true;
             }
 
+            var className = GetClassNameValue(hWnd, out var classNameLength);
+            var windowTitle = GetWindowTitleValue(hWnd, out var windowTitleLength);
             GetWindowThreadProcessId(hWnd, out var nativePid);
             windows.Add(new ObservedTopLevelWindow(
                 hWnd,
                 unchecked((int)nativePid),
-                GetClassNameValue(hWnd),
-                GetWindowTitleValue(hWnd),
+                className,
+                classNameLength,
+                windowTitle,
+                windowTitleLength,
                 Math.Max(0, rect.Right - rect.Left),
                 Math.Max(0, rect.Bottom - rect.Top),
                 hWnd == foreground,
@@ -362,16 +368,16 @@ internal static class LauncherTargetResolverSupport
                rect.Bottom == info.rcMonitor.Bottom;
     }
 
-    private static string GetClassNameValue(IntPtr hWnd)
+    private static string GetClassNameValue(IntPtr hWnd, out int length)
     {
         var builder = new StringBuilder(256);
-        _ = GetClassNameW(hWnd, builder, builder.Capacity);
+        length = GetClassNameW(hWnd, builder, builder.Capacity);
         return builder.ToString();
     }
 
-    private static string GetWindowTitleValue(IntPtr hWnd)
+    private static string GetWindowTitleValue(IntPtr hWnd, out int length)
     {
-        var length = GetWindowTextLengthW(hWnd);
+        length = GetWindowTextLengthW(hWnd);
         if (length <= 0)
         {
             return string.Empty;
@@ -386,7 +392,9 @@ internal static class LauncherTargetResolverSupport
         IntPtr Hwnd,
         int ProcessId,
         string WindowClass,
+        int WindowClassLength,
         string WindowTitle,
+        int WindowTitleLength,
         int Width,
         int Height,
         bool IsForeground,
@@ -471,7 +479,9 @@ internal readonly record struct ObservedWindowCandidate(
     string ProcessName,
     string ExePath,
     string WindowClass,
+    int WindowClassLength,
     string WindowTitle,
+    int WindowTitleLength,
     int Width,
     int Height,
     bool IsForeground,
