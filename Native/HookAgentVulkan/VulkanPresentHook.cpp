@@ -1898,6 +1898,24 @@ namespace ht::hook::vulkan
             const auto deviceIt = rt.devices.find(queueIt->second.device);
             if (deviceIt == rt.devices.end())
             {
+                VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+                if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                {
+                    // COMPAT: Queue-hit backfill can lose the race when queue callbacks arrive before
+                    // instance/procaddr state is ready. Retry at present time once the instance is live.
+                    rt.devices.emplace(queueIt->second.device, DeviceInfo{physicalDevice});
+                    DebugLogInstall(
+                        "stage=hook_vulkan event=device_backfill source=device_not_found_retry device=%p physicalDevice=%p.",
+                        queueIt->second.device,
+                        physicalDevice);
+
+                    const auto recoveredDeviceIt = rt.devices.find(queueIt->second.device);
+                    if (recoveredDeviceIt != rt.devices.end())
+                    {
+                        return SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex);
+                    }
+                }
+
                 char detail[128]{};
                 (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "device=%p deviceCount=%zu", queueIt->second.device, rt.devices.size());
                 LogCaptureSkipLocked(rt, CaptureSkipReason::DeviceNotFound, detail);

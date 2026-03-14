@@ -90,7 +90,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 200;
-    private const int GraphicsHookLauncherDiscoveryTimeoutMs = 8000;
+    private const int GraphicsHookLauncherDiscoveryTimeoutMs = 80000;
     private const int GraphicsHookLauncherSignatureResolveTimeoutMs = 3000;
     private const double DrawerAutoResizeTolerance = 12.0;
     private const double DrawerAutoResizeFallbackHeight = 300.0;

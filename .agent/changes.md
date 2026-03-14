@@ -1862,6 +1862,36 @@
 - `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
 - `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
 
+**2026-03-15 05:20 (Asia/Taipei) — Retry Vulkan device backfill on DeviceNotFound**
+
+### Summary
+- x86 `procaddr_only` の初期化順レースに対し、`DeviceNotFound` 分岐でも device backfill を再試行するようにした。
+
+### Context / Goal
+- `SKShinoviVersus` では成功回は `device_backfill source=get_device_queue` が出る一方、失敗回は queue hit の時点で instance 情報が未準備で backfill が間に合わず、その後ずっと `device_not_found` で落ちていた。
+- queue-hit の一発勝負だけでは順序レースを取り切れなかった。
+
+### Changes
+- `SubmitPresentWorkLocked` の `DeviceNotFound` 分岐で `TryGuessPhysicalDeviceLocked` を再試行し、成功時は `device_backfill source=device_not_found_retry` を出してから present 処理を再開するようにした。
+- queue-hit 補完はそのまま残し、早く拾えたケースは従来どおり queue 時点で補完する構成にした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — `DeviceNotFound` 時の device backfill retry を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- queue-hit 補完が間に合わないケースでも、present 直前の `DeviceNotFound` で self-heal できる可能性が増える。
+- 成功時は `hook_vulkan` ログに `device_backfill source=device_not_found_retry` が残る。
+
+### Risk & Mitigation
+- Risk: `SubmitPresentWorkLocked` 内で retry 経路が増え、状態遷移の読み取りが少し複雑になる。
+- Mitigation: retry は `rt.devices` 未登録時に限定し、成功時も 1 回だけ再入する最小の構造に留めた。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
+
 **2026-03-15 05:07 (Asia/Taipei) — Backfill Vulkan device table from queue hits**
 
 ### Summary
