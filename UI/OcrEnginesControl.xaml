@@ -93,10 +93,7 @@
                                               LargeChange="0.1"
                                               Value="{Binding Settings.PaddleConfidenceThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                       <TextBlock x:Name="PaddleConfidenceThresholdValue"
-                                                 Width="36"
-                                                 Margin="8,0,0,0"
-                                                 VerticalAlignment="Center"
-                                                 TextAlignment="Right"
+                                                 Style="{StaticResource SliderValueDecimalTextStyle}"
                                                  Text="{Binding ElementName=PaddleConfidenceThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                   </StackPanel>
                                   <TextBlock Text="Language follows Main settings."

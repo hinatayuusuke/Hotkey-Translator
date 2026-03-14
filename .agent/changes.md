@@ -21097,6 +21097,40 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-14 16:00 (Asia/Taipei) — Tighten slider value spacing across settings UI**
+
+### Summary
+- 設定 UI のスライダーと値表示の間隔を少し詰め、値表示幅を用途別にそろえた。
+
+### Context / Goal
+- フォント拡大後、スライダー本体と値表示の距離が画面によって広く見え、視線移動がやや長くなっていた。
+- 個別に `Margin` を削るのではなく、全体で同じ見え方になるルールへ整理したかった。
+
+### Changes
+- `ThemeResources` にスライダー値表示用の共通スタイルを追加し、整数・小数・広い整数の 3 パターンへ整理した。
+- `Overview`、`OCR Settings`、`Overlay Behavior`、`OCR Engines` のスライダー値表示を共通スタイルへ寄せ、ギャップを `6px` 基準へ統一した。
+- 無効時の色変更が必要な値表示は `BasedOn` を使って既存トリガーを維持した。
+
+### Files Touched
+- `UI/ThemeResources.xaml` — スライダー値表示の共通スタイルを追加した。
+- `UI/OverviewControl.xaml` — Overlay font size / opacity の値表示を共通スタイルへ置き換えた。
+- `UI/OcrSettingsControl.xaml` — OCR tuning / preprocess / input の値表示を共通スタイルへ置き換え、無効時スタイルを `BasedOn` へ整理した。
+- `UI/OverlayBehaviorControl.xaml` — Overlay / scene change 系の値表示を共通スタイルへ置き換えた。
+- `UI/OcrEnginesControl.xaml` — confidence threshold の値表示を共通スタイルへ置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- スライダー値表示がスライダー本体に少し近づき、設定画面全体で見た目の一貫性が上がる。
+- 値表示の右寄せと無効時のグレー表示は維持される。
+- 保存設定や処理ロジックには影響しない。
+
+### Risk & Mitigation
+- Risk: 値表示幅を揃えたことで、特定の桁数だけ窮屈に見える可能性がある。
+- Mitigation: 整数・小数・桁数大きめの値でスタイルを分け、既存の文字列フォーマットに合わせた幅にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 15:35 (Asia/Taipei) — Increase settings UI typography baseline**
 
 ### Summary

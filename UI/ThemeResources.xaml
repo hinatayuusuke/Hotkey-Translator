@@ -39,6 +39,31 @@
         <Setter Property="Opacity" Value="0.88" />
     </Style>
 
+    <Style x:Key="SliderValueTextStyle" TargetType="{x:Type TextBlock}">
+        <!-- WHY: Keep slider readouts visually attached to the thumb/value while preserving a stable right edge. -->
+        <Setter Property="Margin" Value="0,0,0,0" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextAlignment" Value="Right" />
+    </Style>
+
+    <Style x:Key="SliderValueIntTextStyle"
+           TargetType="{x:Type TextBlock}"
+           BasedOn="{StaticResource SliderValueTextStyle}">
+        <Setter Property="Width" Value="36" />
+    </Style>
+
+    <Style x:Key="SliderValueDecimalTextStyle"
+           TargetType="{x:Type TextBlock}"
+           BasedOn="{StaticResource SliderValueTextStyle}">
+        <Setter Property="Width" Value="44" />
+    </Style>
+
+    <Style x:Key="SliderValueWideIntTextStyle"
+           TargetType="{x:Type TextBlock}"
+           BasedOn="{StaticResource SliderValueTextStyle}">
+        <Setter Property="Width" Value="52" />
+    </Style>
+
     <Style x:Key="SidebarListBoxStyle" TargetType="{x:Type ListBox}">
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />

@@ -30,13 +30,11 @@
                     LargeChange="2"
                     IsEnabled="{Binding Settings.EnableSmallBoxReadabilityBoost}"
                     Value="{Binding Settings.SmallTextThresholdPx, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-            <TextBlock Width="48"
-                       Margin="8,0,0,0"
-                       VerticalAlignment="Center"
-                       TextAlignment="Right"
+            <TextBlock
                        Text="{Binding ElementName=SmallTextThresholdSlider, Path=Value, StringFormat={}{0:F1}}">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock"
+                           BasedOn="{StaticResource SliderValueDecimalTextStyle}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SmallTextThresholdSlider, Path=IsEnabled}" Value="False">
                                 <Setter Property="Foreground" Value="DimGray" />
@@ -112,13 +110,11 @@
                     </MultiBinding>
                 </Slider.IsEnabled>
             </Slider>
-            <TextBlock Width="48"
-                       Margin="8,0,0,0"
-                       VerticalAlignment="Center"
-                       TextAlignment="Right"
+            <TextBlock
                        Text="{Binding ElementName=SceneChangeThresholdSlider, Path=Value, StringFormat={}{0:F2}}">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock"
+                           BasedOn="{StaticResource SliderValueDecimalTextStyle}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SceneChangeThresholdSlider, Path=IsEnabled}" Value="False">
                                 <Setter Property="Foreground" Value="DimGray" />
@@ -146,13 +142,11 @@
                     </MultiBinding>
                 </Slider.IsEnabled>
             </Slider>
-            <TextBlock Width="60"
-                       Margin="8,0,0,0"
-                       VerticalAlignment="Center"
-                       TextAlignment="Right"
+            <TextBlock
                        Text="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=Value, StringFormat={}{0:F0}}">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock"
+                           BasedOn="{StaticResource SliderValueWideIntTextStyle}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SceneChangeWatchIntervalSlider, Path=IsEnabled}" Value="False">
                                 <Setter Property="Foreground" Value="DimGray" />
@@ -180,13 +174,11 @@
                     </MultiBinding>
                 </Slider.IsEnabled>
             </Slider>
-            <TextBlock Width="48"
-                       Margin="8,0,0,0"
-                       VerticalAlignment="Center"
-                       TextAlignment="Right"
+            <TextBlock
                        Text="{Binding ElementName=SceneChangeWatchPhashSlider, Path=Value, StringFormat={}{0:F0}}">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <Style TargetType="TextBlock"
+                           BasedOn="{StaticResource SliderValueIntTextStyle}">
                         <Style.Triggers>
                             <DataTrigger Binding="{Binding ElementName=SceneChangeWatchPhashSlider, Path=IsEnabled}" Value="False">
                                 <Setter Property="Foreground" Value="DimGray" />

@@ -7,8 +7,8 @@
         xmlns:ui="clr-namespace:Hotkey_Translator.UI"
         mc:Ignorable="d"
         Title="Hotkey Translator"
-        Height="868"
-        Width="1025"
+        Height="880"
+        Width="1060"
         FontSize="14"
         Background="{DynamicResource ApplicationBackgroundBrush}">
     <Window.Resources>

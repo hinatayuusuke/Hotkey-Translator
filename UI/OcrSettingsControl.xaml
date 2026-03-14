@@ -65,10 +65,7 @@
                                             LargeChange="10"
                                             IsEnabled="{Binding Settings.EnableSimpleMergeTuning}"
                                             Value="{Binding Settings.HorizontalMergeStrength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Width="36"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
+                                    <TextBlock Style="{StaticResource SliderValueIntTextStyle}"
                                                Text="{Binding ElementName=HorizontalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
@@ -83,10 +80,7 @@
                                             LargeChange="10"
                                             IsEnabled="{Binding Settings.EnableSimpleMergeTuning}"
                                             Value="{Binding Settings.VerticalMergeStrength, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Width="36"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
+                                    <TextBlock Style="{StaticResource SliderValueIntTextStyle}"
                                                Text="{Binding ElementName=VerticalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <TextBlock Text="NOTE: Strength controls are mapped to internal merge thresholds."
@@ -136,10 +130,11 @@
                                             </MultiBinding>
                                         </Slider.IsEnabled>
                                     </Slider>
-                                    <TextBlock x:Name="OcrTwoPassLowThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                    <TextBlock x:Name="OcrTwoPassLowThresholdValue"
                                                Text="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueIntTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrTwoPassLowThresholdSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
@@ -167,10 +162,11 @@
                                             </MultiBinding>
                                         </Slider.IsEnabled>
                                     </Slider>
-                                    <TextBlock x:Name="OcrTwoPassHighThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                    <TextBlock x:Name="OcrTwoPassHighThresholdValue"
                                                Text="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueIntTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrTwoPassHighThresholdSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
@@ -207,10 +203,11 @@
                                             </Style>
                                         </Slider.Style>
                                     </Slider>
-                                    <TextBlock x:Name="OcrBinarizationThresholdValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                    <TextBlock x:Name="OcrBinarizationThresholdValue"
                                                Text="{Binding ElementName=OcrBinarizationThresholdSlider, Path=Value, StringFormat={}{0:F0}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueIntTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrBinarizationThresholdSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
@@ -232,10 +229,11 @@
                                             LargeChange="0.1"
                                             IsEnabled="{Binding Settings.EnableOcrGamma}"
                                             Value="{Binding Settings.OcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock x:Name="OcrGammaValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                    <TextBlock x:Name="OcrGammaValue"
                                                Text="{Binding ElementName=OcrGammaSlider, Path=Value, StringFormat={}{0:F2}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueDecimalTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrGammaSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
@@ -257,10 +255,11 @@
                                             LargeChange="0.1"
                                             IsEnabled="{Binding Settings.EnableOcrContrast}"
                                             Value="{Binding Settings.OcrContrast, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock x:Name="OcrContrastValue" Width="36" Margin="8,0,0,0" VerticalAlignment="Center" TextAlignment="Right"
+                                    <TextBlock x:Name="OcrContrastValue"
                                                Text="{Binding ElementName=OcrContrastSlider, Path=Value, StringFormat={}{0:F2}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueDecimalTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrContrastSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
@@ -290,13 +289,10 @@
                                             IsEnabled="{Binding Settings.EnableOcrDownsampling}"
                                             Value="{Binding Settings.OcrDownsampleScale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <TextBlock x:Name="OcrDownsampleScaleValue"
-                                               Width="48"
-                                               Margin="8,0,0,0"
-                                               VerticalAlignment="Center"
-                                               TextAlignment="Right"
                                                Text="{Binding ElementName=OcrDownsampleScaleSlider, Path=Value, StringFormat={}{0:F2}}">
                                         <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
+                                            <Style TargetType="TextBlock"
+                                                   BasedOn="{StaticResource SliderValueDecimalTextStyle}">
                                                 <Style.Triggers>
                                                     <DataTrigger Binding="{Binding ElementName=OcrDownsampleScaleSlider, Path=IsEnabled}" Value="False">
                                                         <Setter Property="Foreground" Value="DimGray" />
