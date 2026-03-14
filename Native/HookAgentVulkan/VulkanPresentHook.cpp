@@ -218,8 +218,12 @@ namespace ht::hook::vulkan
         DWORD g_diagFilePid = 0;
         std::wstring g_diagFilePath;
         std::atomic_bool g_diagFileSinkEnabled{false};
+        std::atomic_bool g_loggedFirstInstanceProcAddrHit{false};
+        std::atomic_bool g_loggedFirstDeviceProcAddrHit{false};
         std::atomic_bool g_loggedFirstCreateDeviceHit{false};
+        std::atomic_bool g_loggedFirstGetDeviceQueueHit{false};
         std::atomic_bool g_loggedFirstCreateSwapchainHit{false};
+        std::atomic_bool g_loggedFirstQueuePresentHit{false};
 
         std::uint64_t NowQpc()
         {
@@ -577,7 +581,7 @@ namespace ht::hook::vulkan
             {
                 // WHY: Queue/device/swapchain misses explain "presentCount increases but frame map never appears".
                 // Emit the first hit immediately so field logs show the root cause without relying on interval batching.
-                DebugLog(
+                DebugLogInstall(
                     "stage=hook_vulkan event=capture_skip_first reason=%s detail=%s.",
                     CaptureSkipReasonToString(reason),
                     detail != nullptr ? detail : "none");
@@ -900,8 +904,12 @@ namespace ht::hook::vulkan
             rt.createSwapchainHitCount.store(0, std::memory_order_relaxed);
             rt.acquireImageHitCount.store(0, std::memory_order_relaxed);
             rt.queuePresentHitCount.store(0, std::memory_order_relaxed);
+            g_loggedFirstInstanceProcAddrHit.store(false);
+            g_loggedFirstDeviceProcAddrHit.store(false);
             g_loggedFirstCreateDeviceHit.store(false);
+            g_loggedFirstGetDeviceQueueHit.store(false);
             g_loggedFirstCreateSwapchainHit.store(false);
+            g_loggedFirstQueuePresentHit.store(false);
 
             rt.instance = VK_NULL_HANDLE;
             rt.apiVersion = VK_API_VERSION_1_0;
@@ -2368,11 +2376,14 @@ namespace ht::hook::vulkan
                 resolved = rt.originalGetDeviceProcAddr(device, functionName);
             }
 
-            DebugLog(
-                "stage=hook_vulkan event=hit_vkGetDeviceProcAddr device=%p name=%s resolved=%p.",
-                device,
-                functionName != nullptr ? functionName : "(null)",
-                reinterpret_cast<void*>(resolved));
+            if (!g_loggedFirstDeviceProcAddrHit.exchange(true))
+            {
+                DebugLogInstall(
+                    "stage=hook_vulkan event=first_hit_vkGetDeviceProcAddr device=%p name=%s resolved=%p.",
+                    device,
+                    functionName != nullptr ? functionName : "(null)",
+                    reinterpret_cast<void*>(resolved));
+            }
 
             if (functionName == nullptr)
             {
@@ -2438,11 +2449,14 @@ namespace ht::hook::vulkan
                 resolved = rt.originalGetInstanceProcAddr(instance, functionName);
             }
 
-            DebugLog(
-                "stage=hook_vulkan event=hit_vkGetInstanceProcAddr instance=%p name=%s resolved=%p.",
-                instance,
-                functionName != nullptr ? functionName : "(null)",
-                reinterpret_cast<void*>(resolved));
+            if (!g_loggedFirstInstanceProcAddrHit.exchange(true))
+            {
+                DebugLogInstall(
+                    "stage=hook_vulkan event=first_hit_vkGetInstanceProcAddr instance=%p name=%s resolved=%p.",
+                    instance,
+                    functionName != nullptr ? functionName : "(null)",
+                    reinterpret_cast<void*>(resolved));
+            }
 
             if (instance != VK_NULL_HANDLE)
             {
@@ -2530,7 +2544,7 @@ namespace ht::hook::vulkan
             g_rt.createDeviceHitCount.fetch_add(1, std::memory_order_relaxed);
             if (!g_loggedFirstCreateDeviceHit.exchange(true))
             {
-                DebugLog(
+                DebugLogInstall(
                     "stage=hook_vulkan event=first_hit_vkCreateDevice physicalDevice=%p createInfo=%p.",
                     physicalDevice,
                     createInfo);
@@ -2583,6 +2597,16 @@ namespace ht::hook::vulkan
             original(device, queueFamilyIndex, queueIndex, queue);
             if (queue != nullptr && *queue != VK_NULL_HANDLE)
             {
+                if (!g_loggedFirstGetDeviceQueueHit.exchange(true))
+                {
+                    DebugLogInstall(
+                        "stage=hook_vulkan event=first_hit_vkGetDeviceQueue device=%p queue=%p family=%u index=%u.",
+                        device,
+                        *queue,
+                        queueFamilyIndex,
+                        queueIndex);
+                }
+
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 rt.queues[*queue] = QueueInfo{device, queueFamilyIndex, true};
             }
@@ -2603,6 +2627,16 @@ namespace ht::hook::vulkan
             original(device, queueInfo, queue);
             if (queueInfo != nullptr && queue != nullptr && *queue != VK_NULL_HANDLE)
             {
+                if (!g_loggedFirstGetDeviceQueueHit.exchange(true))
+                {
+                    DebugLogInstall(
+                        "stage=hook_vulkan event=first_hit_vkGetDeviceQueue2 device=%p queue=%p family=%u index=%u.",
+                        device,
+                        *queue,
+                        queueInfo->queueFamilyIndex,
+                        queueInfo->queueIndex);
+                }
+
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 rt.queues[*queue] = QueueInfo{device, queueInfo->queueFamilyIndex, true};
             }
@@ -2622,7 +2656,7 @@ namespace ht::hook::vulkan
                 const std::uint32_t format = (createInfo != nullptr)
                     ? static_cast<std::uint32_t>(createInfo->imageFormat)
                     : 0u;
-                DebugLog(
+                DebugLogInstall(
                     "stage=hook_vulkan event=first_hit_vkCreateSwapchainKHR device=%p format=%u extent=%ux%u createInfo=%p.",
                     device,
                     format,
@@ -2727,6 +2761,15 @@ namespace ht::hook::vulkan
                 rt.presentCount++;
                 rt.lastPresentQpc = NowQpc();
                 rt.lastPresentKind = 1;
+                if (!g_loggedFirstQueuePresentHit.exchange(true))
+                {
+                    const auto swapchainCount = (presentInfo != nullptr) ? presentInfo->swapchainCount : 0u;
+                    DebugLogInstall(
+                        "stage=hook_vulkan event=first_hit_vkQueuePresentKHR pid=%lu queue=%p swapchainCount=%u.",
+                        static_cast<unsigned long>(GetCurrentProcessId()),
+                        queue,
+                        swapchainCount);
+                }
                 if (ShouldEmitDiagLog(
                         rt.lastPresentQpc,
                         rt.qpcFreq,

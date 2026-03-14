@@ -1862,6 +1862,37 @@
 - `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
 - `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
 
+**2026-03-15 05:00 (Asia/Taipei) — Force Vulkan runtime first-hit logs into diag file**
+
+### Summary
+- x86 Vulkan の runtime 到達点を `hook_vulkan` ログだけで追えるよう、主要 first-hit を常時ファイル出力に寄せた。
+
+### Context / Goal
+- `SKShinoviVersus` の handoff 先では install 後の runtime ログが 1 件も出ず、`procaddr_only` 経路のどこで止まっているか判断しづらかった。
+- 通常の `DebugLog` は diag file sink 無効時にファイルへ残らないため、field log では install 系しか見えない状況だった。
+
+### Changes
+- `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` / `vkCreateDevice` / `vkGetDeviceQueue(2)` / `vkCreateSwapchainKHR` / `vkQueuePresentKHR` の first-hit を `DebugLogInstall` 経由で必ずファイルへ残すようにした。
+- `capture_skip_first` も `DebugLogInstall` 経由へ変え、queue/device/swapchain 未解決の first-hit が file sink 無効時でも見えるようにした。
+- first-hit 用の atomic flag を追加し、各 install/reset サイクルで 1 回だけ出るようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Vulkan runtime の first-hit 診断ログを常時ファイル出力へ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `hook_vulkan_<pid>.log` に、install 後の procaddr/device/present 到達点が 1 回ずつ残る。
+- field log だけで「どこまで runtime hook が育ったか」を判断しやすくなる。
+
+### Risk & Mitigation
+- Risk: 失敗タイトルでは `hook_vulkan` ログが数行増える。
+- Mitigation: 出力は first-hit 限定で、毎フレームの詳細ログにはしていない。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
+
 **2026-03-15 04:18 (Asia/Taipei) — Add launcher signature diagnostics**
 
 ### Summary
