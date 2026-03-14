@@ -308,24 +308,24 @@
 
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <WrapPanel Margin="0,0,0,8">
                             <CheckBox Content="DeepL"
-                                      Margin="0,0,0,0"
+                                      Margin="0,0,12,6"
                                       MinWidth="0"
                                       IsChecked="{Binding Settings.EnableDeepL, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <CheckBox Content="GoogleWeb"
-                                      Margin="8,0,0,0"
+                                      Margin="0,0,12,6"
                                       MinWidth="0"
                                       IsChecked="{Binding Settings.EnableGoogleWeb, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <CheckBox Content="Gemini"
-                                      Margin="8,0,0,0"
+                                      Margin="0,0,12,6"
                                       MinWidth="0"
                                       IsChecked="{Binding Settings.EnableGemini, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                             <CheckBox Content="LlamaCpp"
-                                      Margin="8,0,0,0"
+                                      Margin="0,0,12,6"
                                       MinWidth="0"  
                                       IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
+                        </WrapPanel>
 
                         <TextBlock Text="ROI" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">

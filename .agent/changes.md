@@ -1736,6 +1736,34 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 17:19 (Asia/Taipei) — Fix overview translation engine checkbox clipping**
+
+### Summary
+- Overview の翻訳エンジン選択を折り返し可能にして、狭い幅でもチェックボックスが見切れないようにした。
+
+### Context / Goal
+- Overview の右カラムで翻訳エンジンのチェックボックス群が横一列固定になっており、`LlamaCpp` などが右端で見切れていた。
+- セクション全体の構造は変えず、最小差分で幅不足に耐えるレイアウトへ直したかった。
+
+### Changes
+- `UI/OverviewControl.xaml` の翻訳エンジン行を `StackPanel` から `WrapPanel` へ変更した。
+- 各チェックボックスの余白を折り返し前提に調整し、2 行化したときの見た目を安定させた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — Translation engines のチェックボックス群を折り返し可能なレイアウトへ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Overview の幅が不足した場合、翻訳エンジンのチェックボックスは次の行へ折り返して表示される。
+- ROI や Actions を含む他の Overview レイアウトには変更がない。
+
+### Risk & Mitigation
+- Risk: 折り返しによって右カラムの高さが少し増え、下要素との間隔の見え方が変わる可能性がある。
+- Mitigation: 変更範囲を Translation engines 行に限定し、既存の下マージンとチェックボックス間隔のみを最小限調整した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 16:52 (Asia/Taipei) — Implement GoogleWeb translation provider**
 
 ### Summary
