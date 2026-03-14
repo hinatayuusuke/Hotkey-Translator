@@ -74,6 +74,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableVisionGeometryHybridOcr;
     [ObservableProperty] private string _visionGeometryHybridBaseEngineTag = "WinRt";
     [ObservableProperty] private bool _enableDeepL;
+    [ObservableProperty] private bool _enableGoogleWeb;
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
     [ObservableProperty] private bool _enableSimpleMergeTuning;
@@ -240,6 +241,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
                 _ => "WinRt"
             };
             EnableDeepL = settings.EnableDeepL;
+            EnableGoogleWeb = settings.EnableGoogleWeb;
             EnableGemini = settings.EnableGemini;
             VerticalModeOverrideTag = settings.VerticalModeOverride switch
             {
@@ -398,6 +400,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.VisionLlmSelectedMmprojFileName = (VisionLlmSelectedMmprojFileName ?? string.Empty).Trim();
         settings.EnableVisionLlmSharedLocalTranslation = EnableVisionLlmSharedLocalTranslation;
         settings.EnableDeepL = EnableDeepL;
+        settings.EnableGoogleWeb = EnableGoogleWeb;
         settings.EnableGemini = EnableGemini;
         settings.VerticalModeOverride = VerticalModeOverrideTag switch
         {
@@ -784,6 +787,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnVisionLlmSelectedModelFileNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmSelectedMmprojFileNameChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableDeepLChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableGoogleWebChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGeminiChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVerticalModeOverrideTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableSimpleMergeTuningChanged(bool value) => RequestSaveOnValueChange();

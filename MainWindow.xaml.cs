@@ -290,6 +290,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             new LlamaGrpcTranslationProvider(_logger),
             new DeepLTranslationProvider(_httpClient, _logger),
+            new GoogleWebTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
         };
         _registeredTranslationProviderNames = translationProviders.Select(provider => provider.Name).ToList();
@@ -1488,8 +1489,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var deepLStatus = settings.EnableDeepL
             ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
             : "DeepL: disabled";
+        var googleWebStatus = settings.EnableGoogleWeb
+            ? "GoogleWeb: enabled"
+            : "GoogleWeb: disabled";
         _mainWindowViewModel.RuntimeStatus.TranslationStatusMessage =
-            $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus}";
+            $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus} | {googleWebStatus}";
     }
 
     private void UpdateAutoTranslateBadgeVisibility(AppSettings settings)

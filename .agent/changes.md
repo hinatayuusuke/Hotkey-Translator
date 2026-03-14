@@ -1736,6 +1736,43 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 16:52 (Asia/Taipei) — Implement GoogleWeb translation provider**
+
+### Summary
+- 非公式 Google Web 翻訳 provider を実装し、既存の翻訳優先度フォールバックと設定 UI へ接続した。
+
+### Context / Goal
+- `Doc/GoogleWebTranslation_Implementation_Plan.md` の内容をコードへ反映し、Google 翻訳を既存 provider 設計の中で切替可能にしたかった。
+- API key 入力なしで使う非公式 Web provider を、DeepL / Gemini / Llama と同じ優先度順フローへ載せたかった。
+
+### Changes
+- `GoogleWebTranslationProvider` を追加し、非公式 Google Web endpoint へ複数 text を 1 リクエストで送る実装を追加した。
+- `TranslationProviderNames`、`AppSettings`、`SettingsViewModel`、`MainWindowViewModel`、`OverviewControl`、`MainWindow` に `GoogleWeb` の有効化・登録・状態表示を追加した。
+
+### Files Touched
+- `Services/GoogleWebTranslationProvider.cs` — 非公式 Google Web 翻訳 provider を新規実装した。
+- `Models/TranslationProviderNames.cs` — `GoogleWeb` provider 名定数を追加した。
+- `Models/AppSettings.cs` — `EnableGoogleWeb` 設定を追加した。
+- `ViewModels/SettingsViewModel.cs` — `EnableGoogleWeb` の読み込み、保存、自動保存フックを追加した。
+- `ViewModels/MainWindowViewModel.cs` — 翻訳ルート要約へ `GoogleWeb` を追加した。
+- `UI/OverviewControl.xaml` — Translation engines に `GoogleWeb` のトグルを追加した。
+- `MainWindow.xaml.cs` — provider 登録と runtime translation status 表示へ `GoogleWeb` を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- `GoogleWeb` を ON にすると、翻訳優先度リストの一要素として非公式 Google Web 翻訳を選べる。
+- `GoogleWeb` が失敗した場合は、既存の優先度順フォールバックに従って次 provider へ進む。
+- API key 入力は不要だが、非公式 endpoint 変更時は fail fast で空結果になり得る。
+
+### Risk & Mitigation
+- Risk: 非公式 endpoint や埋め込み API key が無効化されると GoogleWeb が動かなくなる。
+- Mitigation: provider 内で HTTP/parse failure を空辞書へ落とし、既存の優先度順フォールバックに委ねる。
+- Risk: cache key が provider 非依存のままなので、既存 provider の翻訳結果が GoogleWeb より先に再利用される可能性がある。
+- Mitigation: 今回は既存仕様を維持し、必要なら後続で provider 名を cache key へ含める。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-01-23 14:45 (Asia/Taipei) — Wire OCR preprocessing**
 
 ### Summary
@@ -20070,8 +20107,10 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 - 設定反映は必要だが、F9/F10 や新規 OCR 結果のような意図した再表示は壊さず、settings save だけで stale overlay を出さないようにしたかった。
 
 ### Changes
-- OverlayPresenter.SetScreenRectMapper(...) に efreshLastOverlay 引数を追加し、setter が無条件に ShowLast() しないようにした。
-- ApplyMirrorOverlayMapper() からは efreshLastOverlay: false で呼ぶように変更し、settings save では mapper 状態だけ更新するようにした。
+- OverlayPresenter.SetScreenRectMapper(...) に 
+efreshLastOverlay 引数を追加し、setter が無条件に ShowLast() しないようにした。
+- ApplyMirrorOverlayMapper() からは 
+efreshLastOverlay: false で呼ぶように変更し、settings save では mapper 状態だけ更新するようにした。
 
 ### Files Touched
 - Services/OverlayPresenter.cs — screen rect mapper 更新時の自動 ShowLast() を明示制御に変更した。
@@ -20083,7 +20122,8 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 
 ### Risk & Mitigation
 - Risk: mapper 変更直後に意図した overlay 再描画が行われない経路が残る可能性がある。
-- Mitigation: efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び出し元だけ alse を指定した。
+- Mitigation: 
+efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び出し元だけ alse を指定した。
 
 ### Tests / Verification
 - dotnet build .\Hotkey-Translator.csproj -p:UseAppHost=false -p:OutDir=bin\_agent_verify\
@@ -22589,3 +22629,31 @@ esponse.json() に失敗するケースでも、壊れた HTTP 応答本文を�
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 - `dotnet run --no-build --project .\Hotkey-Translator.csproj` を起動し、即時例外なく開始することを確認した（確認後に停止）。
+
+**2026-03-14 16:45 (Asia/Taipei) — Add GoogleWeb translation implementation plan**
+
+### Summary
+- 非公式 Google Web 翻訳 provider の実装方針を `Doc/` に新規ドキュメントとして整理した。
+
+### Context / Goal
+- `lunatranslator` の Google 翻訳実装を参考に、このリポジトリへ Google 翻訳を追加する方向性を明文化したかった。
+- 既存の優先度順フォールバックと整合する実装案を、コード前提で共有できる状態にしたかった。
+
+### Changes
+- `Doc/GoogleWebTranslation_Implementation_Plan.md` を新規追加し、provider 追加、設定追加、送信方式、キャッシュ注意点、実装手順を整理した。
+- 非公式 endpoint 採用時のリスクと、既存 cache key が provider 非依存である点を明記した。
+
+### Files Touched
+- `Doc/GoogleWebTranslation_Implementation_Plan.md` — 非公式 Google Web 翻訳の実装方針を新規作成した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 今後の Google 翻訳実装時に、既存 provider 設計へ沿った実装判断の基準として使える。
+
+### Risk & Mitigation
+- Risk: ドキュメントと実装時の最終判断が乖離する可能性がある。
+- Mitigation: 実装時はこの計画を起点にしつつ、現行コードとの差分だけを追加確認する。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）

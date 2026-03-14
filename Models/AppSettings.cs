@@ -288,6 +288,7 @@ public sealed class AppSettings
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";
+    public bool EnableGoogleWeb { get; set; } = false;
     public bool EnableLlamaCppTranslation { get; set; } = false;
     public string LlamaGrpcEndpoint { get; set; } = "http://127.0.0.1:50071";
     public string LlamaGrpcHost { get; set; } = "127.0.0.1";
