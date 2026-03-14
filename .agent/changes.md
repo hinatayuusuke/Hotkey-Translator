@@ -1801,6 +1801,37 @@
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` は実行中 `Hotkey-Translator.exe` のロックで失敗
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:UseAppHost=false`
 
+**2026-03-15 04:38 (Asia/Taipei) — Reuse x86 LoadLibrary result in HookHost injection**
+
+### Summary
+- x86 HookHost が inject 後に Toolhelp snapshot で落ちる race を避けるため、`LoadLibraryW` の戻り値を remote module base として再利用するようにした。
+
+### Context / Goal
+- `vkcube` の launcher 起動で、成功回と失敗回が混在していた。
+- 失敗時は `inject_loadlibrary_ok` の直後に `find_remote_module_failed reason=snapshot_failed gle=24` が出て、`Remote_module_not_found` で attach が落ちていた。
+
+### Changes
+- x86 ビルドの `HookHost` では `LoadLibraryW` の thread exit code を `HMODULE` としてそのまま再利用するようにした。
+- x64 は従来どおり snapshot 経路を維持し、32bit の exit code へ無理に寄せないようにした。
+- 再利用時に `inject_module_reused` ログを出し、snapshot 経由かどうかをログで判別できるようにした。
+
+### Files Touched
+- `Native/HookHost/main.cpp` — x86 inject 後の remote module 解決を `loadExit` 再利用へ変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 Vulkan/DX9/DX11 の inject 成功後に、Toolhelp snapshot の `ERROR_BAD_LENGTH` で attach が失敗する頻度を下げる。
+- ログで `inject_module_reused source=loadlibrary_exit` が出れば、新しい経路が使われていることを確認できる。
+
+### Risk & Mitigation
+- Risk: x86 前提の最適化なので、x64 で同じ手法を使うと 64bit module base を失う。
+- Mitigation: `#if !defined(_WIN64)` で x86 のみ再利用し、x64 は従来ロジックを維持した。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookHost -j 4`
+- `cmake --build .\Native\build --config Debug --target HookHost -j 4`
+- `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
+
 **2026-03-15 04:18 (Asia/Taipei) — Add launcher signature diagnostics**
 
 ### Summary

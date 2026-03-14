@@ -672,7 +672,23 @@ namespace
             return false;
         }
 
-        outRemoteModule = FindRemoteModuleBase(pid, dllLeaf);
+        outRemoteModule = nullptr;
+#if !defined(_WIN64)
+        // WHY: On x86, LoadLibraryW returns the full HMODULE value via thread exit code.
+        // Reuse it directly so we do not race Toolhelp snapshots right after injection.
+        outRemoteModule = reinterpret_cast<HMODULE>(static_cast<std::uintptr_t>(loadExit));
+        LogHost(
+            "event=inject_module_reused pid=%lu module=%p source=loadlibrary_exit leaf=\"%ls\".",
+            static_cast<unsigned long>(pid),
+            outRemoteModule,
+            dllLeaf);
+#endif
+
+        if (outRemoteModule == nullptr)
+        {
+            outRemoteModule = FindRemoteModuleBase(pid, dllLeaf);
+        }
+
         if (outRemoteModule == nullptr)
         {
             CloseHandle(process);
