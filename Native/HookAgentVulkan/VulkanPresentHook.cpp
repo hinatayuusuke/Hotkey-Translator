@@ -992,6 +992,37 @@ namespace ht::hook::vulkan
             }
         }
 
+        bool TryGuessPhysicalDeviceLocked(VulkanRuntime& rt, VkPhysicalDevice& physicalDevice)
+        {
+            physicalDevice = VK_NULL_HANDLE;
+            if (rt.instance == VK_NULL_HANDLE || rt.originalGetInstanceProcAddr == nullptr)
+            {
+                return false;
+            }
+
+            const auto enumeratePhysicalDevices = reinterpret_cast<PFN_vkEnumeratePhysicalDevices>(
+                rt.originalGetInstanceProcAddr(rt.instance, "vkEnumeratePhysicalDevices"));
+            if (enumeratePhysicalDevices == nullptr)
+            {
+                return false;
+            }
+
+            std::uint32_t count = 0;
+            if (enumeratePhysicalDevices(rt.instance, &count, nullptr) != VK_SUCCESS || count == 0)
+            {
+                return false;
+            }
+
+            std::vector<VkPhysicalDevice> devices(count, VK_NULL_HANDLE);
+            if (enumeratePhysicalDevices(rt.instance, &count, devices.data()) != VK_SUCCESS || count == 0)
+            {
+                return false;
+            }
+
+            physicalDevice = devices[0];
+            return physicalDevice != VK_NULL_HANDLE;
+        }
+
         bool EnsureConfigRefreshedLocked(VulkanRuntime& rt)
         {
             if (rt.qpcFreq == 0)
@@ -2608,6 +2639,21 @@ namespace ht::hook::vulkan
                 }
 
                 std::lock_guard<std::mutex> lock(rt.mutex);
+                if (rt.devices.find(device) == rt.devices.end())
+                {
+                    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+                    if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                    {
+                        // COMPAT: x86 late-attach can miss vkCreateDevice entirely under procaddr-only mode.
+                        // Recover the device table from the live instance so capture can proceed.
+                        rt.devices.emplace(device, DeviceInfo{physicalDevice});
+                        DebugLogInstall(
+                            "stage=hook_vulkan event=device_backfill source=get_device_queue device=%p physicalDevice=%p.",
+                            device,
+                            physicalDevice);
+                    }
+                }
+
                 rt.queues[*queue] = QueueInfo{device, queueFamilyIndex, true};
             }
         }
@@ -2638,6 +2684,21 @@ namespace ht::hook::vulkan
                 }
 
                 std::lock_guard<std::mutex> lock(rt.mutex);
+                if (rt.devices.find(device) == rt.devices.end())
+                {
+                    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+                    if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                    {
+                        // COMPAT: x86 late-attach can miss vkCreateDevice entirely under procaddr-only mode.
+                        // Recover the device table from the live instance so capture can proceed.
+                        rt.devices.emplace(device, DeviceInfo{physicalDevice});
+                        DebugLogInstall(
+                            "stage=hook_vulkan event=device_backfill source=get_device_queue2 device=%p physicalDevice=%p.",
+                            device,
+                            physicalDevice);
+                    }
+                }
+
                 rt.queues[*queue] = QueueInfo{device, queueInfo->queueFamilyIndex, true};
             }
         }
@@ -2850,7 +2911,6 @@ namespace ht::hook::vulkan
                 static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
         }
-
         auto hookAndLog = [&](const char* apiName, void* detour, void** original) -> bool
         {
             const bool ok = HookExport(vulkanModule, apiName, detour, original);

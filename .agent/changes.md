@@ -1862,6 +1862,37 @@
 - `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
 - `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
 
+**2026-03-15 05:07 (Asia/Taipei) — Backfill Vulkan device table from queue hits**
+
+### Summary
+- x86 `procaddr_only` で `vkCreateDevice` を取り逃した場合でも、`vkGetDeviceQueue(2)` 到達時に device table を補完するようにした。
+
+### Context / Goal
+- `SKShinoviVersus` では `vkGetDeviceQueue` / `vkCreateSwapchainKHR` / `vkQueuePresentKHR` までは来ているのに、`first_hit_vkCreateDevice` が出ず `device_not_found` で frame map が作れなかった。
+- `rt.devices` が空のままなので、`SubmitPresentWorkLocked` が `DeviceNotFound` で必ず落ちていた。
+
+### Changes
+- live `VkInstance` と `vkEnumeratePhysicalDevices` を使って、queue hit 時に `VkDevice -> VkPhysicalDevice` の暫定補完を試す helper を追加した。
+- `Hook_vkGetDeviceQueue` / `Hook_vkGetDeviceQueue2` で device 未登録時に補完を行い、成功したら `device_backfill` ログを出すようにした。
+- 補完経路には `COMPAT:` コメントを付け、x86 late-attach 救済であることを明示した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — queue hit 時の device table backfill を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 Vulkan で `vkCreateDevice` を missed しても、single/live instance から physical device を推定できれば capture 継続できる。
+- 成功時は `hook_vulkan` ログに `device_backfill` が残る。
+
+### Risk & Mitigation
+- Risk: 複数 GPU 環境では、先頭 physical device 推定が実際の `VkDevice` と一致しない可能性がある。
+- Mitigation: これは x86 late-attach の救済経路に限定し、通常の `vkCreateDevice` hook 成功時は従来どおり正規登録を使う。
+
+### Tests / Verification
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- `Get-FileHash` で `Native\HookHost\bin\...` と `bin\Debug\...\Native\HookHost\bin\...` のバイナリ一致を確認
+
 **2026-03-15 05:00 (Asia/Taipei) — Force Vulkan runtime first-hit logs into diag file**
 
 ### Summary
