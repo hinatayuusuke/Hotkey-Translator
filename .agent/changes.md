@@ -1771,6 +1771,36 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 04:26 (Asia/Taipei) — Fix Unicode marshaling for launcher window signatures**
+
+### Summary
+- launcher discovery/probe の Win32 文字列取得で先頭 1 文字しか見えない問題を修正した。
+
+### Context / Goal
+- `vkcube` の `Vulkan Cube` が launcher discovery では `V` に化け、signature にも `V` / `V` で保存されていた。
+- ログ上は `GetClassNameW` / `GetWindowTextLengthW` の長さが正しく、文字列 marshaling の不整合が本命だった。
+
+### Changes
+- `LauncherTargetResolver` の `GetClassNameW` / `GetWindowTextW` P/Invoke に `CharSet.Unicode` を追加した。
+- `GraphicsHookLauncherProbeService` の同じ P/Invoke 宣言にも `CharSet.Unicode` を追加し、診断ログ側も同じ問題を起こさないようにした。
+
+### Files Touched
+- `Services/Hook/LauncherTargetResolver.cs` — launcher discovery 用 Win32 文字列取得を Unicode marshaling に修正した。
+- `Services/Hook/GraphicsHookLauncherProbeService.cs` — probe 用 Win32 文字列取得を Unicode marshaling に修正した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher discovery/saved signature に、`Vulkan Cube` のような本来の class/title がそのまま入るようになる。
+- probe ログでも class/title が先頭 1 文字に潰れなくなる。
+
+### Risk & Mitigation
+- Risk: 実行中バイナリがロック中だと通常 build の apphost コピーが失敗する。
+- Mitigation: 今回は `dotnet build ... /p:UseAppHost=false` でも確認し、コンパイル自体は通ることを確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1` は実行中 `Hotkey-Translator.exe` のロックで失敗
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:UseAppHost=false`
+
 **2026-03-15 04:18 (Asia/Taipei) — Add launcher signature diagnostics**
 
 ### Summary
