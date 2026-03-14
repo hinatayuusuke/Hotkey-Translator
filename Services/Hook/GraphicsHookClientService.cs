@@ -104,6 +104,14 @@ internal sealed class GraphicsHookClientService : IDisposable
                 await DetachInternalAsync("api_changed", cancellationToken).ConfigureAwait(false);
             }
 
+            if (_attachedPid > 0 &&
+                _attachedPid != settings.FixedCaptureWindowProcessId)
+            {
+                // WHY: Launcher handoff can move capture from a bootstrap PID to the real render PID.
+                // Keep only one active attachment in the host so runtime/shared-state stay aligned with the committed target.
+                await DetachInternalAsync("pid_changed", cancellationToken).ConfigureAwait(false);
+            }
+
             if (!CanAttach(settings, out var attachReason))
             {
                 _loggerAccessor()?.Info($"stage=graphics_hook event=attach_skip reason={attachReason}.");

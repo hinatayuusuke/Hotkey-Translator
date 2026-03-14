@@ -693,9 +693,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         using (launched)
         {
             var settings = _settingsService.Settings;
+            var expectedProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
             AppendLog(
                 $"stage=graphics_hook event=launcher_start source={source} pid={launched.ProcessId} exe=\"{targetExePath}\" args=\"{targetArgsForLog}\".");
-            await _graphicsHookClientService.StopAsync().ConfigureAwait(true);
+            var provisionalAttached = await TryApplyProvisionalLauncherAttachAsync(
+                    settings,
+                    launched.ProcessId,
+                    expectedProcessName,
+                    source)
+                .ConfigureAwait(true);
 
             if (!launched.Resume(out var resumeFailureReason))
             {
@@ -723,6 +729,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                     launched.ProcessId,
                     targetExePath,
                     source,
+                    provisionalAttached,
                     _graphicsHookLauncherResolveCts.Token)
                 .ConfigureAwait(true);
         }
@@ -732,6 +739,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         int bootstrapPid,
         string targetExePath,
         string source,
+        bool provisionalAttached,
         CancellationToken cancellationToken)
     {
         var expectedProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
@@ -758,7 +766,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                     .ConfigureAwait(true);
                 if (fastPath.Success)
                 {
-                    await ApplyResolvedLauncherTargetAsync(settings, fastPath, signature, source).ConfigureAwait(true);
+                    await CommitResolvedLauncherTargetAsync(
+                            settings,
+                            fastPath,
+                            signature,
+                            bootstrapPid,
+                            source,
+                            provisionalAttached,
+                            persistSettings: true)
+                        .ConfigureAwait(true);
                     return;
                 }
 
@@ -777,20 +793,31 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             {
                 AppendLog(
                     $"stage=graphics_hook event=launcher_fail source={source} pid={bootstrapPid} reason={discovery.Reason}.");
+            }
+            else
+            {
+                signature = BuildDiscoveredSignature(discovery, targetExePath, settings.GraphicsHookApi);
+                await _launcherTargetSignatureRegistry
+                    .SaveOrUpdateAsync(signature, cancellationToken)
+                    .ConfigureAwait(true);
+                AppendLog(
+                    $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\".");
+                await CommitResolvedLauncherTargetAsync(
+                        settings,
+                        discovery,
+                        signature,
+                        bootstrapPid,
+                        source,
+                        provisionalAttached,
+                        persistSettings: true)
+                    .ConfigureAwait(true);
                 return;
             }
-
-            signature = BuildDiscoveredSignature(discovery, targetExePath, settings.GraphicsHookApi);
-            await _launcherTargetSignatureRegistry
-                .SaveOrUpdateAsync(signature, cancellationToken)
-                .ConfigureAwait(true);
-            AppendLog(
-                $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\".");
-            await ApplyResolvedLauncherTargetAsync(settings, discovery, signature, source).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
             // WHY: Launcher resolution is canceled when the app closes or a new launcher request supersedes the current one.
+            return;
         }
         catch (Exception ex)
         {
@@ -798,13 +825,150 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 ex,
                 $"stage=graphics_hook event=launcher_resolution_failed source={source} bootstrapPid={bootstrapPid}.");
         }
+
+        await CommitProvisionalLauncherTargetAsync(
+                settings,
+                bootstrapPid,
+                targetExePath,
+                source,
+                provisionalAttached)
+            .ConfigureAwait(true);
     }
 
-    private async Task ApplyResolvedLauncherTargetAsync(
+    private async Task<bool> TryApplyProvisionalLauncherAttachAsync(
+        AppSettings baseSettings,
+        int provisionalPid,
+        string processName,
+        string source)
+    {
+        try
+        {
+            var provisionalSettings = BuildLauncherAttachSettings(baseSettings, provisionalPid, processName);
+            await _graphicsHookClientService.ApplySettingsAsync(provisionalSettings).ConfigureAwait(true);
+            AppendLog(
+                $"stage=graphics_hook event=launcher_provisional_attach source={source} pid={provisionalPid} api={provisionalSettings.GraphicsHookApi}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(
+                ex,
+                $"stage=graphics_hook event=launcher_provisional_attach_failed source={source} pid={provisionalPid}.");
+            return false;
+        }
+    }
+
+    private async Task CommitResolvedLauncherTargetAsync(
         AppSettings settings,
         LauncherTargetResolutionResult resolution,
         GraphicsHookLauncherTargetSignature? signature,
-        string source)
+        int bootstrapPid,
+        string source,
+        bool provisionalAttached,
+        bool persistSettings)
+    {
+        ApplyLauncherTargetToSettings(settings, resolution, signature);
+        var state = resolution.ProcessId != bootstrapPid
+            ? "handoff"
+            : resolution.Hwnd != IntPtr.Zero
+                ? "same_pid_window_confirmed"
+                : "same_pid_provisional_confirmed";
+        var requiresReattach = !provisionalAttached || resolution.ProcessId != bootstrapPid;
+
+        AppendLog(
+            $"stage=graphics_hook event=launcher_resolution_result source={source} state={state} pid={resolution.ProcessId} hwnd=0x{resolution.Hwnd.ToInt64():X} reason={resolution.Reason}.");
+        AppendLog(
+            $"stage=graphics_hook event=launcher_bound source={source} pid={resolution.ProcessId} api={settings.GraphicsHookApi} hwnd=0x{resolution.Hwnd.ToInt64():X}.");
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+
+        if (persistSettings)
+        {
+            await _settingsService.SaveAsync().ConfigureAwait(true);
+        }
+
+        if (requiresReattach)
+        {
+            if (resolution.ProcessId != bootstrapPid)
+            {
+                AppendLog(
+                    $"stage=graphics_hook event=launcher_handoff_attach source={source} oldPid={bootstrapPid} newPid={resolution.ProcessId} reason={resolution.Reason}.");
+            }
+
+            await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+        }
+
+        AppendLog(
+            $"stage=graphics_hook event=launcher_attach_ok source={source} pid={resolution.ProcessId}.");
+        AppendLog(
+            $"stage=graphics_hook event=launcher_handoff_commit source={source} pid={resolution.ProcessId} persisted={(persistSettings ? 1 : 0)}.");
+    }
+
+    private async Task CommitProvisionalLauncherTargetAsync(
+        AppSettings settings,
+        int bootstrapPid,
+        string targetExePath,
+        string source,
+        bool provisionalAttached)
+    {
+        var provisionalResolution = new LauncherTargetResolutionResult(
+            true,
+            bootstrapPid,
+            IntPtr.Zero,
+            Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty,
+            targetExePath,
+            string.Empty,
+            string.Empty,
+            0,
+            0,
+            false,
+            "provisional_only");
+        ApplyLauncherTargetToSettings(settings, provisionalResolution, signature: null);
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+        AppendLog(
+            $"stage=graphics_hook event=launcher_resolution_result source={source} state=provisional_only pid={bootstrapPid} reason=discovery_unconfirmed.");
+        AppendLog(
+            $"stage=graphics_hook event=launcher_bound source={source} pid={bootstrapPid} api={settings.GraphicsHookApi} hwnd=0x0.");
+
+        if (!provisionalAttached)
+        {
+            await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+        }
+
+        AppendLog(
+            $"stage=graphics_hook event=launcher_attach_ok source={source} pid={bootstrapPid}.");
+        AppendLog(
+            $"stage=graphics_hook event=launcher_handoff_commit source={source} pid={bootstrapPid} persisted=0.");
+    }
+
+    private static AppSettings BuildLauncherAttachSettings(
+        AppSettings source,
+        int processId,
+        string processName)
+    {
+        return new AppSettings
+        {
+            CaptureMode = Hotkey_Translator.Models.CaptureMode.ActiveWindow,
+            EnableGraphicsHookPipeline = source.EnableGraphicsHookPipeline,
+            EnableFixedCaptureWindow = true,
+            FixedCaptureWindowHandle = 0,
+            FixedCaptureWindowProcessId = processId,
+            FixedCaptureWindowProcessName = processName,
+            FixedCaptureWindowClassName = string.Empty,
+            FixedCaptureWindowTitle = string.Empty,
+            GraphicsHookApi = source.GraphicsHookApi,
+            GraphicsHookCaptureFpsLimit = source.GraphicsHookCaptureFpsLimit,
+            GraphicsHookOverlayEnabled = source.GraphicsHookOverlayEnabled,
+            GraphicsHookFallbackOnError = source.GraphicsHookFallbackOnError,
+            EnableGraphicsHookPerfDiagLog = source.EnableGraphicsHookPerfDiagLog,
+            EnableGraphicsHookDiagFileSink = source.EnableGraphicsHookDiagFileSink,
+            GraphicsHookPipeName = source.GraphicsHookPipeName
+        };
+    }
+
+    private static void ApplyLauncherTargetToSettings(
+        AppSettings settings,
+        LauncherTargetResolutionResult resolution,
+        GraphicsHookLauncherTargetSignature? signature)
     {
         settings.EnableFixedCaptureWindow = true;
         settings.FixedCaptureWindowHandle = resolution.Hwnd.ToInt64();
@@ -818,14 +982,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settings.FixedCaptureWindowTitle = !string.IsNullOrWhiteSpace(resolution.WindowTitle)
             ? resolution.WindowTitle
             : signature?.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty;
-        AppendLog(
-            $"stage=graphics_hook event=launcher_bound source={source} pid={resolution.ProcessId} api={settings.GraphicsHookApi} hwnd=0x{resolution.Hwnd.ToInt64():X} reason={resolution.Reason}.");
-        _mainWindowViewModel.Settings.LoadFrom(settings);
-
-        await _settingsService.SaveAsync().ConfigureAwait(true);
-        await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-        AppendLog(
-            $"stage=graphics_hook event=launcher_attach_ok source={source} pid={resolution.ProcessId} reason={resolution.Reason}.");
     }
 
     private static GraphicsHookLauncherTargetSignature BuildDiscoveredSignature(

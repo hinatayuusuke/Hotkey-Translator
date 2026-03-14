@@ -23,6 +23,7 @@ internal sealed class LauncherDiscoveryResolver
     {
         var startedAtUtc = DateTime.UtcNow;
         var lastObservedPid = 0;
+        ObservedWindowCandidate? bestCandidate = null;
         _loggerAccessor()?.Info(
             $"stage=graphics_hook event=discovery_start exe=\"{SanitizeForLog(expectedExeName)}\" timeoutMs={(int)timeout.TotalMilliseconds}.");
 
@@ -38,6 +39,8 @@ internal sealed class LauncherDiscoveryResolver
                     _loggerAccessor()?.Info(
                         $"stage=graphics_hook event=discovery_candidate pid={candidate.ProcessId} hwnd=0x{candidate.Hwnd.ToInt64():X} class=\"{SanitizeForLog(candidate.WindowClass)}\" title=\"{SanitizeForLog(candidate.WindowTitle)}\" exe=\"{SanitizeForLog(candidate.ExePath)}\" monitorSized={(candidate.IsMonitorSized ? 1 : 0)}.");
                 }
+
+                bestCandidate = candidate;
 
                 if (candidate.IsMonitorSized)
                 {
@@ -57,6 +60,23 @@ internal sealed class LauncherDiscoveryResolver
             }
 
             await Task.Delay(DiscoveryPollInterval, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (bestCandidate != null)
+        {
+            var candidate = bestCandidate.Value;
+            return new LauncherTargetResolutionResult(
+                true,
+                candidate.ProcessId,
+                candidate.Hwnd,
+                candidate.ProcessName,
+                candidate.ExePath,
+                candidate.WindowClass,
+                candidate.WindowTitle,
+                candidate.Width,
+                candidate.Height,
+                false,
+                "discovery_foreground_window");
         }
 
         return LauncherTargetResolutionResult.Failed("discovery_timeout");

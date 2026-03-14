@@ -1736,6 +1736,41 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-15 03:43 (Asia/Taipei) — Add provisional attach and PID handoff for launcher flow**
+
+### Summary
+- launcher 起動時に bootstrap PID へ暫定 attach し、後から本命 PID が見つかれば handoff、見つからなければ provisional を維持するようにした。
+
+### Context / Goal
+- Vulkan では正しい PID を待ってから attach すると遅すぎることがあり、launcher 起動直後の早期 attach を残したかった。
+- 一方で DXVK 系タイトルでは bootstrap PID と render PID がずれるため、後から本命 PID へ切り替える handoff も必要だった。
+
+### Changes
+- `MainWindow.xaml.cs` の launcher フローを変更し、resume 前に provisional attach、resume 後に signature/discovery で target 解決、確定時は handoff/commit、未確定時は provisional_only commit に分岐するようにした。
+- `GraphicsHookClientService` に PID 切り替え時の detach を追加し、old PID から new PID への再 attach が成立するようにした。
+- `LauncherDiscoveryResolver` は fullscreen 未確定でも最良の foreground candidate を返せるようにし、windowed タイトルでも provisional 維持に落ちやすくした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — provisional attach、resolution result、handoff commit の制御とログを追加した。
+- `Services/Hook/GraphicsHookClientService.cs` — PID 変更時に既存 attach を detach するようにした。
+- `Services/Hook/LauncherDiscoveryResolver.cs` — monitor-sized が取れなくても foreground candidate を返すようにした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher 起動時に `launcher_provisional_attach` が先に走り、その後 `launcher_resolution_result` が `handoff` / `same_pid_*` / `provisional_only` のいずれかで確定する。
+- 本命 PID が見つからない場合でも provisional attach を維持し、runtime 上の fixed target は bootstrap PID ベースで継続する。
+- 本命 PID が別なら `pid_changed` detach を挟んで新 PID へ handoff attach する。
+
+### Risk & Mitigation
+- Risk: provisional attach 先が誤っていても、resolution が取れなければその attach が残る。
+- Mitigation: `provisional_only` を明示ログにし、保存は行わず runtime だけに留めた。
+
+- Risk: PID handoff 時に old attach が残ると shared state が混線する。
+- Mitigation: `GraphicsHookClientService.ApplySettingsAsync` で `pid_changed` の detach を先に行うようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-15 03:29 (Asia/Taipei) — Implement discovery-first launcher target resolution**
 
 ### Summary
