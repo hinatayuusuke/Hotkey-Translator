@@ -41,6 +41,11 @@ namespace ht::hook::vulkan
         constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500u;
         constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200u;
         constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300u;
+#if defined(_WIN64)
+        constexpr bool kEnableDirectDeviceExportHooks = true;
+#else
+        constexpr bool kEnableDirectDeviceExportHooks = false;
+#endif
 
         enum class CaptureSkipReason : std::size_t
         {
@@ -2273,6 +2278,11 @@ namespace ht::hook::vulkan
                 StoreOriginalIfUnset(rt.originalCreateSwapchainKHR, resolved);
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkCreateSwapchainKHR);
             }
+            if (std::strcmp(functionName, "vkDestroyDevice") == 0)
+            {
+                StoreOriginalIfUnset(rt.originalDestroyDevice, resolved);
+                return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkDestroyDevice);
+            }
             if (std::strcmp(functionName, "vkDestroySwapchainKHR") == 0)
             {
                 StoreOriginalIfUnset(rt.originalDestroySwapchainKHR, resolved);
@@ -2702,42 +2712,52 @@ namespace ht::hook::vulkan
             "vkDestroyInstance",
             reinterpret_cast<void*>(&Hook_vkDestroyInstance),
             reinterpret_cast<void**>(&rt.originalDestroyInstance));
-        hookedAny |= hookAndLog(
-            "vkCreateDevice",
-            reinterpret_cast<void*>(&Hook_vkCreateDevice),
-            reinterpret_cast<void**>(&rt.originalCreateDevice));
-        hookedAny |= hookAndLog(
-            "vkDestroyDevice",
-            reinterpret_cast<void*>(&Hook_vkDestroyDevice),
-            reinterpret_cast<void**>(&rt.originalDestroyDevice));
-        hookedAny |= hookAndLog(
-            "vkGetDeviceQueue",
-            reinterpret_cast<void*>(&Hook_vkGetDeviceQueue),
-            reinterpret_cast<void**>(&rt.originalGetDeviceQueue));
-        hookedAny |= hookAndLog(
-            "vkGetDeviceQueue2",
-            reinterpret_cast<void*>(&Hook_vkGetDeviceQueue2),
-            reinterpret_cast<void**>(&rt.originalGetDeviceQueue2));
-        hookedAny |= hookAndLog(
-            "vkCreateSwapchainKHR",
-            reinterpret_cast<void*>(&Hook_vkCreateSwapchainKHR),
-            reinterpret_cast<void**>(&rt.originalCreateSwapchainKHR));
-        hookedAny |= hookAndLog(
-            "vkDestroySwapchainKHR",
-            reinterpret_cast<void*>(&Hook_vkDestroySwapchainKHR),
-            reinterpret_cast<void**>(&rt.originalDestroySwapchainKHR));
-        hookedAny |= hookAndLog(
-            "vkAcquireNextImageKHR",
-            reinterpret_cast<void*>(&Hook_vkAcquireNextImageKHR),
-            reinterpret_cast<void**>(&rt.originalAcquireNextImageKHR));
-        hookedAny |= hookAndLog(
-            "vkAcquireNextImage2KHR",
-            reinterpret_cast<void*>(&Hook_vkAcquireNextImage2KHR),
-            reinterpret_cast<void**>(&rt.originalAcquireNextImage2KHR));
-        hookedAny |= hookAndLog(
-            "vkQueuePresentKHR",
-            reinterpret_cast<void*>(&Hook_vkQueuePresentKHR),
-            reinterpret_cast<void**>(&rt.originalQueuePresentKHR));
+        if (kEnableDirectDeviceExportHooks)
+        {
+            hookedAny |= hookAndLog(
+                "vkCreateDevice",
+                reinterpret_cast<void*>(&Hook_vkCreateDevice),
+                reinterpret_cast<void**>(&rt.originalCreateDevice));
+            hookedAny |= hookAndLog(
+                "vkDestroyDevice",
+                reinterpret_cast<void*>(&Hook_vkDestroyDevice),
+                reinterpret_cast<void**>(&rt.originalDestroyDevice));
+            hookedAny |= hookAndLog(
+                "vkGetDeviceQueue",
+                reinterpret_cast<void*>(&Hook_vkGetDeviceQueue),
+                reinterpret_cast<void**>(&rt.originalGetDeviceQueue));
+            hookedAny |= hookAndLog(
+                "vkGetDeviceQueue2",
+                reinterpret_cast<void*>(&Hook_vkGetDeviceQueue2),
+                reinterpret_cast<void**>(&rt.originalGetDeviceQueue2));
+            hookedAny |= hookAndLog(
+                "vkCreateSwapchainKHR",
+                reinterpret_cast<void*>(&Hook_vkCreateSwapchainKHR),
+                reinterpret_cast<void**>(&rt.originalCreateSwapchainKHR));
+            hookedAny |= hookAndLog(
+                "vkDestroySwapchainKHR",
+                reinterpret_cast<void*>(&Hook_vkDestroySwapchainKHR),
+                reinterpret_cast<void**>(&rt.originalDestroySwapchainKHR));
+            hookedAny |= hookAndLog(
+                "vkAcquireNextImageKHR",
+                reinterpret_cast<void*>(&Hook_vkAcquireNextImageKHR),
+                reinterpret_cast<void**>(&rt.originalAcquireNextImageKHR));
+            hookedAny |= hookAndLog(
+                "vkAcquireNextImage2KHR",
+                reinterpret_cast<void*>(&Hook_vkAcquireNextImage2KHR),
+                reinterpret_cast<void**>(&rt.originalAcquireNextImage2KHR));
+            hookedAny |= hookAndLog(
+                "vkQueuePresentKHR",
+                reinterpret_cast<void*>(&Hook_vkQueuePresentKHR),
+                reinterpret_cast<void**>(&rt.originalQueuePresentKHR));
+        }
+        else
+        {
+            // WHY: Some 32-bit loader exports in DXVK-backed titles are unstable to patch directly; procaddr hooks still cover device-level entry points.
+            DebugLogInstall(
+                "stage=hook_vulkan event=install_hook_plan path=procaddr_only scope=device_level reason=x86_direct_export_unstable pid=%lu.",
+                static_cast<unsigned long>(GetCurrentProcessId()));
+        }
 
         if (!hookedAny)
         {

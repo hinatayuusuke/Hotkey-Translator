@@ -1767,6 +1767,35 @@
 - `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build_x86" --config Release --target HookAgentVulkan -j 4`
 - `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build" --config Release --target HookAgentVulkan -j 4`
 
+**2026-03-14 23:53 (Asia/Taipei) — Avoid unstable x86 Vulkan direct export hooks**
+
+### Summary
+- x86 Vulkan では device-level の direct export hook をやめ、`vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` 経由のフックへ寄せた。
+
+### Context / Goal
+- x86 DXVK タイトルで `InstallVulkanHookThread` が `vkCreateDevice` の direct export hook 付近で異常終了していた。
+- x86 の install を通しつつ、既存の device-level hook を procaddr 経由で維持したかった。
+
+### Changes
+- x86 ビルドでは `vkCreateDevice` 以降の device-level direct export hook を install 対象から外した。
+- `vkDestroyDevice` は `vkGetDeviceProcAddr` 側で detour を返すように補い、cleanup 経路のフックを維持した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — x86 では procaddr-only の install 計画へ切り替え、`vkDestroyDevice` の procaddr detour を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- x86 Vulkan/DXVK タイトルでは install 時の direct export patch を減らすため、`vkCreateDevice` 付近での異常終了を回避しやすくなる。
+- x64 の install 挙動は従来どおり direct export hook を維持する。
+
+### Risk & Mitigation
+- Risk: 32bit タイトルが device-level 関数を procaddr ではなく export 直呼びした場合、一部フックが効かない可能性がある。
+- Mitigation: x86 でも `vkGetInstanceProcAddr` / `vkGetDeviceProcAddr` は install 時に hook 済みで、DXVK 系タイトルの標準的な取得経路はカバーする。
+
+### Tests / Verification
+- `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build_x86" --config Release --target HookAgentVulkan -j 4`
+- `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build" --config Release --target HookAgentVulkan -j 4`
+
 **2026-03-14 23:19 (Asia/Taipei) — Fix x86 Vulkan swapchain log handle formatting**
 
 ### Summary
