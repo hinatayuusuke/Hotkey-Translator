@@ -1736,6 +1736,34 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 17:35 (Asia/Taipei) — Simplify overview bottom bar to preview and log only**
+
+### Summary
+- Overview 下部バーから常時ステータス表示を外し、`Preview` と `Log` のみを残す構成へ変更した。
+
+### Context / Goal
+- `Current Setup` に翻訳経路や ROI 状態の要約があり、下部バーの `TranslationStatusMessage` と `RoiStatusMessage` は役割が重複していた。
+- 画面下端のノイズを減らし、操作導線だけを残したかった。
+
+### Changes
+- `MainWindow.xaml` の下部バーから `RuntimeStatus.TranslationStatusMessage` と `RuntimeStatus.RoiStatusMessage` の表示を削除した。
+- 下部バーのコンテナをボタン 2 個だけの右寄せ `StackPanel` に整理し、余白を少し詰めた。
+
+### Files Touched
+- `MainWindow.xaml` — Overview 下部バーを `Preview` / `Log` だけのアクション領域に変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 通常時の下部バーには `Preview` と `Log` ボタンだけが表示される。
+- 翻訳状態や ROI 状態の確認は `Current Setup` やログ側へ寄る構成になる。
+
+### Risk & Mitigation
+- Risk: 常時ステータスを見ていた利用者が、状態確認先の変化に戸惑う可能性がある。
+- Mitigation: `Current Setup` に既存の要約表示がある前提で下部バーだけを整理し、実行中や異常時の一時表示は別途追加できる状態を維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-14 17:19 (Asia/Taipei) — Fix overview translation engine checkbox clipping**
 
 ### Summary
@@ -1763,6 +1791,34 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
+**2026-03-14 17:31 (Asia/Taipei) — Add overview status bar simplification plan**
+
+### Summary
+- Overview 下部ステータスバーを `Preview` / `Log` 中心へ整理する実装案を `Doc/` に追加した。
+
+### Context / Goal
+- `Current Setup` が既に現在構成を要約しているため、下部バーの常時ステータス表示と役割が重複していた。
+- 実装前に、削除対象と残す導線、将来の条件表示余地を整理したかった。
+
+### Changes
+- `Doc/Wpf_Overview_StatusBar_Simplification_Implementation_Plan.md` を新規追加した。
+- 下部バーから `TranslationStatusMessage` と `RoiStatusMessage` を外し、通常時は `Preview` / `Log` のみ残す方針を文書化した。
+
+### Files Touched
+- `Doc/Wpf_Overview_StatusBar_Simplification_Implementation_Plan.md` — Overview 下部バー簡素化の実装案を新規作成した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 今後の実装時に、下部バーの責務整理と条件表示の扱いを確認できる。
+
+### Risk & Mitigation
+- Risk: 実装時に運用上必要な常設表示が再評価される可能性がある。
+- Mitigation: ドキュメント内で「通常時は非表示、必要なら条件表示を追加」の逃げ道を残した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
 
 **2026-03-14 17:23 (Asia/Taipei) — Promote quick controls into 2x2 cards**
 

@@ -184,28 +184,22 @@
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="12"
-                Padding="12,8">
-            <DockPanel LastChildFill="False">
-                <TextBlock Text="{Binding RuntimeStatus.TranslationStatusMessage}"
-                           Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                Padding="10,6">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right">
                     <Button Command="{Binding TogglePreviewPaneCommand}" Padding="12,4" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A1;" Margin="0,0,6,0" />
                             <TextBlock Text="Preview" />
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding ToggleLogPaneCommand}" Padding="12,4" Margin="0,0,8,0">
+                    <Button Command="{Binding ToggleLogPaneCommand}" Padding="12,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C3;" Margin="0,0,6,0" />
                             <TextBlock Text="Log" />
                         </StackPanel>
                     </Button>
-                    <TextBlock VerticalAlignment="Center"
-                               Text="{Binding RuntimeStatus.RoiStatusMessage}"
-                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                </StackPanel>
-            </DockPanel>
+            </StackPanel>
         </Border>
 
         <Grid Grid.RowSpan="3" Grid.ColumnSpan="2" Background="#12000000" Panel.ZIndex="10"
