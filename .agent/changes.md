@@ -1736,6 +1736,97 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-15 01:01 (Asia/Taipei) — Add DXVK Vulkan diagnostic probe logs**
+
+### Summary
+- x86 DXVK の Vulkan hook 経路を切り分けやすくするため、attach 後の activity probe ログと固定ターゲット解決ログを追加した。
+
+### Context / Goal
+- x86 の `vkcube` は Vulkan hook できる一方、DXVK 経由タイトルでは inject 後に Present まで進んでいない疑いがあった。
+- `procaddr が一度も通っていない` のか `procaddr は通るが present で止まる` のかをログだけで判断できるようにしたかった。
+
+### Changes
+- `HookAgentVulkan` に遅延 activity probe を追加し、attach 数秒後に procaddr / create / acquire / present の到達回数、既知の queue / swapchain 数、関連モジュールのロード有無を 1 行で記録するようにした。
+- `CaptureTargetResolver` の固定ターゲット解決失敗ログへ、保存済み hwnd / pid / class / title を含めるようにした。
+- x86 / x64 の `HookAgentVulkan.dll` を Debug 構成で再ビルドし、アプリの Debug 出力へ反映した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — DXVK 向けの activity probe と到達回数カウンタを追加した。
+- `Services/Capture/CaptureTargetResolver.cs` — 固定ターゲット未解決時のログへ対象メタデータを追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Vulkan hook attach 成功後、約 4 秒後に `stage=hook_vulkan event=activity_probe` が出力される。
+- 固定ターゲット未解決時は、従来より詳細な対象情報がアプリログに残る。
+
+### Risk & Mitigation
+- Risk: activity probe の追加ログで Vulkan agent のログ量がわずかに増える。
+- Mitigation: probe は attach ごとに 1 回だけ実行し、要約 1 行のみに抑えた。
+
+### Tests / Verification
+- `cmake --build '.\\Native\\build_x86' --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build '.\\Native\\build' --config Debug --target HookAgentVulkan -j 4`
+- `dotnet build '.\\Hotkey-Translator.csproj' -v minimal /m:1`
+
+**2026-03-15 01:38 (Asia/Taipei) — Add PowerShell window probe for PID/HWND investigation**
+
+### Summary
+- PID / HWND の切り分け用に、top-level window を列挙する PowerShell スクリプトと手順書を `Doc/` に追加した。
+
+### Context / Goal
+- GraphicsHook launcher で掴んだ PID と、実際に画面を持つ window の PID/HWND が一致しているかを PowerShell だけで調べたかった。
+- `MainWindowHandle` だけでは拾えないケースがあるため、調査担当者が再利用できる手順書も必要だった。
+
+### Changes
+- `EnumWindows` ベースで top-level window を列挙し、`HWND / PID / ProcessName / Title / ClassName / Rect / MainWindowHandle` を出すスクリプトを追加した。
+- PID 指定、プロセス名指定、タイトル部分一致、非表示 window を含める実行例をまとめたガイドを追加した。
+
+### Files Touched
+- `Doc/Get-TopLevelWindowMap.ps1` — top-level window を PowerShell から直接列挙する調査スクリプトを追加した。
+- `Doc/GraphicsHook_WindowPidHwnd_Investigation_Guide.md` — スクリプトの使い方とログとの照合手順を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時アプリ挙動は変わらない。
+- 手元で launcher PID と実 window PID/HWND の一致確認を PowerShell だけで実施できる。
+
+### Risk & Mitigation
+- Risk: top-level window 列挙だけでは child window や内部 swapchain までは追えない。
+- Mitigation: ガイド内で用途を top-level window 調査に限定し、runtime hook 問題とは切り分けて使う前提を明記した。
+
+### Tests / Verification
+- `powershell -ExecutionPolicy Bypass -File .\Doc\Get-TopLevelWindowMap.ps1`
+
+**2026-03-15 01:38 (Asia/Taipei) — Add launcher PID handoff probe**
+
+### Summary
+- Graphics Hook launcher が bootstrap PID と実 window PID を取り違えていないか確定できる probe を追加した。
+
+### Context / Goal
+- launcher 経由の Vulkan hook で attach 成功後も、実際の表示 window が別 PID を持つケースがあり得た。
+- まずは挙動を変えず、child process と top-level window の handoff をログだけで追跡したかった。
+
+### Changes
+- `GraphicsHookLauncherProbeService` を追加し、launcher resume 後に短時間だけ子プロセスと top-level window を監視する probe を実装した。
+- probe は `launcher_probe_child`、`launcher_probe_window`、`launcher_probe_result`、`launcher_probe_mismatch` をアプリログへ出す。
+- `MainWindow` の launcher 経路へ probe の開始とキャンセル制御を組み込んだ。
+
+### Files Touched
+- `Services/Hook/GraphicsHookLauncherProbeService.cs` — bootstrap PID の子孫 process と top-level window を監視する診断サービスを追加した。
+- `MainWindow.xaml.cs` — launcher resume 後に probe を開始し、終了時にキャンセルするようにした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher 起動を使うと、attach 後しばらく `launcher_probe_*` ログが追加で出る。
+- 挙動自体は変えず、PID handoff の有無をログだけで判定できる。
+
+### Risk & Mitigation
+- Risk: launcher 後の短時間だけログ量が増える。
+- Mitigation: probe は 1 回の launch ごとに短時間で終了し、重複起動時は前回分をキャンセルする。
+
+### Tests / Verification
+- `dotnet build '.\\Hotkey-Translator.csproj' -v minimal /m:1`
+
 **2026-03-14 23:43 (Asia/Taipei) — Force early Vulkan hook install logs into temp file**
 
 ### Summary

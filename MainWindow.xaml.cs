@@ -55,11 +55,13 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
     private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
+    private readonly GraphicsHookLauncherProbeService _graphicsHookLauncherProbeService;
     private readonly IMagpieProcessService _magpieProcessService;
     private readonly IMagpieIpcClient _magpieIpcClient;
     private readonly MagpieSessionController _magpieSessionController;
     private PhashService? _phashService;
     private CancellationTokenSource? _translationOverlayCts;
+    private CancellationTokenSource? _graphicsHookLauncherProbeCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
@@ -171,6 +173,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _graphicsHookClientService = new GraphicsHookClientService(() => _logger);
         _graphicsHookLauncherService = new GraphicsHookLauncherService();
+        _graphicsHookLauncherProbeService = new GraphicsHookLauncherProbeService(() => _logger);
         _magpieProcessService = new MagpieProcessService();
         _magpieIpcClient = new MagpieIpcClient();
         _magpieSessionController = new MagpieSessionController(
@@ -463,6 +466,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _settingsChangeScheduler.Dispose();
         _translationOverlayCts?.Cancel();
         _translationOverlayCts?.Dispose();
+        _graphicsHookLauncherProbeCts?.Cancel();
+        _graphicsHookLauncherProbeCts?.Dispose();
         try
         {
             _graphicsHookClientService.StopAsync().GetAwaiter().GetResult();
@@ -718,7 +723,37 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             }
 
             AppendLog($"stage=graphics_hook event=launcher_resume source={source} pid={launched.ProcessId}.");
+            StartGraphicsHookLauncherProbe(launched.ProcessId, targetExePath, source);
         }
+    }
+
+    private void StartGraphicsHookLauncherProbe(int bootstrapPid, string targetExePath, string source)
+    {
+        _graphicsHookLauncherProbeCts?.Cancel();
+        _graphicsHookLauncherProbeCts?.Dispose();
+        _graphicsHookLauncherProbeCts = new CancellationTokenSource();
+        var token = _graphicsHookLauncherProbeCts.Token;
+        var expectedProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _graphicsHookLauncherProbeService
+                    .ProbeAsync(bootstrapPid, expectedProcessName, token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // WHY: Launcher probe is short-lived diagnostic work; cancellation during shutdown or relaunch is expected.
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(
+                    ex,
+                    $"stage=graphics_hook event=launcher_probe_failed source={source} bootstrapPid={bootstrapPid}.");
+            }
+        }, token);
     }
 
     private static bool TryParseHookLaunchTargetTokens(
