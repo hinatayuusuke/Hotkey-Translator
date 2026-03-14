@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
@@ -29,6 +30,7 @@ internal sealed class GraphicsHookLauncherProbeService
 
         var normalizedExpectedName = (expectedProcessName ?? string.Empty).Trim();
         var seenChildren = new HashSet<int>();
+        var seenExpectedNamePids = new HashSet<int>();
         var seenWindows = new HashSet<nint>();
         WindowCandidate? bestCandidate = null;
         var startedAtUtc = DateTime.UtcNow;
@@ -40,6 +42,7 @@ internal sealed class GraphicsHookLauncherProbeService
         {
             var processes = CaptureProcesses();
             var descendants = BuildDescendantSet(bootstrapPid, processes);
+            var expectedNamePids = CaptureExpectedNamePids(normalizedExpectedName);
 
             foreach (var pid in descendants)
             {
@@ -55,16 +58,31 @@ internal sealed class GraphicsHookLauncherProbeService
                 }
             }
 
+            foreach (var pid in expectedNamePids)
+            {
+                if (!seenExpectedNamePids.Add(pid))
+                {
+                    continue;
+                }
+
+                var parentPid = processes.TryGetValue(pid, out var processInfo)
+                    ? processInfo.ParentPid
+                    : 0;
+                _loggerAccessor()?.Info(
+                    $"stage=graphics_hook event=launcher_probe_name_match bootstrapPid={bootstrapPid} pid={pid} parentPid={parentPid} expected=\"{SanitizeForLog(normalizedExpectedName)}\" descendant={BoolToInt(descendants.Contains(pid))}.");
+            }
+
             foreach (var window in EnumerateTopLevelWindows())
             {
                 var isDescendant = descendants.Contains(window.ProcessId);
                 var expectedNameMatch =
-                    !string.IsNullOrWhiteSpace(normalizedExpectedName) &&
-                    processes.TryGetValue(window.ProcessId, out var processInfo) &&
-                    string.Equals(
-                        StripExtension(processInfo.ExeFile),
-                        normalizedExpectedName,
-                        StringComparison.OrdinalIgnoreCase);
+                    expectedNamePids.Contains(window.ProcessId) ||
+                    (!string.IsNullOrWhiteSpace(normalizedExpectedName) &&
+                     processes.TryGetValue(window.ProcessId, out var processInfo) &&
+                     string.Equals(
+                         StripExtension(processInfo.ExeFile),
+                         normalizedExpectedName,
+                         StringComparison.OrdinalIgnoreCase));
 
                 if (!isDescendant && !expectedNameMatch)
                 {
@@ -97,7 +115,7 @@ internal sealed class GraphicsHookLauncherProbeService
         if (bestCandidate == null)
         {
             _loggerAccessor()?.Info(
-                $"stage=graphics_hook event=launcher_probe_result bootstrapPid={bootstrapPid} result=no_window descendants={Math.Max(0, seenChildren.Count)}.");
+                $"stage=graphics_hook event=launcher_probe_result bootstrapPid={bootstrapPid} result=no_window descendants={Math.Max(0, seenChildren.Count)} expectedNamePids={Math.Max(0, seenExpectedNamePids.Count)}.");
             return;
         }
 
@@ -218,6 +236,36 @@ internal sealed class GraphicsHookLauncherProbeService
         return descendants;
     }
 
+    private static HashSet<int> CaptureExpectedNamePids(string normalizedExpectedName)
+    {
+        var result = new HashSet<int>();
+        if (string.IsNullOrWhiteSpace(normalizedExpectedName))
+        {
+            return result;
+        }
+
+        try
+        {
+            foreach (var process in Process.GetProcessesByName(normalizedExpectedName))
+            {
+                try
+                {
+                    result.Add(process.Id);
+                }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
+        }
+        catch
+        {
+            // WHY: Probe is diagnostics only. Failure to enumerate by name should not abort launcher flow.
+        }
+
+        return result;
+    }
+
     private static List<WindowInfo> EnumerateTopLevelWindows()
     {
         var windows = new List<WindowInfo>();
@@ -334,10 +382,10 @@ internal sealed class GraphicsHookLauncherProbeService
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr CreateToolhelp32Snapshot(uint dwFlags, uint th32ProcessID);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", EntryPoint = "Process32FirstW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool Process32First(IntPtr hSnapshot, ref ProcessEntry32 lppe);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", EntryPoint = "Process32NextW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern bool Process32Next(IntPtr hSnapshot, ref ProcessEntry32 lppe);
 
     [DllImport("kernel32.dll", SetLastError = true)]

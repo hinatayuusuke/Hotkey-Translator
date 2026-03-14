@@ -1736,6 +1736,43 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-15 03:29 (Asia/Taipei) — Implement discovery-first launcher target resolution**
+
+### Summary
+- launcher の bootstrap-first attach を discovery-first / saved-signature fast path へ置き換えた。
+
+### Context / Goal
+- `GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md` に沿って、初回は discovery + best-effort attach、2 回目以降は signature 再利用で早めに inject する流れを実装したかった。
+- DXVK 系タイトルで `attachPid != windowPid` が起きるため、`launched.ProcessId` 即 attach をやめる必要があった。
+
+### Changes
+- `GraphicsHookLauncherTargetSignature` と `LauncherTargetSignatureRegistry` を追加し、`Data/GraphicsHookLauncherSignatures.json` へ自動保存/再利用できるようにした。
+- `LauncherDiscoveryResolver` と `LauncherTargetResolver` を追加し、初回は foreground monitor-sized window discovery、2 回目以降は saved signature による fast path を実装した。
+- `MainWindow` の launcher flow を変更し、resume 後に resolver で本命 target を選んでから settings 反映と attach を行うようにした。
+
+### Files Touched
+- `Models/GraphicsHookLauncherTargetSignature.cs` — launcher target signature モデルを追加した。
+- `Services/Hook/LauncherTargetSignatureRegistry.cs` — signature の JSON 保存/読み込みを追加した。
+- `Services/Hook/LauncherDiscoveryResolver.cs` — 初回 discovery を追加した。
+- `Services/Hook/LauncherTargetResolver.cs` — saved signature fast path と window/process 観測ヘルパーを追加した。
+- `MainWindow.xaml.cs` — launcher attach を resolver-driven に置き換えた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher 起動時に bootstrap PID へ即 attach せず、resume 後に discovery または saved signature で本命 PID を解決してから attach する。
+- 初回は `discovery_saved` ログとともに signature が保存され、2 回目以降は `signature_reused` から fast path を試す。
+- fast path では HWND 未確定でも PID を先に決められれば、signature の class/title を使って早期 attach できる。
+
+### Risk & Mitigation
+- Risk: fast path が process-only で早すぎると、誤 PID へ attach する可能性がある。
+- Mitigation: exact path match を優先し、曖昧な複数候補では process-only resolve を返さないようにした。
+
+- Risk: discovery が foreground 依存のため、初回で対象 window を取り逃す可能性がある。
+- Mitigation: 初回は best-effort と割り切り、成功時だけ signature を保存する。再試行時は saved signature fast path が効く。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-15 01:01 (Asia/Taipei) — Add DXVK Vulkan diagnostic probe logs**
 
 ### Summary
@@ -1826,6 +1863,150 @@
 
 ### Tests / Verification
 - `dotnet build '.\\Hotkey-Translator.csproj' -v minimal /m:1`
+
+**2026-03-15 02:56 (Asia/Taipei) — Fix launcher probe process-name detection**
+
+### Summary
+- launcher probe の process 名文字化けを修正し、期待 exe 名一致 PID を別経路でも拾うようにした。
+
+### Context / Goal
+- 初回 probe では child process の名前が文字化けし、window 候補も拾えず `result=no_window` で止まっていた。
+- bootstrap PID と実 window PID の handoff を確定するため、process 名と候補 PID の観測精度を上げたかった。
+
+### Changes
+- Toolhelp snapshot の `Process32First/Next` を Unicode 版へ固定した。
+- `Process.GetProcessesByName(...)` でも期待 exe 名一致 PID を拾い、probe の候補探索とログへ反映するようにした。
+- `result=no_window` ログへ期待 exe 名一致 PID 数を追加した。
+
+### Files Touched
+- `Services/Hook/GraphicsHookLauncherProbeService.cs` — Unicode process 列挙と期待 exe 名 PID 補助探索を追加した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- launcher probe の child/name/window ログが、期待 exe 名に基づいてより多く出る。
+- 実行時の hook 挙動自体は変わらない。
+
+### Risk & Mitigation
+- Risk: 期待 exe 名一致だけで候補を拾うと、同名プロセスが複数ある環境でログが増える。
+- Mitigation: descendant 判定を併記し、最終判定は `launcher_probe_result` / `launcher_probe_mismatch` で分けて読む前提にした。
+
+### Tests / Verification
+- `dotnet build '.\\Hotkey-Translator.csproj' -v minimal /m:1`
+- 結果: 成功（`Hotkey-Translator.exe` 実行中のため apphost copy warning 1 件あり）
+
+**2026-03-15 02:23 (Asia/Taipei) — Add launcher target signature implementation plan**
+
+### Summary
+- launcher handoff 問題に対する `process/window signature` ベースの解決案を `Doc/` に追加した。
+
+### Context / Goal
+- bootstrap PID と実 render PID が分離するタイトルに対し、`ProcessName` 単独では本命 process を選べないことが分かった。
+- 最小の signature list と resolver を使って正しい PID を選ぶ設計を、データ構造込みで文書化したかった。
+
+### Changes
+- launcher target signature の目的、候補選定ロジック、registry 形式、resolver API、learning 運用案を含む計画書を追加した。
+- 問題タイトルだけを持つ最小 JSON list 案と、候補 score ベースの選定方針を整理した。
+
+### Files Touched
+- `Doc/GraphicsHook_LauncherTargetSignature_Implementation_Plan.md` — launcher target signature の実装案を新規作成した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 今後の launcher handoff 実装時に、signature list と resolver の責務分離を判断しやすくなる。
+
+### Risk & Mitigation
+- Risk: 計画書と実装時の最終判断がずれる可能性がある。
+- Mitigation: probe で確定した実ログを基準にし、まずは問題タイトルだけを対象に最小実装する前提を明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント更新のみ）
+
+**2026-03-15 02:33 (Asia/Taipei) — Refine launcher signature plan with countdown learning**
+
+### Summary
+- launcher target signature の実装案に、foreground countdown を使った学習モードを統合した。
+
+### Context / Goal
+- 独占フルスクリーン前提の運用では、ユーザーが通常起動した正解ウィンドウを countdown 後の foreground から学習する案が現実的だった。
+- 既存の signature/resolver 案と矛盾しない形で、learning フローと保存データを計画書へ反映したかった。
+
+### Changes
+- `Doc/GraphicsHook_LauncherTargetSignature_Implementation_Plan.md` に learning service、countdown learning フロー、保存フィールド、UI 前提を追加した。
+- runtime attach は saved signature を使い、foreground 待ちは learning のみに限定する方針を明記した。
+
+### Files Touched
+- `Doc/GraphicsHook_LauncherTargetSignature_Implementation_Plan.md` — countdown learning を含む全体設計へ更新した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 実装時に「学習用 foreground 取得」と「runtime の早期 attach」を分離して進める基準が明確になった。
+
+### Risk & Mitigation
+- Risk: 学習案だけが独立して見え、resolver 本体との責務分離が曖昧になる可能性がある。
+- Mitigation: 計画書内で learning service と runtime resolver を別コンポーネントとして整理し、foreground 依存は learning のみに限定すると明記した。
+
+### Tests / Verification
+- `Get-Content -Path '.\\Doc\\GraphicsHook_LauncherTargetSignature_Implementation_Plan.md' -Encoding UTF8` で全体を再確認し、番号・責務・運用フローの整合性を確認した。
+
+**2026-03-15 03:02 (Asia/Taipei) — Add discovery-first launcher signature plan**
+
+### Summary
+- 初回 discovery と 2 回目以降の fast path を前提にした launcher signature 実装案を `Doc/` に追加した。
+
+### Context / Goal
+- 手動 countdown learning より、初回実行で観測結果を保存して次回改善する方式のほうが運用上自然だった。
+- 独占フルスクリーンを主対象に、初回は best-effort attach、2 回目から早めに attach する方針を明文化したかった。
+
+### Changes
+- `Doc/GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md` を新規追加し、discovery-first、saved signature fast path、manual learning の位置付けを整理した。
+- 初回は capture 成功ではなく window/process identification 成功で signature を保存する方針を明記した。
+
+### Files Touched
+- `Doc/GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md` — discovery-first launcher signature の実装案を新規作成した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 今後の実装で、manual learning を必須にせず self-learning launcher flow を優先する判断基準が明確になった。
+
+### Risk & Mitigation
+- Risk: 既存の manual learning 案と競合して見える可能性がある。
+- Mitigation: 新規ドキュメント内で manual learning は fallback と位置付け、discovery-first を別案として整理した。
+
+### Tests / Verification
+- `Get-Content -Path '.\\Doc\\GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md' -Encoding UTF8` 相当の内容確認で、構成と手順の一貫性を確認した。
+
+**2026-03-15 03:13 (Asia/Taipei) — Align launcher plan docs to discovery-first direction**
+
+### Summary
+- discovery-first を本線にし、countdown-learning 文書は旧代替案であることを明示した。
+
+### Context / Goal
+- countdown learning は未実装であり、現時点で fallback として前提に置く必要がなかった。
+- `Doc/` 内の関連計画書が、discovery-first と countdown-learning の両方を同格に見せないよう整合性を取りたかった。
+
+### Changes
+- `Doc/GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md` から countdown fallback 前提の記述を削除した。
+- `Doc/GraphicsHook_LauncherTargetSignature_Implementation_Plan.md` の冒頭に、旧代替案であり current implementation direction ではない旨の NOTE を追加した。
+
+### Files Touched
+- `Doc/GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md` — discovery-first を単独の本線として読めるよう整理した。
+- `Doc/GraphicsHook_LauncherTargetSignature_Implementation_Plan.md` — countdown-learning 案が旧代替案であることを明示した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 計画書上の優先方針が `discovery-first` に統一され、manual/countdown learning を前提に読まれにくくなった。
+
+### Risk & Mitigation
+- Risk: 旧文書が残ることで、将来また current plan と誤読される可能性がある。
+- Mitigation: 冒頭 NOTE で新文書への参照を明示し、発見時に文脈をすぐ判断できるようにした。
+
+### Tests / Verification
+- `Get-Content -Path '.\\Doc\\GraphicsHook_DiscoveryFirstSignature_Implementation_Plan.md' -Encoding UTF8`
+- `Get-Content -Path '.\\Doc\\GraphicsHook_LauncherTargetSignature_Implementation_Plan.md' -Encoding UTF8 | Select-Object -First 12`
 
 **2026-03-14 23:43 (Asia/Taipei) — Force early Vulkan hook install logs into temp file**
 

@@ -55,13 +55,15 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
     private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
-    private readonly GraphicsHookLauncherProbeService _graphicsHookLauncherProbeService;
+    private readonly LauncherTargetSignatureRegistry _launcherTargetSignatureRegistry;
+    private readonly LauncherDiscoveryResolver _launcherDiscoveryResolver;
+    private readonly LauncherTargetResolver _launcherTargetResolver;
     private readonly IMagpieProcessService _magpieProcessService;
     private readonly IMagpieIpcClient _magpieIpcClient;
     private readonly MagpieSessionController _magpieSessionController;
     private PhashService? _phashService;
     private CancellationTokenSource? _translationOverlayCts;
-    private CancellationTokenSource? _graphicsHookLauncherProbeCts;
+    private CancellationTokenSource? _graphicsHookLauncherResolveCts;
     private AppLogger? _logger;
     private bool _overlayEnabled = true;
     private OverlayTextMode _overlayTextMode = OverlayTextMode.Translated;
@@ -88,6 +90,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 200;
+    private const int GraphicsHookLauncherDiscoveryTimeoutMs = 8000;
+    private const int GraphicsHookLauncherSignatureResolveTimeoutMs = 3000;
     private const double DrawerAutoResizeTolerance = 12.0;
     private const double DrawerAutoResizeFallbackHeight = 300.0;
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
@@ -173,7 +177,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _graphicsHookClientService = new GraphicsHookClientService(() => _logger);
         _graphicsHookLauncherService = new GraphicsHookLauncherService();
-        _graphicsHookLauncherProbeService = new GraphicsHookLauncherProbeService(() => _logger);
+        _launcherTargetSignatureRegistry = new LauncherTargetSignatureRegistry();
+        _launcherDiscoveryResolver = new LauncherDiscoveryResolver(() => _logger);
+        _launcherTargetResolver = new LauncherTargetResolver(() => _logger);
         _magpieProcessService = new MagpieProcessService();
         _magpieIpcClient = new MagpieIpcClient();
         _magpieSessionController = new MagpieSessionController(
@@ -466,8 +472,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _settingsChangeScheduler.Dispose();
         _translationOverlayCts?.Cancel();
         _translationOverlayCts?.Dispose();
-        _graphicsHookLauncherProbeCts?.Cancel();
-        _graphicsHookLauncherProbeCts?.Dispose();
+        _graphicsHookLauncherResolveCts?.Cancel();
+        _graphicsHookLauncherResolveCts?.Dispose();
         try
         {
             _graphicsHookClientService.StopAsync().GetAwaiter().GetResult();
@@ -689,20 +695,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             var settings = _settingsService.Settings;
             AppendLog(
                 $"stage=graphics_hook event=launcher_start source={source} pid={launched.ProcessId} exe=\"{targetExePath}\" args=\"{targetArgsForLog}\".");
-
-            settings.EnableFixedCaptureWindow = true;
-            settings.FixedCaptureWindowHandle = 0;
-            settings.FixedCaptureWindowProcessId = launched.ProcessId;
-            settings.FixedCaptureWindowProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
-            settings.FixedCaptureWindowClassName = string.Empty;
-            settings.FixedCaptureWindowTitle = string.Empty;
-            AppendLog(
-                $"stage=graphics_hook event=launcher_bound source={source} pid={launched.ProcessId} api={settings.GraphicsHookApi}.");
-            _mainWindowViewModel.Settings.LoadFrom(settings);
-
-            await _settingsService.SaveAsync().ConfigureAwait(true);
-            await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-            AppendLog($"stage=graphics_hook event=launcher_attach_ok source={source} pid={launched.ProcessId}.");
+            await _graphicsHookClientService.StopAsync().ConfigureAwait(true);
 
             if (!launched.Resume(out var resumeFailureReason))
             {
@@ -723,37 +716,170 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             }
 
             AppendLog($"stage=graphics_hook event=launcher_resume source={source} pid={launched.ProcessId}.");
-            StartGraphicsHookLauncherProbe(launched.ProcessId, targetExePath, source);
+            _graphicsHookLauncherResolveCts?.Cancel();
+            _graphicsHookLauncherResolveCts?.Dispose();
+            _graphicsHookLauncherResolveCts = new CancellationTokenSource();
+            await ResolveAndAttachLauncherTargetAsync(
+                    launched.ProcessId,
+                    targetExePath,
+                    source,
+                    _graphicsHookLauncherResolveCts.Token)
+                .ConfigureAwait(true);
         }
     }
 
-    private void StartGraphicsHookLauncherProbe(int bootstrapPid, string targetExePath, string source)
+    private async Task ResolveAndAttachLauncherTargetAsync(
+        int bootstrapPid,
+        string targetExePath,
+        string source,
+        CancellationToken cancellationToken)
     {
-        _graphicsHookLauncherProbeCts?.Cancel();
-        _graphicsHookLauncherProbeCts?.Dispose();
-        _graphicsHookLauncherProbeCts = new CancellationTokenSource();
-        var token = _graphicsHookLauncherProbeCts.Token;
         var expectedProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
+        var settings = _settingsService.Settings;
+        GraphicsHookLauncherTargetSignature? signature = null;
 
-        _ = Task.Run(async () =>
+        try
         {
-            try
+            signature = await _launcherTargetSignatureRegistry
+                .TryLoadAsync(expectedProcessName, targetExePath, cancellationToken)
+                .ConfigureAwait(true);
+
+            if (signature != null)
             {
-                await _graphicsHookLauncherProbeService
-                    .ProbeAsync(bootstrapPid, expectedProcessName, token)
-                    .ConfigureAwait(false);
+                AppendLog(
+                    $"stage=graphics_hook event=signature_reused source={source} exe=\"{expectedProcessName}\" key=\"{signature.Key}\".");
+                var fastPath = await _launcherTargetResolver
+                    .ResolveAsync(
+                        signature,
+                        expectedProcessName,
+                        targetExePath,
+                        TimeSpan.FromMilliseconds(GraphicsHookLauncherSignatureResolveTimeoutMs),
+                        cancellationToken)
+                    .ConfigureAwait(true);
+                if (fastPath.Success)
+                {
+                    await ApplyResolvedLauncherTargetAsync(settings, fastPath, signature, source).ConfigureAwait(true);
+                    return;
+                }
+
+                AppendLog(
+                    $"stage=graphics_hook event=signature_reuse_failed source={source} pid={bootstrapPid} reason={fastPath.Reason}.");
             }
-            catch (OperationCanceledException)
+
+            var discovery = await _launcherDiscoveryResolver
+                .DiscoverAsync(
+                    expectedProcessName,
+                    targetExePath,
+                    TimeSpan.FromMilliseconds(GraphicsHookLauncherDiscoveryTimeoutMs),
+                    cancellationToken)
+                .ConfigureAwait(true);
+            if (!discovery.Success)
             {
-                // WHY: Launcher probe is short-lived diagnostic work; cancellation during shutdown or relaunch is expected.
+                AppendLog(
+                    $"stage=graphics_hook event=launcher_fail source={source} pid={bootstrapPid} reason={discovery.Reason}.");
+                return;
             }
-            catch (Exception ex)
+
+            signature = BuildDiscoveredSignature(discovery, targetExePath, settings.GraphicsHookApi);
+            await _launcherTargetSignatureRegistry
+                .SaveOrUpdateAsync(signature, cancellationToken)
+                .ConfigureAwait(true);
+            AppendLog(
+                $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\".");
+            await ApplyResolvedLauncherTargetAsync(settings, discovery, signature, source).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            // WHY: Launcher resolution is canceled when the app closes or a new launcher request supersedes the current one.
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(
+                ex,
+                $"stage=graphics_hook event=launcher_resolution_failed source={source} bootstrapPid={bootstrapPid}.");
+        }
+    }
+
+    private async Task ApplyResolvedLauncherTargetAsync(
+        AppSettings settings,
+        LauncherTargetResolutionResult resolution,
+        GraphicsHookLauncherTargetSignature? signature,
+        string source)
+    {
+        settings.EnableFixedCaptureWindow = true;
+        settings.FixedCaptureWindowHandle = resolution.Hwnd.ToInt64();
+        settings.FixedCaptureWindowProcessId = resolution.ProcessId;
+        settings.FixedCaptureWindowProcessName = !string.IsNullOrWhiteSpace(resolution.ProcessName)
+            ? resolution.ProcessName
+            : Path.GetFileNameWithoutExtension(signature?.ExeName ?? string.Empty) ?? string.Empty;
+        settings.FixedCaptureWindowClassName = !string.IsNullOrWhiteSpace(resolution.WindowClass)
+            ? resolution.WindowClass
+            : signature?.WindowClassAllowList.FirstOrDefault() ?? string.Empty;
+        settings.FixedCaptureWindowTitle = !string.IsNullOrWhiteSpace(resolution.WindowTitle)
+            ? resolution.WindowTitle
+            : signature?.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty;
+        AppendLog(
+            $"stage=graphics_hook event=launcher_bound source={source} pid={resolution.ProcessId} api={settings.GraphicsHookApi} hwnd=0x{resolution.Hwnd.ToInt64():X} reason={resolution.Reason}.");
+        _mainWindowViewModel.Settings.LoadFrom(settings);
+
+        await _settingsService.SaveAsync().ConfigureAwait(true);
+        await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
+        AppendLog(
+            $"stage=graphics_hook event=launcher_attach_ok source={source} pid={resolution.ProcessId} reason={resolution.Reason}.");
+    }
+
+    private static GraphicsHookLauncherTargetSignature BuildDiscoveredSignature(
+        LauncherTargetResolutionResult resolution,
+        string targetExePath,
+        GraphicsHookApiKind api)
+    {
+        var exeName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
+        return new GraphicsHookLauncherTargetSignature
+        {
+            Key = BuildLauncherSignatureKey(exeName, targetExePath),
+            ExeName = exeName,
+            ExePathSuffix = targetExePath,
+            PreferredApi = api,
+            WindowClassAllowList = string.IsNullOrWhiteSpace(resolution.WindowClass)
+                ? Array.Empty<string>()
+                : [resolution.WindowClass],
+            WindowTitleContainsAny = string.IsNullOrWhiteSpace(resolution.WindowTitle)
+                ? Array.Empty<string>()
+                : [resolution.WindowTitle],
+            RequireVisibleTopLevel = true,
+            RequireOwnerlessWindow = true,
+            RequireExclusiveFullscreen = resolution.MonitorSizedWindowObserved,
+            MinClientWidth = Math.Max(640, resolution.Width),
+            MinClientHeight = Math.Max(360, resolution.Height),
+            LearnedFromDiscovery = true,
+            LearnedAtUtc = DateTimeOffset.UtcNow
+        };
+    }
+
+    private static string BuildLauncherSignatureKey(string exeName, string exePath)
+    {
+        var source = !string.IsNullOrWhiteSpace(exePath)
+            ? Path.GetFileNameWithoutExtension(exePath) ?? exeName
+            : exeName;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return "launcher-target";
+        }
+
+        var builder = new StringBuilder(source.Length);
+        foreach (var ch in source.Trim().ToLowerInvariant())
+        {
+            if (char.IsLetterOrDigit(ch))
             {
-                _logger?.Error(
-                    ex,
-                    $"stage=graphics_hook event=launcher_probe_failed source={source} bootstrapPid={bootstrapPid}.");
+                builder.Append(ch);
             }
-        }, token);
+            else if (builder.Length == 0 || builder[^1] != '-')
+            {
+                builder.Append('-');
+            }
+        }
+
+        return builder.ToString().Trim('-');
     }
 
     private static bool TryParseHookLaunchTargetTokens(
