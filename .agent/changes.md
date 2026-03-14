@@ -1771,6 +1771,36 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 04:10 (Asia/Taipei) — Reset launcher signatures for clean discovery retest**
+
+### Summary
+- 1文字 metadata フィルタを取り下げ、保存済み launcher signature を削除して discovery 再テスト前提の状態に戻した。
+
+### Context / Goal
+- signature 保存経路自体に不具合がある可能性が高く、1文字 class/title を除外すると原因を隠してしまう。
+- まずは汚染された既存 signature を消し、fresh discovery が何を保存するかを確認したかった。
+
+### Changes
+- `MainWindow` と `LauncherTargetResolver` の 1文字 metadata 除外を元に戻し、取得した値をそのまま観測できるようにした。
+- Debug 出力配下の `GraphicsHookLauncherSignatures.json` を削除し、次回起動時に空の状態から signature を再生成するようにした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — launcher metadata の利用条件を `null/empty` 判定のみに戻した。
+- `Services/Hook/LauncherTargetResolver.cs` — fast-path 側の metadata match から 1文字除外ルールを取り下げた。
+- `bin/Debug/net8.0-windows10.0.22621.0/Data/GraphicsHookLauncherSignatures.json` — 既存 signature を削除した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 次回 launcher 起動では saved signature が使われず、discovery からやり直す。
+- class/title が再び 1文字で保存されるなら、保存前の取得経路に不具合があることをそのまま観測できる。
+
+### Risk & Mitigation
+- Risk: signature キャッシュが消えたため、次回起動は fast-path が効かず discovery に時間がかかる。
+- Mitigation: provisional attach は維持しているため、Vulkan の早期 inject 余地は残したまま観測をやり直せる。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
+
 **2026-03-15 03:29 (Asia/Taipei) — Implement discovery-first launcher target resolution**
 
 ### Summary
@@ -23688,3 +23718,34 @@ efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び
 
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
+
+**2026-03-15 04:07 (Asia/Taipei) — Fix launcher fast-path regression for Vulkan capture**
+
+### Summary
+- launcher fast-path が `HWND` 未確定のまま fixed target を確定保存していた退行を修正した。
+
+### Context / Goal
+- `vkcube` が以前は `GraphicsHook` で取れていたのに、signature fast-path 導入後は `HWND=0` のまま確定されて capture 失敗していた。
+- DXVK 側でも bootstrap PID を process-only で早すぎる成功扱いにしており、本命 window/PID の discovery を潰していた。
+
+### Changes
+- `LauncherTargetResolver` から process-only fast-path 成功を除去し、window 確認済みの候補だけを再利用成功として扱うようにした。
+- `MainWindow` の launcher commit で `HWND=0` を fixed target として保存しないようにし、provisional attach を維持する形へ戻した。
+- discovery から保存する signature と、settings へ再注入する metadata の双方で、1文字の class/title を無効値として除外するようにした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — `HWND` 未確定の resolution を provisional 扱いへ戻し、弱い metadata を settings に流し込まないようにした。
+- `Services/Hook/LauncherTargetResolver.cs` — process-only fast-path を削除し、1文字 metadata を window match 条件から除外した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- saved signature があっても、window 未確認の PID だけでは launcher target を確定しなくなる。
+- provisional attach は維持しつつ、capture 側が要求する fixed target は `HWND` 解決後にのみ確定される。
+- 既存の 1文字 class/title signature は fast-path の強い一致条件としては使われなくなる。
+
+### Risk & Mitigation
+- Risk: signature fast-path が以前より保守的になり、window 解決までに数秒余計にかかる場合がある。
+- Mitigation: provisional attach 自体は即時に行い、Vulkan の早期 inject 余地は残したまま、window 確認だけを後段に限定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`

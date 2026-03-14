@@ -867,6 +867,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         bool provisionalAttached,
         bool persistSettings)
     {
+        if (resolution.Hwnd == IntPtr.Zero)
+        {
+            // WHY: A process-only match is not enough to bind GraphicsHook capture.
+            // Keep the provisional attach alive, but do not persist unresolved metadata.
+            await CommitProvisionalLauncherTargetAsync(
+                    settings,
+                    bootstrapPid,
+                    resolution.ExePath,
+                    source,
+                    provisionalAttached)
+                .ConfigureAwait(true);
+            return;
+        }
+
         ApplyLauncherTargetToSettings(settings, resolution, signature);
         var state = resolution.ProcessId != bootstrapPid
             ? "handoff"
@@ -976,12 +990,42 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settings.FixedCaptureWindowProcessName = !string.IsNullOrWhiteSpace(resolution.ProcessName)
             ? resolution.ProcessName
             : Path.GetFileNameWithoutExtension(signature?.ExeName ?? string.Empty) ?? string.Empty;
-        settings.FixedCaptureWindowClassName = !string.IsNullOrWhiteSpace(resolution.WindowClass)
-            ? resolution.WindowClass
-            : signature?.WindowClassAllowList.FirstOrDefault() ?? string.Empty;
-        settings.FixedCaptureWindowTitle = !string.IsNullOrWhiteSpace(resolution.WindowTitle)
-            ? resolution.WindowTitle
-            : signature?.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty;
+        settings.FixedCaptureWindowClassName = resolution.Hwnd != IntPtr.Zero
+            ? GetResolvedOrSignatureMetadataValue(resolution.WindowClass, signature?.WindowClassAllowList)
+            : string.Empty;
+        settings.FixedCaptureWindowTitle = resolution.Hwnd != IntPtr.Zero
+            ? GetResolvedOrSignatureMetadataValue(resolution.WindowTitle, signature?.WindowTitleContainsAny)
+            : string.Empty;
+    }
+
+    private static string GetResolvedOrSignatureMetadataValue(
+        string resolvedValue,
+        IReadOnlyList<string>? signatureValues)
+    {
+        if (IsUsableLauncherMetadataValue(resolvedValue))
+        {
+            return resolvedValue;
+        }
+
+        if (signatureValues == null)
+        {
+            return string.Empty;
+        }
+
+        foreach (var candidate in signatureValues)
+        {
+            if (IsUsableLauncherMetadataValue(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private static bool IsUsableLauncherMetadataValue(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value);
     }
 
     private static GraphicsHookLauncherTargetSignature BuildDiscoveredSignature(
@@ -996,10 +1040,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ExeName = exeName,
             ExePathSuffix = targetExePath,
             PreferredApi = api,
-            WindowClassAllowList = string.IsNullOrWhiteSpace(resolution.WindowClass)
+            WindowClassAllowList = !IsUsableLauncherMetadataValue(resolution.WindowClass)
                 ? Array.Empty<string>()
                 : [resolution.WindowClass],
-            WindowTitleContainsAny = string.IsNullOrWhiteSpace(resolution.WindowTitle)
+            WindowTitleContainsAny = !IsUsableLauncherMetadataValue(resolution.WindowTitle)
                 ? Array.Empty<string>()
                 : [resolution.WindowTitle],
             RequireVisibleTopLevel = true,

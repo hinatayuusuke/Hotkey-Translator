@@ -65,23 +65,6 @@ internal sealed class LauncherTargetResolver
                     bestWindow.Value.MatchReason);
             }
 
-            var earlyProcess = SelectBestProcess(processes);
-            if (earlyProcess != null)
-            {
-                return new LauncherTargetResolutionResult(
-                    true,
-                    earlyProcess.Value.ProcessId,
-                    IntPtr.Zero,
-                    earlyProcess.Value.ProcessName,
-                    earlyProcess.Value.ExePath,
-                    string.Empty,
-                    string.Empty,
-                    0,
-                    0,
-                    false,
-                    earlyProcess.Value.MatchReason);
-            }
-
             await Task.Delay(FastPathPollInterval, cancellationToken).ConfigureAwait(false);
         }
 
@@ -123,37 +106,6 @@ internal sealed class LauncherTargetResolver
         }
 
         return matches;
-    }
-
-    private static ObservedProcessCandidate? SelectBestProcess(List<ObservedProcessCandidate> processes)
-    {
-        if (processes.Count == 0)
-        {
-            return null;
-        }
-
-        ObservedProcessCandidate? exactPath = null;
-        foreach (var process in processes)
-        {
-            if (!string.Equals(process.MatchReason, "signature_expected_path_match", StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (exactPath != null)
-            {
-                return null;
-            }
-
-            exactPath = process;
-        }
-
-        if (exactPath != null)
-        {
-            return exactPath;
-        }
-
-        return processes.Count == 1 ? processes[0] : null;
     }
 
     private static List<ObservedWindowCandidate> EnumerateMatchingWindows(
@@ -256,7 +208,7 @@ internal sealed class LauncherTargetResolver
 
         foreach (var candidate in candidates)
         {
-            if (string.IsNullOrWhiteSpace(candidate))
+            if (!IsUsableMetadataValue(candidate))
             {
                 continue;
             }
@@ -279,7 +231,7 @@ internal sealed class LauncherTargetResolver
 
         foreach (var fragment in fragments)
         {
-            if (string.IsNullOrWhiteSpace(fragment))
+            if (!IsUsableMetadataValue(fragment))
             {
                 continue;
             }
@@ -308,6 +260,11 @@ internal sealed class LauncherTargetResolver
     private static string SanitizeForLog(string value)
     {
         return (value ?? string.Empty).Replace('"', '\'');
+    }
+
+    private static bool IsUsableMetadataValue(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value);
     }
 }
 
