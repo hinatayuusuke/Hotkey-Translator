@@ -1831,6 +1831,34 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
 
+**2026-03-14 18:20 (Asia/Taipei) — Explicitly bind busy dialog text to theme foreground**
+
+### Summary
+- busy ダイアログ内テキストの前景色を `TextFillColorPrimaryBrush` に明示的に結び付けた。
+
+### Context / Goal
+- busy ダイアログ本体の背景は専用 Brush に切り替えたが、内部テキスト色は既定スタイル依存のままで、ライト/ダーク切り替えに対して見た目がずれる可能性があった。
+- ダイアログ本体と同様に、文字色もテーマ Brush を明示指定して整合性を取りたかった。
+
+### Changes
+- `MainWindow.xaml` の busy ダイアログ `StackPanel` に `TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}"` を追加した。
+- WHY: `BusyMessage` と `Cancel` 内のテキストをまとめて既存テーマ前景色へ揃えるため。
+
+### Files Touched
+- `MainWindow.xaml` — busy ダイアログ内テキストの前景色をテーマ Brush へ明示指定した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- busy ダイアログ内の文字色がライト/ダークテーマに追従しやすくなる。
+- 対象は中央 busy ダイアログ内だけで、他の画面テキストには影響しない。
+
+### Risk & Mitigation
+- Risk: `StackPanel` 配下でアイコン文字も同じ前景色になる。
+- Mitigation: 今回のダイアログではアイコンも同じテーマ前景色で問題ない構成のため、まとめ指定で簡潔に揃えた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1 /p:OutDir=bin\TempVerify\`
+
 **2026-03-14 18:14 (Asia/Taipei) — Roll back busy modal surface experiment**
 
 ### Summary
