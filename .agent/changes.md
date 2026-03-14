@@ -1736,6 +1736,37 @@
 ### Tests / Verification
 - 未実施（ドキュメント更新のみ）
 
+**2026-03-14 23:43 (Asia/Taipei) — Force early Vulkan hook install logs into temp file**
+
+### Summary
+- x86 Vulkan の install 失敗が `%TEMP%\\HotkeyTranslator\\hook_vulkan_<pid>.log` に残るよう、agent の install 経路へ強制ファイルログを追加した。
+
+### Context / Goal
+- `HookHost` 側では `installExit=53` までしか見えず、target process 内の `InstallVulkanHookThread` がどこで失敗しているか判断できなかった。
+- config 反映前でも install 開始直後の分岐と例外情報を temp file から追える状態にしたかった。
+
+### Changes
+- `HookAgentVulkan` に install 専用の強制ファイルログ helper を追加し、`install_hook_*` 系ログを config flag 非依存で temp file に書くようにした。
+- `InstallVulkanHookThread` の入口・終了ログを追加し、SEH 例外時は例外コードを temp file に残して `0` を返すようにした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — install 経路専用の temp file ログ helper と例外ログ出力を追加した。
+- `Native/HookAgentVulkan/VulkanPresentHook.h` — install thread から使うログ/例外 handler 宣言を追加した。
+- `Native/HookAgentVulkan/dllmain.cpp` — install thread の enter/exit/exception を記録するようにした。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- Vulkan agent の install 開始直後から `%TEMP%\\HotkeyTranslator\\hook_vulkan_<pid>.log` が生成され、hook 成功/失敗や例外コードを追える。
+- 通常時でも install 時の数行が temp file に残るようになる。
+
+### Risk & Mitigation
+- Risk: install 時のログが毎回 temp file に出るため、diag file sink 無効時よりログ量が少し増える。
+- Mitigation: 強制出力は install 経路の短いログに限定し、present ごとの高頻度ログは既存の config flag 制御のままにした。
+
+### Tests / Verification
+- `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build_x86" --config Release --target HookAgentVulkan -j 4`
+- `cmake --build "G:\\APP Local\\Hotkey-Translator\\Native\\build" --config Release --target HookAgentVulkan -j 4`
+
 **2026-03-14 23:19 (Asia/Taipei) — Fix x86 Vulkan swapchain log handle formatting**
 
 ### Summary

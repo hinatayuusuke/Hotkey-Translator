@@ -14,7 +14,24 @@ extern "C" __declspec(dllexport) void __stdcall UninstallVulkanHook()
 
 extern "C" __declspec(dllexport) DWORD __stdcall InstallVulkanHookThread(void* /*unused*/)
 {
-    return InstallVulkanHook() ? 1u : 0u;
+    ht::hook::vulkan::LogInstallThreadEvent(
+        "stage=hook_vulkan event=install_thread_enter pid=%lu tid=%lu.",
+        static_cast<unsigned long>(GetCurrentProcessId()),
+        static_cast<unsigned long>(GetCurrentThreadId()));
+    __try
+    {
+        const DWORD exitCode = InstallVulkanHook() ? 1u : 0u;
+        ht::hook::vulkan::LogInstallThreadEvent(
+            "stage=hook_vulkan event=install_thread_exit pid=%lu tid=%lu exit=%lu.",
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long>(GetCurrentThreadId()),
+            static_cast<unsigned long>(exitCode));
+        return exitCode;
+    }
+    __except (ht::hook::vulkan::HandleInstallThreadException(GetExceptionCode()))
+    {
+        return 0u;
+    }
 }
 
 extern "C" __declspec(dllexport) DWORD __stdcall UninstallVulkanHookThread(void* /*unused*/)

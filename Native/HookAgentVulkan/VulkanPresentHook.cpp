@@ -416,6 +416,23 @@ namespace ht::hook::vulkan
             }
         }
 
+        void DebugLogInstall(const char* fmt, ...)
+        {
+            if (fmt == nullptr)
+            {
+                return;
+            }
+
+            char buffer[768]{};
+            va_list args;
+            va_start(args, fmt);
+            (void)_vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, fmt, args);
+            va_end(args);
+            OutputDebugStringA(buffer);
+            OutputDebugStringA("\n");
+            AppendDiagFileLine(buffer);
+        }
+
         bool ShouldEmitDiagLog(std::uint64_t nowQpc, std::uint64_t qpcFreq, std::uint64_t& lastQpc, std::uint64_t intervalMs)
         {
             if (qpcFreq == 0)
@@ -2623,12 +2640,12 @@ namespace ht::hook::vulkan
     {
         auto& rt = g_rt;
         std::lock_guard<std::mutex> lock(rt.mutex);
-        DebugLog(
+        DebugLogInstall(
             "stage=hook_vulkan event=agent_loaded pid=%lu.",
             static_cast<unsigned long>(GetCurrentProcessId()));
         if (rt.installed.load())
         {
-            DebugLog(
+            DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_result result=already_installed pid=%lu.",
                 static_cast<unsigned long>(GetCurrentProcessId()));
             return true;
@@ -2637,7 +2654,7 @@ namespace ht::hook::vulkan
         const auto initStatus = MH_Initialize();
         if (initStatus != MH_OK && initStatus != MH_ERROR_ALREADY_INITIALIZED)
         {
-            DebugLog(
+            DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_result result=fail reason=mh_initialize_failed status=%d pid=%lu.",
                 static_cast<int>(initStatus),
                 static_cast<unsigned long>(GetCurrentProcessId()));
@@ -2652,7 +2669,7 @@ namespace ht::hook::vulkan
         if (vulkanModule == nullptr)
         {
             (void)MH_Uninitialize();
-            DebugLog(
+            DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_result result=fail reason=vulkan_module_not_found pid=%lu.",
                 static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
@@ -2661,7 +2678,7 @@ namespace ht::hook::vulkan
         auto hookAndLog = [&](const char* apiName, void* detour, void** original) -> bool
         {
             const bool ok = HookExport(vulkanModule, apiName, detour, original);
-            DebugLog(
+            DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_api api=%s result=%s.",
                 apiName != nullptr ? apiName : "(null)",
                 ok ? "ok" : "fail");
@@ -2726,7 +2743,7 @@ namespace ht::hook::vulkan
         {
             (void)MH_DisableHook(MH_ALL_HOOKS);
             (void)MH_Uninitialize();
-            DebugLog(
+            DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_result result=fail reason=no_exports_hooked pid=%lu.",
                 static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
@@ -2740,11 +2757,37 @@ namespace ht::hook::vulkan
         rt.hookSuccessIndicatorDone = false;
         rt.hookSuccessIndicatorStartQpc = 0;
         rt.installed.store(true);
-        DebugLog(
+        DebugLogInstall(
             "stage=hook_vulkan event=install_hook_result result=ok pid=%lu qpcFreq=%llu.",
             static_cast<unsigned long>(GetCurrentProcessId()),
             static_cast<unsigned long long>(rt.qpcFreq));
         return true;
+    }
+
+    void LogInstallThreadEvent(const char* fmt, ...)
+    {
+        if (fmt == nullptr)
+        {
+            return;
+        }
+
+        char buffer[768]{};
+        va_list args;
+        va_start(args, fmt);
+        (void)_vsnprintf_s(buffer, sizeof(buffer), _TRUNCATE, fmt, args);
+        va_end(args);
+        DebugLogInstall("%s", buffer);
+    }
+
+    int HandleInstallThreadException(unsigned long exceptionCode)
+    {
+        // WHY: The remote thread exit code alone loses the faulting exception details.
+        DebugLogInstall(
+            "stage=hook_vulkan event=install_thread_exception pid=%lu tid=%lu code=0x%08lX.",
+            static_cast<unsigned long>(GetCurrentProcessId()),
+            static_cast<unsigned long>(GetCurrentThreadId()),
+            exceptionCode);
+        return EXCEPTION_EXECUTE_HANDLER;
     }
 
     void UninstallPresentHook()
