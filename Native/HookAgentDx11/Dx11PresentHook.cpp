@@ -45,10 +45,12 @@ namespace ht::hook::dx11
 
         constexpr int kOverlayV2DebugSamples = 8;
         constexpr int kPresentDebugSamples = 16;
+        constexpr int kPresentPerfSamples = 256;
         constexpr int kOverlayFontSteps = 16;
         constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500;
         constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200;
         constexpr std::uint64_t kHookSuccessIndicatorFadeOutMs = 300;
+        constexpr std::uint64_t kPresentPerfFlushIntervalMs = 2000;
 
         struct OverlayV2DebugSample
         {
@@ -75,6 +77,20 @@ namespace ht::hook::dx11
             std::uint32_t bbW = 0;
             std::uint32_t bbH = 0;
             std::uint64_t ovlSeq = 0;
+        };
+
+        struct PresentPerfSample
+        {
+            std::uint32_t kind = 0; // 1=Present, 2=Present1
+            std::uint64_t totalQpc = 0;
+            std::uint64_t lockWaitQpc = 0;
+            std::uint64_t lockHoldQpc = 0;
+            std::uint64_t originalPresentQpc = 0;
+            std::uint64_t debugRecordQpc = 0;
+            std::uint64_t captureQpc = 0;
+            std::uint64_t overlayRefreshQpc = 0;
+            std::uint64_t overlayDrawQpc = 0;
+            std::uint64_t statusQpc = 0;
         };
 
         struct OverlayFontSet
@@ -154,6 +170,11 @@ namespace ht::hook::dx11
             std::uint32_t presentDebugNext = 0;
             std::uint32_t presentDebugCount = 0;
 
+            PresentPerfSample presentPerf[kPresentPerfSamples]{};
+            std::uint32_t presentPerfNext = 0;
+            std::uint32_t presentPerfCount = 0;
+            std::uint64_t lastPerfFlushQpc = 0;
+
             std::uintptr_t lastOmOldRtvPtr = 0;
             std::uintptr_t lastOmOldDsvPtr = 0;
             std::uintptr_t lastImGuiTargetRtvPtr = 0;
@@ -219,6 +240,308 @@ namespace ht::hook::dx11
                 static_cast<unsigned int>(cfg.overlayEnabled),
                 static_cast<unsigned int>(cfg.targetPid));
             OutputDebugStringA(msg);
+        }
+
+        bool IsPresentPerfTraceEnabled()
+        {
+            return ReadEnvU32(L"HT_HOOK_PERF_TRACE", 0) != 0;
+        }
+
+        double QpcToMs(std::uint64_t qpc, std::uint64_t qpcFreq)
+        {
+            if (qpc == 0 || qpcFreq == 0)
+            {
+                return 0.0;
+            }
+
+            return (static_cast<double>(qpc) * 1000.0) / static_cast<double>(qpcFreq);
+        }
+
+        template <typename TAccessor>
+        bool SummarizePerfFieldLocked(
+            const Dx11Runtime& rt,
+            TAccessor accessor,
+            std::uint64_t& avgQpc,
+            std::uint64_t& p95Qpc,
+            std::uint64_t& p99Qpc,
+            std::uint64_t& maxQpc,
+            std::size_t& count)
+        {
+            avgQpc = 0;
+            p95Qpc = 0;
+            p99Qpc = 0;
+            maxQpc = 0;
+            count = 0;
+            if (rt.presentPerfCount == 0)
+            {
+                return false;
+            }
+
+            std::vector<std::uint64_t> values;
+            values.reserve(rt.presentPerfCount);
+
+            std::uint64_t sumQpc = 0;
+            for (std::uint32_t i = 0; i < rt.presentPerfCount; i++)
+            {
+                const std::uint64_t valueQpc = accessor(rt.presentPerf[i]);
+                if (valueQpc == 0)
+                {
+                    continue;
+                }
+
+                values.push_back(valueQpc);
+                sumQpc += valueQpc;
+            }
+
+            if (values.empty())
+            {
+                return false;
+            }
+
+            std::sort(values.begin(), values.end());
+            count = values.size();
+            avgQpc = sumQpc / static_cast<std::uint64_t>(count);
+            maxQpc = values.back();
+
+            const auto percentileIndex = [count](std::size_t percentile) -> std::size_t
+            {
+                const std::size_t ceilRank = ((count * percentile) + 99u) / 100u;
+                return std::min<std::size_t>(count - 1u, std::max<std::size_t>(0u, ceilRank > 0 ? (ceilRank - 1u) : 0u));
+            };
+
+            p95Qpc = values[percentileIndex(95)];
+            p99Qpc = values[percentileIndex(99)];
+            return true;
+        }
+
+        void EmitPresentPerfSummaryLocked(Dx11Runtime& rt, std::uint64_t nowQpc)
+        {
+            if (rt.presentPerfCount == 0)
+            {
+                rt.lastPerfFlushQpc = nowQpc;
+                return;
+            }
+
+            std::uint32_t presentCalls = 0;
+            std::uint32_t present1Calls = 0;
+            for (std::uint32_t i = 0; i < rt.presentPerfCount; i++)
+            {
+                if (rt.presentPerf[i].kind == 1)
+                {
+                    presentCalls++;
+                }
+                else if (rt.presentPerf[i].kind == 2)
+                {
+                    present1Calls++;
+                }
+            }
+
+            std::uint64_t totalAvgQpc = 0;
+            std::uint64_t totalP95Qpc = 0;
+            std::uint64_t totalP99Qpc = 0;
+            std::uint64_t totalMaxQpc = 0;
+            std::size_t totalCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.totalQpc; },
+                totalAvgQpc,
+                totalP95Qpc,
+                totalP99Qpc,
+                totalMaxQpc,
+                totalCount);
+
+            std::uint64_t lockWaitAvgQpc = 0;
+            std::uint64_t lockWaitP95Qpc = 0;
+            std::uint64_t lockWaitP99Qpc = 0;
+            std::uint64_t lockWaitMaxQpc = 0;
+            std::size_t lockWaitCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.lockWaitQpc; },
+                lockWaitAvgQpc,
+                lockWaitP95Qpc,
+                lockWaitP99Qpc,
+                lockWaitMaxQpc,
+                lockWaitCount);
+
+            std::uint64_t lockHoldAvgQpc = 0;
+            std::uint64_t lockHoldP95Qpc = 0;
+            std::uint64_t lockHoldP99Qpc = 0;
+            std::uint64_t lockHoldMaxQpc = 0;
+            std::size_t lockHoldCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.lockHoldQpc; },
+                lockHoldAvgQpc,
+                lockHoldP95Qpc,
+                lockHoldP99Qpc,
+                lockHoldMaxQpc,
+                lockHoldCount);
+
+            std::uint64_t originalAvgQpc = 0;
+            std::uint64_t originalP95Qpc = 0;
+            std::uint64_t originalP99Qpc = 0;
+            std::uint64_t originalMaxQpc = 0;
+            std::size_t originalCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.originalPresentQpc; },
+                originalAvgQpc,
+                originalP95Qpc,
+                originalP99Qpc,
+                originalMaxQpc,
+                originalCount);
+
+            std::uint64_t debugAvgQpc = 0;
+            std::uint64_t debugP95Qpc = 0;
+            std::uint64_t debugP99Qpc = 0;
+            std::uint64_t debugMaxQpc = 0;
+            std::size_t debugCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.debugRecordQpc; },
+                debugAvgQpc,
+                debugP95Qpc,
+                debugP99Qpc,
+                debugMaxQpc,
+                debugCount);
+
+            std::uint64_t captureAvgQpc = 0;
+            std::uint64_t captureP95Qpc = 0;
+            std::uint64_t captureP99Qpc = 0;
+            std::uint64_t captureMaxQpc = 0;
+            std::size_t captureCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.captureQpc; },
+                captureAvgQpc,
+                captureP95Qpc,
+                captureP99Qpc,
+                captureMaxQpc,
+                captureCount);
+
+            std::uint64_t overlayRefreshAvgQpc = 0;
+            std::uint64_t overlayRefreshP95Qpc = 0;
+            std::uint64_t overlayRefreshP99Qpc = 0;
+            std::uint64_t overlayRefreshMaxQpc = 0;
+            std::size_t overlayRefreshCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.overlayRefreshQpc; },
+                overlayRefreshAvgQpc,
+                overlayRefreshP95Qpc,
+                overlayRefreshP99Qpc,
+                overlayRefreshMaxQpc,
+                overlayRefreshCount);
+
+            std::uint64_t overlayDrawAvgQpc = 0;
+            std::uint64_t overlayDrawP95Qpc = 0;
+            std::uint64_t overlayDrawP99Qpc = 0;
+            std::uint64_t overlayDrawMaxQpc = 0;
+            std::size_t overlayDrawCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.overlayDrawQpc; },
+                overlayDrawAvgQpc,
+                overlayDrawP95Qpc,
+                overlayDrawP99Qpc,
+                overlayDrawMaxQpc,
+                overlayDrawCount);
+
+            std::uint64_t statusAvgQpc = 0;
+            std::uint64_t statusP95Qpc = 0;
+            std::uint64_t statusP99Qpc = 0;
+            std::uint64_t statusMaxQpc = 0;
+            std::size_t statusCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.statusQpc; },
+                statusAvgQpc,
+                statusP95Qpc,
+                statusP99Qpc,
+                statusMaxQpc,
+                statusCount);
+
+            char msg[2048]{};
+            std::snprintf(
+                msg,
+                sizeof(msg),
+                "HT HookAgentDx11: perf samples=%u present=%u present1=%u total_ms=%.3f/%.3f/%.3f/%.3f lock_wait_ms=%.3f/%.3f/%.3f/%.3f lock_hold_ms=%.3f/%.3f/%.3f/%.3f orig_ms=%.3f/%.3f/%.3f/%.3f dbg_ms=%.3f/%.3f/%.3f/%.3f capture_ms=%.3f/%.3f/%.3f/%.3f ovl_refresh_ms=%.3f/%.3f/%.3f/%.3f ovl_draw_ms=%.3f/%.3f/%.3f/%.3f status_ms=%.3f/%.3f/%.3f/%.3f\n",
+                static_cast<unsigned int>(rt.presentPerfCount),
+                static_cast<unsigned int>(presentCalls),
+                static_cast<unsigned int>(present1Calls),
+                QpcToMs(totalAvgQpc, rt.qpcFreq),
+                QpcToMs(totalP95Qpc, rt.qpcFreq),
+                QpcToMs(totalP99Qpc, rt.qpcFreq),
+                QpcToMs(totalMaxQpc, rt.qpcFreq),
+                QpcToMs(lockWaitAvgQpc, rt.qpcFreq),
+                QpcToMs(lockWaitP95Qpc, rt.qpcFreq),
+                QpcToMs(lockWaitP99Qpc, rt.qpcFreq),
+                QpcToMs(lockWaitMaxQpc, rt.qpcFreq),
+                QpcToMs(lockHoldAvgQpc, rt.qpcFreq),
+                QpcToMs(lockHoldP95Qpc, rt.qpcFreq),
+                QpcToMs(lockHoldP99Qpc, rt.qpcFreq),
+                QpcToMs(lockHoldMaxQpc, rt.qpcFreq),
+                QpcToMs(originalAvgQpc, rt.qpcFreq),
+                QpcToMs(originalP95Qpc, rt.qpcFreq),
+                QpcToMs(originalP99Qpc, rt.qpcFreq),
+                QpcToMs(originalMaxQpc, rt.qpcFreq),
+                QpcToMs(debugAvgQpc, rt.qpcFreq),
+                QpcToMs(debugP95Qpc, rt.qpcFreq),
+                QpcToMs(debugP99Qpc, rt.qpcFreq),
+                QpcToMs(debugMaxQpc, rt.qpcFreq),
+                QpcToMs(captureAvgQpc, rt.qpcFreq),
+                QpcToMs(captureP95Qpc, rt.qpcFreq),
+                QpcToMs(captureP99Qpc, rt.qpcFreq),
+                QpcToMs(captureMaxQpc, rt.qpcFreq),
+                QpcToMs(overlayRefreshAvgQpc, rt.qpcFreq),
+                QpcToMs(overlayRefreshP95Qpc, rt.qpcFreq),
+                QpcToMs(overlayRefreshP99Qpc, rt.qpcFreq),
+                QpcToMs(overlayRefreshMaxQpc, rt.qpcFreq),
+                QpcToMs(overlayDrawAvgQpc, rt.qpcFreq),
+                QpcToMs(overlayDrawP95Qpc, rt.qpcFreq),
+                QpcToMs(overlayDrawP99Qpc, rt.qpcFreq),
+                QpcToMs(overlayDrawMaxQpc, rt.qpcFreq),
+                QpcToMs(statusAvgQpc, rt.qpcFreq),
+                QpcToMs(statusP95Qpc, rt.qpcFreq),
+                QpcToMs(statusP99Qpc, rt.qpcFreq),
+                QpcToMs(statusMaxQpc, rt.qpcFreq));
+            OutputDebugStringA(msg);
+
+            rt.presentPerfNext = 0;
+            rt.presentPerfCount = 0;
+            rt.lastPerfFlushQpc = nowQpc;
+        }
+
+        void RecordPresentPerfLocked(Dx11Runtime& rt, const PresentPerfSample& sample)
+        {
+            if (!IsPresentPerfTraceEnabled())
+            {
+                return;
+            }
+
+            const std::uint32_t slot = rt.presentPerfNext % kPresentPerfSamples;
+            rt.presentPerf[slot] = sample;
+            rt.presentPerfNext = slot + 1;
+            rt.presentPerfCount = std::min<std::uint32_t>(rt.presentPerfCount + 1, kPresentPerfSamples);
+
+            const auto nowQpc = NowQpc();
+            if (rt.lastPerfFlushQpc == 0)
+            {
+                rt.lastPerfFlushQpc = nowQpc;
+            }
+
+            const std::uint64_t flushIntervalQpc =
+                (rt.qpcFreq != 0)
+                    ? ((rt.qpcFreq * kPresentPerfFlushIntervalMs) / 1000ull)
+                    : 0;
+            const bool shouldFlush =
+                rt.presentPerfCount >= kPresentPerfSamples ||
+                (flushIntervalQpc != 0 && nowQpc >= rt.lastPerfFlushQpc && (nowQpc - rt.lastPerfFlushQpc) >= flushIntervalQpc);
+            if (shouldFlush)
+            {
+                EmitPresentPerfSummaryLocked(rt, nowQpc);
+            }
         }
 
         std::uint32_t ForceAlpha(std::uint32_t argb, std::uint32_t a)
@@ -1560,9 +1883,21 @@ namespace ht::hook::dx11
             return ok;
         }
 
-        HRESULT HookedPresentImpl(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+        HRESULT HookedPresentLocked(IDXGISwapChain* swap, UINT syncInterval, UINT flags, std::uint64_t lockWaitQpc)
         {
-            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            const auto totalStartQpc = NowQpc();
+            PresentPerfSample perfSample{};
+            perfSample.kind = 1;
+            perfSample.lockWaitQpc = lockWaitQpc;
+
+            const bool disablePresentDebug = ReadEnvU32(L"HT_HOOK_DISABLE_PRESENT_DEBUG", 0) != 0;
+            const bool disableCapture = ReadEnvU32(L"HT_HOOK_DISABLE_CAPTURE", 0) != 0;
+            const bool disableOverlayRefresh = ReadEnvU32(L"HT_HOOK_DISABLE_OVL_REFRESH", 0) != 0;
+            const bool disableOverlayDraw =
+                ReadEnvU32(L"HT_HOOK_DISABLE_DRAW", 0) != 0 ||
+                ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
+            const bool disableStatus = ReadEnvU32(L"HT_HOOK_DISABLE_STATUS", 0) != 0;
+
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
                 if (g_rt.activePresentKind == 0)
@@ -1572,26 +1907,65 @@ namespace ht::hook::dx11
                     // offset/ghosted text. Stick to the first present kind we observe unless overridden.
                     g_rt.activePresentKind = 1;
                 }
-                if (g_rt.activePresentKind != 1)
+                if (g_rt.activePresentKind == 1)
                 {
-                    return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
-                }
+                    if (!disablePresentDebug)
+                    {
+                        const auto debugStartQpc = NowQpc();
+                        RecordPresentDebugLocked(g_rt, swap, 1);
+                        perfSample.debugRecordQpc = NowQpc() - debugStartQpc;
+                    }
 
-                RecordPresentDebugLocked(g_rt, swap, 1);
-                g_rt.presentCount++;
-                g_rt.lastPresentQpc = NowQpc();
-                g_rt.lastPresentKind = 1;
-                const bool disableAllDraw = ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
-                (void)CaptureAndShareFrameLocked(g_rt, swap);
-                (void)RefreshOverlayV2Locked(g_rt);
-                if (!disableAllDraw)
-                {
-                    DrawImGuiOverlayV2Locked(g_rt, swap);
+                    g_rt.presentCount++;
+                    g_rt.lastPresentQpc = NowQpc();
+                    g_rt.lastPresentKind = 1;
+
+                    if (!disableCapture)
+                    {
+                        const auto captureStartQpc = NowQpc();
+                        (void)CaptureAndShareFrameLocked(g_rt, swap);
+                        perfSample.captureQpc = NowQpc() - captureStartQpc;
+                    }
+
+                    if (!disableOverlayRefresh)
+                    {
+                        const auto overlayRefreshStartQpc = NowQpc();
+                        (void)RefreshOverlayV2Locked(g_rt);
+                        perfSample.overlayRefreshQpc = NowQpc() - overlayRefreshStartQpc;
+                    }
+
+                    if (!disableOverlayDraw)
+                    {
+                        const auto overlayDrawStartQpc = NowQpc();
+                        DrawImGuiOverlayV2Locked(g_rt, swap);
+                        perfSample.overlayDrawQpc = NowQpc() - overlayDrawStartQpc;
+                    }
+
+                    if (!disableStatus)
+                    {
+                        const auto statusStartQpc = NowQpc();
+                        PublishStatusLocked(g_rt);
+                        perfSample.statusQpc = NowQpc() - statusStartQpc;
+                    }
                 }
-                PublishStatusLocked(g_rt);
             }
 
-            return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            const auto originalPresentStartQpc = NowQpc();
+            const HRESULT result = g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            const auto endQpc = NowQpc();
+            perfSample.originalPresentQpc = endQpc - originalPresentStartQpc;
+            perfSample.totalQpc = endQpc - totalStartQpc;
+            perfSample.lockHoldQpc = endQpc - totalStartQpc;
+            RecordPresentPerfLocked(g_rt, perfSample);
+            return result;
+        }
+
+        HRESULT HookedPresentLockingImpl(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
+        {
+            const auto lockWaitStartQpc = NowQpc();
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            const auto lockAcquiredQpc = NowQpc();
+            return HookedPresentLocked(swap, syncInterval, flags, lockAcquiredQpc - lockWaitStartQpc);
         }
 
         HRESULT __stdcall HookedPresent(IDXGISwapChain* swap, UINT syncInterval, UINT flags)
@@ -1600,12 +1974,17 @@ namespace ht::hook::dx11
             {
                 return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
             }
+            if (ReadEnvU32(L"HT_HOOK_PASS_THROUGH", 0) != 0)
+            {
+                // WHY: Pure pass-through mode isolates the cost of "being hooked" from all runtime bookkeeping.
+                return g_rt.originalPresent ? g_rt.originalPresent(swap, syncInterval, flags) : S_OK;
+            }
             g_presentDepth++;
             HRESULT result = S_OK;
             // WHY: Hook code must never crash the host process. SEH must live in a function without C++ unwinding.
             __try
             {
-                result = HookedPresentImpl(swap, syncInterval, flags);
+                result = HookedPresentLockingImpl(swap, syncInterval, flags);
             }
             __except (EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1615,35 +1994,91 @@ namespace ht::hook::dx11
             return result;
         }
 
-        HRESULT HookedPresent1Impl(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
+        HRESULT HookedPresent1Locked(
+            IDXGISwapChain1* swap,
+            UINT syncInterval,
+            UINT flags,
+            const DXGI_PRESENT_PARAMETERS* params,
+            std::uint64_t lockWaitQpc)
         {
-            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            const auto totalStartQpc = NowQpc();
+            PresentPerfSample perfSample{};
+            perfSample.kind = 2;
+            perfSample.lockWaitQpc = lockWaitQpc;
+
+            const bool disablePresentDebug = ReadEnvU32(L"HT_HOOK_DISABLE_PRESENT_DEBUG", 0) != 0;
+            const bool disableCapture = ReadEnvU32(L"HT_HOOK_DISABLE_CAPTURE", 0) != 0;
+            const bool disableOverlayRefresh = ReadEnvU32(L"HT_HOOK_DISABLE_OVL_REFRESH", 0) != 0;
+            const bool disableOverlayDraw =
+                ReadEnvU32(L"HT_HOOK_DISABLE_DRAW", 0) != 0 ||
+                ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
+            const bool disableStatus = ReadEnvU32(L"HT_HOOK_DISABLE_STATUS", 0) != 0;
+
             if (g_rt.installed.load(std::memory_order_acquire) && swap != nullptr)
             {
                 if (g_rt.activePresentKind == 0)
                 {
                     g_rt.activePresentKind = 2;
                 }
-                if (g_rt.activePresentKind != 2)
+                if (g_rt.activePresentKind == 2)
                 {
-                    return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
-                }
+                    if (!disablePresentDebug)
+                    {
+                        const auto debugStartQpc = NowQpc();
+                        RecordPresentDebugLocked(g_rt, swap, 2);
+                        perfSample.debugRecordQpc = NowQpc() - debugStartQpc;
+                    }
 
-                RecordPresentDebugLocked(g_rt, swap, 2);
-                g_rt.presentCount++;
-                g_rt.lastPresentQpc = NowQpc();
-                g_rt.lastPresentKind = 2;
-                const bool disableAllDraw = ReadEnvU32(L"HT_HOOK_OVL_DISABLE_ALL_DRAW", 0) != 0;
-                (void)CaptureAndShareFrameLocked(g_rt, swap);
-                (void)RefreshOverlayV2Locked(g_rt);
-                if (!disableAllDraw)
-                {
-                    DrawImGuiOverlayV2Locked(g_rt, swap);
+                    g_rt.presentCount++;
+                    g_rt.lastPresentQpc = NowQpc();
+                    g_rt.lastPresentKind = 2;
+
+                    if (!disableCapture)
+                    {
+                        const auto captureStartQpc = NowQpc();
+                        (void)CaptureAndShareFrameLocked(g_rt, swap);
+                        perfSample.captureQpc = NowQpc() - captureStartQpc;
+                    }
+
+                    if (!disableOverlayRefresh)
+                    {
+                        const auto overlayRefreshStartQpc = NowQpc();
+                        (void)RefreshOverlayV2Locked(g_rt);
+                        perfSample.overlayRefreshQpc = NowQpc() - overlayRefreshStartQpc;
+                    }
+
+                    if (!disableOverlayDraw)
+                    {
+                        const auto overlayDrawStartQpc = NowQpc();
+                        DrawImGuiOverlayV2Locked(g_rt, swap);
+                        perfSample.overlayDrawQpc = NowQpc() - overlayDrawStartQpc;
+                    }
+
+                    if (!disableStatus)
+                    {
+                        const auto statusStartQpc = NowQpc();
+                        PublishStatusLocked(g_rt);
+                        perfSample.statusQpc = NowQpc() - statusStartQpc;
+                    }
                 }
-                PublishStatusLocked(g_rt);
             }
 
-            return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+            const auto originalPresentStartQpc = NowQpc();
+            const HRESULT result = g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+            const auto endQpc = NowQpc();
+            perfSample.originalPresentQpc = endQpc - originalPresentStartQpc;
+            perfSample.totalQpc = endQpc - totalStartQpc;
+            perfSample.lockHoldQpc = endQpc - totalStartQpc;
+            RecordPresentPerfLocked(g_rt, perfSample);
+            return result;
+        }
+
+        HRESULT HookedPresent1LockingImpl(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
+        {
+            const auto lockWaitStartQpc = NowQpc();
+            std::lock_guard<std::mutex> lock(g_rt.mutex);
+            const auto lockAcquiredQpc = NowQpc();
+            return HookedPresent1Locked(swap, syncInterval, flags, params, lockAcquiredQpc - lockWaitStartQpc);
         }
 
         HRESULT __stdcall HookedPresent1(IDXGISwapChain1* swap, UINT syncInterval, UINT flags, const DXGI_PRESENT_PARAMETERS* params)
@@ -1652,11 +2087,15 @@ namespace ht::hook::dx11
             {
                 return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
             }
+            if (ReadEnvU32(L"HT_HOOK_PASS_THROUGH", 0) != 0)
+            {
+                return g_rt.originalPresent1 ? g_rt.originalPresent1(swap, syncInterval, flags, params) : S_OK;
+            }
             g_presentDepth++;
             HRESULT result = S_OK;
             __try
             {
-                result = HookedPresent1Impl(swap, syncInterval, flags, params);
+                result = HookedPresent1LockingImpl(swap, syncInterval, flags, params);
             }
             __except (EXCEPTION_EXECUTE_HANDLER)
             {
@@ -1970,5 +2409,8 @@ namespace ht::hook::dx11
         g_rt.hookSuccessIndicatorArmed = false;
         g_rt.hookSuccessIndicatorDone = false;
         g_rt.hookSuccessIndicatorStartQpc = 0;
+        g_rt.presentPerfNext = 0;
+        g_rt.presentPerfCount = 0;
+        g_rt.lastPerfFlushQpc = 0;
     }
 }

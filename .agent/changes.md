@@ -1771,6 +1771,36 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 18:22 (Asia/Taipei) — Add DX11 hook pass-through and Present perf diagnostics**
+
+### Summary
+- DX11 HookAgent に pass-through 切替と Present 区間計測を追加し、1% low 調査をしやすくした。
+
+### Context / Goal
+- `overlay=false` と `GraphicsHookCaptureFpsLimit=1` でも 1% low が改善せず、capture/overlay 本体以外の Present 常駐処理を切り分ける必要があった。
+- DX11 だけで「フック自体の常駐コスト」と「個別サブ処理のコスト」を分離して観測したかった。
+
+### Changes
+- `HT_HOOK_PASS_THROUGH=1` で DX11 hook を pure pass-through 化し、bookkeeping を完全に迂回できるようにした。
+- `HT_HOOK_DISABLE_PRESENT_DEBUG=1`, `HT_HOOK_DISABLE_CAPTURE=1`, `HT_HOOK_DISABLE_OVL_REFRESH=1`, `HT_HOOK_DISABLE_DRAW=1`, `HT_HOOK_DISABLE_STATUS=1` で Present 内の各処理を個別に停止できるようにした。
+- `HT_HOOK_PERF_TRACE=1` で `Present` / `Present1` の total, lock wait, lock hold, original present, debug, capture, overlay refresh, overlay draw, status write を QPC 集計し、2秒または256サンプルごとに要約出力するようにした。
+- lock wait/hold 計測のため、SEH wrapper の外にロック取得ヘルパーを分離し、例外境界を維持したまま計測を差し込んだ。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — DX11 Present パスに pass-through 診断モード、個別無効化トグル、QPC 区間計測、集計ログ出力を追加した。
+
+### Behavioral Impact
+- 既定では従来挙動のまま動作する。
+- 環境変数を有効にした場合だけ、DX11 hook の常駐コストを処理別に切り分けられる。
+
+### Risk & Mitigation
+- Risk: 調査用分岐が Present ホットパスに増え、未使用時でもごく小さい追加コストが載る。
+- Mitigation: 診断機能はすべて環境変数オフ前提で、通常時は集計ログや個別停止を実行しない構成にした。
+
+### Tests / Verification
+- `cmake --build .\Native\build --config Debug --target HookAgentDx11 -j 4`
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 -j 4`
+
 **2026-03-15 04:26 (Asia/Taipei) — Fix Unicode marshaling for launcher window signatures**
 
 ### Summary
