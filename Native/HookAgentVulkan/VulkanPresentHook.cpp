@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -34,6 +35,9 @@ namespace ht::hook::vulkan
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
         constexpr std::uint32_t kMinCaptureFps = 1u;
         constexpr std::uint32_t kMaxCaptureFps = 240u;
+        constexpr std::uint32_t kDefaultCaptureRingSize = 3u;
+        constexpr std::uint32_t kMinCaptureRingSize = 2u;
+        constexpr std::uint32_t kMaxCaptureRingSize = 8u;
         constexpr std::uint32_t kOverlayFontBasePx = 32u;
         constexpr std::uint32_t kOverlayMaxBlocks = 64u;
         constexpr std::uint64_t kDiagLogMinIntervalMs = 1000u;
@@ -75,6 +79,33 @@ namespace ht::hook::vulkan
             Count
         };
 
+        enum class CaptureSlotState : std::uint8_t
+        {
+            Free = 0,
+            Pending
+        };
+
+        struct CaptureSlot
+        {
+            VkCommandPool commandPool = VK_NULL_HANDLE;
+            VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+            VkFence fence = VK_NULL_HANDLE;
+
+            VkBuffer stagingBuffer = VK_NULL_HANDLE;
+            VkDeviceMemory stagingMemory = VK_NULL_HANDLE;
+            void* stagingMapped = nullptr;
+            bool stagingHostCached = false;
+            VkDeviceSize stagingBytes = 0;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            VkFormat format = VK_FORMAT_UNDEFINED;
+
+            bool rgbaNeedsSwap = false;
+            std::uint64_t frameSeq = 0;
+            std::uint64_t submitQpc = 0;
+            CaptureSlotState state = CaptureSlotState::Free;
+        };
+
         struct DeviceInfo
         {
             VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
@@ -112,6 +143,10 @@ namespace ht::hook::vulkan
             std::uint32_t height = 0;
             VkFormat format = VK_FORMAT_UNDEFINED;
             std::vector<std::uint8_t> scratch;
+            std::vector<CaptureSlot> captureSlots;
+            std::uint32_t captureRingSize = 0;
+            std::uint64_t captureFrameSeq = 0;
+            std::uint64_t lastCaptureIssueQpc = 0;
         };
 
         struct OverlaySwapchainState
@@ -212,6 +247,10 @@ namespace ht::hook::vulkan
             std::atomic_ullong createSwapchainHitCount{0};
             std::atomic_ullong acquireImageHitCount{0};
             std::atomic_ullong queuePresentHitCount{0};
+            std::uint64_t captureIssueCount = 0;
+            std::uint64_t capturePublishCount = 0;
+            std::uint64_t captureDeferCount = 0;
+            std::uint64_t captureBusyCount = 0;
         };
 
         VulkanRuntime g_rt;
@@ -244,6 +283,47 @@ namespace ht::hook::vulkan
         std::uint32_t ClampFps(std::uint32_t fps)
         {
             return std::clamp(fps, kMinCaptureFps, kMaxCaptureFps);
+        }
+
+        std::uint32_t ReadEnvU32(const wchar_t* name, std::uint32_t fallback)
+        {
+            if (name == nullptr || *name == L'\0')
+            {
+                return fallback;
+            }
+
+            wchar_t buffer[32]{};
+            const auto len = GetEnvironmentVariableW(name, buffer, static_cast<DWORD>(std::size(buffer)));
+            if (len == 0 || len >= std::size(buffer))
+            {
+                return fallback;
+            }
+
+            wchar_t* end = nullptr;
+            const auto value = std::wcstoul(buffer, &end, 10);
+            if (end == buffer)
+            {
+                return fallback;
+            }
+            return static_cast<std::uint32_t>(value);
+        }
+
+        bool ReadEnvFlag(const wchar_t* name)
+        {
+            return ReadEnvU32(name, 0) != 0;
+        }
+
+        std::uint32_t ResolveCaptureRingSize()
+        {
+            return std::clamp(
+                ReadEnvU32(L"HT_HOOK_VK_CAPTURE_RING_SIZE", kDefaultCaptureRingSize),
+                kMinCaptureRingSize,
+                kMaxCaptureRingSize);
+        }
+
+        bool IsDelayedReadbackDisabled()
+        {
+            return ReadEnvFlag(L"HT_HOOK_VK_DISABLE_DELAYED_READBACK");
         }
 
         std::uint64_t SwapchainHandleToLogValue(VkSwapchainKHR swapchain)
@@ -675,6 +755,48 @@ namespace ht::hook::vulkan
                 &barrier);
         }
 
+        void DestroyCaptureSlot(VkDevice device, CaptureSlot& slot)
+        {
+            if (device == VK_NULL_HANDLE)
+            {
+                slot = CaptureSlot{};
+                return;
+            }
+
+            if (slot.stagingMapped != nullptr && slot.stagingMemory != VK_NULL_HANDLE)
+            {
+                vkUnmapMemory(device, slot.stagingMemory);
+                slot.stagingMapped = nullptr;
+            }
+
+            if (slot.fence != VK_NULL_HANDLE)
+            {
+                vkDestroyFence(device, slot.fence, nullptr);
+                slot.fence = VK_NULL_HANDLE;
+            }
+
+            if (slot.stagingBuffer != VK_NULL_HANDLE)
+            {
+                vkDestroyBuffer(device, slot.stagingBuffer, nullptr);
+                slot.stagingBuffer = VK_NULL_HANDLE;
+            }
+
+            if (slot.stagingMemory != VK_NULL_HANDLE)
+            {
+                vkFreeMemory(device, slot.stagingMemory, nullptr);
+                slot.stagingMemory = VK_NULL_HANDLE;
+            }
+
+            if (slot.commandPool != VK_NULL_HANDLE)
+            {
+                vkDestroyCommandPool(device, slot.commandPool, nullptr);
+                slot.commandPool = VK_NULL_HANDLE;
+                slot.commandBuffer = VK_NULL_HANDLE;
+            }
+
+            slot = CaptureSlot{};
+        }
+
         void DestroyQueueGpuState(QueueGpuState& st)
         {
             if (st.device == VK_NULL_HANDLE)
@@ -713,6 +835,12 @@ namespace ht::hook::vulkan
                 st.commandPool = VK_NULL_HANDLE;
                 st.commandBuffer = VK_NULL_HANDLE;
             }
+
+            for (auto& slot : st.captureSlots)
+            {
+                DestroyCaptureSlot(st.device, slot);
+            }
+            st.captureSlots.clear();
 
             st = QueueGpuState{};
         }
@@ -906,6 +1034,10 @@ namespace ht::hook::vulkan
             rt.createSwapchainHitCount.store(0, std::memory_order_relaxed);
             rt.acquireImageHitCount.store(0, std::memory_order_relaxed);
             rt.queuePresentHitCount.store(0, std::memory_order_relaxed);
+            rt.captureIssueCount = 0;
+            rt.capturePublishCount = 0;
+            rt.captureDeferCount = 0;
+            rt.captureBusyCount = 0;
             g_loggedFirstInstanceProcAddrHit.store(false);
             g_loggedFirstDeviceProcAddrHit.store(false);
             g_loggedFirstCreateDeviceHit.store(false);
@@ -994,6 +1126,182 @@ namespace ht::hook::vulkan
             }
         }
 
+        bool CreateQueueSubmitResources(
+            VkDevice device,
+            std::uint32_t queueFamilyIndex,
+            VkCommandPool& commandPool,
+            VkCommandBuffer& commandBuffer,
+            VkFence& fence)
+        {
+            VkCommandPoolCreateInfo poolInfo{};
+            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+            poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+            poolInfo.queueFamilyIndex = queueFamilyIndex;
+            if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
+            {
+                return false;
+            }
+
+            VkCommandBufferAllocateInfo cmdAlloc{};
+            cmdAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+            cmdAlloc.commandPool = commandPool;
+            cmdAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+            cmdAlloc.commandBufferCount = 1;
+            if (vkAllocateCommandBuffers(device, &cmdAlloc, &commandBuffer) != VK_SUCCESS)
+            {
+                vkDestroyCommandPool(device, commandPool, nullptr);
+                commandPool = VK_NULL_HANDLE;
+                return false;
+            }
+
+            VkFenceCreateInfo fenceInfo{};
+            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+            if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS)
+            {
+                vkDestroyCommandPool(device, commandPool, nullptr);
+                commandPool = VK_NULL_HANDLE;
+                commandBuffer = VK_NULL_HANDLE;
+                return false;
+            }
+
+            return true;
+        }
+
+        bool CreateCaptureSlotResources(
+            VkDevice device,
+            VkPhysicalDevice physicalDevice,
+            std::uint32_t queueFamilyIndex,
+            VkDeviceSize requiredBytes,
+            std::uint32_t width,
+            std::uint32_t height,
+            VkFormat format,
+            bool rgbaNeedsSwap,
+            CaptureSlot& slot)
+        {
+            if (!CreateQueueSubmitResources(device, queueFamilyIndex, slot.commandPool, slot.commandBuffer, slot.fence))
+            {
+                return false;
+            }
+
+            VkBufferCreateInfo bufferInfo{};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bufferInfo.size = requiredBytes;
+            bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            if (vkCreateBuffer(device, &bufferInfo, nullptr, &slot.stagingBuffer) != VK_SUCCESS)
+            {
+                DestroyCaptureSlot(device, slot);
+                return false;
+            }
+
+            VkMemoryRequirements memReq{};
+            vkGetBufferMemoryRequirements(device, slot.stagingBuffer, &memReq);
+            std::uint32_t memoryType = std::numeric_limits<std::uint32_t>::max();
+            bool hostCached = false;
+            if (!FindHostVisibleCoherentMemoryType(physicalDevice, memReq.memoryTypeBits, memoryType, hostCached))
+            {
+                DestroyCaptureSlot(device, slot);
+                return false;
+            }
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memReq.size;
+            allocInfo.memoryTypeIndex = memoryType;
+            if (vkAllocateMemory(device, &allocInfo, nullptr, &slot.stagingMemory) != VK_SUCCESS)
+            {
+                DestroyCaptureSlot(device, slot);
+                return false;
+            }
+
+            if (vkBindBufferMemory(device, slot.stagingBuffer, slot.stagingMemory, 0) != VK_SUCCESS)
+            {
+                DestroyCaptureSlot(device, slot);
+                return false;
+            }
+
+            if (vkMapMemory(device, slot.stagingMemory, 0, memReq.size, 0, &slot.stagingMapped) != VK_SUCCESS || slot.stagingMapped == nullptr)
+            {
+                DestroyCaptureSlot(device, slot);
+                return false;
+            }
+
+            slot.stagingHostCached = hostCached;
+            slot.stagingBytes = memReq.size;
+            slot.width = width;
+            slot.height = height;
+            slot.format = format;
+            slot.rgbaNeedsSwap = rgbaNeedsSwap;
+            slot.state = CaptureSlotState::Free;
+            return true;
+        }
+
+        bool CreateStagingResources(
+            VkDevice device,
+            VkPhysicalDevice physicalDevice,
+            VkDeviceSize requiredBytes,
+            VkBuffer& stagingBuffer,
+            VkDeviceMemory& stagingMemory,
+            void*& stagingMapped,
+            bool& stagingHostCached,
+            VkDeviceSize& stagingBytes)
+        {
+            VkBufferCreateInfo bufferInfo{};
+            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+            bufferInfo.size = requiredBytes;
+            bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            if (vkCreateBuffer(device, &bufferInfo, nullptr, &stagingBuffer) != VK_SUCCESS)
+            {
+                return false;
+            }
+
+            VkMemoryRequirements memReq{};
+            vkGetBufferMemoryRequirements(device, stagingBuffer, &memReq);
+            std::uint32_t memoryType = std::numeric_limits<std::uint32_t>::max();
+            bool hostCached = false;
+            if (!FindHostVisibleCoherentMemoryType(physicalDevice, memReq.memoryTypeBits, memoryType, hostCached))
+            {
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+                stagingBuffer = VK_NULL_HANDLE;
+                return false;
+            }
+
+            VkMemoryAllocateInfo allocInfo{};
+            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+            allocInfo.allocationSize = memReq.size;
+            allocInfo.memoryTypeIndex = memoryType;
+            if (vkAllocateMemory(device, &allocInfo, nullptr, &stagingMemory) != VK_SUCCESS)
+            {
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+                stagingBuffer = VK_NULL_HANDLE;
+                return false;
+            }
+
+            if (vkBindBufferMemory(device, stagingBuffer, stagingMemory, 0) != VK_SUCCESS)
+            {
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+                stagingBuffer = VK_NULL_HANDLE;
+                vkFreeMemory(device, stagingMemory, nullptr);
+                stagingMemory = VK_NULL_HANDLE;
+                return false;
+            }
+
+            if (vkMapMemory(device, stagingMemory, 0, memReq.size, 0, &stagingMapped) != VK_SUCCESS || stagingMapped == nullptr)
+            {
+                vkDestroyBuffer(device, stagingBuffer, nullptr);
+                stagingBuffer = VK_NULL_HANDLE;
+                vkFreeMemory(device, stagingMemory, nullptr);
+                stagingMemory = VK_NULL_HANDLE;
+                stagingMapped = nullptr;
+                return false;
+            }
+
+            stagingHostCached = hostCached;
+            stagingBytes = memReq.size;
+            return true;
+        }
+
         bool TryGuessPhysicalDeviceLocked(VulkanRuntime& rt, VkPhysicalDevice& physicalDevice)
         {
             physicalDevice = VK_NULL_HANDLE;
@@ -1072,14 +1380,43 @@ namespace ht::hook::vulkan
             return true;
         }
 
-        bool ShouldCaptureNowLocked(const VulkanRuntime& rt, std::uint64_t nowQpc)
+        bool ShouldCaptureNowLocked(const VulkanRuntime& rt, const QueueGpuState& state, std::uint64_t nowQpc)
         {
-            if (rt.captureIntervalQpc == 0 || rt.lastCaptureQpc == 0)
+            if (rt.captureIntervalQpc == 0 || state.lastCaptureIssueQpc == 0)
             {
                 return true;
             }
 
-            return (nowQpc - rt.lastCaptureQpc) >= rt.captureIntervalQpc;
+            return (nowQpc - state.lastCaptureIssueQpc) >= rt.captureIntervalQpc;
+        }
+
+        CaptureSlot* FindFreeCaptureSlotLocked(QueueGpuState& state)
+        {
+            for (auto& slot : state.captureSlots)
+            {
+                if (slot.state == CaptureSlotState::Free)
+                {
+                    return &slot;
+                }
+            }
+            return nullptr;
+        }
+
+        CaptureSlot* FindOldestPendingCaptureSlotLocked(QueueGpuState& state)
+        {
+            CaptureSlot* selected = nullptr;
+            for (auto& slot : state.captureSlots)
+            {
+                if (slot.state != CaptureSlotState::Pending)
+                {
+                    continue;
+                }
+                if (selected == nullptr || slot.submitQpc < selected->submitQpc)
+                {
+                    selected = &slot;
+                }
+            }
+            return selected;
         }
 
         bool EnsureSwapchainImagesLocked(VulkanRuntime& rt, SwapchainInfo& info, VkSwapchainKHR swapchain)
@@ -1247,6 +1584,7 @@ namespace ht::hook::vulkan
             const VkDeviceSize requiredBytes =
                 static_cast<VkDeviceSize>(swapInfo.extent.width) *
                 static_cast<VkDeviceSize>(swapInfo.extent.height) * 4ull;
+            const auto captureRingSize = ResolveCaptureRingSize();
 
             const bool mustRecreate =
                 state.device != device ||
@@ -1255,12 +1593,14 @@ namespace ht::hook::vulkan
                 state.height != swapInfo.extent.height ||
                 state.format != swapInfo.format ||
                 state.stagingBytes != requiredBytes ||
+                state.captureRingSize != captureRingSize ||
                 state.commandPool == VK_NULL_HANDLE ||
                 state.commandBuffer == VK_NULL_HANDLE ||
                 state.stagingBuffer == VK_NULL_HANDLE ||
                 state.stagingMemory == VK_NULL_HANDLE ||
                 state.stagingMapped == nullptr ||
-                state.fence == VK_NULL_HANDLE;
+                state.fence == VK_NULL_HANDLE ||
+                state.captureSlots.size() != captureRingSize;
 
             if (!mustRecreate)
             {
@@ -1274,165 +1614,71 @@ namespace ht::hook::vulkan
             state.height = swapInfo.extent.height;
             state.format = swapInfo.format;
             state.stagingBytes = requiredBytes;
+            state.captureRingSize = captureRingSize;
 
-            VkCommandPoolCreateInfo poolInfo{};
-            poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-            poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-            poolInfo.queueFamilyIndex = queueInfo.familyIndex;
-            const auto poolResult = vkCreateCommandPool(device, &poolInfo, nullptr, &state.commandPool);
-            if (poolResult != VK_SUCCESS)
+            if (!CreateQueueSubmitResources(device, queueInfo.familyIndex, state.commandPool, state.commandBuffer, state.fence))
             {
                 const auto now = NowQpc();
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_command_pool_failed vk=%d queue=%p family=%u.",
-                        static_cast<int>(poolResult),
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_immediate_submit_resources_failed queue=%p family=%u.",
                         queue,
                         queueInfo.familyIndex);
                 }
                 DestroyQueueGpuState(state);
                 return false;
             }
-
-            VkCommandBufferAllocateInfo cmdAlloc{};
-            cmdAlloc.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-            cmdAlloc.commandPool = state.commandPool;
-            cmdAlloc.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-            cmdAlloc.commandBufferCount = 1;
-            const auto cmdAllocResult = vkAllocateCommandBuffers(device, &cmdAlloc, &state.commandBuffer);
-            if (cmdAllocResult != VK_SUCCESS)
+            if (!CreateStagingResources(
+                    device,
+                    deviceInfo.physicalDevice,
+                    requiredBytes,
+                    state.stagingBuffer,
+                    state.stagingMemory,
+                    state.stagingMapped,
+                    state.stagingHostCached,
+                    state.stagingBytes))
             {
                 const auto now = NowQpc();
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=allocate_command_buffer_failed vk=%d queue=%p.",
-                        static_cast<int>(cmdAllocResult),
-                        queue);
-                }
-                DestroyQueueGpuState(state);
-                return false;
-            }
-
-            VkFenceCreateInfo fenceInfo{};
-            fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-            const auto fenceResult = vkCreateFence(device, &fenceInfo, nullptr, &state.fence);
-            if (fenceResult != VK_SUCCESS)
-            {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
-                {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_fence_failed vk=%d queue=%p.",
-                        static_cast<int>(fenceResult),
-                        queue);
-                }
-                DestroyQueueGpuState(state);
-                return false;
-            }
-
-            VkBufferCreateInfo bufferInfo{};
-            bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-            bufferInfo.size = requiredBytes;
-            bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-            bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-            const auto bufferResult = vkCreateBuffer(device, &bufferInfo, nullptr, &state.stagingBuffer);
-            if (bufferResult != VK_SUCCESS)
-            {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
-                {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_staging_buffer_failed vk=%d bytes=%llu queue=%p.",
-                        static_cast<int>(bufferResult),
-                        static_cast<unsigned long long>(requiredBytes),
-                        queue);
-                }
-                DestroyQueueGpuState(state);
-                return false;
-            }
-
-            VkMemoryRequirements memReq{};
-            vkGetBufferMemoryRequirements(device, state.stagingBuffer, &memReq);
-            std::uint32_t memoryType = std::numeric_limits<std::uint32_t>::max();
-            bool hostCached = false;
-            if (!FindHostVisibleCoherentMemoryType(deviceInfo.physicalDevice, memReq.memoryTypeBits, memoryType, hostCached))
-            {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
-                {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=host_visible_coherent_memory_not_found queue=%p typeBits=%u.",
+                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_immediate_capture_resources_failed queue=%p bytes=%llu.",
                         queue,
-                        memReq.memoryTypeBits);
+                        static_cast<unsigned long long>(requiredBytes));
                 }
                 DestroyQueueGpuState(state);
                 return false;
             }
 
-            state.stagingHostCached = hostCached;
-
-            VkMemoryAllocateInfo allocInfo{};
-            allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-            allocInfo.allocationSize = memReq.size;
-            allocInfo.memoryTypeIndex = memoryType;
-            const auto allocResult = vkAllocateMemory(device, &allocInfo, nullptr, &state.stagingMemory);
-            if (allocResult != VK_SUCCESS)
+            state.captureSlots.resize(captureRingSize);
+            for (std::uint32_t i = 0; i < captureRingSize; ++i)
             {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                if (!CreateCaptureSlotResources(
+                        device,
+                        deviceInfo.physicalDevice,
+                        queueInfo.familyIndex,
+                        requiredBytes,
+                        swapInfo.extent.width,
+                        swapInfo.extent.height,
+                        swapInfo.format,
+                        rgbaNeedsSwap,
+                        state.captureSlots[i]))
                 {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=allocate_staging_memory_failed vk=%d bytes=%llu queue=%p.",
-                        static_cast<int>(allocResult),
-                        static_cast<unsigned long long>(memReq.size),
-                        queue);
+                    const auto now = NowQpc();
+                    if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
+                    {
+                        DebugLog(
+                            "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=create_capture_slot_failed queue=%p slot=%u ring=%u bytes=%llu.",
+                            queue,
+                            i,
+                            captureRingSize,
+                            static_cast<unsigned long long>(requiredBytes));
+                    }
+                    DestroyQueueGpuState(state);
+                    return false;
                 }
-                DestroyQueueGpuState(state);
-                return false;
             }
-
-            const auto bindResult = vkBindBufferMemory(device, state.stagingBuffer, state.stagingMemory, 0);
-            if (bindResult != VK_SUCCESS)
-            {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
-                {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=bind_staging_buffer_memory_failed vk=%d queue=%p.",
-                        static_cast<int>(bindResult),
-                        queue);
-                }
-                DestroyQueueGpuState(state);
-                return false;
-            }
-
-            void* mapped = nullptr;
-            const auto mapResult = vkMapMemory(device, state.stagingMemory, 0, state.stagingBytes, 0, &mapped);
-            if (mapResult != VK_SUCCESS || mapped == nullptr)
-            {
-                const auto now = NowQpc();
-                if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastGpuStateFailQpc, kDiagLogMinIntervalMs))
-                {
-                    DebugLog(
-                        "stage=hook_vulkan event=ensure_queue_gpu_state fail reason=map_staging_memory_failed vk=%d mapped=%d bytes=%llu queue=%p.",
-                        static_cast<int>(mapResult),
-                        mapped != nullptr ? 1 : 0,
-                        static_cast<unsigned long long>(state.stagingBytes),
-                        queue);
-                }
-                DestroyQueueGpuState(state);
-                return false;
-            }
-            state.stagingMapped = mapped;
-
-            DebugLog(
-                "stage=hook_vulkan event=staging_memory_selected queue=%p typeIndex=%u hostCached=%d bytes=%llu.",
-                queue,
-                memoryType,
-                state.stagingHostCached ? 1 : 0,
-                static_cast<unsigned long long>(state.stagingBytes));
 
             state.scratch.assign(static_cast<std::size_t>(requiredBytes), 0);
             return true;
@@ -1924,21 +2170,6 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            const bool shouldCapture = ShouldCaptureNowLocked(rt, rt.lastPresentQpc);
-            if (rt.overlayEnabled)
-            {
-                (void)RefreshOverlayV2Locked(rt);
-            }
-
-            const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
-            const bool shouldDrawHookSuccessIndicator = rt.overlayEnabled && !rt.hookSuccessIndicatorDone;
-            const bool shouldRenderOverlay = hasOverlayBlocks || shouldDrawHookSuccessIndicator;
-            LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
-            if (!shouldCapture && !shouldRenderOverlay)
-            {
-                return true;
-            }
-
             if (!EnsureQueueGpuStateLocked(rt, queue, queueIt->second, deviceIt->second, swapInfo))
             {
                 LogCaptureSkipLocked(rt, CaptureSkipReason::EnsureQueueGpuStateFailed, "ensure_queue_gpu_state_failed");
@@ -1954,6 +2185,22 @@ namespace ht::hook::vulkan
                 return false;
             }
             auto& gpu = queueStateIt->second;
+            const bool delayedReadbackEnabled = !IsDelayedReadbackDisabled();
+            const bool shouldCapture = ShouldCaptureNowLocked(rt, gpu, rt.lastPresentQpc);
+            bool useImmediateCapture = shouldCapture;
+            if (rt.overlayEnabled)
+            {
+                (void)RefreshOverlayV2Locked(rt);
+            }
+
+            const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
+            const bool shouldDrawHookSuccessIndicator = rt.overlayEnabled && !rt.hookSuccessIndicatorDone;
+            const bool shouldRenderOverlay = hasOverlayBlocks || shouldDrawHookSuccessIndicator;
+            LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
+            if (!shouldCapture && !shouldRenderOverlay)
+            {
+                return true;
+            }
             perfAfterPrepQpc = NowQpc();
 
             const auto emitPresentPerfLog = [&](const char* outcome)
@@ -2028,6 +2275,265 @@ namespace ht::hook::vulkan
                 }
             }
 
+            const VkImage targetImage = swapInfo.images[imageIndex];
+            if (targetImage == VK_NULL_HANDLE)
+            {
+                LogCaptureSkipLocked(rt, CaptureSkipReason::TargetImageNull, "target_image_null");
+                return false;
+            }
+
+            if (delayedReadbackEnabled && shouldCapture)
+            {
+                if (auto* pendingSlot = FindOldestPendingCaptureSlotLocked(gpu))
+                {
+                    const auto fenceStatus = vkGetFenceStatus(gpu.device, pendingSlot->fence);
+                    if (fenceStatus == VK_SUCCESS)
+                    {
+                        const auto* mapped = static_cast<const std::uint8_t*>(pendingSlot->stagingMapped);
+                        if (mapped == nullptr)
+                        {
+                            char detail[128]{};
+                            (void)_snprintf_s(
+                                detail,
+                                sizeof(detail),
+                                _TRUNCATE,
+                                "persistent_mapped=%d bytes=%llu",
+                                pendingSlot->stagingMapped != nullptr ? 1 : 0,
+                                static_cast<unsigned long long>(pendingSlot->stagingBytes));
+                            LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
+                            pendingSlot->state = CaptureSlotState::Free;
+                            pendingSlot->submitQpc = 0;
+                            emitPresentPerfLog("deferred_map_failed");
+                            return false;
+                        }
+
+                        const auto bytes = static_cast<std::size_t>(pendingSlot->stagingBytes);
+                        if (gpu.scratch.size() < bytes)
+                        {
+                            gpu.scratch.resize(bytes);
+                        }
+
+                        const auto copyBeginQpc = NowQpc();
+                        if (!pendingSlot->rgbaNeedsSwap)
+                        {
+                            std::memcpy(gpu.scratch.data(), mapped, bytes);
+                        }
+                        else
+                        {
+                            for (std::size_t i = 0; i + 3 < bytes; i += 4)
+                            {
+                                gpu.scratch[i + 0] = mapped[i + 2];
+                                gpu.scratch[i + 1] = mapped[i + 1];
+                                gpu.scratch[i + 2] = mapped[i + 0];
+                                gpu.scratch[i + 3] = mapped[i + 3];
+                            }
+                        }
+                        perfCpuCopyDurationQpc += (NowQpc() - copyBeginQpc);
+
+                        const auto pid = GetCurrentProcessId();
+                        const auto ts = NowQpc();
+                        const std::uint32_t stride = pendingSlot->width * 4u;
+                        const auto writeBeginQpc = NowQpc();
+                        const bool wrote = rt.frameWriter.WriteFrame(
+                            pid,
+                            ipc::GraphicsApi::Vulkan,
+                            ++rt.frameId,
+                            pendingSlot->width,
+                            pendingSlot->height,
+                            stride,
+                            ts,
+                            gpu.scratch.data(),
+                            bytes);
+                        perfWriteDurationQpc += (NowQpc() - writeBeginQpc);
+                        if (!wrote)
+                        {
+                            LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "shared_frame_write_failed");
+                            pendingSlot->state = CaptureSlotState::Free;
+                            pendingSlot->submitQpc = 0;
+                            emitPresentPerfLog("deferred_write_failed");
+                            return false;
+                        }
+
+                        rt.lastCaptureQpc = ts;
+                        rt.lastFrameWriteQpc = ts;
+                        rt.capturePublishCount++;
+                        pendingSlot->state = CaptureSlotState::Free;
+                        pendingSlot->submitQpc = 0;
+                    }
+                    else if (fenceStatus == VK_NOT_READY)
+                    {
+                        rt.captureDeferCount++;
+                    }
+                    else
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(fenceStatus));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, detail);
+                        pendingSlot->state = CaptureSlotState::Free;
+                        pendingSlot->submitQpc = 0;
+                    }
+                }
+
+                if (auto* captureSlot = FindFreeCaptureSlotLocked(gpu))
+                {
+                    const auto resetCapturePoolResult = vkResetCommandPool(gpu.device, captureSlot->commandPool, 0);
+                    if (resetCapturePoolResult != VK_SUCCESS)
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(resetCapturePoolResult));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkResetCommandPoolFailed, detail);
+                        return false;
+                    }
+
+                    const auto resetCaptureFenceResult = vkResetFences(gpu.device, 1, &captureSlot->fence);
+                    if (resetCaptureFenceResult != VK_SUCCESS)
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(resetCaptureFenceResult));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkResetFencesFailed, detail);
+                        return false;
+                    }
+
+                    VkCommandBufferBeginInfo captureBeginInfo{};
+                    captureBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+                    captureBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+                    const auto captureBeginResult = vkBeginCommandBuffer(captureSlot->commandBuffer, &captureBeginInfo);
+                    if (captureBeginResult != VK_SUCCESS)
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(captureBeginResult));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkBeginCommandBufferFailed, detail);
+                        return false;
+                    }
+
+                    bool inTransferLayout = false;
+                    const auto copyCmdBeginQpc = NowQpc();
+                    CmdTransitionImageLayout(
+                        captureSlot->commandBuffer,
+                        targetImage,
+                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        VK_ACCESS_MEMORY_READ_BIT,
+                        VK_ACCESS_TRANSFER_READ_BIT,
+                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                        VK_PIPELINE_STAGE_TRANSFER_BIT);
+                    inTransferLayout = true;
+
+                    VkBufferImageCopy region{};
+                    region.bufferOffset = 0;
+                    region.bufferRowLength = 0;
+                    region.bufferImageHeight = 0;
+                    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+                    region.imageSubresource.mipLevel = 0;
+                    region.imageSubresource.baseArrayLayer = 0;
+                    region.imageSubresource.layerCount = 1;
+                    region.imageOffset = {0, 0, 0};
+                    region.imageExtent = {gpu.width, gpu.height, 1};
+                    vkCmdCopyImageToBuffer(
+                        captureSlot->commandBuffer,
+                        targetImage,
+                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        captureSlot->stagingBuffer,
+                        1,
+                        &region);
+                    perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
+
+                    if (shouldRenderOverlay && ovl != nullptr)
+                    {
+                        const auto overlayCmdBeginQpc = NowQpc();
+                        CmdTransitionImageLayout(
+                            captureSlot->commandBuffer,
+                            targetImage,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+
+                        BuildImGuiOverlayDrawDataLocked(rt, gpu.width, gpu.height);
+
+                        VkRenderPassBeginInfo rpBegin{};
+                        rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+                        rpBegin.renderPass = ovl->renderPass;
+                        rpBegin.framebuffer = ovl->framebuffers[imageIndex];
+                        rpBegin.renderArea.offset = {0, 0};
+                        rpBegin.renderArea.extent = {gpu.width, gpu.height};
+                        vkCmdBeginRenderPass(captureSlot->commandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
+                        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), captureSlot->commandBuffer);
+                        vkCmdEndRenderPass(captureSlot->commandBuffer);
+
+                        CmdTransitionImageLayout(
+                            captureSlot->commandBuffer,
+                            targetImage,
+                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                            VK_ACCESS_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+                        perfOverlayCommandDurationQpc += (NowQpc() - overlayCmdBeginQpc);
+                    }
+                    else if (inTransferLayout)
+                    {
+                        CmdTransitionImageLayout(
+                            captureSlot->commandBuffer,
+                            targetImage,
+                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                            VK_ACCESS_TRANSFER_READ_BIT,
+                            VK_ACCESS_MEMORY_READ_BIT,
+                            VK_PIPELINE_STAGE_TRANSFER_BIT,
+                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+                    }
+
+                    const auto captureEndResult = vkEndCommandBuffer(captureSlot->commandBuffer);
+                    if (captureEndResult != VK_SUCCESS)
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(captureEndResult));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkEndCommandBufferFailed, detail);
+                        return false;
+                    }
+                    perfAfterCommandRecordQpc = NowQpc();
+
+                    VkSubmitInfo captureSubmitInfo{};
+                    captureSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+                    captureSubmitInfo.commandBufferCount = 1;
+                    captureSubmitInfo.pCommandBuffers = &captureSlot->commandBuffer;
+                    const auto submitBeginQpc = NowQpc();
+                    const auto captureSubmitResult = vkQueueSubmit(queue, 1, &captureSubmitInfo, captureSlot->fence);
+                    perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
+                    if (captureSubmitResult != VK_SUCCESS)
+                    {
+                        char detail[96]{};
+                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(captureSubmitResult));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkQueueSubmitFailed, detail);
+                        return false;
+                    }
+
+                    captureSlot->submitQpc = NowQpc();
+                    captureSlot->frameSeq = ++gpu.captureFrameSeq;
+                    captureSlot->state = CaptureSlotState::Pending;
+                    gpu.lastCaptureIssueQpc = captureSlot->submitQpc;
+                    rt.captureIssueCount++;
+                    rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
+                    rt.lastWidth = gpu.width;
+                    rt.lastHeight = gpu.height;
+                    useImmediateCapture = false;
+                    emitPresentPerfLog("capture_deferred_issue");
+                    return true;
+                }
+
+                rt.captureBusyCount++;
+                useImmediateCapture = false;
+                if (!shouldRenderOverlay)
+                {
+                    emitPresentPerfLog("capture_slot_busy");
+                    return true;
+                }
+            }
+
             const auto resetPoolResult = vkResetCommandPool(gpu.device, gpu.commandPool, 0);
             if (resetPoolResult != VK_SUCCESS)
             {
@@ -2057,16 +2563,8 @@ namespace ht::hook::vulkan
                 return false;
             }
 
-            const VkImage targetImage = swapInfo.images[imageIndex];
-            if (targetImage == VK_NULL_HANDLE)
-            {
-                (void)vkEndCommandBuffer(gpu.commandBuffer);
-                LogCaptureSkipLocked(rt, CaptureSkipReason::TargetImageNull, "target_image_null");
-                return false;
-            }
-
             bool inTransferLayout = false;
-            if (shouldCapture)
+            if (useImmediateCapture)
             {
                 const auto copyCmdBeginQpc = NowQpc();
                 CmdTransitionImageLayout(
@@ -2204,7 +2702,7 @@ namespace ht::hook::vulkan
             rt.lastWidth = gpu.width;
             rt.lastHeight = gpu.height;
 
-            if (!shouldCapture)
+            if (!useImmediateCapture)
             {
                 emitPresentPerfLog("overlay_only");
                 return true;
@@ -2309,6 +2807,7 @@ namespace ht::hook::vulkan
 
             rt.lastCaptureQpc = ts;
             rt.lastFrameWriteQpc = ts;
+            gpu.lastCaptureIssueQpc = ts;
             emitPresentPerfLog("capture_ok");
             return true;
         }

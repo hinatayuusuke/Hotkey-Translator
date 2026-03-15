@@ -1771,6 +1771,39 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 22:25 (Asia/Taipei) — Implement Vulkan delayed readback capture path**
+
+### Summary
+- Vulkan hook capture を `vkWaitForFences` 同期待ち中心の経路から、複数 slot を使う delayed readback 経路へ切り替えた。
+
+### Context / Goal
+- `vkQueuePresentKHR` 直前で `vkQueueSubmit -> vkWaitForFences -> CPU copy -> WriteFrame` を行っており、DX11 と同様に 1% low 悪化要因になり得た。
+- GPU 完了待ちを `Present` hot path から外しつつ、既存の共有メモリ契約と overlay 経路は維持したかった。
+
+### Changes
+- Vulkan queue state に capture ring slot を追加し、slot ごとに command pool / command buffer / fence / staging buffer / mapped memory を保持するようにした。
+- capture frame では free slot に copy + overlay command を submit するだけにし、後続 `Present` で `vkGetFenceStatus` を見て publish する delayed readback を追加した。
+- 診断用 env var として `HT_HOOK_VK_CAPTURE_RING_SIZE` と `HT_HOOK_VK_DISABLE_DELAYED_READBACK` を追加した。
+- overlay-only フレームは既存 immediate path を維持し、capture 付きフレームだけ delayed path に寄せる最小変更に留めた。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — queue capture ring、delayed publish、診断 env、cleanup と scheduling を追加した。
+
+### Behavioral Impact
+- Vulkan capture は既定で数フレーム遅延する代わりに、capture frame ごとの同期 `vkWaitForFences` を避けやすくなる。
+- free slot が無いときは capture を見送り、overlay-only frame にフォールバックする。
+- `HT_HOOK_VK_DISABLE_DELAYED_READBACK=1` を入れると旧同期 capture に戻せる。
+
+### Risk & Mitigation
+- Risk: capture publish が遅延し、OCR 側で受け取るフレームが数フレーム古くなる場合がある。
+- Mitigation: ring size を env var で調整可能にし、slot 不足時は `Present` を止めず capture を見送る設計にした。
+- Risk: delayed path は queue/fence/cleanup の状態管理が複雑で、resize/device destroy 周りの不整合が出る可能性がある。
+- Mitigation: queue state destroy で ring slot をまとめて破棄し、既存 immediate path は overlay fallback として残した。
+
+### Tests / Verification
+- `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
+
 **2026-03-15 21:46 (Asia/Taipei) — Skip VisionLLM bootstrap scan during settings save**
 
 ### Summary
