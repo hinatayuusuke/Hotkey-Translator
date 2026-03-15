@@ -1771,6 +1771,67 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 20:53 (Asia/Taipei) — Implement DX11 delayed readback staging ring**
+
+### Summary
+- DX11 hook capture を単一 staging の同フレーム同期 readback から、複数 staging を使う遅延 readback へ置き換えた。
+
+### Context / Goal
+- `Present` 上の `CopyResource -> Map(D3D11_MAP_READ)` が 1% low を悪化させており、`FpsLimit` を下げても低頻度 spike が残っていた。
+- 同期 `Map` による GPU 待ちを `Present` から外し、DX11 hook の定常 tail latency を下げたかった。
+
+### Changes
+- DX11 capture に staging ring を導入し、`Present` では新規 copy 発行と、過去フレーム slot の non-blocking publish を分離した。
+- readback は `D3D11_MAP_FLAG_DO_NOT_WAIT` を使う delayed publish に変更し、未準備 slot はその場で諦めて次フレームへ繰り越すようにした。
+- perf diagnostics を `capture_copy_ms` / `capture_map_ms` と issue/publish/defer/busy カウンタに分解し、遅延 readback の挙動を判別しやすくした。
+- 診断用に `HT_HOOK_DISABLE_DELAYED_READBACK=1` と `HT_HOOK_CAPTURE_RING_SIZE` を追加し、旧挙動との比較を可能にした。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — DX11 capture を delayed readback ring ベースへ再設計し、perf 集計項目と reset 処理を更新した。
+
+### Behavioral Impact
+- 既定の DX11 capture は数フレーム遅延する代わりに、`Present` で同フレーム `Map` 待ちをしにくくなる。
+- GPU 側がまだ staging を仕上げていないフレームでは publish をスキップするため、capture cadence は維持されても共有フレーム更新が一時的に遅れる場合がある。
+- perf ログに `capture_copy_ms`, `capture_map_ms`, `capture_issue`, `capture_publish`, `capture_defer`, `capture_busy` が追加される。
+
+### Risk & Mitigation
+- Risk: OCR/capture が数フレーム遅延し、GPU 負荷が高いタイトルでは publish が断続的に defer される。
+- Mitigation: ring size を環境変数で調整できるようにし、旧同期挙動も診断フラグで再現可能にした。
+- Risk: resize/device reset 後に古い staging slot を再利用すると不正な desc のまま readback する可能性がある。
+- Mitigation: RTV/backbuffer 再生成時と device reset 時に capture ring を全破棄して作り直すようにした。
+
+### Tests / Verification
+- `cmake --build .\Native\build --config Debug --target HookAgentDx11 -j 4`
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 -j 4`
+
+**2026-03-15 20:57 (Asia/Taipei) — Refresh steam hook test CMD template**
+
+### Summary
+- `steam_hook_test.cmd` を DX11 診断用の明示的なテンプレートへ整理した。
+
+### Context / Goal
+- `HT_HOOK_PASS_THROUGH` と `HT_HOOK_PERF_TRACE` を同時に置いたまま検証すると、意図しない診断モード混在が起きやすかった。
+- delayed readback の診断フラグも含め、切り分け用の `.cmd` をそのまま使いやすくしたかった。
+
+### Changes
+- baseline / pure pass-through / perf trace の各プロファイルをコメント付きで分離した。
+- DX11 個別停止フラグに加えて、`HT_HOOK_DISABLE_DELAYED_READBACK` と `HT_HOOK_CAPTURE_RING_SIZE` のテンプレートを追加した。
+- 既定では perf trace to Temp file を有効にし、他の診断フラグは opt-in に整理した。
+
+### Files Touched
+- `steam_hook_test.cmd` — DX11 hook 診断用の起動テンプレートを更新し、利用時の誤設定を減らすコメントとフラグ例を追加した。
+
+### Behavioral Impact
+- `steam_hook_test.cmd` をそのまま使うと、既定では DX11 perf trace が Temp ログへ出力される。
+- pass-through や delayed readback の比較をしたい場合は、該当行をコメント解除するだけで切り替えられる。
+
+### Risk & Mitigation
+- Risk: 既定で perf trace が有効なため、通常起動用途で使うと診断ログが増える。
+- Mitigation: baseline プロファイルをコメントで明示し、不要時は `HT_HOOK_PERF_*` 行を無効化すれば元に戻せるようにした。
+
+### Tests / Verification
+- `steam_hook_test.cmd` の内容を目視確認
+
 **2026-03-15 18:22 (Asia/Taipei) — Add DX11 hook pass-through and Present perf diagnostics**
 
 ### Summary

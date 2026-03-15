@@ -88,9 +88,43 @@ namespace ht::hook::dx11
             std::uint64_t originalPresentQpc = 0;
             std::uint64_t debugRecordQpc = 0;
             std::uint64_t captureQpc = 0;
+            std::uint64_t captureCopyQpc = 0;
+            std::uint64_t captureMapQpc = 0;
             std::uint64_t overlayRefreshQpc = 0;
             std::uint64_t overlayDrawQpc = 0;
             std::uint64_t statusQpc = 0;
+            std::uint32_t capturePublished = 0;
+            std::uint32_t captureSlotBusy = 0;
+            std::uint32_t captureMapDeferred = 0;
+            std::uint32_t captureIssued = 0;
+        };
+
+        enum class CaptureSlotState : std::uint32_t
+        {
+            Free = 0,
+            Pending = 1,
+        };
+
+        struct CaptureSlot
+        {
+            ID3D11Texture2D* texture = nullptr;
+            UINT width = 0;
+            UINT height = 0;
+            DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
+            std::uint64_t issuedQpc = 0;
+            std::uint64_t sourceFrameSeq = 0;
+            CaptureSlotState state = CaptureSlotState::Free;
+        };
+
+        struct CapturePerfBreakdown
+        {
+            std::uint64_t totalQpc = 0;
+            std::uint64_t copyQpc = 0;
+            std::uint64_t mapQpc = 0;
+            bool published = false;
+            bool slotBusy = false;
+            bool mapDeferred = false;
+            bool issued = false;
         };
 
         struct OverlayFontSet
@@ -122,7 +156,6 @@ namespace ht::hook::dx11
             ID3D11Device* device = nullptr;
             ID3D11DeviceContext* context = nullptr;
             ID3D11DeviceContext1* context1 = nullptr;
-            ID3D11Texture2D* staging = nullptr;
             ID3D11RenderTargetView* backBufferRtv = nullptr;
             UINT backBufferWidth = 0;
             UINT backBufferHeight = 0;
@@ -130,6 +163,10 @@ namespace ht::hook::dx11
             UINT stagingWidth = 0;
             UINT stagingHeight = 0;
             DXGI_FORMAT stagingFormat = DXGI_FORMAT_UNKNOWN;
+            std::vector<CaptureSlot> captureRing;
+            std::uint32_t captureRingSize = 3;
+            std::uint64_t lastCaptureIssueQpc = 0;
+            std::uint64_t captureSourceFrameSeq = 0;
 
             std::vector<std::uint8_t> scratch;
             std::uint64_t frameId = 0;
@@ -565,6 +602,46 @@ namespace ht::hook::dx11
                 captureMaxQpc,
                 captureCount);
 
+            std::uint64_t captureCopyAvgQpc = 0;
+            std::uint64_t captureCopyP95Qpc = 0;
+            std::uint64_t captureCopyP99Qpc = 0;
+            std::uint64_t captureCopyMaxQpc = 0;
+            std::size_t captureCopyCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.captureCopyQpc; },
+                captureCopyAvgQpc,
+                captureCopyP95Qpc,
+                captureCopyP99Qpc,
+                captureCopyMaxQpc,
+                captureCopyCount);
+
+            std::uint64_t captureMapAvgQpc = 0;
+            std::uint64_t captureMapP95Qpc = 0;
+            std::uint64_t captureMapP99Qpc = 0;
+            std::uint64_t captureMapMaxQpc = 0;
+            std::size_t captureMapCount = 0;
+            (void)SummarizePerfFieldLocked(
+                rt,
+                [](const PresentPerfSample& s) { return s.captureMapQpc; },
+                captureMapAvgQpc,
+                captureMapP95Qpc,
+                captureMapP99Qpc,
+                captureMapMaxQpc,
+                captureMapCount);
+
+            std::uint32_t capturePublishedCount = 0;
+            std::uint32_t captureSlotBusyCount = 0;
+            std::uint32_t captureMapDeferredCount = 0;
+            std::uint32_t captureIssuedCount = 0;
+            for (std::uint32_t i = 0; i < rt.presentPerfCount; i++)
+            {
+                capturePublishedCount += rt.presentPerf[i].capturePublished;
+                captureSlotBusyCount += rt.presentPerf[i].captureSlotBusy;
+                captureMapDeferredCount += rt.presentPerf[i].captureMapDeferred;
+                captureIssuedCount += rt.presentPerf[i].captureIssued;
+            }
+
             std::uint64_t overlayRefreshAvgQpc = 0;
             std::uint64_t overlayRefreshP95Qpc = 0;
             std::uint64_t overlayRefreshP99Qpc = 0;
@@ -611,7 +688,7 @@ namespace ht::hook::dx11
             std::snprintf(
                 msg,
                 sizeof(msg),
-                "HT HookAgentDx11: perf samples=%u present=%u present1=%u total_ms=%.3f/%.3f/%.3f/%.3f lock_wait_ms=%.3f/%.3f/%.3f/%.3f lock_hold_ms=%.3f/%.3f/%.3f/%.3f orig_ms=%.3f/%.3f/%.3f/%.3f dbg_ms=%.3f/%.3f/%.3f/%.3f capture_ms=%.3f/%.3f/%.3f/%.3f ovl_refresh_ms=%.3f/%.3f/%.3f/%.3f ovl_draw_ms=%.3f/%.3f/%.3f/%.3f status_ms=%.3f/%.3f/%.3f/%.3f\n",
+                "HT HookAgentDx11: perf samples=%u present=%u present1=%u total_ms=%.3f/%.3f/%.3f/%.3f lock_wait_ms=%.3f/%.3f/%.3f/%.3f lock_hold_ms=%.3f/%.3f/%.3f/%.3f orig_ms=%.3f/%.3f/%.3f/%.3f dbg_ms=%.3f/%.3f/%.3f/%.3f capture_ms=%.3f/%.3f/%.3f/%.3f capture_copy_ms=%.3f/%.3f/%.3f/%.3f capture_map_ms=%.3f/%.3f/%.3f/%.3f capture_issue=%u capture_publish=%u capture_defer=%u capture_busy=%u ovl_refresh_ms=%.3f/%.3f/%.3f/%.3f ovl_draw_ms=%.3f/%.3f/%.3f/%.3f status_ms=%.3f/%.3f/%.3f/%.3f\n",
                 static_cast<unsigned int>(rt.presentPerfCount),
                 static_cast<unsigned int>(presentCalls),
                 static_cast<unsigned int>(present1Calls),
@@ -639,6 +716,18 @@ namespace ht::hook::dx11
                 QpcToMs(captureP95Qpc, rt.qpcFreq),
                 QpcToMs(captureP99Qpc, rt.qpcFreq),
                 QpcToMs(captureMaxQpc, rt.qpcFreq),
+                QpcToMs(captureCopyAvgQpc, rt.qpcFreq),
+                QpcToMs(captureCopyP95Qpc, rt.qpcFreq),
+                QpcToMs(captureCopyP99Qpc, rt.qpcFreq),
+                QpcToMs(captureCopyMaxQpc, rt.qpcFreq),
+                QpcToMs(captureMapAvgQpc, rt.qpcFreq),
+                QpcToMs(captureMapP95Qpc, rt.qpcFreq),
+                QpcToMs(captureMapP99Qpc, rt.qpcFreq),
+                QpcToMs(captureMapMaxQpc, rt.qpcFreq),
+                static_cast<unsigned int>(captureIssuedCount),
+                static_cast<unsigned int>(capturePublishedCount),
+                static_cast<unsigned int>(captureMapDeferredCount),
+                static_cast<unsigned int>(captureSlotBusyCount),
                 QpcToMs(overlayRefreshAvgQpc, rt.qpcFreq),
                 QpcToMs(overlayRefreshP95Qpc, rt.qpcFreq),
                 QpcToMs(overlayRefreshP99Qpc, rt.qpcFreq),
@@ -769,6 +858,95 @@ namespace ht::hook::dx11
             }
         }
 
+        std::uint32_t ResolveCaptureRingSize()
+        {
+            return std::clamp(ReadEnvU32(L"HT_HOOK_CAPTURE_RING_SIZE", 3), 2u, 8u);
+        }
+
+        void ResetCaptureRingLocked(Dx11Runtime& rt)
+        {
+            if (rt.context != nullptr)
+            {
+                rt.context->Flush();
+            }
+
+            for (auto& slot : rt.captureRing)
+            {
+                IUnknown* tex = slot.texture;
+                slot.texture = nullptr;
+                SafeRelease(tex);
+                slot.width = 0;
+                slot.height = 0;
+                slot.format = DXGI_FORMAT_UNKNOWN;
+                slot.issuedQpc = 0;
+                slot.sourceFrameSeq = 0;
+                slot.state = CaptureSlotState::Free;
+            }
+
+            rt.captureRing.clear();
+            rt.stagingWidth = 0;
+            rt.stagingHeight = 0;
+            rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
+            rt.lastCaptureIssueQpc = 0;
+            rt.captureSourceFrameSeq = 0;
+        }
+
+        bool EnsureCaptureRingLocked(Dx11Runtime& rt, ID3D11Texture2D* source)
+        {
+            if (source == nullptr || rt.device == nullptr)
+            {
+                return false;
+            }
+
+            D3D11_TEXTURE2D_DESC desc{};
+            source->GetDesc(&desc);
+            const std::uint32_t desiredRingSize = ResolveCaptureRingSize();
+            const bool needsRecreate =
+                rt.captureRing.empty() ||
+                rt.captureRingSize != desiredRingSize ||
+                rt.stagingWidth != desc.Width ||
+                rt.stagingHeight != desc.Height ||
+                rt.stagingFormat != desc.Format;
+            if (!needsRecreate)
+            {
+                return true;
+            }
+
+            ResetCaptureRingLocked(rt);
+
+            D3D11_TEXTURE2D_DESC stagingDesc = desc;
+            stagingDesc.BindFlags = 0;
+            stagingDesc.MiscFlags = 0;
+            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+            stagingDesc.Usage = D3D11_USAGE_STAGING;
+
+            rt.captureRingSize = desiredRingSize;
+            rt.captureRing.resize(rt.captureRingSize);
+            for (std::uint32_t i = 0; i < rt.captureRingSize; i++)
+            {
+                ID3D11Texture2D* staging = nullptr;
+                if (rt.device->CreateTexture2D(&stagingDesc, nullptr, &staging) != S_OK || staging == nullptr)
+                {
+                    ResetCaptureRingLocked(rt);
+                    return false;
+                }
+
+                auto& slot = rt.captureRing[i];
+                slot.texture = staging;
+                slot.width = desc.Width;
+                slot.height = desc.Height;
+                slot.format = desc.Format;
+                slot.issuedQpc = 0;
+                slot.sourceFrameSeq = 0;
+                slot.state = CaptureSlotState::Free;
+            }
+
+            rt.stagingWidth = desc.Width;
+            rt.stagingHeight = desc.Height;
+            rt.stagingFormat = desc.Format;
+            return true;
+        }
+
         void ResetImGuiLocked(Dx11Runtime& rt)
         {
             if (!rt.imguiInitialized && rt.imguiContext == nullptr)
@@ -795,9 +973,7 @@ namespace ht::hook::dx11
             ResetImGuiLocked(rt);
 
             // WHY: ResizeBuffers/Alt+Tab can invalidate backbuffer resources; reset so next Present can re-init.
-            IUnknown* staging = rt.staging;
-            rt.staging = nullptr;
-            SafeRelease(staging);
+            ResetCaptureRingLocked(rt);
 
             IUnknown* rtv = rt.backBufferRtv;
             rt.backBufferRtv = nullptr;
@@ -818,9 +994,6 @@ namespace ht::hook::dx11
             rt.backBufferWidth = 0;
             rt.backBufferHeight = 0;
             rt.backBufferFormat = DXGI_FORMAT_UNKNOWN;
-            rt.stagingWidth = 0;
-            rt.stagingHeight = 0;
-            rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
         }
 
         void PublishStatusLocked(Dx11Runtime& rt)
@@ -961,16 +1134,8 @@ namespace ht::hook::dx11
                 SafeRelease(oldRtv);
             }
 
-            if (rt.staging != nullptr)
-            {
-                // WHY: Staging texture must match current backbuffer dimensions/format after fullscreen transitions.
-                IUnknown* oldStaging = rt.staging;
-                rt.staging = nullptr;
-                SafeRelease(oldStaging);
-                rt.stagingWidth = 0;
-                rt.stagingHeight = 0;
-                rt.stagingFormat = DXGI_FORMAT_UNKNOWN;
-            }
+            // WHY: Capture ring textures must match the current backbuffer dimensions/format after fullscreen transitions.
+            ResetCaptureRingLocked(rt);
 
             ID3D11RenderTargetView* rtv = nullptr;
             const HRESULT rtvHr = rt.device->CreateRenderTargetView(backBuffer, nullptr, &rtv);
@@ -1799,49 +1964,139 @@ namespace ht::hook::dx11
             }
         }
 
-        bool EnsureStagingLocked(Dx11Runtime& rt, ID3D11Texture2D* backBuffer)
+        CaptureSlot* FindFreeCaptureSlotLocked(Dx11Runtime& rt)
         {
-            if (backBuffer == nullptr)
+            for (auto& slot : rt.captureRing)
+            {
+                if (slot.state == CaptureSlotState::Free && slot.texture != nullptr)
+                {
+                    return &slot;
+                }
+            }
+
+            return nullptr;
+        }
+
+        CaptureSlot* FindOldestPendingCaptureSlotLocked(Dx11Runtime& rt)
+        {
+            CaptureSlot* best = nullptr;
+            for (auto& slot : rt.captureRing)
+            {
+                if (slot.state != CaptureSlotState::Pending || slot.texture == nullptr)
+                {
+                    continue;
+                }
+
+                if (best == nullptr || slot.sourceFrameSeq < best->sourceFrameSeq)
+                {
+                    best = &slot;
+                }
+            }
+
+            return best;
+        }
+
+        bool TryPublishPendingCaptureLocked(Dx11Runtime& rt, std::uint64_t nowQpc, CapturePerfBreakdown& perf)
+        {
+            auto* slot = FindOldestPendingCaptureSlotLocked(rt);
+            if (slot == nullptr || slot->texture == nullptr || rt.context == nullptr)
             {
                 return false;
             }
 
-            D3D11_TEXTURE2D_DESC desc{};
-            backBuffer->GetDesc(&desc);
-
-            if (rt.staging != nullptr &&
-                rt.stagingWidth == desc.Width &&
-                rt.stagingHeight == desc.Height &&
-                rt.stagingFormat == desc.Format)
-            {
-                return true;
-            }
-
-            if (rt.context != nullptr)
-            {
-                rt.context->Flush();
-            }
-
-            IUnknown* oldStaging = rt.staging;
-            rt.staging = nullptr;
-            SafeRelease(oldStaging);
-
-            D3D11_TEXTURE2D_DESC stagingDesc = desc;
-            stagingDesc.BindFlags = 0;
-            stagingDesc.MiscFlags = 0;
-            stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-            stagingDesc.Usage = D3D11_USAGE_STAGING;
-
-            ID3D11Texture2D* staging = nullptr;
-            if (rt.device->CreateTexture2D(&stagingDesc, nullptr, &staging) != S_OK || staging == nullptr)
+            const auto mapStartQpc = NowQpc();
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            const HRESULT mapHr = rt.context->Map(slot->texture, 0, D3D11_MAP_READ, D3D11_MAP_FLAG_DO_NOT_WAIT, &mapped);
+            perf.mapQpc += (NowQpc() - mapStartQpc);
+            if (mapHr == DXGI_ERROR_WAS_STILL_DRAWING)
             {
                 return false;
             }
+            if (mapHr != S_OK || mapped.pData == nullptr)
+            {
+                slot->state = CaptureSlotState::Free;
+                slot->issuedQpc = 0;
+                slot->sourceFrameSeq = 0;
+                return false;
+            }
 
-            rt.staging = staging;
-            rt.stagingWidth = desc.Width;
-            rt.stagingHeight = desc.Height;
-            rt.stagingFormat = desc.Format;
+            // NOTE: We standardize on BGRA8 in v1 (Windows bitmap compatibility).
+            // Some titles use RGBA8; in that case we swizzle to BGRA on CPU after readback.
+            const bool isBgra8 = (slot->format == DXGI_FORMAT_B8G8R8A8_UNORM || slot->format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+            const bool isRgba8 = (slot->format == DXGI_FORMAT_R8G8B8A8_UNORM || slot->format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+            if (!isBgra8 && !isRgba8)
+            {
+                rt.context->Unmap(slot->texture, 0);
+                slot->state = CaptureSlotState::Free;
+                slot->issuedQpc = 0;
+                slot->sourceFrameSeq = 0;
+                return false;
+            }
+
+            const std::uint32_t width = slot->width;
+            const std::uint32_t height = slot->height;
+            const std::uint32_t stride = static_cast<std::uint32_t>(mapped.RowPitch);
+            const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
+
+            rt.scratch.resize(payloadBytes);
+            std::memcpy(rt.scratch.data(), mapped.pData, payloadBytes);
+            rt.context->Unmap(slot->texture, 0);
+
+            if (isRgba8)
+            {
+                const std::uint32_t rowBytes = width * 4;
+                for (std::uint32_t y = 0; y < height; y++)
+                {
+                    auto* row = rt.scratch.data() + (static_cast<std::size_t>(y) * stride);
+                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                    {
+                        std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
+                    }
+                }
+            }
+
+            const DWORD pid = GetCurrentProcessId();
+            const auto frameId = ++rt.frameId;
+            const bool ok = rt.frameWriter.WriteFrame(
+                pid,
+                ht::hook::ipc::GraphicsApi::Dx11,
+                frameId,
+                width,
+                height,
+                stride,
+                nowQpc,
+                rt.scratch.data(),
+                rt.scratch.size());
+
+            slot->state = CaptureSlotState::Free;
+            slot->issuedQpc = 0;
+            slot->sourceFrameSeq = 0;
+            if (ok)
+            {
+                rt.lastCaptureQpc = nowQpc;
+                perf.published = true;
+            }
+
+            return ok;
+        }
+
+        bool TryIssueCaptureCopyLocked(Dx11Runtime& rt, ID3D11Texture2D* captureTex, std::uint64_t nowQpc, CapturePerfBreakdown& perf)
+        {
+            auto* freeSlot = FindFreeCaptureSlotLocked(rt);
+            if (freeSlot == nullptr || freeSlot->texture == nullptr)
+            {
+                perf.slotBusy = true;
+                return false;
+            }
+
+            const auto copyStartQpc = NowQpc();
+            rt.context->CopyResource(freeSlot->texture, captureTex);
+            perf.copyQpc += (NowQpc() - copyStartQpc);
+            rt.lastCaptureIssueQpc = nowQpc;
+            freeSlot->issuedQpc = nowQpc;
+            freeSlot->sourceFrameSeq = ++rt.captureSourceFrameSeq;
+            freeSlot->state = CaptureSlotState::Pending;
+            perf.issued = true;
             return true;
         }
 
@@ -1871,30 +2126,35 @@ namespace ht::hook::dx11
             return true;
         }
 
-        bool CaptureAndShareFrameLocked(Dx11Runtime& rt, IDXGISwapChain* swap)
+        bool CaptureAndShareFrameLocked(Dx11Runtime& rt, IDXGISwapChain* swap, CapturePerfBreakdown* perfOut = nullptr)
         {
+            CapturePerfBreakdown perf{};
+            const auto captureStartQpc = NowQpc();
             RefreshConfigLocked(rt);
-
-            const auto now = NowQpc();
-            if (rt.captureIntervalQpc != 0 && rt.lastCaptureQpc != 0)
-            {
-                if (now - rt.lastCaptureQpc < rt.captureIntervalQpc)
-                {
-                    return true;
-                }
-            }
 
             if (!EnsureDeviceLocked(rt, swap))
             {
+                if (perfOut != nullptr)
+                {
+                    perf.totalQpc = NowQpc() - captureStartQpc;
+                    *perfOut = perf;
+                }
                 return false;
             }
 
             const std::uint32_t captureSourceMode = ReadEnvU32(L"HT_HOOK_CAPTURE_FROM_OM_RTV", 0);
+            const bool disableDelayedReadback = ReadEnvU32(L"HT_HOOK_DISABLE_DELAYED_READBACK", 0) != 0;
+            const auto now = NowQpc();
 
             ID3D11Texture2D* getBufferTex = nullptr;
             const HRESULT hr = swap->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void**>(&getBufferTex));
             if (hr != S_OK || getBufferTex == nullptr)
             {
+                if (perfOut != nullptr)
+                {
+                    perf.totalQpc = NowQpc() - captureStartQpc;
+                    *perfOut = perf;
+                }
                 return false;
             }
 
@@ -1939,6 +2199,11 @@ namespace ht::hook::dx11
                         omDsv->Release();
                     }
                     getBufferTex->Release();
+                    if (perfOut != nullptr)
+                    {
+                        perf.totalQpc = NowQpc() - captureStartQpc;
+                        *perfOut = perf;
+                    }
                     return false;
                 }
                 captureTex = omTex;
@@ -1961,82 +2226,132 @@ namespace ht::hook::dx11
                 omDsv->Release();
             }
 
-            const bool okStaging = EnsureStagingLocked(rt, captureTex);
-            if (!okStaging)
+            const bool okRing = EnsureCaptureRingLocked(rt, captureTex);
+            if (!okRing)
             {
                 if (omTex != nullptr && omTex != getBufferTex)
                 {
                     omTex->Release();
                 }
                 getBufferTex->Release();
+                if (perfOut != nullptr)
+                {
+                    perf.totalQpc = NowQpc() - captureStartQpc;
+                    *perfOut = perf;
+                }
                 return false;
             }
 
-            rt.context->CopyResource(rt.staging, captureTex);
+            bool published = false;
+            if (disableDelayedReadback)
+            {
+                // WHY: Keep a direct path available for diagnosis so ring behavior can be compared against legacy sync readback.
+                auto* slot = FindFreeCaptureSlotLocked(rt);
+                if (slot != nullptr && slot->texture != nullptr)
+                {
+                    const auto copyStartQpc = NowQpc();
+                    rt.context->CopyResource(slot->texture, captureTex);
+                    perf.copyQpc += (NowQpc() - copyStartQpc);
+                    slot->issuedQpc = now;
+                    slot->sourceFrameSeq = ++rt.captureSourceFrameSeq;
+                    slot->state = CaptureSlotState::Pending;
+                    rt.lastCaptureIssueQpc = now;
+                    perf.issued = true;
+
+                    D3D11_MAPPED_SUBRESOURCE mapped{};
+                    const auto mapStartQpc = NowQpc();
+                    const HRESULT mapHr = rt.context->Map(slot->texture, 0, D3D11_MAP_READ, 0, &mapped);
+                    perf.mapQpc += (NowQpc() - mapStartQpc);
+                    if (mapHr == S_OK && mapped.pData != nullptr)
+                    {
+                        const bool isBgra8 = (slot->format == DXGI_FORMAT_B8G8R8A8_UNORM || slot->format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
+                        const bool isRgba8 = (slot->format == DXGI_FORMAT_R8G8B8A8_UNORM || slot->format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+                        if (isBgra8 || isRgba8)
+                        {
+                            const std::uint32_t width = slot->width;
+                            const std::uint32_t height = slot->height;
+                            const std::uint32_t stride = static_cast<std::uint32_t>(mapped.RowPitch);
+                            const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
+                            rt.scratch.resize(payloadBytes);
+                            std::memcpy(rt.scratch.data(), mapped.pData, payloadBytes);
+                            rt.context->Unmap(slot->texture, 0);
+
+                            if (isRgba8)
+                            {
+                                const std::uint32_t rowBytes = width * 4;
+                                for (std::uint32_t y = 0; y < height; y++)
+                                {
+                                    auto* row = rt.scratch.data() + (static_cast<std::size_t>(y) * stride);
+                                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                                    {
+                                        std::swap(row[x + 0], row[x + 2]);
+                                    }
+                                }
+                            }
+
+                            const DWORD pid = GetCurrentProcessId();
+                            const auto frameId = ++rt.frameId;
+                            published = rt.frameWriter.WriteFrame(
+                                pid,
+                                ht::hook::ipc::GraphicsApi::Dx11,
+                                frameId,
+                                width,
+                                height,
+                                stride,
+                                now,
+                                rt.scratch.data(),
+                                rt.scratch.size());
+                            if (published)
+                            {
+                                rt.lastCaptureQpc = now;
+                                perf.published = true;
+                            }
+                        }
+                        else
+                        {
+                            rt.context->Unmap(slot->texture, 0);
+                        }
+                    }
+                    slot->state = CaptureSlotState::Free;
+                    slot->issuedQpc = 0;
+                    slot->sourceFrameSeq = 0;
+                }
+                else
+                {
+                    perf.slotBusy = true;
+                }
+            }
+            else
+            {
+                if (!TryPublishPendingCaptureLocked(rt, now, perf))
+                {
+                    if (FindOldestPendingCaptureSlotLocked(rt) != nullptr)
+                    {
+                        perf.mapDeferred = true;
+                    }
+                }
+
+                const bool captureDue =
+                    rt.captureIntervalQpc == 0 ||
+                    rt.lastCaptureIssueQpc == 0 ||
+                    (now - rt.lastCaptureIssueQpc) >= rt.captureIntervalQpc;
+                if (captureDue)
+                {
+                    (void)TryIssueCaptureCopyLocked(rt, captureTex, now, perf);
+                }
+            }
+
             if (omTex != nullptr && omTex != getBufferTex)
             {
                 omTex->Release();
             }
             getBufferTex->Release();
-
-            D3D11_MAPPED_SUBRESOURCE mapped{};
-            const HRESULT mapHr = rt.context->Map(rt.staging, 0, D3D11_MAP_READ, 0, &mapped);
-            if (mapHr != S_OK || mapped.pData == nullptr)
+            perf.totalQpc = NowQpc() - captureStartQpc;
+            if (perfOut != nullptr)
             {
-                return false;
+                *perfOut = perf;
             }
-
-            // NOTE: We standardize on BGRA8 in v1 (Windows bitmap compatibility).
-            // Some titles use RGBA8; in that case we swizzle to BGRA on CPU after readback.
-            const bool isBgra8 = (rt.stagingFormat == DXGI_FORMAT_B8G8R8A8_UNORM || rt.stagingFormat == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
-            const bool isRgba8 = (rt.stagingFormat == DXGI_FORMAT_R8G8B8A8_UNORM || rt.stagingFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
-            if (!isBgra8 && !isRgba8)
-            {
-                rt.context->Unmap(rt.staging, 0);
-                return false;
-            }
-
-            const std::uint32_t width = rt.stagingWidth;
-            const std::uint32_t height = rt.stagingHeight;
-            const std::uint32_t stride = static_cast<std::uint32_t>(mapped.RowPitch);
-            const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
-
-            rt.scratch.resize(payloadBytes);
-            std::memcpy(rt.scratch.data(), mapped.pData, payloadBytes);
-            rt.context->Unmap(rt.staging, 0);
-
-            if (isRgba8)
-            {
-                const std::uint32_t rowBytes = width * 4;
-                for (std::uint32_t y = 0; y < height; y++)
-                {
-                    auto* row = rt.scratch.data() + (static_cast<std::size_t>(y) * stride);
-                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
-                    {
-                        std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
-                    }
-                }
-            }
-
-            const DWORD pid = GetCurrentProcessId();
-            const auto frameId = ++rt.frameId;
-            const auto qpc = now;
-
-            const bool ok = rt.frameWriter.WriteFrame(
-                pid,
-                ht::hook::ipc::GraphicsApi::Dx11,
-                frameId,
-                width,
-                height,
-                stride,
-                qpc,
-                rt.scratch.data(),
-                rt.scratch.size());
-            if (ok)
-            {
-                rt.lastCaptureQpc = now;
-            }
-            return ok;
+            return published || perf.issued || perf.mapDeferred || !perf.slotBusy;
         }
 
         HRESULT HookedPresentLocked(IDXGISwapChain* swap, UINT syncInterval, UINT flags, std::uint64_t lockWaitQpc)
@@ -2079,8 +2394,15 @@ namespace ht::hook::dx11
                     if (!disableCapture)
                     {
                         const auto captureStartQpc = NowQpc();
-                        (void)CaptureAndShareFrameLocked(g_rt, swap);
+                        CapturePerfBreakdown capturePerf{};
+                        (void)CaptureAndShareFrameLocked(g_rt, swap, &capturePerf);
                         perfSample.captureQpc = NowQpc() - captureStartQpc;
+                        perfSample.captureCopyQpc = capturePerf.copyQpc;
+                        perfSample.captureMapQpc = capturePerf.mapQpc;
+                        perfSample.capturePublished = capturePerf.published ? 1u : 0u;
+                        perfSample.captureSlotBusy = capturePerf.slotBusy ? 1u : 0u;
+                        perfSample.captureMapDeferred = capturePerf.mapDeferred ? 1u : 0u;
+                        perfSample.captureIssued = capturePerf.issued ? 1u : 0u;
                     }
 
                     if (!disableOverlayRefresh)
@@ -2192,8 +2514,15 @@ namespace ht::hook::dx11
                     if (!disableCapture)
                     {
                         const auto captureStartQpc = NowQpc();
-                        (void)CaptureAndShareFrameLocked(g_rt, swap);
+                        CapturePerfBreakdown capturePerf{};
+                        (void)CaptureAndShareFrameLocked(g_rt, swap, &capturePerf);
                         perfSample.captureQpc = NowQpc() - captureStartQpc;
+                        perfSample.captureCopyQpc = capturePerf.copyQpc;
+                        perfSample.captureMapQpc = capturePerf.mapQpc;
+                        perfSample.capturePublished = capturePerf.published ? 1u : 0u;
+                        perfSample.captureSlotBusy = capturePerf.slotBusy ? 1u : 0u;
+                        perfSample.captureMapDeferred = capturePerf.mapDeferred ? 1u : 0u;
+                        perfSample.captureIssued = capturePerf.issued ? 1u : 0u;
                     }
 
                     if (!disableOverlayRefresh)
