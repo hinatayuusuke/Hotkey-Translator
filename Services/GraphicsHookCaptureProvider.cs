@@ -18,17 +18,20 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private const uint PixelFormatBgra8 = 1;
     private const int MaxReadAttempts = 5;
 
-    public GraphicsHookCaptureProvider(AppLogger logger)
+    internal GraphicsHookCaptureProvider(AppLogger logger, LauncherSessionTargetState launcherSessionTargetState)
     {
         _logger = logger;
+        _launcherSessionTargetState = launcherSessionTargetState;
     }
 
     public CaptureProviderKind Kind => CaptureProviderKind.GraphicsHook;
 
     public bool IsEnabled(AppSettings settings)
     {
-        // WHY: Hook capture requires active-window + fixed binding (PID is derived from hwnd).
-        return settings.EnableGraphicsHookPipeline && settings.CaptureMode == CaptureMode.ActiveWindow && settings.EnableFixedCaptureWindow;
+        // WHY: Launcher provisional attach can publish the real target window before settings persistence catches up.
+        return settings.EnableGraphicsHookPipeline &&
+               settings.CaptureMode == CaptureMode.ActiveWindow &&
+               _launcherSessionTargetState.TryResolveEffectiveWindowHandle(settings, out _);
     }
 
     public bool TryGetBounds(CaptureRequest request, out Rect bounds)
@@ -104,6 +107,7 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     }
 
     private readonly AppLogger _logger;
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly object _cacheLock = new();
     private int _cachedPid;
     private string _cachedMapName = string.Empty;

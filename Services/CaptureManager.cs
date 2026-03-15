@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Windows;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Capture;
+using Hotkey_Translator.Services.Hook;
 
 namespace Hotkey_Translator.Services;
 
@@ -15,18 +16,18 @@ public sealed class CaptureManager
     private readonly CaptureAttemptCoordinator _attemptCoordinator;
     private readonly AppLogger _logger;
 
-    public CaptureManager(FrameGate frameGate, AppLogger logger)
+    internal CaptureManager(FrameGate frameGate, AppLogger logger, LauncherSessionTargetState launcherSessionTargetState)
     {
         _logger = logger;
         _dxgiProvider = new DxgiDuplicationProvider(_logger);
         _providers = new ICaptureProvider[]
         {
-            new GraphicsHookCaptureProvider(_logger),
+            new GraphicsHookCaptureProvider(_logger, launcherSessionTargetState),
             new WgcCaptureProvider(_logger),
             _dxgiProvider,
             new GdiCaptureProvider()
         };
-        _targetResolver = new CaptureTargetResolver(_logger);
+        _targetResolver = new CaptureTargetResolver(_logger, launcherSessionTargetState);
         _providerSelector = new CaptureProviderSelector(_providers);
         var policy = new DefaultCapturePolicy();
         var stateStore = new CaptureProviderStateStore();

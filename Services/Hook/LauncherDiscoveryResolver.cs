@@ -9,10 +9,14 @@ internal sealed class LauncherDiscoveryResolver
 {
     private static readonly TimeSpan DiscoveryPollInterval = TimeSpan.FromMilliseconds(100);
     private readonly Func<AppLogger?> _loggerAccessor;
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
 
-    public LauncherDiscoveryResolver(Func<AppLogger?> loggerAccessor)
+    public LauncherDiscoveryResolver(
+        Func<AppLogger?> loggerAccessor,
+        LauncherSessionTargetState launcherSessionTargetState)
     {
         _loggerAccessor = loggerAccessor;
+        _launcherSessionTargetState = launcherSessionTargetState;
     }
 
     public async Task<LauncherTargetResolutionResult> DiscoverAsync(
@@ -40,6 +44,7 @@ internal sealed class LauncherDiscoveryResolver
                         $"stage=graphics_hook event=discovery_candidate pid={candidate.ProcessId} hwnd=0x{candidate.Hwnd.ToInt64():X} class=\"{SanitizeForLog(candidate.WindowClass)}\" classLen={candidate.WindowClassLength} title=\"{SanitizeForLog(candidate.WindowTitle)}\" titleLen={candidate.WindowTitleLength} exe=\"{SanitizeForLog(candidate.ExePath)}\" monitorSized={(candidate.IsMonitorSized ? 1 : 0)}.");
                 }
 
+                _launcherSessionTargetState.UpdateCandidate(candidate, "discovery");
                 bestCandidate = candidate;
 
                 if (candidate.IsMonitorSized)

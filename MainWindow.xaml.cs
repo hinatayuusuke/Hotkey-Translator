@@ -53,6 +53,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly BusyOverlayController _busyOverlayController;
     private readonly AppThemeController _appThemeController = new();
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
     private readonly LauncherTargetSignatureRegistry _launcherTargetSignatureRegistry;
@@ -90,7 +91,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const int MaxLogLines = 1000;
     private const int TranslationOverlayDelayMs = 200;
     private const int SettingsSaveDebounceMs = 200;
-    private const int GraphicsHookLauncherDiscoveryTimeoutMs = 80000;
+    private const int GraphicsHookLauncherDiscoveryTimeoutMs = 60000;
     private const int GraphicsHookLauncherSignatureResolveTimeoutMs = 3000;
     private const double DrawerAutoResizeTolerance = 12.0;
     private const double DrawerAutoResizeFallbackHeight = 300.0;
@@ -175,10 +176,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
         _busyOverlayController = new BusyOverlayController(Dispatcher, _mainWindowViewModel.RuntimeStatus);
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
-        _graphicsHookClientService = new GraphicsHookClientService(() => _logger);
+        _launcherSessionTargetState = new LauncherSessionTargetState(() => _logger);
+        _graphicsHookClientService = new GraphicsHookClientService(() => _logger, _launcherSessionTargetState);
         _graphicsHookLauncherService = new GraphicsHookLauncherService();
         _launcherTargetSignatureRegistry = new LauncherTargetSignatureRegistry();
-        _launcherDiscoveryResolver = new LauncherDiscoveryResolver(() => _logger);
+        _launcherDiscoveryResolver = new LauncherDiscoveryResolver(() => _logger, _launcherSessionTargetState);
         _launcherTargetResolver = new LauncherTargetResolver(() => _logger);
         _magpieProcessService = new MagpieProcessService();
         _magpieIpcClient = new MagpieIpcClient();
@@ -338,7 +340,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         _cacheRepository = new CacheRepository(_settingsService.CachePath);
         var frameGate = new FrameGate();
-        _captureManager = new CaptureManager(frameGate, _logger);
+        _captureManager = new CaptureManager(frameGate, _logger, _launcherSessionTargetState);
         UpdateAutoTranslateBadgeVisibility(settings);
         _ocrEngine = new OcrEngine(_httpClient, _logger);
         var ocrDiff = new OcrDiffService { IouThreshold = settings.OcrIouThreshold };
@@ -353,6 +355,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _pipeline = new PipelineOrchestrator(
             _captureManager,
             _graphicsHookClientService,
+            _launcherSessionTargetState,
             _ocrEngine,
             ocrDiff,
             _phashService,
@@ -451,6 +454,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private void OnClosed(object? sender, EventArgs e)
     {
         _isClosing = true;
+        _launcherSessionTargetState.Clear("window_closed");
         EnsureMirrorOverlayTopmostTimerActive(false);
         _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
         _roiPresetPreviewClearTimer.Stop();
@@ -694,6 +698,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             var settings = _settingsService.Settings;
             var expectedProcessName = Path.GetFileNameWithoutExtension(targetExePath) ?? string.Empty;
+            _launcherSessionTargetState.Clear("launcher_restart");
             AppendLog(
                 $"stage=graphics_hook event=launcher_start source={source} pid={launched.ProcessId} exe=\"{targetExePath}\" args=\"{targetArgsForLog}\".");
             var provisionalAttached = await TryApplyProvisionalLauncherAttachAsync(
@@ -718,6 +723,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                         $"stage=graphics_hook event=launcher_cleanup source={source} pid={launched.ProcessId} action=terminate result=failed reason={terminateReason ?? "unknown"}.");
                 }
 
+                _launcherSessionTargetState.Clear("launcher_resume_failed");
                 return;
             }
 
@@ -766,6 +772,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                     .ConfigureAwait(true);
                 if (fastPath.Success)
                 {
+                    var persistResolvedTarget = ShouldPersistResolvedLauncherTarget(fastPath);
                     await CommitResolvedLauncherTargetAsync(
                             settings,
                             fastPath,
@@ -773,7 +780,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                             bootstrapPid,
                             source,
                             provisionalAttached,
-                            persistSettings: true)
+                            persistSettings: persistResolvedTarget)
                         .ConfigureAwait(true);
                     return;
                 }
@@ -797,13 +804,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             else
             {
                 signature = BuildDiscoveredSignature(discovery, targetExePath, settings.GraphicsHookApi);
+                var persistResolvedTarget = ShouldPersistResolvedLauncherTarget(discovery);
                 AppendLog(
                     $"stage=graphics_hook event=discovery_signature_prepare source={source} pid={discovery.ProcessId} hwnd=0x{discovery.Hwnd.ToInt64():X} class=\"{discovery.WindowClass}\" classLen={discovery.WindowClass.Length} title=\"{discovery.WindowTitle}\" titleLen={discovery.WindowTitle.Length}.");
-                await _launcherTargetSignatureRegistry
-                    .SaveOrUpdateAsync(signature, cancellationToken)
-                    .ConfigureAwait(true);
-                AppendLog(
-                    $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\" classCount={signature.WindowClassAllowList.Length} title=\"{signature.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty}\" titleCount={signature.WindowTitleContainsAny.Length}.");
+                if (persistResolvedTarget)
+                {
+                    await _launcherTargetSignatureRegistry
+                        .SaveOrUpdateAsync(signature, cancellationToken)
+                        .ConfigureAwait(true);
+                    AppendLog(
+                        $"stage=graphics_hook event=discovery_saved source={source} pid={discovery.ProcessId} key=\"{signature.Key}\" class=\"{signature.WindowClassAllowList.FirstOrDefault() ?? string.Empty}\" classCount={signature.WindowClassAllowList.Length} title=\"{signature.WindowTitleContainsAny.FirstOrDefault() ?? string.Empty}\" titleCount={signature.WindowTitleContainsAny.Length}.");
+                }
                 await CommitResolvedLauncherTargetAsync(
                         settings,
                         discovery,
@@ -811,7 +822,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                         bootstrapPid,
                         source,
                         provisionalAttached,
-                        persistSettings: true)
+                        persistSettings: persistResolvedTarget)
                     .ConfigureAwait(true);
                 return;
             }
@@ -845,6 +856,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         try
         {
+            _launcherSessionTargetState.SetProvisional(provisionalPid, processName, source);
             var provisionalSettings = BuildLauncherAttachSettings(baseSettings, provisionalPid, processName);
             await _graphicsHookClientService.ApplySettingsAsync(provisionalSettings).ConfigureAwait(true);
             AppendLog(
@@ -853,6 +865,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
         catch (Exception ex)
         {
+            _launcherSessionTargetState.Clear("provisional_attach_failed");
             _logger?.Error(
                 ex,
                 $"stage=graphics_hook event=launcher_provisional_attach_failed source={source} pid={provisionalPid}.");
@@ -883,7 +896,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        ApplyLauncherTargetToSettings(settings, resolution, signature);
+        _launcherSessionTargetState.Confirm(resolution, source);
         var state = resolution.ProcessId != bootstrapPid
             ? "handoff"
             : resolution.Hwnd != IntPtr.Zero
@@ -895,10 +908,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             $"stage=graphics_hook event=launcher_resolution_result source={source} state={state} pid={resolution.ProcessId} hwnd=0x{resolution.Hwnd.ToInt64():X} reason={resolution.Reason}.");
         AppendLog(
             $"stage=graphics_hook event=launcher_bound source={source} pid={resolution.ProcessId} api={settings.GraphicsHookApi} hwnd=0x{resolution.Hwnd.ToInt64():X}.");
-        _mainWindowViewModel.Settings.LoadFrom(settings);
 
         if (persistSettings)
         {
+            ApplyLauncherTargetToSettings(settings, resolution, signature);
+            _mainWindowViewModel.Settings.LoadFrom(settings);
             await _settingsService.SaveAsync().ConfigureAwait(true);
         }
 
@@ -938,8 +952,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             0,
             false,
             "provisional_only");
-        ApplyLauncherTargetToSettings(settings, provisionalResolution, signature: null);
-        _mainWindowViewModel.Settings.LoadFrom(settings);
+        _launcherSessionTargetState.SetProvisional(bootstrapPid, provisionalResolution.ProcessName, source);
         AppendLog(
             $"stage=graphics_hook event=launcher_resolution_result source={source} state=provisional_only pid={bootstrapPid} reason=discovery_unconfirmed.");
         AppendLog(
@@ -965,6 +978,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             CaptureMode = Hotkey_Translator.Models.CaptureMode.ActiveWindow,
             EnableGraphicsHookPipeline = source.EnableGraphicsHookPipeline,
+            EnableGraphicsHookLauncher = source.EnableGraphicsHookLauncher,
             EnableFixedCaptureWindow = true,
             FixedCaptureWindowHandle = 0,
             FixedCaptureWindowProcessId = processId,
@@ -979,6 +993,21 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             EnableGraphicsHookDiagFileSink = source.EnableGraphicsHookDiagFileSink,
             GraphicsHookPipeName = source.GraphicsHookPipeName
         };
+    }
+
+    private static bool ShouldPersistResolvedLauncherTarget(LauncherTargetResolutionResult resolution)
+    {
+        if (!resolution.Success || resolution.Hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (resolution.MonitorSizedWindowObserved)
+        {
+            return true;
+        }
+
+        return resolution.Reason.StartsWith("signature_", StringComparison.OrdinalIgnoreCase);
     }
 
     private static void ApplyLauncherTargetToSettings(
@@ -1252,19 +1281,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         // WHY: WPF overlay and hook overlay should stay in sync by default to reduce confusion.
         // This does not persist settings; it only updates the hook runtime config mapping.
         var settings = _settingsService.Settings;
-        if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        var targetPid = ResolveEffectiveGraphicsHookPid(settings);
+        if (settings.EnableGraphicsHookPipeline && targetPid > 0)
         {
             var effectiveHookOverlayEnabled =
                 IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled &&
                 _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
-                settings.FixedCaptureWindowProcessId,
+                targetPid,
                 settings.GraphicsHookCaptureFpsLimit,
                 effectiveHookOverlayEnabled,
                 out var failureReason);
             _logger?.Info(
-                $"stage=graphics_hook event=runtime_config_publish pid={settings.FixedCaptureWindowProcessId} " +
+                $"stage=graphics_hook event=runtime_config_publish pid={targetPid} " +
                 $"fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
                 $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
             if (!published)
@@ -1288,19 +1318,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _overlayPresenter.SetEnabled(true, showLast: false);
         AppendLog("Overlay shown.");
 
-        if (settings.EnableGraphicsHookPipeline && settings.EnableFixedCaptureWindow && settings.FixedCaptureWindowProcessId > 0)
+        var targetPid = ResolveEffectiveGraphicsHookPid(settings);
+        if (settings.EnableGraphicsHookPipeline && targetPid > 0)
         {
             var effectiveHookOverlayEnabled =
                 IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled &&
                 _overlayEnabled;
             var published = _graphicsHookClientService.TryPublishRuntimeConfig(
-                settings.FixedCaptureWindowProcessId,
+                targetPid,
                 settings.GraphicsHookCaptureFpsLimit,
                 effectiveHookOverlayEnabled,
                 out var failureReason);
             _logger?.Info(
-                $"stage=graphics_hook event=runtime_config_publish source=enable_overlay pid={settings.FixedCaptureWindowProcessId} " +
+                $"stage=graphics_hook event=runtime_config_publish source=enable_overlay pid={targetPid} " +
                 $"fps_limit={settings.GraphicsHookCaptureFpsLimit} overlay={effectiveHookOverlayEnabled} " +
                 $"result={(published ? "ok" : "failed")} reason={(published ? "none" : failureReason ?? "unknown")}.");
             if (!published)
@@ -1320,7 +1351,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0 || _captureManager == null)
+        var targetPid = ResolveEffectiveGraphicsHookPid(settings);
+        if (targetPid <= 0 || _captureManager == null)
         {
             return;
         }
@@ -1336,7 +1368,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var canvasW = (uint)Math.Max(1, Math.Round(bounds.Width));
         var canvasH = (uint)Math.Max(1, Math.Round(bounds.Height));
         var cleared = _graphicsHookClientService.TryWriteOverlayV2(
-            settings.FixedCaptureWindowProcessId,
+            targetPid,
             canvasW,
             canvasH,
             ReadOnlySpan<GraphicsHookOverlayV2CommandWriter.TextBlockV2>.Empty,
@@ -1344,7 +1376,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             0,
             out var failureReason);
         _logger?.Info(
-            $"stage=graphics_hook event=overlay_reshow_clear source={source} pid={settings.FixedCaptureWindowProcessId} " +
+            $"stage=graphics_hook event=overlay_reshow_clear source={source} pid={targetPid} " +
             $"canvas={canvasW}x{canvasH} result={(cleared ? "ok" : "failed")} " +
             $"reason={(cleared ? "none" : failureReason ?? "unknown")}.");
     }
@@ -1358,6 +1390,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         return settings.EnableGraphicsHookPipeline &&
                settings.EnableGraphicsHookLauncher;
+    }
+
+    private int ResolveEffectiveGraphicsHookPid(AppSettings settings)
+    {
+        return _launcherSessionTargetState.ResolveEffectiveProcessId(settings);
     }
 
     private async Task RunOnceAsync()
@@ -2207,6 +2244,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         UpdateTranslationStatus(settings);
         _magpieSessionController.ApplySettings(settings);
         ApplyMirrorOverlayMapper();
+        if (!IsGraphicsHookLauncherModeEnabled(settings))
+        {
+            _launcherSessionTargetState.Clear("launcher_mode_disabled");
+        }
         _ = _graphicsHookClientService.ApplySettingsAsync(settings);
         CheckAndShowPrerequisiteDialogs(settings);
         _winRtLanguagePackUiController.SchedulePrecheck();

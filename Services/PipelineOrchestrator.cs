@@ -40,6 +40,7 @@ public sealed class PipelineOrchestrator
 {
     private readonly CaptureManager _captureManager;
     private readonly GraphicsHookClientService? _graphicsHookClientService;
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly OcrDiffService _ocrDiffService;
     private readonly PhashService _phashService;
     private readonly OcrAndGroupStage _ocrAndGroupStage;
@@ -95,6 +96,7 @@ public sealed class PipelineOrchestrator
     internal PipelineOrchestrator(
         CaptureManager captureManager,
         GraphicsHookClientService? graphicsHookClientService,
+        LauncherSessionTargetState launcherSessionTargetState,
         OcrEngine ocrEngine,
         OcrDiffService ocrDiffService,
         PhashService phashService,
@@ -110,6 +112,7 @@ public sealed class PipelineOrchestrator
     {
         _captureManager = captureManager;
         _graphicsHookClientService = graphicsHookClientService;
+        _launcherSessionTargetState = launcherSessionTargetState;
         _ocrDiffService = ocrDiffService;
         _phashService = phashService;
         _logger = logger;
@@ -747,7 +750,7 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
-        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
+        if (ResolveGraphicsHookPid(settings) <= 0)
         {
             return false;
         }
@@ -772,7 +775,7 @@ public sealed class PipelineOrchestrator
             return false;
         }
 
-        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
+        if (ResolveGraphicsHookPid(settings) <= 0)
         {
             return false;
         }
@@ -878,7 +881,7 @@ public sealed class PipelineOrchestrator
 
         if (settings.EnableGraphicsHookPipeline &&
             settings.CaptureMode == CaptureMode.ActiveWindow &&
-            settings.EnableFixedCaptureWindow)
+            ResolveGraphicsHookPid(settings) > 0)
         {
             // WHY: While hook pipeline is active, transient fallback captures (e.g. WGC during hook writer race)
             // must not rewrite the preferred provider, or subsequent runs drift away from hook-first behavior.
@@ -928,7 +931,7 @@ public sealed class PipelineOrchestrator
             return;
         }
 
-        var pid = settings.FixedCaptureWindowProcessId;
+        var pid = ResolveGraphicsHookPid(settings);
         if (pid <= 0)
         {
             return;
@@ -1329,6 +1332,11 @@ public sealed class PipelineOrchestrator
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
         return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+    }
+
+    private int ResolveGraphicsHookPid(AppSettings settings)
+    {
+        return _launcherSessionTargetState.ResolveEffectiveProcessId(settings);
     }
 
     private static string FormatRect(Rect rect)

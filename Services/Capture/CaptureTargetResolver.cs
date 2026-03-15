@@ -1,19 +1,22 @@
 using System;
 using System.Runtime.InteropServices;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services.Hook;
 
 namespace Hotkey_Translator.Services.Capture;
 
 internal sealed class CaptureTargetResolver
 {
     private readonly WindowBindingService _windowBindingService = new();
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly AppLogger _logger;
     private string? _captureTargetResolutionState;
     private IntPtr _lastResolvedTargetHwnd;
 
-    public CaptureTargetResolver(AppLogger logger)
+    public CaptureTargetResolver(AppLogger logger, LauncherSessionTargetState launcherSessionTargetState)
     {
         _logger = logger;
+        _launcherSessionTargetState = launcherSessionTargetState;
     }
 
     public CaptureRequest BuildCaptureRequest(AppSettings settings)
@@ -32,6 +35,23 @@ internal sealed class CaptureTargetResolver
             TrackCaptureTargetResolution(
                 $"stage=mirror_capture event=target_resolved hwnd=0x{mirrorHwnd.ToInt64():X} source=findwindow.");
             return request with { TargetWindowHandle = mirrorHwnd };
+        }
+
+        if (_launcherSessionTargetState.TryGetSnapshot(out var runtimeTarget))
+        {
+            if (_launcherSessionTargetState.TryResolveEffectiveWindowHandle(settings, out var runtimeHwnd))
+            {
+                TrackResolvedTargetSwitch(runtimeHwnd);
+                TrackCaptureTargetResolution(
+                    $"stage=capture_target event=runtime_resolved hwnd=0x{runtimeHwnd.ToInt64():X} pid={runtimeTarget.ProcessId} " +
+                    $"confirmed={(runtimeTarget.IsConfirmed ? 1 : 0)} source={runtimeTarget.Source}.");
+                return request with { TargetWindowHandle = runtimeHwnd };
+            }
+
+            _lastResolvedTargetHwnd = IntPtr.Zero;
+            TrackCaptureTargetResolution(
+                $"stage=capture_target event=runtime_pending pid={runtimeTarget.ProcessId} confirmed={(runtimeTarget.IsConfirmed ? 1 : 0)} source={runtimeTarget.Source}.");
+            return request;
         }
 
         if (!settings.EnableFixedCaptureWindow)

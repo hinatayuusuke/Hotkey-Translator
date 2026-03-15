@@ -34,6 +34,7 @@ internal sealed class GraphicsHookClientService : IDisposable
     };
 
     private readonly Func<AppLogger?> _loggerAccessor;
+    private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly SemaphoreSlim _sync = new(1, 1);
     private readonly GraphicsHookOverlayV2CommandWriter _overlayV2Writer = new();
     private readonly GraphicsHookConfigWriter _configWriter = new();
@@ -73,9 +74,12 @@ internal sealed class GraphicsHookClientService : IDisposable
         public GraphicsHookApiKind Api { get; }
     }
 
-    public GraphicsHookClientService(Func<AppLogger?> loggerAccessor)
+    public GraphicsHookClientService(
+        Func<AppLogger?> loggerAccessor,
+        LauncherSessionTargetState launcherSessionTargetState)
     {
         _loggerAccessor = loggerAccessor;
+        _launcherSessionTargetState = launcherSessionTargetState;
     }
 
     public async Task ApplySettingsAsync(AppSettings settings, CancellationToken cancellationToken = default)
@@ -95,9 +99,10 @@ internal sealed class GraphicsHookClientService : IDisposable
             }
 
             _lastPipeName = settings.GraphicsHookPipeName;
+            var targetPid = ResolveTargetProcessId(settings);
 
             if (_attachedPid > 0 &&
-                _attachedPid == settings.FixedCaptureWindowProcessId &&
+                _attachedPid == targetPid &&
                 _attachedApi != settings.GraphicsHookApi)
             {
                 // WHY: Host keeps one injected backend per PID. API switch must detach first to avoid api_mismatch_existing.
@@ -105,7 +110,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             }
 
             if (_attachedPid > 0 &&
-                _attachedPid != settings.FixedCaptureWindowProcessId)
+                _attachedPid != targetPid)
             {
                 // WHY: Launcher handoff can move capture from a bootstrap PID to the real render PID.
                 // Keep only one active attachment in the host so runtime/shared-state stay aligned with the committed target.
@@ -123,10 +128,10 @@ internal sealed class GraphicsHookClientService : IDisposable
                 return;
             }
 
-            if (!TryResolveHostSelection(settings, settings.FixedCaptureWindowProcessId, out var hostSelection, out var hostResolveReason))
+            if (!TryResolveHostSelection(settings, targetPid, out var hostSelection, out var hostResolveReason))
             {
                 _loggerAccessor()?.Error(
-                    $"stage=graphics_hook event=attach_skip reason={hostResolveReason ?? "host_selection_failed"} pid={settings.FixedCaptureWindowProcessId} api={settings.GraphicsHookApi}.");
+                    $"stage=graphics_hook event=attach_skip reason={hostResolveReason ?? "host_selection_failed"} pid={targetPid} api={settings.GraphicsHookApi}.");
                 if (settings.GraphicsHookFallbackOnError)
                 {
                     await DetachInternalAsync($"attach_skip:{hostResolveReason ?? "host_selection_failed"}", cancellationToken).ConfigureAwait(false);
@@ -165,14 +170,14 @@ internal sealed class GraphicsHookClientService : IDisposable
             var configFlags = BuildConfigFlags(settings);
 
             var attachRequest = new GraphicsHookAttachRequest(
-                settings.FixedCaptureWindowProcessId,
+                targetPid,
                 settings.GraphicsHookApi,
                 settings.GraphicsHookCaptureFpsLimit,
                 effectiveOverlayEnabled,
                 configFlags);
 
             await SendCommandAsync(new GraphicsHookCommandEnvelope("attach", attachRequest), cancellationToken).ConfigureAwait(false);
-            _attachedPid = settings.FixedCaptureWindowProcessId;
+            _attachedPid = targetPid;
             _attachedApi = settings.GraphicsHookApi;
             _runtimeConfigFlags = configFlags;
             // WHY: Publishing config via shared memory lets runtime/UI changes take effect even if the pipe is slow/unavailable.
@@ -319,7 +324,7 @@ internal sealed class GraphicsHookClientService : IDisposable
             return false;
         }
 
-        if (!settings.EnableFixedCaptureWindow || settings.FixedCaptureWindowProcessId <= 0)
+        if (ResolveTargetProcessId(settings) <= 0)
         {
             reason = "fixed_window_not_bound";
             return false;
@@ -332,6 +337,11 @@ internal sealed class GraphicsHookClientService : IDisposable
     private static bool IsHookOverlaySupportedApi(GraphicsHookApiKind api)
     {
         return api is GraphicsHookApiKind.Dx9 or GraphicsHookApiKind.Dx11 or GraphicsHookApiKind.Vulkan;
+    }
+
+    private int ResolveTargetProcessId(AppSettings settings)
+    {
+        return _launcherSessionTargetState.ResolveEffectiveProcessId(settings);
     }
 
     private bool EnsureHostProcess(HostSelection hostSelection)

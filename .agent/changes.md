@@ -23993,3 +23993,40 @@ efreshLastOverlay の既定値は 	rue のままにし、settings save の呼び
 - `cmake --build .\Native\build_x86 --config Debug --target HookAgentVulkan -j 4`
 - `cmake --build .\Native\build --config Debug --target HookAgentVulkan -j 4`
 - x86/x64 とも app 出力先 DLL の SHA256 が native build 出力と一致することを確認
+
+**2026-03-15 17:17 (Asia/Taipei) — Separate launcher runtime target from persisted hook binding**
+
+### Summary
+- launcher provisional attach を runtime-only target に分離し、capture/overlay/hook attach が確定前の PID/HWND を共有できるようにした。
+
+### Context / Goal
+- DX11 x86 launcher で Hook 自体は成功しているのに、capture 側が fixed target 未確定のまま `bound fixed target window` で失敗していた。
+- provisional target を次回用 settings/signature に誤保存せず、同一セッション内だけで利用できるようにしたかった。
+
+### Changes
+- `LauncherSessionTargetState` を追加し、launcher provisional/candidate/confirmed の PID/HWND を runtime-only で保持するようにした。
+- capture target 解決、GraphicsHook overlay publish、runtime config publish、hook attach が settings より先に runtime target を参照するようにした。
+- launcher discovery 候補を見つけた時点で runtime target を更新し、resolved target の保存は `monitorSized` または `signature_*` 根拠がある場合だけに制限した。
+- launcher 無効化時とウィンドウ終了時に runtime target を明示クリアするようにした。
+
+### Files Touched
+- `MainWindow.xaml.cs` — launcher provisional/confirmed target の扱いを runtime state 中心へ移し、永続化条件と runtime config publish の PID 解決を整理した。
+- `Services/Hook/LauncherSessionTargetState.cs` — launcher セッション専用の ephemeral PID/HWND 状態管理を新規追加した。
+- `Services/Capture/CaptureTargetResolver.cs` — runtime target を優先して capture request を組み立て、pending 状態では古い fixed target へ戻らないようにした。
+- `Services/CaptureManager.cs` — capture resolver/provider へ launcher runtime target state を注入した。
+- `Services/GraphicsHookCaptureProvider.cs` — runtime target window がある場合に GraphicsHook capture を有効化するようにした。
+- `Services/Hook/GraphicsHookClientService.cs` — attach 対象 PID を runtime target から解決できるようにした。
+- `Services/Hook/LauncherDiscoveryResolver.cs` — discovery candidate を runtime target state に反映するようにした。
+- `Services/PipelineOrchestrator.cs` — overlay publish と hook ROI 判定で runtime target PID を使うようにした。
+
+### Behavioral Impact
+- launcher 直後でも discovery が候補 `HWND` を見つければ、settings 保存前に GraphicsHook capture/overlay が同じ target を参照できる。
+- `discovery_foreground_window` や `provisional_only` の弱い候補は settings/signature に保存されなくなり、次回起動への誤学習を抑制する。
+- launcher runtime target が有効な間は、古い fixed target settings へのフォールバックを避ける。
+
+### Risk & Mitigation
+- Risk: provisional target の `HWND` がまだ取れていない間は GraphicsHook capture が有効化されず、WGC へ落ちる場合がある。
+- Mitigation: discovery candidate を見つけ次第 runtime target を更新し、pending 中は誤った古い fixed target へ戻らないようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
