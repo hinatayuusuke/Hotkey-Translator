@@ -6,6 +6,10 @@ set HT_HOOK_PASS_THROUGH=1
 
 rem Case: perf trace
 set HT_HOOK_PERF_TRACE=1
+set HT_HOOK_PERF_FILE=1
+set HT_HOOK_PERF_TRACE=1
+set HT_HOOK_PERF_FILE=1
+
 
 rem Optional toggles
 rem set HT_HOOK_DISABLE_PRESENT_DEBUG=1

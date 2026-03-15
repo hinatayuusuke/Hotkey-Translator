@@ -139,6 +139,7 @@ namespace ht::hook::dx11
             std::uint64_t lastConfigQpc = 0;
             std::uint32_t configuredFpsLimit = 15;
             bool overlayEnabled = true;
+            bool diagFileSinkEnabled = false;
             std::uint64_t lastOverlayV2Seq = 0;
             std::uint64_t lastOverlayV2Qpc = 0;
             std::uint64_t lastOverlayTraceDrawSeq = 0;
@@ -189,6 +190,10 @@ namespace ht::hook::dx11
         };
 
         Dx11Runtime g_rt;
+        std::mutex g_diagFileMutex;
+        HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
+        DWORD g_diagFilePid = 0;
+        std::wstring g_diagFilePath;
 
         std::uint64_t NowQpc()
         {
@@ -242,9 +247,149 @@ namespace ht::hook::dx11
             OutputDebugStringA(msg);
         }
 
+        std::string WideToUtf8(const std::wstring& value)
+        {
+            if (value.empty())
+            {
+                return {};
+            }
+
+            const int bytes = WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (bytes <= 1)
+            {
+                return {};
+            }
+
+            std::string out(static_cast<std::size_t>(bytes - 1), '\0');
+            (void)WideCharToMultiByte(CP_UTF8, 0, value.c_str(), -1, out.data(), bytes, nullptr, nullptr);
+            return out;
+        }
+
         bool IsPresentPerfTraceEnabled()
         {
             return ReadEnvU32(L"HT_HOOK_PERF_TRACE", 0) != 0;
+        }
+
+        bool IsPresentPerfFileEnabled()
+        {
+            return ReadEnvU32(L"HT_HOOK_PERF_FILE", 0) != 0;
+        }
+
+        bool EnsureDiagFileUnlocked()
+        {
+            const DWORD pid = GetCurrentProcessId();
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE && g_diagFilePid == pid)
+            {
+                return true;
+            }
+
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+                g_diagFilePid = 0;
+                g_diagFilePath.clear();
+            }
+
+            wchar_t tempPath[MAX_PATH]{};
+            const DWORD tempLen = GetTempPathW(static_cast<DWORD>(std::size(tempPath)), tempPath);
+            if (tempLen == 0 || tempLen >= std::size(tempPath))
+            {
+                return false;
+            }
+
+            std::wstring dir = tempPath;
+            if (!dir.empty() && dir.back() != L'\\' && dir.back() != L'/')
+            {
+                dir += L'\\';
+            }
+            dir += L"HotkeyTranslator";
+            (void)CreateDirectoryW(dir.c_str(), nullptr);
+
+            wchar_t fileName[128]{};
+            (void)swprintf_s(fileName, L"hook_dx11_perf_%lu.log", static_cast<unsigned long>(pid));
+            std::wstring filePath = dir;
+            filePath += L'\\';
+            filePath += fileName;
+
+            HANDLE file = CreateFileW(
+                filePath.c_str(),
+                FILE_APPEND_DATA,
+                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                nullptr,
+                OPEN_ALWAYS,
+                FILE_ATTRIBUTE_NORMAL,
+                nullptr);
+            if (file == INVALID_HANDLE_VALUE)
+            {
+                return false;
+            }
+
+            g_diagFileHandle = file;
+            g_diagFilePid = pid;
+            g_diagFilePath = std::move(filePath);
+
+            const auto pathUtf8 = WideToUtf8(g_diagFilePath);
+            if (!pathUtf8.empty())
+            {
+                char openMsg[512]{};
+                (void)_snprintf_s(
+                    openMsg,
+                    sizeof(openMsg),
+                    _TRUNCATE,
+                    "stage=hook_dx11 event=perf_file_open pid=%lu path=\"%s\".",
+                    static_cast<unsigned long>(pid),
+                    pathUtf8.c_str());
+                OutputDebugStringA(openMsg);
+                OutputDebugStringA("\n");
+            }
+
+            return true;
+        }
+
+        void AppendDiagFileLine(const char* line)
+        {
+            if (line == nullptr || line[0] == '\0')
+            {
+                return;
+            }
+
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (!EnsureDiagFileUnlocked())
+            {
+                return;
+            }
+
+            SYSTEMTIME st{};
+            GetLocalTime(&st);
+            char prefix[64]{};
+            (void)_snprintf_s(
+                prefix,
+                sizeof(prefix),
+                _TRUNCATE,
+                "%02u:%02u:%02u.%03u ",
+                static_cast<unsigned int>(st.wHour),
+                static_cast<unsigned int>(st.wMinute),
+                static_cast<unsigned int>(st.wSecond),
+                static_cast<unsigned int>(st.wMilliseconds));
+
+            DWORD written = 0;
+            (void)WriteFile(g_diagFileHandle, prefix, static_cast<DWORD>(std::strlen(prefix)), &written, nullptr);
+            (void)WriteFile(g_diagFileHandle, line, static_cast<DWORD>(std::strlen(line)), &written, nullptr);
+            static constexpr char kNewLine[] = "\r\n";
+            (void)WriteFile(g_diagFileHandle, kNewLine, static_cast<DWORD>(sizeof(kNewLine) - 1), &written, nullptr);
+        }
+
+        void CloseDiagFile()
+        {
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            if (g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+            }
+            g_diagFilePid = 0;
+            g_diagFilePath.clear();
         }
 
         double QpcToMs(std::uint64_t qpc, std::uint64_t qpcFreq)
@@ -507,6 +652,11 @@ namespace ht::hook::dx11
                 QpcToMs(statusP99Qpc, rt.qpcFreq),
                 QpcToMs(statusMaxQpc, rt.qpcFreq));
             OutputDebugStringA(msg);
+            if (rt.diagFileSinkEnabled || IsPresentPerfFileEnabled())
+            {
+                // WHY: Persist periodic perf summaries so Steam/launcher runs can be compared without a live debugger.
+                AppendDiagFileLine(msg);
+            }
 
             rt.presentPerfNext = 0;
             rt.presentPerfCount = 0;
@@ -740,6 +890,12 @@ namespace ht::hook::dx11
             rt.lastConfigQpc = cfg.updatedQpc;
             rt.configuredFpsLimit = std::max(1u, cfg.captureFpsLimit);
             rt.overlayEnabled = cfg.overlayEnabled != 0;
+            const bool diagFileSinkEnabled = (cfg.reserved0 & ht::hook::ipc::kConfigFlagEnableDiagFileSink) != 0;
+            if (rt.diagFileSinkEnabled && !diagFileSinkEnabled)
+            {
+                CloseDiagFile();
+            }
+            rt.diagFileSinkEnabled = diagFileSinkEnabled;
             rt.captureIntervalQpc = (rt.qpcFreq != 0) ? (rt.qpcFreq / rt.configuredFpsLimit) : 0;
             DebugLogConfigApplied(cfg);
         }
@@ -2412,5 +2568,7 @@ namespace ht::hook::dx11
         g_rt.presentPerfNext = 0;
         g_rt.presentPerfCount = 0;
         g_rt.lastPerfFlushQpc = 0;
+        g_rt.diagFileSinkEnabled = false;
+        CloseDiagFile();
     }
 }

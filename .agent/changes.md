@@ -1801,6 +1801,36 @@
 - `cmake --build .\Native\build --config Debug --target HookAgentDx11 -j 4`
 - `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 -j 4`
 
+**2026-03-15 19:23 (Asia/Taipei) — Add DX11 perf Temp file sink**
+
+### Summary
+- DX11 HookAgent の perf summary を `%TEMP%\HotkeyTranslator\hook_dx11_perf_<pid>.log` にも追記できるようにした。
+
+### Context / Goal
+- `OutputDebugStringA` だけでは Steam 起動オプション経由の比較や長時間検証でログ回収がしづらかった。
+- DebugView を常時張れないケースでも DX11 Present perf summary を比較できるようにしたかった。
+
+### Changes
+- DX11 agent に Temp 配下の perf 専用ログファイルを開く file sink を追加した。
+- `EnableGraphicsHookDiagFileSink` の runtime config flag が有効な場合、perf summary を file sink にも追記するようにした。
+- 簡易検証用に `HT_HOOK_PERF_FILE=1` でも file sink を有効にできるようにした。
+- diag file sink が runtime config で無効化された場合は、開いているファイルハンドルを閉じるようにした。
+
+### Files Touched
+- `Native/HookAgentDx11/Dx11PresentHook.cpp` — DX11 perf summary の Temp file sink、設定反映、disable 時の close 処理を追加した。
+
+### Behavioral Impact
+- 既定では従来どおり `OutputDebugStringA` のみ出力する。
+- `EnableGraphicsHookDiagFileSink` または `HT_HOOK_PERF_FILE=1` を有効にすると、DX11 perf summary が `%TEMP%\HotkeyTranslator\hook_dx11_perf_<pid>.log` に追記される。
+
+### Risk & Mitigation
+- Risk: file sink 有効時は 2秒または256サンプルごとの summary 追記でわずかな I/O コストが追加される。
+- Mitigation: 毎フレームではなく summary 単位のみ追記し、通常時は file sink を無効のままにしてある。
+
+### Tests / Verification
+- `cmake --build .\Native\build --config Debug --target HookAgentDx11 -j 4`
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 -j 4`
+
 **2026-03-15 04:26 (Asia/Taipei) — Fix Unicode marshaling for launcher window signatures**
 
 ### Summary
