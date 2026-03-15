@@ -103,7 +103,7 @@ public sealed class AppSettings
     public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
     public bool EnableGraphicsHookPipeline { get; set; } = false;
     public GraphicsHookApiKind GraphicsHookApi { get; set; } = GraphicsHookApiKind.Dx11;
-    public int GraphicsHookCaptureFpsLimit { get; set; } = 30;
+    public int GraphicsHookCaptureFpsLimit { get; set; } = 1;
     public bool GraphicsHookOverlayEnabled { get; set; } = true;
     public bool GraphicsHookFallbackOnError { get; set; } = true;
     public bool EnableGraphicsHookPerfDiagLog { get; set; } = false;
