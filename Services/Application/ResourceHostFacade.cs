@@ -327,7 +327,7 @@ internal sealed class ResourceHostFacade : IDisposable
         return true;
     }
 
-    public ResourceBootstrapPlan BuildBootstrapPlan(AppSettings settings)
+    public ResourceBootstrapPlan BuildBootstrapPlan(AppSettings settings, ResourceBootstrapIntent intent)
     {
         var items = new List<ResourceBootstrapItem>();
         foreach (var requiredHost in BuildRequiredHosts(settings))
@@ -338,7 +338,13 @@ internal sealed class ResourceHostFacade : IDisposable
                     TryAddLlamaBootstrapItem(items, settings);
                     break;
                 case HostIdVisionLlm:
-                    TryAddVisionBootstrapItem(items, settings);
+                    // WHY: Settings save should stay cheap. VisionLLM asset existence/integrity is enforced
+                    // by the actual startup/download path, so only app-load confirmation keeps this preview.
+                    if (intent == ResourceBootstrapIntent.AppLoad)
+                    {
+                        TryAddVisionBootstrapItem(items, settings);
+                    }
+
                     break;
                 case HostIdPaddle:
                     TryAddPaddleBootstrapItem(items, settings);

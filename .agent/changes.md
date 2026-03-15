@@ -1771,6 +1771,36 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -v minimal /m:1`
 
+**2026-03-15 21:46 (Asia/Taipei) — Skip VisionLLM bootstrap scan during settings save**
+
+### Summary
+- VisionLLM 有効中の設定保存で重いモデル検証を走らせないようにし、保存時フリーズを避けるようにした。
+
+### Context / Goal
+- VisionLLM 選択中は設定の自動保存時に bootstrap 確認が走り、巨大 GGUF の整合性確認で UI が数秒止まっていた。
+- モデル検証はダウンロード直後だけで十分とし、設定保存では不要なチェックを外したかった。
+
+### Changes
+- `ResourceHostFacade.BuildBootstrapPlan` に bootstrap intent を渡すようにした。
+- `SettingsSave` 時は VisionLLM の bootstrap preview を作らず、保存時にモデル存在・整合性チェックへ入らないようにした。
+- `AppLoad` 時の preview と、VisionLLM 起動時の実際の asset 確保・fail fast は維持した。
+
+### Files Touched
+- `Services/Application/ResourceHostFacade.cs` — bootstrap plan に intent を追加し、VisionLLM の preview を app load のみに限定した。
+- `MainWindow.xaml.cs` — bootstrap plan 作成時に現在の intent を渡すようにした。
+
+### Behavioral Impact
+- VisionLLM を有効にしたまま設定を変更しても、保存時に GGUF/MMProj の SHA 計算が走らなくなる。
+- VisionLLM の既定 asset 自動ダウンロードと、ダウンロード直後の厳密検証は従来どおり維持される。
+- モデル欠損や不正は、設定保存時ではなく VisionLLM 起動時に明示的に失敗する。
+
+### Risk & Mitigation
+- Risk: SettingsSave 時点では VisionLLM asset 欠損を事前に警告しなくなる。
+- Mitigation: 起動経路の `EnsureVisionLlmAssetsAsync` と custom asset の non-empty file check を維持し、実行時に fail fast させる。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln`
+
 **2026-03-15 20:53 (Asia/Taipei) — Implement DX11 delayed readback staging ring**
 
 ### Summary

@@ -1692,7 +1692,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return Dispatcher.InvokeAsync(() => ConfirmResourceBootstrapAsync(settings, intent)).Task.Unwrap();
         }
 
-        var plan = _resourceHostFacade.BuildBootstrapPlan(settings);
+        var plan = _resourceHostFacade.BuildBootstrapPlan(settings, intent);
         if (!plan.RequiresConfirmation)
         {
             return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: false));
