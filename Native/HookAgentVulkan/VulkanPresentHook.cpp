@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
+#include <deque>
 #include <limits>
 #include <mutex>
 #include <string>
@@ -82,7 +83,9 @@ namespace ht::hook::vulkan
         enum class CaptureSlotState : std::uint8_t
         {
             Free = 0,
-            Pending
+            Pending,
+            ReadyToPublish,
+            Publishing
         };
 
         struct CaptureSlot
@@ -104,6 +107,34 @@ namespace ht::hook::vulkan
             std::uint64_t frameSeq = 0;
             std::uint64_t submitQpc = 0;
             CaptureSlotState state = CaptureSlotState::Free;
+        };
+
+        struct VulkanPublishRequest
+        {
+            CaptureSlot* slot = nullptr;
+            VkQueue queue = VK_NULL_HANDLE;
+            std::uint64_t generation = 0;
+            DWORD pid = 0;
+            std::uint64_t frameId = 0;
+            std::uint64_t publishQpc = 0;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            std::uint32_t stride = 0;
+            std::size_t bytes = 0;
+            bool rgbaNeedsSwap = false;
+        };
+
+        struct VulkanPublishCompletion
+        {
+            CaptureSlot* slot = nullptr;
+            VkQueue queue = VK_NULL_HANDLE;
+            std::uint64_t generation = 0;
+            std::uint64_t frameId = 0;
+            std::uint64_t publishQpc = 0;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            std::size_t bytes = 0;
+            bool writeSucceeded = false;
         };
 
         struct DeviceInfo
@@ -147,6 +178,7 @@ namespace ht::hook::vulkan
             std::uint32_t captureRingSize = 0;
             std::uint64_t captureFrameSeq = 0;
             std::uint64_t lastCaptureIssueQpc = 0;
+            std::uint64_t publishGeneration = 0;
         };
 
         struct OverlaySwapchainState
@@ -163,6 +195,7 @@ namespace ht::hook::vulkan
         struct VulkanRuntime
         {
             std::mutex mutex;
+            std::mutex frameWriterMutex;
             std::atomic_bool installed{false};
 
             ipc::SharedFrameWriter frameWriter;
@@ -193,6 +226,7 @@ namespace ht::hook::vulkan
             std::unordered_map<VkSwapchainKHR, SwapchainInfo> swapchains;
             std::unordered_map<VkQueue, QueueGpuState> queueGpuStates;
             std::unordered_map<VkSwapchainKHR, OverlaySwapchainState> overlaySwapchains;
+            std::uint64_t nextPublishGeneration = 1;
 
             std::uint64_t qpcFreq = 0;
             std::uint64_t frameId = 0;
@@ -251,6 +285,18 @@ namespace ht::hook::vulkan
             std::uint64_t capturePublishCount = 0;
             std::uint64_t captureDeferCount = 0;
             std::uint64_t captureBusyCount = 0;
+
+            CRITICAL_SECTION publishQueueLock{};
+            bool publishQueueLockInitialized = false;
+            std::deque<VulkanPublishRequest> publishQueue;
+            std::vector<VulkanPublishCompletion> publishCompleted;
+            HANDLE publishThreadHandle = nullptr;
+            DWORD publishThreadId = 0;
+            HANDLE publishWakeEvent = nullptr;
+            HANDLE publishStopEvent = nullptr;
+            HANDLE publishIdleEvent = nullptr;
+            LONG publishActiveCount = 0;
+            std::vector<std::uint8_t> publishScratch;
         };
 
         VulkanRuntime g_rt;
@@ -845,6 +891,320 @@ namespace ht::hook::vulkan
             st = QueueGpuState{};
         }
 
+        DWORD WINAPI PublishWorkerMain(LPVOID param)
+        {
+            auto* runtime = static_cast<VulkanRuntime*>(param);
+            if (runtime == nullptr)
+            {
+                return 0;
+            }
+
+            HANDLE waitHandles[2] = {runtime->publishStopEvent, runtime->publishWakeEvent};
+            for (;;)
+            {
+                const DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+                if (waitResult == WAIT_OBJECT_0)
+                {
+                    break;
+                }
+
+                if (waitResult != (WAIT_OBJECT_0 + 1))
+                {
+                    continue;
+                }
+
+                for (;;)
+                {
+                    VulkanPublishRequest request{};
+                    {
+                        EnterCriticalSection(&runtime->publishQueueLock);
+                        if (runtime->publishQueue.empty())
+                        {
+                            LeaveCriticalSection(&runtime->publishQueueLock);
+                            break;
+                        }
+
+                        request = runtime->publishQueue.front();
+                        runtime->publishQueue.pop_front();
+                        InterlockedIncrement(&runtime->publishActiveCount);
+                        LeaveCriticalSection(&runtime->publishQueueLock);
+                    }
+
+                    VulkanPublishCompletion completion{};
+                    completion.slot = request.slot;
+                    completion.queue = request.queue;
+                    completion.generation = request.generation;
+                    completion.frameId = request.frameId;
+                    completion.publishQpc = request.publishQpc;
+                    completion.width = request.width;
+                    completion.height = request.height;
+                    completion.bytes = request.bytes;
+
+                    auto* slot = request.slot;
+                    if (slot != nullptr &&
+                        slot->stagingMapped != nullptr &&
+                        request.bytes > 0 &&
+                        request.width > 0 &&
+                        request.height > 0)
+                    {
+                        // WHY: Keep Vulkan object lifetime on the hook thread; the worker only consumes persistent CPU mappings.
+                        const auto* mapped = static_cast<const std::uint8_t*>(slot->stagingMapped);
+                        runtime->publishScratch.resize(request.bytes);
+                        if (!request.rgbaNeedsSwap)
+                        {
+                            std::memcpy(runtime->publishScratch.data(), mapped, request.bytes);
+                        }
+                        else
+                        {
+                            for (std::size_t i = 0; i + 3 < request.bytes; i += 4)
+                            {
+                                runtime->publishScratch[i + 0] = mapped[i + 2];
+                                runtime->publishScratch[i + 1] = mapped[i + 1];
+                                runtime->publishScratch[i + 2] = mapped[i + 0];
+                                runtime->publishScratch[i + 3] = mapped[i + 3];
+                            }
+                        }
+
+                        std::lock_guard<std::mutex> writerLock(runtime->frameWriterMutex);
+                        completion.writeSucceeded = runtime->frameWriter.WriteFrame(
+                            request.pid,
+                            ipc::GraphicsApi::Vulkan,
+                            request.frameId,
+                            request.width,
+                            request.height,
+                            request.stride,
+                            request.publishQpc,
+                            runtime->publishScratch.data(),
+                            request.bytes);
+                    }
+
+                    EnterCriticalSection(&runtime->publishQueueLock);
+                    if (completion.slot != nullptr)
+                    {
+                        runtime->publishCompleted.push_back(completion);
+                    }
+
+                    const LONG activeCount = InterlockedDecrement(&runtime->publishActiveCount);
+                    const bool idle = runtime->publishQueue.empty() && activeCount == 0;
+                    LeaveCriticalSection(&runtime->publishQueueLock);
+
+                    if (idle && runtime->publishIdleEvent != nullptr)
+                    {
+                        SetEvent(runtime->publishIdleEvent);
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        void ClosePublishHandlesLocked(VulkanRuntime& rt)
+        {
+            if (rt.publishThreadHandle != nullptr)
+            {
+                CloseHandle(rt.publishThreadHandle);
+                rt.publishThreadHandle = nullptr;
+            }
+
+            rt.publishThreadId = 0;
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                CloseHandle(rt.publishWakeEvent);
+                rt.publishWakeEvent = nullptr;
+            }
+
+            if (rt.publishStopEvent != nullptr)
+            {
+                CloseHandle(rt.publishStopEvent);
+                rt.publishStopEvent = nullptr;
+            }
+
+            if (rt.publishIdleEvent != nullptr)
+            {
+                CloseHandle(rt.publishIdleEvent);
+                rt.publishIdleEvent = nullptr;
+            }
+
+            if (rt.publishQueueLockInitialized)
+            {
+                DeleteCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = false;
+            }
+        }
+
+        bool EnsurePublishWorkerLocked(VulkanRuntime& rt)
+        {
+            if (rt.publishThreadHandle != nullptr)
+            {
+                return true;
+            }
+
+            if (!rt.publishQueueLockInitialized)
+            {
+                InitializeCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = true;
+            }
+
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.clear();
+            rt.publishCompleted.clear();
+            InterlockedExchange(&rt.publishActiveCount, 0);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            rt.publishWakeEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+            rt.publishStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            rt.publishIdleEvent = CreateEventW(nullptr, TRUE, TRUE, nullptr);
+            if (rt.publishWakeEvent == nullptr || rt.publishStopEvent == nullptr || rt.publishIdleEvent == nullptr)
+            {
+                ClosePublishHandlesLocked(rt);
+                return false;
+            }
+
+            rt.publishThreadHandle = CreateThread(nullptr, 0, &PublishWorkerMain, &rt, 0, &rt.publishThreadId);
+            if (rt.publishThreadHandle == nullptr)
+            {
+                ClosePublishHandlesLocked(rt);
+                return false;
+            }
+
+            return true;
+        }
+
+        void DrainCompletedPublishesLocked(VulkanRuntime& rt)
+        {
+            std::vector<VulkanPublishCompletion> completed;
+            if (rt.publishQueueLockInitialized)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                completed.swap(rt.publishCompleted);
+                LeaveCriticalSection(&rt.publishQueueLock);
+            }
+
+            for (const auto& item : completed)
+            {
+                if (item.slot == nullptr)
+                {
+                    continue;
+                }
+
+                auto queueIt = rt.queueGpuStates.find(item.queue);
+                if (queueIt == rt.queueGpuStates.end() || queueIt->second.publishGeneration != item.generation)
+                {
+                    continue;
+                }
+
+                item.slot->state = CaptureSlotState::Free;
+                item.slot->submitQpc = 0;
+
+                if (!item.writeSucceeded)
+                {
+                    const auto now = NowQpc();
+                    if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastWriteFrameFailQpc, kDiagLogMinIntervalMs))
+                    {
+                        DebugLog(
+                            "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                            static_cast<unsigned long>(GetCurrentProcessId()),
+                            static_cast<unsigned long long>(item.frameId),
+                            item.width,
+                            item.height,
+                            item.bytes,
+                            static_cast<unsigned long>(GetCurrentProcessId()));
+                    }
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "shared_frame_write_failed");
+                    continue;
+                }
+
+                if (ShouldEmitDiagLog(item.publishQpc, rt.qpcFreq, rt.lastWriteFrameOkQpc, kDiagSummaryIntervalMs))
+                {
+                    DebugLog(
+                        "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                        static_cast<unsigned long>(GetCurrentProcessId()),
+                        static_cast<unsigned long long>(item.frameId),
+                        item.width,
+                        item.height,
+                        item.bytes,
+                        static_cast<unsigned long>(GetCurrentProcessId()));
+                }
+
+                rt.lastCaptureQpc = item.publishQpc;
+                rt.lastFrameWriteQpc = item.publishQpc;
+                rt.capturePublishCount++;
+            }
+        }
+
+        void DrainPublishQueueLocked(VulkanRuntime& rt)
+        {
+            if (rt.publishThreadHandle == nullptr || rt.publishIdleEvent == nullptr)
+            {
+                DrainCompletedPublishesLocked(rt);
+                return;
+            }
+
+            (void)WaitForSingleObject(rt.publishIdleEvent, INFINITE);
+            DrainCompletedPublishesLocked(rt);
+        }
+
+        void StopPublishWorkerLocked(VulkanRuntime& rt)
+        {
+            if (rt.publishThreadHandle == nullptr)
+            {
+                DrainCompletedPublishesLocked(rt);
+                ClosePublishHandlesLocked(rt);
+                return;
+            }
+
+            DrainPublishQueueLocked(rt);
+
+            if (rt.publishStopEvent != nullptr)
+            {
+                SetEvent(rt.publishStopEvent);
+            }
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
+            (void)WaitForSingleObject(rt.publishThreadHandle, INFINITE);
+            DrainCompletedPublishesLocked(rt);
+
+            if (rt.publishQueueLockInitialized)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                rt.publishQueue.clear();
+                rt.publishCompleted.clear();
+                InterlockedExchange(&rt.publishActiveCount, 0);
+                LeaveCriticalSection(&rt.publishQueueLock);
+            }
+
+            ClosePublishHandlesLocked(rt);
+        }
+
+        bool EnqueuePublishRequestLocked(VulkanRuntime& rt, const VulkanPublishRequest& request)
+        {
+            if (rt.publishThreadHandle == nullptr || !rt.publishQueueLockInitialized)
+            {
+                return false;
+            }
+
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.push_back(request);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            if (rt.publishIdleEvent != nullptr)
+            {
+                ResetEvent(rt.publishIdleEvent);
+            }
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
+            return true;
+        }
+
         void DestroyOverlaySwapchainState(VkDevice device, OverlaySwapchainState& st)
         {
             if (device == VK_NULL_HANDLE)
@@ -919,6 +1279,9 @@ namespace ht::hook::vulkan
 
         void RemoveDeviceStateLocked(VulkanRuntime& rt, VkDevice device)
         {
+            // WHY: Queue/device teardown must not race a worker that still reads old staging mappings.
+            DrainPublishQueueLocked(rt);
+
             for (auto it = rt.queueGpuStates.begin(); it != rt.queueGpuStates.end();)
             {
                 if (it->second.device == device)
@@ -967,6 +1330,7 @@ namespace ht::hook::vulkan
 
         void ResetRuntimeLocked(VulkanRuntime& rt)
         {
+            StopPublishWorkerLocked(rt);
             ShutdownImGuiLocked(rt);
 
             for (auto& entry : rt.overlaySwapchains)
@@ -986,6 +1350,7 @@ namespace ht::hook::vulkan
             rt.queues.clear();
             rt.swapchains.clear();
             rt.devices.clear();
+            rt.nextPublishGeneration = 1;
 
             rt.frameWriter.Reset();
             rt.configReader.Reset();
@@ -1038,6 +1403,7 @@ namespace ht::hook::vulkan
             rt.capturePublishCount = 0;
             rt.captureDeferCount = 0;
             rt.captureBusyCount = 0;
+            rt.publishScratch.clear();
             g_loggedFirstInstanceProcAddrHit.store(false);
             g_loggedFirstDeviceProcAddrHit.store(false);
             g_loggedFirstCreateDeviceHit.store(false);
@@ -1607,6 +1973,8 @@ namespace ht::hook::vulkan
                 return true;
             }
 
+            // WHY: Recreate can invalidate slot storage and persistent mappings, so publish must be fully drained first.
+            DrainPublishQueueLocked(rt);
             DestroyQueueGpuState(state);
             state.device = device;
             state.queueFamily = queueInfo.familyIndex;
@@ -1615,6 +1983,11 @@ namespace ht::hook::vulkan
             state.format = swapInfo.format;
             state.stagingBytes = requiredBytes;
             state.captureRingSize = captureRingSize;
+            state.publishGeneration = rt.nextPublishGeneration++;
+            if (state.publishGeneration == 0)
+            {
+                state.publishGeneration = rt.nextPublishGeneration++;
+            }
 
             if (!CreateQueueSubmitResources(device, queueInfo.familyIndex, state.commandPool, state.commandBuffer, state.fence))
             {
@@ -2185,6 +2558,7 @@ namespace ht::hook::vulkan
                 return false;
             }
             auto& gpu = queueStateIt->second;
+            DrainCompletedPublishesLocked(rt);
             const bool delayedReadbackEnabled = !IsDelayedReadbackDisabled();
             const bool shouldCapture = ShouldCaptureNowLocked(rt, gpu, rt.lastPresentQpc);
             bool useImmediateCapture = shouldCapture;
@@ -2289,8 +2663,7 @@ namespace ht::hook::vulkan
                     const auto fenceStatus = vkGetFenceStatus(gpu.device, pendingSlot->fence);
                     if (fenceStatus == VK_SUCCESS)
                     {
-                        const auto* mapped = static_cast<const std::uint8_t*>(pendingSlot->stagingMapped);
-                        if (mapped == nullptr)
+                        if (pendingSlot->stagingMapped == nullptr)
                         {
                             char detail[128]{};
                             (void)_snprintf_s(
@@ -2307,58 +2680,29 @@ namespace ht::hook::vulkan
                             return false;
                         }
 
-                        const auto bytes = static_cast<std::size_t>(pendingSlot->stagingBytes);
-                        if (gpu.scratch.size() < bytes)
-                        {
-                            gpu.scratch.resize(bytes);
-                        }
+                        const auto frameId = ++rt.frameId;
+                        VulkanPublishRequest request{};
+                        request.slot = pendingSlot;
+                        request.queue = queue;
+                        request.generation = gpu.publishGeneration;
+                        request.pid = GetCurrentProcessId();
+                        request.frameId = frameId;
+                        request.publishQpc = NowQpc();
+                        request.width = pendingSlot->width;
+                        request.height = pendingSlot->height;
+                        request.stride = pendingSlot->width * 4u;
+                        request.bytes = static_cast<std::size_t>(pendingSlot->stagingBytes);
+                        request.rgbaNeedsSwap = pendingSlot->rgbaNeedsSwap;
 
-                        const auto copyBeginQpc = NowQpc();
-                        if (!pendingSlot->rgbaNeedsSwap)
+                        pendingSlot->state = CaptureSlotState::Publishing;
+                        if (!EnqueuePublishRequestLocked(rt, request))
                         {
-                            std::memcpy(gpu.scratch.data(), mapped, bytes);
-                        }
-                        else
-                        {
-                            for (std::size_t i = 0; i + 3 < bytes; i += 4)
-                            {
-                                gpu.scratch[i + 0] = mapped[i + 2];
-                                gpu.scratch[i + 1] = mapped[i + 1];
-                                gpu.scratch[i + 2] = mapped[i + 0];
-                                gpu.scratch[i + 3] = mapped[i + 3];
-                            }
-                        }
-                        perfCpuCopyDurationQpc += (NowQpc() - copyBeginQpc);
-
-                        const auto pid = GetCurrentProcessId();
-                        const auto ts = NowQpc();
-                        const std::uint32_t stride = pendingSlot->width * 4u;
-                        const auto writeBeginQpc = NowQpc();
-                        const bool wrote = rt.frameWriter.WriteFrame(
-                            pid,
-                            ipc::GraphicsApi::Vulkan,
-                            ++rt.frameId,
-                            pendingSlot->width,
-                            pendingSlot->height,
-                            stride,
-                            ts,
-                            gpu.scratch.data(),
-                            bytes);
-                        perfWriteDurationQpc += (NowQpc() - writeBeginQpc);
-                        if (!wrote)
-                        {
-                            LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "shared_frame_write_failed");
                             pendingSlot->state = CaptureSlotState::Free;
                             pendingSlot->submitQpc = 0;
-                            emitPresentPerfLog("deferred_write_failed");
+                            LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "publish_enqueue_failed");
+                            emitPresentPerfLog("deferred_enqueue_failed");
                             return false;
                         }
-
-                        rt.lastCaptureQpc = ts;
-                        rt.lastFrameWriteQpc = ts;
-                        rt.capturePublishCount++;
-                        pendingSlot->state = CaptureSlotState::Free;
-                        pendingSlot->submitQpc = 0;
                     }
                     else if (fenceStatus == VK_NOT_READY)
                     {
@@ -2763,16 +3107,21 @@ namespace ht::hook::vulkan
             const auto ts = NowQpc();
             const std::uint32_t stride = gpu.width * 4u;
             const auto writeBeginQpc = NowQpc();
-            const bool wrote = rt.frameWriter.WriteFrame(
-                pid,
-                ipc::GraphicsApi::Vulkan,
-                ++rt.frameId,
-                gpu.width,
-                gpu.height,
-                stride,
-                ts,
-                gpu.scratch.data(),
-                bytes);
+            const auto frameId = ++rt.frameId;
+            bool wrote = false;
+            {
+                std::lock_guard<std::mutex> writerLock(rt.frameWriterMutex);
+                wrote = rt.frameWriter.WriteFrame(
+                    pid,
+                    ipc::GraphicsApi::Vulkan,
+                    frameId,
+                    gpu.width,
+                    gpu.height,
+                    stride,
+                    ts,
+                    gpu.scratch.data(),
+                    bytes);
+            }
             perfWriteDurationQpc = NowQpc() - writeBeginQpc;
             if (!wrote)
             {
@@ -2782,7 +3131,7 @@ namespace ht::hook::vulkan
                     DebugLog(
                         "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
                         static_cast<unsigned long>(pid),
-                        static_cast<unsigned long long>(rt.frameId),
+                        static_cast<unsigned long long>(frameId),
                         gpu.width,
                         gpu.height,
                         bytes,
@@ -2798,7 +3147,7 @@ namespace ht::hook::vulkan
                 DebugLog(
                     "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
                     static_cast<unsigned long>(pid),
-                    static_cast<unsigned long long>(rt.frameId),
+                    static_cast<unsigned long long>(frameId),
                     gpu.width,
                     gpu.height,
                     bytes,
@@ -3379,6 +3728,7 @@ namespace ht::hook::vulkan
                     (void)SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex);
                 }
 
+                DrainCompletedPublishesLocked(rt);
                 PublishStatusLocked(rt);
                 original = rt.originalQueuePresentKHR;
             }
@@ -3525,6 +3875,17 @@ namespace ht::hook::vulkan
             (void)MH_Uninitialize();
             DebugLogInstall(
                 "stage=hook_vulkan event=install_hook_result result=fail reason=no_exports_hooked pid=%lu.",
+                static_cast<unsigned long>(GetCurrentProcessId()));
+            return false;
+        }
+
+        if (!EnsurePublishWorkerLocked(rt))
+        {
+            (void)MH_DisableHook(MH_ALL_HOOKS);
+            (void)MH_Uninitialize();
+            ResetRuntimeLocked(rt);
+            DebugLogInstall(
+                "stage=hook_vulkan event=install_hook_result result=fail reason=publish_worker_start_failed pid=%lu.",
                 static_cast<unsigned long>(GetCurrentProcessId()));
             return false;
         }

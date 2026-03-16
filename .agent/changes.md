@@ -27,6 +27,72 @@
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
 
+**2026-03-16 13:34 (Asia/Taipei) — Implement Vulkan off-Present publish worker**
+
+### Summary
+- Vulkan delayed capture path の CPU publish を `vkQueuePresentKHR` から切り離し、Win32 publish worker へ移した。
+
+### Context / Goal
+- `Doc/GraphicsHook_Vulkan_OffPresentPublish_Implementation_Plan.md` に沿って、Vulkan hook でも OBS 方針の「off-Present publish」を実装する必要があった。
+- 現行 delayed path は fence signaled 後の CPU copy と `SharedFrameWriter.WriteFrame(...)` を present hook 内で実行しており、1% low 改善のため hot path から外したかった。
+
+### Changes
+- `VulkanPresentHook.cpp` に Win32 thread/event ベースの publish worker、publish queue、completed queue、drain/stop helper を追加した。
+- delayed capture path を enqueue 化し、worker が persistently mapped staging を CPU copy / swizzle / `WriteFrame` する構成へ変更した。
+- queue/device teardown 前に publish drain を行うようにし、`QueueGpuState` に publish generation を持たせた。
+- immediate capture path の `WriteFrame` も `frameWriterMutex` 経由で排他するよう調整した。
+- `dllmain.cpp` に process-exit では graceful shutdown を `DllMain` から行わない理由をコメントで補足した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Vulkan off-Present publish worker、slot state 拡張、delayed path enqueue 化、drain/teardown 順序を実装した。
+- `Native/HookAgentVulkan/dllmain.cpp` — process-exit 中の worker shutdown 方針をコメントで明記した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- Vulkan delayed capture では `vkQueuePresentKHR` が CPU publish を直接行わず、worker が shared memory publish を担当するようになった。
+- queue/device reset や uninstall 前に publish queue を drain するため、古い staging mapping を worker が触る競合を避ける挙動になった。
+- immediate path は残るが、`SharedFrameWriter` は worker と排他して使うようになった。
+
+### Risk & Mitigation
+- Risk: publish completion は次回 present または drain 時に回収されるため、slot 解放が 1 フレーム遅れる。
+- Mitigation: completed queue を present 冒頭と status publish 前に回収し、reset/uninstall 時は明示 drain を通す。
+- Risk: `build_x86` では `HookAgentVulkan.vcxproj` が生成されておらず、x86 単体ターゲット確認ができない。
+- Mitigation: x64 `HookAgentVulkan` のビルド成功を確認し、`build_x86` では project file 非生成を記録した。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Debug --target HookAgentVulkan -j 4`
+- `cmake --build .\\Native\\build_x86 --config Debug -j 4`
+- `Get-ChildItem .\\Native\\build_x86 -Recurse -Filter *Vulkan*.vcxproj` で x86 側に `HookAgentVulkan.vcxproj` が生成されていないことを確認
+
+**2026-03-16 15:15 (Asia/Taipei) — Add DX9 two-phase off-Present publish plan**
+
+### Summary
+- DX9 hook 向けに、publish 分離と staging ring 化を段階導入する 2 段階実装案を `Doc/` に追加した。
+
+### Context / Goal
+- DX9 でも DX11/Vulkan と同じ方向で `Present` hot path を軽くする方針が必要だった。
+- まずは `LockRect` 後の CPU publish を外し、その後 `stagingSurface` を ring 化する順序で整理したかった。
+
+### Changes
+- 第1段階として Win32 publish worker で `memcpy + SharedFrameWriter.WriteFrame(...)` を `Present` 外へ逃がす案を整理した。
+- 第2段階として単発 `stagingSurface` を ring 化し、publish 中でも次の capture issue を進める案を整理した。
+- DX9 固有の制約として `GetRenderTargetData` 自体は初手では残ることを明記した。
+
+### Files Touched
+- `Doc/GraphicsHook_DX9_TwoPhase_OffPresentPublish_Plan.md` — DX9 向け 2 段階 off-Present publish 実装案を新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はまだない。
+- DX9 最適化の着手順序と、DX11/Vulkan と揃えるべき worker lifecycle 方針が明確になった。
+
+### Risk & Mitigation
+- Risk: DX9 は GPU readback を即座に外し切れず、第1段階だけでは改善幅が限定的になる。
+- Mitigation: plan で第2段階の staging ring 化までをセットで定義し、段階的に重なりを増やす方針にした。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+
 **2026-03-16 12:09 (Asia/Taipei) — Replace DX11 publish worker std::thread with Win32 worker**
 
 ### Summary
@@ -59,3 +125,32 @@
 - `cmake --build .\\Native\\build --config Debug --target HookAgentDx11 -j 4`
 - `cmake --build .\\Native\\build_x86 --config Debug --target HookAgentDx11 -j 4`
 - `rg -n "std::thread|condition_variable" .\\Native\\HookAgentDx11` で DX11 hook から該当依存が消えていることを確認
+
+**2026-03-16 13:11 (Asia/Taipei) — Add Vulkan off-Present publish implementation plan**
+
+### Summary
+- OBS 方針書と現行 DX11 実装を踏まえた Vulkan off-Present publish 実装案を `Doc/` に追加した。
+
+### Context / Goal
+- OBS 参照方針の「方針 A: まずは off-Present publish を最優先にする」を Vulkan hook に落とし込む必要があった。
+- 現行 Vulkan delayed path は `vkQueuePresentKHR` 内で CPU copy と `SharedFrameWriter.WriteFrame(...)` をまだ実行しているため、DX11 と同様の責務分離案を整理したかった。
+
+### Changes
+- Vulkan delayed readback の現状、immediate path の位置付け、DX11 実装から流用すべき worker lifecycle を整理した。
+- Win32 worker + publish queue + completed cleanup + generation 管理を軸にした Vulkan 実装案を書いた。
+- queue/device destroy、runtime reset、process exit での drain 順序と stale request 廃棄方針を明記した。
+
+### Files Touched
+- `Doc/GraphicsHook_Vulkan_OffPresentPublish_Implementation_Plan.md` — Vulkan hook 向け off-Present publish 実装案を新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はまだない。
+- Vulkan hook でどこまでを hook thread に残し、どこからを worker へ出すかの実装方針が明確になった。
+
+### Risk & Mitigation
+- Risk: Vulkan queue/device destroy と worker publish の競合を文書化だけで済ませると、実装時に drain 順序を落としやすい。
+- Mitigation: plan 内で generation bump と `DestroyQueueGpuState` 前 drain を必須手順として明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
