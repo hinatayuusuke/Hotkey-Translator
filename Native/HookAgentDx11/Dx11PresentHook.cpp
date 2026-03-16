@@ -3,13 +3,16 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <cstdio>
 #include <cstdint>
 #include <cinttypes>
 #include <cstring>
-#include <string>
+#include <deque>
 #include <iterator>
 #include <mutex>
+#include <string>
+#include <thread>
 #include <vector>
 
 #include <d3d11.h>
@@ -103,6 +106,7 @@ namespace ht::hook::dx11
         {
             Free = 0,
             Pending = 1,
+            ReadyToPublish = 2,
         };
 
         struct CaptureSlot
@@ -113,6 +117,8 @@ namespace ht::hook::dx11
             DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
             std::uint64_t issuedQpc = 0;
             std::uint64_t sourceFrameSeq = 0;
+            D3D11_MAPPED_SUBRESOURCE mapped{};
+            bool mappedValid = false;
             CaptureSlotState state = CaptureSlotState::Free;
         };
 
@@ -125,6 +131,13 @@ namespace ht::hook::dx11
             bool slotBusy = false;
             bool mapDeferred = false;
             bool issued = false;
+        };
+
+        struct Dx11PublishRequest
+        {
+            CaptureSlot* slot = nullptr;
+            DWORD pid = 0;
+            std::uint64_t publishQpc = 0;
         };
 
         struct OverlayFontSet
@@ -169,8 +182,9 @@ namespace ht::hook::dx11
             std::uint64_t captureSourceFrameSeq = 0;
 
             std::vector<std::uint8_t> scratch;
-            std::uint64_t frameId = 0;
-            std::uint64_t lastCaptureQpc = 0;
+            std::vector<std::uint8_t> publishScratch;
+            std::atomic_ullong frameId{0};
+            std::atomic_ullong lastCaptureQpc{0};
             std::uint64_t captureIntervalQpc = 0;
             std::uint64_t qpcFreq = 0;
             std::uint64_t lastConfigQpc = 0;
@@ -224,6 +238,14 @@ namespace ht::hook::dx11
             std::uintptr_t lastCaptureOmTexPtr = 0;
             bool lastCaptureUsedOmRtv = false;
             bool lastCaptureOmMatchesGetBuffer = false;
+
+            std::mutex publishMutex;
+            std::condition_variable publishCv;
+            std::deque<Dx11PublishRequest> publishQueue;
+            std::vector<CaptureSlot*> publishCompleted;
+            std::thread publishThread;
+            bool publishStop = false;
+            std::uint32_t publishActiveCount = 0;
         };
 
         Dx11Runtime g_rt;
@@ -863,8 +885,235 @@ namespace ht::hook::dx11
             return std::clamp(ReadEnvU32(L"HT_HOOK_CAPTURE_RING_SIZE", 3), 2u, 8u);
         }
 
+        bool TryResolveCaptureFormat(DXGI_FORMAT format, bool& rgbaNeedsSwap)
+        {
+            rgbaNeedsSwap = false;
+            switch (format)
+            {
+            case DXGI_FORMAT_B8G8R8A8_UNORM:
+            case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+                return true;
+            case DXGI_FORMAT_R8G8B8A8_UNORM:
+            case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+                rgbaNeedsSwap = true;
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        void PublishWorkerMain(Dx11Runtime* runtime)
+        {
+            if (runtime == nullptr)
+            {
+                return;
+            }
+
+            for (;;)
+            {
+                Dx11PublishRequest request{};
+                {
+                    std::unique_lock<std::mutex> lock(runtime->publishMutex);
+                    runtime->publishCv.wait(lock, [&]
+                    {
+                        return runtime->publishStop || !runtime->publishQueue.empty();
+                    });
+
+                    if (runtime->publishQueue.empty())
+                    {
+                        if (runtime->publishStop)
+                        {
+                            break;
+                        }
+
+                        continue;
+                    }
+
+                    request = runtime->publishQueue.front();
+                    runtime->publishQueue.pop_front();
+                    runtime->publishActiveCount++;
+                }
+
+                auto* slot = request.slot;
+                if (slot != nullptr && slot->mappedValid && slot->mapped.pData != nullptr)
+                {
+                    bool rgbaNeedsSwap = false;
+                    if (TryResolveCaptureFormat(slot->format, rgbaNeedsSwap))
+                    {
+                        const std::uint32_t width = slot->width;
+                        const std::uint32_t height = slot->height;
+                        const std::uint32_t stride = static_cast<std::uint32_t>(slot->mapped.RowPitch);
+                        const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
+
+                        runtime->publishScratch.resize(payloadBytes);
+                        std::memcpy(runtime->publishScratch.data(), slot->mapped.pData, payloadBytes);
+
+                        if (rgbaNeedsSwap)
+                        {
+                            const std::uint32_t rowBytes = width * 4;
+                            for (std::uint32_t y = 0; y < height; y++)
+                            {
+                                auto* row = runtime->publishScratch.data() + (static_cast<std::size_t>(y) * stride);
+                                for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                                {
+                                    std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
+                                }
+                            }
+                        }
+
+                        const auto frameId = runtime->frameId.fetch_add(1, std::memory_order_relaxed) + 1;
+                        const bool wrote = runtime->frameWriter.WriteFrame(
+                            request.pid,
+                            ht::hook::ipc::GraphicsApi::Dx11,
+                            frameId,
+                            width,
+                            height,
+                            stride,
+                            request.publishQpc,
+                            runtime->publishScratch.data(),
+                            runtime->publishScratch.size());
+                        if (wrote)
+                        {
+                            runtime->lastCaptureQpc.store(request.publishQpc, std::memory_order_release);
+                        }
+                    }
+                }
+
+                {
+                    std::lock_guard<std::mutex> lock(runtime->publishMutex);
+                    if (slot != nullptr)
+                    {
+                        runtime->publishCompleted.push_back(slot);
+                    }
+
+                    if (runtime->publishActiveCount > 0)
+                    {
+                        runtime->publishActiveCount--;
+                    }
+                }
+
+                runtime->publishCv.notify_all();
+            }
+        }
+
+        bool EnsurePublishWorkerLocked(Dx11Runtime& rt)
+        {
+            if (rt.publishThread.joinable())
+            {
+                return true;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                rt.publishStop = false;
+                rt.publishQueue.clear();
+                rt.publishCompleted.clear();
+                rt.publishActiveCount = 0;
+            }
+
+            try
+            {
+                rt.publishThread = std::thread(&PublishWorkerMain, &rt);
+                return true;
+            }
+            catch (...)
+            {
+                return false;
+            }
+        }
+
+        void CleanupCompletedCaptureSlotsLocked(Dx11Runtime& rt)
+        {
+            std::vector<CaptureSlot*> completed;
+            {
+                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                completed.swap(rt.publishCompleted);
+            }
+
+            for (auto* slot : completed)
+            {
+                if (slot == nullptr)
+                {
+                    continue;
+                }
+
+                // WHY: Keep Unmap on the Present thread so the immediate context does not cross thread boundaries.
+                if (slot->mappedValid && rt.context != nullptr && slot->texture != nullptr)
+                {
+                    rt.context->Unmap(slot->texture, 0);
+                }
+
+                slot->mapped = {};
+                slot->mappedValid = false;
+                slot->issuedQpc = 0;
+                slot->sourceFrameSeq = 0;
+                slot->state = CaptureSlotState::Free;
+            }
+        }
+
+        void DrainPublishQueueLocked(Dx11Runtime& rt)
+        {
+            if (!rt.publishThread.joinable())
+            {
+                CleanupCompletedCaptureSlotsLocked(rt);
+                return;
+            }
+
+            std::unique_lock<std::mutex> lock(rt.publishMutex);
+            rt.publishCv.wait(lock, [&]
+            {
+                return rt.publishQueue.empty() && rt.publishActiveCount == 0;
+            });
+            lock.unlock();
+
+            CleanupCompletedCaptureSlotsLocked(rt);
+        }
+
+        void StopPublishWorkerLocked(Dx11Runtime& rt)
+        {
+            if (!rt.publishThread.joinable())
+            {
+                CleanupCompletedCaptureSlotsLocked(rt);
+                return;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                rt.publishStop = true;
+            }
+            rt.publishCv.notify_all();
+            rt.publishThread.join();
+
+            {
+                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                rt.publishStop = false;
+                rt.publishQueue.clear();
+                rt.publishActiveCount = 0;
+            }
+
+            CleanupCompletedCaptureSlotsLocked(rt);
+        }
+
+        bool EnqueuePublishRequestLocked(Dx11Runtime& rt, const Dx11PublishRequest& request)
+        {
+            if (!rt.publishThread.joinable())
+            {
+                return false;
+            }
+
+            {
+                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                rt.publishQueue.push_back(request);
+            }
+
+            rt.publishCv.notify_one();
+            return true;
+        }
+
         void ResetCaptureRingLocked(Dx11Runtime& rt)
         {
+            DrainPublishQueueLocked(rt);
+
             if (rt.context != nullptr)
             {
                 rt.context->Flush();
@@ -880,6 +1129,8 @@ namespace ht::hook::dx11
                 slot.format = DXGI_FORMAT_UNKNOWN;
                 slot.issuedQpc = 0;
                 slot.sourceFrameSeq = 0;
+                slot.mapped = {};
+                slot.mappedValid = false;
                 slot.state = CaptureSlotState::Free;
             }
 
@@ -1016,8 +1267,8 @@ namespace ht::hook::dx11
             // This is still useful for diagnosing "mapping exists but capture fails due to unexpected format".
             st.backBufferDxgiFormat = static_cast<std::uint32_t>(rt.stagingFormat); // best-effort in v1
             st.stagingDxgiFormat = static_cast<std::uint32_t>(rt.stagingFormat);
-            st.lastFrameIdWritten = rt.frameId;
-            st.lastFrameWriteQpc = rt.lastCaptureQpc;
+            st.lastFrameIdWritten = rt.frameId.load(std::memory_order_relaxed);
+            st.lastFrameWriteQpc = rt.lastCaptureQpc.load(std::memory_order_relaxed);
             // COMPAT: Keep v1 status fields populated from v2 overlay updates until status schema migration.
             st.lastCmdQpc = rt.lastOverlayV2Qpc;
             st.lastCmdCount = static_cast<std::uint32_t>(rt.overlayV2Blocks.size());
@@ -2014,17 +2265,18 @@ namespace ht::hook::dx11
             }
             if (mapHr != S_OK || mapped.pData == nullptr)
             {
+                if (mapHr == S_OK)
+                {
+                    rt.context->Unmap(slot->texture, 0);
+                }
                 slot->state = CaptureSlotState::Free;
                 slot->issuedQpc = 0;
                 slot->sourceFrameSeq = 0;
                 return false;
             }
 
-            // NOTE: We standardize on BGRA8 in v1 (Windows bitmap compatibility).
-            // Some titles use RGBA8; in that case we swizzle to BGRA on CPU after readback.
-            const bool isBgra8 = (slot->format == DXGI_FORMAT_B8G8R8A8_UNORM || slot->format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB);
-            const bool isRgba8 = (slot->format == DXGI_FORMAT_R8G8B8A8_UNORM || slot->format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
-            if (!isBgra8 && !isRgba8)
+            bool rgbaNeedsSwap = false;
+            if (!TryResolveCaptureFormat(slot->format, rgbaNeedsSwap))
             {
                 rt.context->Unmap(slot->texture, 0);
                 slot->state = CaptureSlotState::Free;
@@ -2033,51 +2285,31 @@ namespace ht::hook::dx11
                 return false;
             }
 
-            const std::uint32_t width = slot->width;
-            const std::uint32_t height = slot->height;
-            const std::uint32_t stride = static_cast<std::uint32_t>(mapped.RowPitch);
-            const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
+            slot->mapped = mapped;
+            slot->mappedValid = true;
+            slot->state = CaptureSlotState::ReadyToPublish;
 
-            rt.scratch.resize(payloadBytes);
-            std::memcpy(rt.scratch.data(), mapped.pData, payloadBytes);
-            rt.context->Unmap(slot->texture, 0);
-
-            if (isRgba8)
-            {
-                const std::uint32_t rowBytes = width * 4;
-                for (std::uint32_t y = 0; y < height; y++)
+            const bool enqueued = EnqueuePublishRequestLocked(
+                rt,
+                Dx11PublishRequest
                 {
-                    auto* row = rt.scratch.data() + (static_cast<std::size_t>(y) * stride);
-                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
-                    {
-                        std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
-                    }
-                }
-            }
-
-            const DWORD pid = GetCurrentProcessId();
-            const auto frameId = ++rt.frameId;
-            const bool ok = rt.frameWriter.WriteFrame(
-                pid,
-                ht::hook::ipc::GraphicsApi::Dx11,
-                frameId,
-                width,
-                height,
-                stride,
-                nowQpc,
-                rt.scratch.data(),
-                rt.scratch.size());
-
-            slot->state = CaptureSlotState::Free;
-            slot->issuedQpc = 0;
-            slot->sourceFrameSeq = 0;
-            if (ok)
+                    slot,
+                    GetCurrentProcessId(),
+                    nowQpc,
+                });
+            if (!enqueued)
             {
-                rt.lastCaptureQpc = nowQpc;
-                perf.published = true;
+                rt.context->Unmap(slot->texture, 0);
+                slot->mapped = {};
+                slot->mappedValid = false;
+                slot->state = CaptureSlotState::Free;
+                slot->issuedQpc = 0;
+                slot->sourceFrameSeq = 0;
+                return false;
             }
 
-            return ok;
+            perf.published = true;
+            return true;
         }
 
         bool TryIssueCaptureCopyLocked(Dx11Runtime& rt, ID3D11Texture2D* captureTex, std::uint64_t nowQpc, CapturePerfBreakdown& perf)
@@ -2141,6 +2373,8 @@ namespace ht::hook::dx11
                 }
                 return false;
             }
+
+            CleanupCompletedCaptureSlotsLocked(rt);
 
             const std::uint32_t captureSourceMode = ReadEnvU32(L"HT_HOOK_CAPTURE_FROM_OM_RTV", 0);
             const bool disableDelayedReadback = ReadEnvU32(L"HT_HOOK_DISABLE_DELAYED_READBACK", 0) != 0;
@@ -2290,7 +2524,7 @@ namespace ht::hook::dx11
                             }
 
                             const DWORD pid = GetCurrentProcessId();
-                            const auto frameId = ++rt.frameId;
+                            const auto frameId = rt.frameId.fetch_add(1, std::memory_order_relaxed) + 1;
                             published = rt.frameWriter.WriteFrame(
                                 pid,
                                 ht::hook::ipc::GraphicsApi::Dx11,
@@ -2303,7 +2537,7 @@ namespace ht::hook::dx11
                                 rt.scratch.size());
                             if (published)
                             {
-                                rt.lastCaptureQpc = now;
+                                rt.lastCaptureQpc.store(now, std::memory_order_release);
                                 perf.published = true;
                             }
                         }
@@ -2757,16 +2991,28 @@ namespace ht::hook::dx11
         g_rt.hookSuccessIndicatorArmed = true;
         g_rt.hookSuccessIndicatorDone = false;
         g_rt.hookSuccessIndicatorStartQpc = 0;
+        g_rt.frameId.store(0, std::memory_order_relaxed);
+        g_rt.lastCaptureQpc.store(0, std::memory_order_relaxed);
         g_rt.activePresentKind = ReadEnvU32(L"HT_HOOK_PRESENT_KIND", 0);
         if (g_rt.activePresentKind != 0 && g_rt.activePresentKind != 1 && g_rt.activePresentKind != 2)
         {
             g_rt.activePresentKind = 0;
         }
 
+        if (!EnsurePublishWorkerLocked(g_rt))
+        {
+            return false;
+        }
+        const bool publishWorkerStarted = true;
+
         void** vtable = nullptr;
         void** vtable1 = nullptr;
         if (!CreateDummySwapChainAndGetVtables(&vtable, &vtable1) || vtable == nullptr)
         {
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
@@ -2777,12 +3023,20 @@ namespace ht::hook::dx11
         const MH_STATUS init = MH_Initialize();
         if (init != MH_OK && init != MH_ERROR_ALREADY_INITIALIZED)
         {
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
         // WHY: Keep hooks explicitly paired with stored targets to support safe disable/remove at detach time.
         if (MH_CreateHook(g_rt.presentTarget, reinterpret_cast<LPVOID>(&HookedPresent), reinterpret_cast<LPVOID*>(&g_rt.originalPresent)) != MH_OK)
         {
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
@@ -2791,6 +3045,10 @@ namespace ht::hook::dx11
             if (MH_CreateHook(g_rt.present1Target, reinterpret_cast<LPVOID>(&HookedPresent1), reinterpret_cast<LPVOID*>(&g_rt.originalPresent1)) != MH_OK)
             {
                 (void)MH_RemoveHook(g_rt.presentTarget);
+                if (publishWorkerStarted)
+                {
+                    StopPublishWorkerLocked(g_rt);
+                }
                 return false;
             }
         }
@@ -2802,6 +3060,10 @@ namespace ht::hook::dx11
                 (void)MH_RemoveHook(g_rt.present1Target);
             }
             (void)MH_RemoveHook(g_rt.presentTarget);
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
@@ -2813,6 +3075,10 @@ namespace ht::hook::dx11
                 (void)MH_RemoveHook(g_rt.present1Target);
             }
             (void)MH_RemoveHook(g_rt.presentTarget);
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
@@ -2824,6 +3090,10 @@ namespace ht::hook::dx11
                 (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
                 (void)MH_RemoveHook(g_rt.present1Target);
                 (void)MH_RemoveHook(g_rt.presentTarget);
+                if (publishWorkerStarted)
+                {
+                    StopPublishWorkerLocked(g_rt);
+                }
                 return false;
             }
         }
@@ -2837,6 +3107,10 @@ namespace ht::hook::dx11
                 (void)MH_RemoveHook(g_rt.present1Target);
             }
             (void)MH_RemoveHook(g_rt.presentTarget);
+            if (publishWorkerStarted)
+            {
+                StopPublishWorkerLocked(g_rt);
+            }
             return false;
         }
 
@@ -2873,11 +3147,13 @@ namespace ht::hook::dx11
             (void)MH_RemoveHook(g_rt.resizeBuffersTarget);
         }
 
+        StopPublishWorkerLocked(g_rt);
         ResetDeviceStateLocked(g_rt);
         g_rt.frameWriter.Reset();
         g_rt.configReader.Reset();
         g_rt.statusWriter.Reset();
         g_rt.scratch.clear();
+        g_rt.publishScratch.clear();
 
         g_rt.presentTarget = nullptr;
         g_rt.present1Target = nullptr;
@@ -2889,6 +3165,8 @@ namespace ht::hook::dx11
         g_rt.presentCount = 0;
         g_rt.lastPresentQpc = 0;
         g_rt.lastPresentKind = 0;
+        g_rt.frameId.store(0, std::memory_order_relaxed);
+        g_rt.lastCaptureQpc.store(0, std::memory_order_relaxed);
         g_rt.lastOverlayTraceDrawSeq = 0;
         g_rt.lastOverlayCanvasMismatchSeq = 0;
         g_rt.hookSuccessIndicatorArmed = false;
