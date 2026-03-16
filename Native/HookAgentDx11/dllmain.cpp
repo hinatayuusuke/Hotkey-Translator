@@ -35,6 +35,8 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID reserved)
             {
                 UninstallDx11Hook();
             }
+            // WHY: During process exit (`reserved != nullptr`), avoid graceful worker shutdown from DllMain.
+            // The OS tears the process down anyway, and waiting here risks loader-lock issues.
             break;
         default:
             break;

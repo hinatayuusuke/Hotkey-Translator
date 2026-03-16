@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
-#include <condition_variable>
 #include <cstdio>
 #include <cstdint>
 #include <cinttypes>
@@ -12,7 +11,6 @@
 #include <iterator>
 #include <mutex>
 #include <string>
-#include <thread>
 #include <vector>
 
 #include <d3d11.h>
@@ -239,13 +237,16 @@ namespace ht::hook::dx11
             bool lastCaptureUsedOmRtv = false;
             bool lastCaptureOmMatchesGetBuffer = false;
 
-            std::mutex publishMutex;
-            std::condition_variable publishCv;
+            CRITICAL_SECTION publishQueueLock{};
+            bool publishQueueLockInitialized = false;
             std::deque<Dx11PublishRequest> publishQueue;
             std::vector<CaptureSlot*> publishCompleted;
-            std::thread publishThread;
-            bool publishStop = false;
-            std::uint32_t publishActiveCount = 0;
+            HANDLE publishThreadHandle = nullptr;
+            DWORD publishThreadId = 0;
+            HANDLE publishWakeEvent = nullptr;
+            HANDLE publishStopEvent = nullptr;
+            HANDLE publishIdleEvent = nullptr;
+            LONG publishActiveCount = 0;
         };
 
         Dx11Runtime g_rt;
@@ -902,132 +903,191 @@ namespace ht::hook::dx11
             }
         }
 
-        void PublishWorkerMain(Dx11Runtime* runtime)
+        DWORD WINAPI PublishWorkerMain(LPVOID param)
         {
+            auto* runtime = static_cast<Dx11Runtime*>(param);
             if (runtime == nullptr)
             {
-                return;
+                return 0;
             }
 
+            HANDLE waitHandles[2] = {runtime->publishStopEvent, runtime->publishWakeEvent};
             for (;;)
             {
-                Dx11PublishRequest request{};
+                const DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+                if (waitResult == WAIT_OBJECT_0)
                 {
-                    std::unique_lock<std::mutex> lock(runtime->publishMutex);
-                    runtime->publishCv.wait(lock, [&]
-                    {
-                        return runtime->publishStop || !runtime->publishQueue.empty();
-                    });
+                    break;
+                }
 
-                    if (runtime->publishQueue.empty())
+                if (waitResult != (WAIT_OBJECT_0 + 1))
+                {
+                    continue;
+                }
+
+                for (;;)
+                {
+                    Dx11PublishRequest request{};
                     {
-                        if (runtime->publishStop)
+                        EnterCriticalSection(&runtime->publishQueueLock);
+                        if (runtime->publishQueue.empty())
                         {
+                            LeaveCriticalSection(&runtime->publishQueueLock);
                             break;
                         }
 
-                        continue;
+                        request = runtime->publishQueue.front();
+                        runtime->publishQueue.pop_front();
+                        InterlockedIncrement(&runtime->publishActiveCount);
+                        LeaveCriticalSection(&runtime->publishQueueLock);
                     }
 
-                    request = runtime->publishQueue.front();
-                    runtime->publishQueue.pop_front();
-                    runtime->publishActiveCount++;
-                }
-
-                auto* slot = request.slot;
-                if (slot != nullptr && slot->mappedValid && slot->mapped.pData != nullptr)
-                {
-                    bool rgbaNeedsSwap = false;
-                    if (TryResolveCaptureFormat(slot->format, rgbaNeedsSwap))
+                    auto* slot = request.slot;
+                    if (slot != nullptr && slot->mappedValid && slot->mapped.pData != nullptr)
                     {
-                        const std::uint32_t width = slot->width;
-                        const std::uint32_t height = slot->height;
-                        const std::uint32_t stride = static_cast<std::uint32_t>(slot->mapped.RowPitch);
-                        const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
-
-                        runtime->publishScratch.resize(payloadBytes);
-                        std::memcpy(runtime->publishScratch.data(), slot->mapped.pData, payloadBytes);
-
-                        if (rgbaNeedsSwap)
+                        bool rgbaNeedsSwap = false;
+                        if (TryResolveCaptureFormat(slot->format, rgbaNeedsSwap))
                         {
-                            const std::uint32_t rowBytes = width * 4;
-                            for (std::uint32_t y = 0; y < height; y++)
+                            const std::uint32_t width = slot->width;
+                            const std::uint32_t height = slot->height;
+                            const std::uint32_t stride = static_cast<std::uint32_t>(slot->mapped.RowPitch);
+                            const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
+
+                            runtime->publishScratch.resize(payloadBytes);
+                            std::memcpy(runtime->publishScratch.data(), slot->mapped.pData, payloadBytes);
+
+                            if (rgbaNeedsSwap)
                             {
-                                auto* row = runtime->publishScratch.data() + (static_cast<std::size_t>(y) * stride);
-                                for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                                const std::uint32_t rowBytes = width * 4;
+                                for (std::uint32_t y = 0; y < height; y++)
                                 {
-                                    std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
+                                    auto* row = runtime->publishScratch.data() + (static_cast<std::size_t>(y) * stride);
+                                    for (std::uint32_t x = 0; x < rowBytes; x += 4)
+                                    {
+                                        std::swap(row[x + 0], row[x + 2]); // RGBA -> BGRA
+                                    }
                                 }
                             }
-                        }
 
-                        const auto frameId = runtime->frameId.fetch_add(1, std::memory_order_relaxed) + 1;
-                        const bool wrote = runtime->frameWriter.WriteFrame(
-                            request.pid,
-                            ht::hook::ipc::GraphicsApi::Dx11,
-                            frameId,
-                            width,
-                            height,
-                            stride,
-                            request.publishQpc,
-                            runtime->publishScratch.data(),
-                            runtime->publishScratch.size());
-                        if (wrote)
-                        {
-                            runtime->lastCaptureQpc.store(request.publishQpc, std::memory_order_release);
+                            const auto frameId = runtime->frameId.fetch_add(1, std::memory_order_relaxed) + 1;
+                            const bool wrote = runtime->frameWriter.WriteFrame(
+                                request.pid,
+                                ht::hook::ipc::GraphicsApi::Dx11,
+                                frameId,
+                                width,
+                                height,
+                                stride,
+                                request.publishQpc,
+                                runtime->publishScratch.data(),
+                                runtime->publishScratch.size());
+                            if (wrote)
+                            {
+                                runtime->lastCaptureQpc.store(request.publishQpc, std::memory_order_release);
+                            }
                         }
                     }
-                }
 
-                {
-                    std::lock_guard<std::mutex> lock(runtime->publishMutex);
+                    EnterCriticalSection(&runtime->publishQueueLock);
                     if (slot != nullptr)
                     {
                         runtime->publishCompleted.push_back(slot);
                     }
 
-                    if (runtime->publishActiveCount > 0)
+                    const LONG activeCount = InterlockedDecrement(&runtime->publishActiveCount);
+                    const bool idle = runtime->publishQueue.empty() && activeCount == 0;
+                    LeaveCriticalSection(&runtime->publishQueueLock);
+
+                    if (idle && runtime->publishIdleEvent != nullptr)
                     {
-                        runtime->publishActiveCount--;
+                        SetEvent(runtime->publishIdleEvent);
                     }
                 }
+            }
 
-                runtime->publishCv.notify_all();
+            return 0;
+        }
+
+        void ClosePublishHandlesLocked(Dx11Runtime& rt)
+        {
+            if (rt.publishThreadHandle != nullptr)
+            {
+                CloseHandle(rt.publishThreadHandle);
+                rt.publishThreadHandle = nullptr;
+            }
+
+            rt.publishThreadId = 0;
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                CloseHandle(rt.publishWakeEvent);
+                rt.publishWakeEvent = nullptr;
+            }
+
+            if (rt.publishStopEvent != nullptr)
+            {
+                CloseHandle(rt.publishStopEvent);
+                rt.publishStopEvent = nullptr;
+            }
+
+            if (rt.publishIdleEvent != nullptr)
+            {
+                CloseHandle(rt.publishIdleEvent);
+                rt.publishIdleEvent = nullptr;
+            }
+
+            if (rt.publishQueueLockInitialized)
+            {
+                DeleteCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = false;
             }
         }
 
         bool EnsurePublishWorkerLocked(Dx11Runtime& rt)
         {
-            if (rt.publishThread.joinable())
+            if (rt.publishThreadHandle != nullptr)
             {
                 return true;
             }
 
+            if (!rt.publishQueueLockInitialized)
             {
-                std::lock_guard<std::mutex> lock(rt.publishMutex);
-                rt.publishStop = false;
-                rt.publishQueue.clear();
-                rt.publishCompleted.clear();
-                rt.publishActiveCount = 0;
+                InitializeCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = true;
             }
 
-            try
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.clear();
+            rt.publishCompleted.clear();
+            InterlockedExchange(&rt.publishActiveCount, 0);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            rt.publishWakeEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+            rt.publishStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            rt.publishIdleEvent = CreateEventW(nullptr, TRUE, TRUE, nullptr);
+            if (rt.publishWakeEvent == nullptr || rt.publishStopEvent == nullptr || rt.publishIdleEvent == nullptr)
             {
-                rt.publishThread = std::thread(&PublishWorkerMain, &rt);
-                return true;
-            }
-            catch (...)
-            {
+                ClosePublishHandlesLocked(rt);
                 return false;
             }
+
+            rt.publishThreadHandle = CreateThread(nullptr, 0, &PublishWorkerMain, &rt, 0, &rt.publishThreadId);
+            if (rt.publishThreadHandle == nullptr)
+            {
+                ClosePublishHandlesLocked(rt);
+                return false;
+            }
+
+            return true;
         }
 
         void CleanupCompletedCaptureSlotsLocked(Dx11Runtime& rt)
         {
             std::vector<CaptureSlot*> completed;
+            if (rt.publishQueueLockInitialized)
             {
-                std::lock_guard<std::mutex> lock(rt.publishMutex);
+                EnterCriticalSection(&rt.publishQueueLock);
                 completed.swap(rt.publishCompleted);
+                LeaveCriticalSection(&rt.publishQueueLock);
             }
 
             for (auto* slot : completed)
@@ -1053,60 +1113,73 @@ namespace ht::hook::dx11
 
         void DrainPublishQueueLocked(Dx11Runtime& rt)
         {
-            if (!rt.publishThread.joinable())
+            if (rt.publishThreadHandle == nullptr || rt.publishIdleEvent == nullptr)
             {
                 CleanupCompletedCaptureSlotsLocked(rt);
                 return;
             }
 
-            std::unique_lock<std::mutex> lock(rt.publishMutex);
-            rt.publishCv.wait(lock, [&]
-            {
-                return rt.publishQueue.empty() && rt.publishActiveCount == 0;
-            });
-            lock.unlock();
-
+            (void)WaitForSingleObject(rt.publishIdleEvent, INFINITE);
             CleanupCompletedCaptureSlotsLocked(rt);
         }
 
         void StopPublishWorkerLocked(Dx11Runtime& rt)
         {
-            if (!rt.publishThread.joinable())
+            if (rt.publishThreadHandle == nullptr)
             {
                 CleanupCompletedCaptureSlotsLocked(rt);
+                ClosePublishHandlesLocked(rt);
                 return;
             }
 
-            {
-                std::lock_guard<std::mutex> lock(rt.publishMutex);
-                rt.publishStop = true;
-            }
-            rt.publishCv.notify_all();
-            rt.publishThread.join();
+            DrainPublishQueueLocked(rt);
 
+            if (rt.publishStopEvent != nullptr)
             {
-                std::lock_guard<std::mutex> lock(rt.publishMutex);
-                rt.publishStop = false;
-                rt.publishQueue.clear();
-                rt.publishActiveCount = 0;
+                SetEvent(rt.publishStopEvent);
             }
 
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
+            (void)WaitForSingleObject(rt.publishThreadHandle, INFINITE);
             CleanupCompletedCaptureSlotsLocked(rt);
+
+            if (rt.publishQueueLockInitialized)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                rt.publishQueue.clear();
+                rt.publishCompleted.clear();
+                InterlockedExchange(&rt.publishActiveCount, 0);
+                LeaveCriticalSection(&rt.publishQueueLock);
+            }
+
+            ClosePublishHandlesLocked(rt);
         }
 
         bool EnqueuePublishRequestLocked(Dx11Runtime& rt, const Dx11PublishRequest& request)
         {
-            if (!rt.publishThread.joinable())
+            if (rt.publishThreadHandle == nullptr || !rt.publishQueueLockInitialized)
             {
                 return false;
             }
 
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.push_back(request);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            if (rt.publishIdleEvent != nullptr)
             {
-                std::lock_guard<std::mutex> lock(rt.publishMutex);
-                rt.publishQueue.push_back(request);
+                ResetEvent(rt.publishIdleEvent);
             }
 
-            rt.publishCv.notify_one();
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
             return true;
         }
 
