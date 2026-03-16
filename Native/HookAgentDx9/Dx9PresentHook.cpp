@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -75,6 +76,9 @@ namespace ht::hook::dx9
         constexpr int kDevicePresentExIndex = 121;
         constexpr int kDeviceResetExIndex = 132;
         constexpr std::uint32_t kDefaultCaptureFps = 15u;
+        constexpr std::uint32_t kDefaultCaptureRingSize = 3u;
+        constexpr std::uint32_t kMinCaptureRingSize = 2u;
+        constexpr std::uint32_t kMaxCaptureRingSize = 8u;
         constexpr std::uint32_t kOverlayFontBasePx = 26u;
         constexpr std::uint64_t kHookSuccessIndicatorDurationMs = 1500u;
         constexpr std::uint64_t kHookSuccessIndicatorFadeInMs = 200u;
@@ -83,9 +87,53 @@ namespace ht::hook::dx9
         // WHY: Some titles can re-enter Present on the same thread. Capture only on outer-most call.
         static thread_local int g_presentDepth = 0;
 
+        enum class CaptureSlotState : std::uint8_t
+        {
+            Free = 0,
+            LockedReadyToPublish,
+            Publishing
+        };
+
+        struct CaptureSlot
+        {
+            IDirect3DSurface9* stagingSurface = nullptr;
+            D3DLOCKED_RECT locked{};
+            bool lockedValid = false;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            std::uint32_t format = 0;
+            std::uint64_t publishQpc = 0;
+            CaptureSlotState state = CaptureSlotState::Free;
+        };
+
+        struct Dx9PublishRequest
+        {
+            CaptureSlot* slot = nullptr;
+            DWORD pid = 0;
+            std::uint64_t frameId = 0;
+            std::uint64_t publishQpc = 0;
+            std::uint32_t width = 0;
+            std::uint32_t height = 0;
+            std::uint32_t stride = 0;
+            std::size_t payloadBytes = 0;
+        };
+
+        struct Dx9PublishCompletion
+        {
+            CaptureSlot* slot = nullptr;
+            std::uint64_t publishQpc = 0;
+            bool writeSucceeded = false;
+            std::uint64_t frameId = 0;
+            ipc::SharedFrameWriter::LastErrorKind errorKind = ipc::SharedFrameWriter::LastErrorKind::None;
+            DWORD errorGle = 0;
+            std::size_t requestedPayloadBytes = 0;
+            std::size_t totalBytes = 0;
+        };
+
         struct Dx9Runtime
         {
             std::mutex mutex;
+            std::mutex frameWriterMutex;
             std::atomic_bool installed{false};
 
             void* presentTarget = nullptr;
@@ -115,11 +163,14 @@ namespace ht::hook::dx9
             std::vector<std::uint8_t> scratch;
             std::vector<ipc::OverlayTextBlockV2> overlayV2Blocks;
             std::vector<std::uint8_t> overlayV2TextBlob;
+            std::vector<CaptureSlot> captureSlots;
+            std::vector<std::uint8_t> publishScratch;
 
             std::uint64_t qpcFreq = 0;
             std::uint64_t frameId = 0;
             std::uint64_t captureIntervalQpc = 0;
             std::uint64_t lastCaptureQpc = 0;
+            std::uint64_t lastCaptureIssueQpc = 0;
             std::uint64_t lastConfigQpc = 0;
             std::uint64_t lastFrameWriteQpc = 0;
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
@@ -144,13 +195,13 @@ namespace ht::hook::dx9
             ImFont* overlayFont = nullptr;
             std::uint64_t lastImGuiQpc = 0;
 
-            IDirect3DSurface9* stagingSurface = nullptr;
             IDirect3DSurface9* resolvedSurface = nullptr;
             std::uint32_t surfaceWidth = 0;
             std::uint32_t surfaceHeight = 0;
             std::uint32_t surfaceFormat = 0;
             std::uint32_t surfaceMsaaType = 0;
             std::uint32_t surfaceMsaaQuality = 0;
+            std::uint32_t captureRingSize = 0;
             std::uint64_t surfaceRecreateCount = 0;
 
             std::uint64_t resetCount = 0;
@@ -169,6 +220,17 @@ namespace ht::hook::dx9
             ipc::SharedFrameWriter::LastErrorKind lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
             DWORD lastWriteFrameErrorGle = 0;
             std::uint64_t writeFrameErrorStreak = 0;
+
+            CRITICAL_SECTION publishQueueLock{};
+            bool publishQueueLockInitialized = false;
+            std::deque<Dx9PublishRequest> publishQueue;
+            std::vector<Dx9PublishCompletion> publishCompleted;
+            HANDLE publishThreadHandle = nullptr;
+            DWORD publishThreadId = 0;
+            HANDLE publishWakeEvent = nullptr;
+            HANDLE publishStopEvent = nullptr;
+            HANDLE publishIdleEvent = nullptr;
+            LONG publishActiveCount = 0;
         };
 
         Dx9Runtime g_rt;
@@ -180,6 +242,7 @@ namespace ht::hook::dx9
         std::atomic_bool g_diagFileSinkEnabled{false};
 
         std::uint64_t NowQpc();
+        const char* FrameWriterErrorToString(ipc::SharedFrameWriter::LastErrorKind kind);
 
         std::string WideToUtf8(const std::wstring& value)
         {
@@ -367,14 +430,25 @@ namespace ht::hook::dx9
 
         void ReleaseCaptureSurfacesLocked(Dx9Runtime& rt, const char* reason)
         {
-            const bool hadStaging = rt.stagingSurface != nullptr;
+            bool hadStaging = false;
             const bool hadResolved = rt.resolvedSurface != nullptr;
 
-            if (rt.stagingSurface != nullptr)
+            for (auto& slot : rt.captureSlots)
             {
-                rt.stagingSurface->Release();
-                rt.stagingSurface = nullptr;
+                if (slot.stagingSurface != nullptr)
+                {
+                    hadStaging = true;
+                    if (slot.lockedValid)
+                    {
+                        (void)slot.stagingSurface->UnlockRect();
+                        slot.lockedValid = false;
+                    }
+                    slot.stagingSurface->Release();
+                    slot.stagingSurface = nullptr;
+                }
+                slot = CaptureSlot{};
             }
+            rt.captureSlots.clear();
 
             if (rt.resolvedSurface != nullptr)
             {
@@ -387,6 +461,7 @@ namespace ht::hook::dx9
             rt.surfaceFormat = 0;
             rt.surfaceMsaaType = 0;
             rt.surfaceMsaaQuality = 0;
+            rt.captureRingSize = 0;
 
             if (hadStaging || hadResolved)
             {
@@ -442,6 +517,337 @@ namespace ht::hook::dx9
             }
         }
 
+        DWORD WINAPI PublishWorkerMain(LPVOID param)
+        {
+            auto* runtime = static_cast<Dx9Runtime*>(param);
+            if (runtime == nullptr)
+            {
+                return 0;
+            }
+
+            HANDLE waitHandles[2] = {runtime->publishStopEvent, runtime->publishWakeEvent};
+            for (;;)
+            {
+                const DWORD waitResult = WaitForMultipleObjects(2, waitHandles, FALSE, INFINITE);
+                if (waitResult == WAIT_OBJECT_0)
+                {
+                    break;
+                }
+
+                if (waitResult != (WAIT_OBJECT_0 + 1))
+                {
+                    continue;
+                }
+
+                for (;;)
+                {
+                    Dx9PublishRequest request{};
+                    {
+                        EnterCriticalSection(&runtime->publishQueueLock);
+                        if (runtime->publishQueue.empty())
+                        {
+                            LeaveCriticalSection(&runtime->publishQueueLock);
+                            break;
+                        }
+
+                        request = runtime->publishQueue.front();
+                        runtime->publishQueue.pop_front();
+                        InterlockedIncrement(&runtime->publishActiveCount);
+                        LeaveCriticalSection(&runtime->publishQueueLock);
+                    }
+
+                    Dx9PublishCompletion completion{};
+                    completion.slot = request.slot;
+                    completion.publishQpc = request.publishQpc;
+                    completion.frameId = request.frameId;
+
+                    auto* slot = request.slot;
+                    if (slot != nullptr &&
+                        slot->lockedValid &&
+                        slot->locked.pBits != nullptr &&
+                        slot->locked.Pitch > 0 &&
+                        request.width > 0 &&
+                        request.height > 0 &&
+                        request.payloadBytes > 0)
+                    {
+                        runtime->publishScratch.resize(request.payloadBytes);
+                        for (std::uint32_t y = 0; y < request.height; y++)
+                        {
+                            const auto* src = static_cast<const std::uint8_t*>(slot->locked.pBits) +
+                                (static_cast<std::size_t>(slot->locked.Pitch) * y);
+                            auto* dst = runtime->publishScratch.data() +
+                                (static_cast<std::size_t>(request.stride) * y);
+                            std::memcpy(dst, src, request.stride);
+                        }
+
+                        std::lock_guard<std::mutex> writerLock(runtime->frameWriterMutex);
+                        completion.writeSucceeded = runtime->frameWriter.WriteFrame(
+                            request.pid,
+                            ipc::GraphicsApi::Dx9,
+                            request.frameId,
+                            request.width,
+                            request.height,
+                            request.stride,
+                            request.publishQpc,
+                            runtime->publishScratch.data(),
+                            request.payloadBytes);
+                        completion.errorKind = runtime->frameWriter.LastError();
+                        completion.errorGle = runtime->frameWriter.LastWin32Error();
+                        completion.requestedPayloadBytes = runtime->frameWriter.LastRequestedPayloadBytes();
+                        completion.totalBytes = runtime->frameWriter.LastTotalBytes();
+                    }
+
+                    EnterCriticalSection(&runtime->publishQueueLock);
+                    if (completion.slot != nullptr)
+                    {
+                        runtime->publishCompleted.push_back(completion);
+                    }
+
+                    const LONG activeCount = InterlockedDecrement(&runtime->publishActiveCount);
+                    const bool idle = runtime->publishQueue.empty() && activeCount == 0;
+                    LeaveCriticalSection(&runtime->publishQueueLock);
+
+                    if (idle && runtime->publishIdleEvent != nullptr)
+                    {
+                        SetEvent(runtime->publishIdleEvent);
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        void ClosePublishHandlesLocked(Dx9Runtime& rt)
+        {
+            if (rt.publishThreadHandle != nullptr)
+            {
+                CloseHandle(rt.publishThreadHandle);
+                rt.publishThreadHandle = nullptr;
+            }
+
+            rt.publishThreadId = 0;
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                CloseHandle(rt.publishWakeEvent);
+                rt.publishWakeEvent = nullptr;
+            }
+
+            if (rt.publishStopEvent != nullptr)
+            {
+                CloseHandle(rt.publishStopEvent);
+                rt.publishStopEvent = nullptr;
+            }
+
+            if (rt.publishIdleEvent != nullptr)
+            {
+                CloseHandle(rt.publishIdleEvent);
+                rt.publishIdleEvent = nullptr;
+            }
+
+            if (rt.publishQueueLockInitialized)
+            {
+                DeleteCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = false;
+            }
+        }
+
+        bool EnsurePublishWorkerLocked(Dx9Runtime& rt)
+        {
+            if (rt.publishThreadHandle != nullptr)
+            {
+                return true;
+            }
+
+            if (!rt.publishQueueLockInitialized)
+            {
+                InitializeCriticalSection(&rt.publishQueueLock);
+                rt.publishQueueLockInitialized = true;
+            }
+
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.clear();
+            rt.publishCompleted.clear();
+            InterlockedExchange(&rt.publishActiveCount, 0);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            rt.publishWakeEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+            rt.publishStopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+            rt.publishIdleEvent = CreateEventW(nullptr, TRUE, TRUE, nullptr);
+            if (rt.publishWakeEvent == nullptr || rt.publishStopEvent == nullptr || rt.publishIdleEvent == nullptr)
+            {
+                ClosePublishHandlesLocked(rt);
+                return false;
+            }
+
+            rt.publishThreadHandle = CreateThread(nullptr, 0, &PublishWorkerMain, &rt, 0, &rt.publishThreadId);
+            if (rt.publishThreadHandle == nullptr)
+            {
+                ClosePublishHandlesLocked(rt);
+                return false;
+            }
+
+            return true;
+        }
+
+        void DrainCompletedCaptureSlotsLocked(Dx9Runtime& rt)
+        {
+            std::vector<Dx9PublishCompletion> completed;
+            if (rt.publishQueueLockInitialized)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                completed.swap(rt.publishCompleted);
+                LeaveCriticalSection(&rt.publishQueueLock);
+            }
+
+            for (const auto& item : completed)
+            {
+                auto* slot = item.slot;
+                if (slot == nullptr)
+                {
+                    continue;
+                }
+
+                if (slot->lockedValid && slot->stagingSurface != nullptr)
+                {
+                    (void)slot->stagingSurface->UnlockRect();
+                    slot->lockedValid = false;
+                }
+
+                slot->state = CaptureSlotState::Free;
+                slot->publishQpc = 0;
+
+                if (!item.writeSucceeded)
+                {
+                    const bool sameFailureAsLast =
+                        (rt.lastWriteFrameErrorKind == item.errorKind) &&
+                        (rt.lastWriteFrameErrorGle == item.errorGle);
+                    if (sameFailureAsLast)
+                    {
+                        rt.writeFrameErrorStreak++;
+                    }
+                    else
+                    {
+                        rt.writeFrameErrorStreak = 1;
+                        rt.lastWriteFrameErrorKind = item.errorKind;
+                        rt.lastWriteFrameErrorGle = item.errorGle;
+                    }
+
+                    const bool shouldLogFailure =
+                        (rt.writeFrameErrorStreak == 1) ||
+                        ((rt.writeFrameErrorStreak % 60ull) == 0);
+                    if (shouldLogFailure)
+                    {
+                        LogDx9(
+                            "event=write_frame_failed frameId=%llu reason=%s gle=%lu requestedPayloadBytes=%llu totalBytes=%llu streak=%llu.",
+                            static_cast<unsigned long long>(item.frameId),
+                            FrameWriterErrorToString(item.errorKind),
+                            static_cast<unsigned long>(item.errorGle),
+                            static_cast<unsigned long long>(item.requestedPayloadBytes),
+                            static_cast<unsigned long long>(item.totalBytes),
+                            static_cast<unsigned long long>(rt.writeFrameErrorStreak));
+                    }
+                    RecordCaptureFailureLocked(rt, "shared_frame_write_failed", E_FAIL);
+                    continue;
+                }
+
+                if (rt.writeFrameErrorStreak > 0)
+                {
+                    LogDx9Perf(
+                        "event=write_frame_recovered frameId=%llu previousReason=%s previousGle=%lu previousStreak=%llu.",
+                        static_cast<unsigned long long>(item.frameId),
+                        FrameWriterErrorToString(rt.lastWriteFrameErrorKind),
+                        static_cast<unsigned long>(rt.lastWriteFrameErrorGle),
+                        static_cast<unsigned long long>(rt.writeFrameErrorStreak));
+                    rt.writeFrameErrorStreak = 0;
+                    rt.lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
+                    rt.lastWriteFrameErrorGle = 0;
+                }
+
+                LogDx9Perf(
+                    "event=write_frame_ok frameId=%llu width=%u height=%u.",
+                    static_cast<unsigned long long>(item.frameId),
+                    slot->width,
+                    slot->height);
+                rt.lastCaptureFailureHr = 0;
+                rt.lastCaptureFailureQpc = 0;
+                rt.lastFrameWriteQpc = NowQpc();
+                rt.lastCaptureQpc = item.publishQpc;
+            }
+        }
+
+        void DrainPublishQueueLocked(Dx9Runtime& rt)
+        {
+            if (rt.publishThreadHandle == nullptr || rt.publishIdleEvent == nullptr)
+            {
+                DrainCompletedCaptureSlotsLocked(rt);
+                return;
+            }
+
+            (void)WaitForSingleObject(rt.publishIdleEvent, INFINITE);
+            DrainCompletedCaptureSlotsLocked(rt);
+        }
+
+        void StopPublishWorkerLocked(Dx9Runtime& rt)
+        {
+            if (rt.publishThreadHandle == nullptr)
+            {
+                DrainCompletedCaptureSlotsLocked(rt);
+                ClosePublishHandlesLocked(rt);
+                return;
+            }
+
+            DrainPublishQueueLocked(rt);
+
+            if (rt.publishStopEvent != nullptr)
+            {
+                SetEvent(rt.publishStopEvent);
+            }
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
+            (void)WaitForSingleObject(rt.publishThreadHandle, INFINITE);
+            DrainCompletedCaptureSlotsLocked(rt);
+
+            if (rt.publishQueueLockInitialized)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                rt.publishQueue.clear();
+                rt.publishCompleted.clear();
+                InterlockedExchange(&rt.publishActiveCount, 0);
+                LeaveCriticalSection(&rt.publishQueueLock);
+            }
+
+            ClosePublishHandlesLocked(rt);
+        }
+
+        bool EnqueuePublishRequestLocked(Dx9Runtime& rt, const Dx9PublishRequest& request)
+        {
+            if (rt.publishThreadHandle == nullptr || !rt.publishQueueLockInitialized)
+            {
+                return false;
+            }
+
+            EnterCriticalSection(&rt.publishQueueLock);
+            rt.publishQueue.push_back(request);
+            LeaveCriticalSection(&rt.publishQueueLock);
+
+            if (rt.publishIdleEvent != nullptr)
+            {
+                ResetEvent(rt.publishIdleEvent);
+            }
+
+            if (rt.publishWakeEvent != nullptr)
+            {
+                SetEvent(rt.publishWakeEvent);
+            }
+
+            return true;
+        }
+
         std::uint64_t NowQpc()
         {
             LARGE_INTEGER qpc{};
@@ -478,6 +884,14 @@ namespace ht::hook::dx9
             }
 
             return static_cast<std::uint32_t>(value);
+        }
+
+        std::uint32_t ResolveCaptureRingSize()
+        {
+            return std::clamp(
+                ReadEnvU32(L"HT_HOOK_DX9_CAPTURE_RING_SIZE", kDefaultCaptureRingSize),
+                kMinCaptureRingSize,
+                kMaxCaptureRingSize);
         }
 
         ImU32 ArgbToImU32(std::uint32_t argb)
@@ -552,12 +966,14 @@ namespace ht::hook::dx9
 
         void ResetRuntimeStateLocked(Dx9Runtime& rt)
         {
+            StopPublishWorkerLocked(rt);
             ResetImGuiLocked(rt);
             rt.frameWriter.Reset();
             rt.configReader.Reset();
             rt.statusWriter.Reset();
             rt.overlayV2Reader.Reset();
             rt.scratch.clear();
+            rt.publishScratch.clear();
             rt.overlayV2Blocks.clear();
             rt.overlayV2TextBlob.clear();
 
@@ -583,6 +999,7 @@ namespace ht::hook::dx9
             rt.frameId = 0;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.lastCaptureQpc = 0;
+            rt.lastCaptureIssueQpc = 0;
             rt.lastConfigQpc = 0;
             rt.lastFrameWriteQpc = 0;
             rt.configuredFpsLimit = kDefaultCaptureFps;
@@ -971,12 +1388,13 @@ namespace ht::hook::dx9
                 return true;
             }
 
-            if (rt.lastCaptureQpc == 0)
+            const auto lastCaptureGateQpc = (rt.lastCaptureIssueQpc != 0) ? rt.lastCaptureIssueQpc : rt.lastCaptureQpc;
+            if (lastCaptureGateQpc == 0)
             {
                 return true;
             }
 
-            return (nowQpc - rt.lastCaptureQpc) >= rt.captureIntervalQpc;
+            return (nowQpc - lastCaptureGateQpc) >= rt.captureIntervalQpc;
         }
 
         bool IsSupportedCaptureFormat(D3DFORMAT format)
@@ -1038,6 +1456,19 @@ namespace ht::hook::dx9
             return true;
         }
 
+        CaptureSlot* FindFreeCaptureSlotLocked(Dx9Runtime& rt)
+        {
+            for (auto& slot : rt.captureSlots)
+            {
+                if (slot.state == CaptureSlotState::Free)
+                {
+                    return &slot;
+                }
+            }
+
+            return nullptr;
+        }
+
         bool EnsureCaptureSurfacesLocked(Dx9Runtime& rt, IDirect3DDevice9* device, const D3DSURFACE_DESC& desc)
         {
             if (device == nullptr)
@@ -1051,6 +1482,7 @@ namespace ht::hook::dx9
             const std::uint32_t msaaType = static_cast<std::uint32_t>(desc.MultiSampleType);
             const std::uint32_t msaaQuality = desc.MultiSampleQuality;
             const bool needsResolve = desc.MultiSampleType != D3DMULTISAMPLE_NONE;
+            const auto captureRingSize = ResolveCaptureRingSize();
 
             const bool shapeChanged =
                 rt.surfaceWidth != width ||
@@ -1064,13 +1496,20 @@ namespace ht::hook::dx9
                 (!needsResolve && rt.resolvedSurface != nullptr);
 
             const bool needsRecreate =
-                rt.stagingSurface == nullptr ||
+                rt.captureSlots.size() != captureRingSize ||
                 shapeChanged ||
                 resolveMismatch ||
                 rt.pendingPostResetRebind;
 
             if (!needsRecreate)
             {
+                for (const auto& slot : rt.captureSlots)
+                {
+                    if (slot.stagingSurface == nullptr)
+                    {
+                        return false;
+                    }
+                }
                 return true;
             }
 
@@ -1079,7 +1518,7 @@ namespace ht::hook::dx9
             {
                 recreateReason = "post_reset";
             }
-            else if (rt.stagingSurface == nullptr)
+            else if (rt.captureSlots.empty())
             {
                 recreateReason = "staging_missing";
             }
@@ -1092,6 +1531,8 @@ namespace ht::hook::dx9
                 recreateReason = "backbuffer_changed";
             }
 
+            // WHY: Recreate can invalidate locked surfaces that the worker still reads, so publish must be drained first.
+            DrainPublishQueueLocked(rt);
             ReleaseCaptureSurfacesLocked(rt, "recreate");
 
             if (needsResolve)
@@ -1113,18 +1554,28 @@ namespace ht::hook::dx9
                 }
             }
 
-            const auto stagingHr = device->CreateOffscreenPlainSurface(
-                width,
-                height,
-                desc.Format,
-                D3DPOOL_SYSTEMMEM,
-                &rt.stagingSurface,
-                nullptr);
-            if (FAILED(stagingHr) || rt.stagingSurface == nullptr)
+            rt.captureSlots.assign(captureRingSize, CaptureSlot{});
+            for (std::uint32_t i = 0; i < captureRingSize; ++i)
             {
-                RecordCaptureFailureLocked(rt, "create_staging_surface_failed", stagingHr);
-                ReleaseCaptureSurfacesLocked(rt, "recreate_failed_staging");
-                return false;
+                auto& slot = rt.captureSlots[i];
+                const auto stagingHr = device->CreateOffscreenPlainSurface(
+                    width,
+                    height,
+                    desc.Format,
+                    D3DPOOL_SYSTEMMEM,
+                    &slot.stagingSurface,
+                    nullptr);
+                if (FAILED(stagingHr) || slot.stagingSurface == nullptr)
+                {
+                    RecordCaptureFailureLocked(rt, "create_staging_surface_failed", stagingHr);
+                    ReleaseCaptureSurfacesLocked(rt, "recreate_failed_staging");
+                    return false;
+                }
+
+                slot.width = width;
+                slot.height = height;
+                slot.format = format;
+                slot.state = CaptureSlotState::Free;
             }
 
             rt.surfaceWidth = width;
@@ -1132,10 +1583,11 @@ namespace ht::hook::dx9
             rt.surfaceFormat = format;
             rt.surfaceMsaaType = msaaType;
             rt.surfaceMsaaQuality = msaaQuality;
+            rt.captureRingSize = captureRingSize;
             rt.surfaceRecreateCount++;
 
             LogDx9(
-                "event=capture_surfaces_recreate reason=%s resetCount=%llu count=%llu size=%ux%u format=%u msaaType=%u msaaQuality=%u.",
+                "event=capture_surfaces_recreate reason=%s resetCount=%llu count=%llu size=%ux%u format=%u msaaType=%u msaaQuality=%u ring=%u.",
                 recreateReason,
                 static_cast<unsigned long long>(rt.resetCount),
                 static_cast<unsigned long long>(rt.surfaceRecreateCount),
@@ -1143,7 +1595,8 @@ namespace ht::hook::dx9
                 height,
                 format,
                 msaaType,
-                msaaQuality);
+                msaaQuality,
+                captureRingSize);
 
             if (rt.pendingPostResetRebind)
             {
@@ -1166,6 +1619,8 @@ namespace ht::hook::dx9
                 RecordCaptureFailureLocked(rt, "device_null", E_POINTER);
                 return false;
             }
+
+            DrainCompletedCaptureSlotsLocked(rt);
 
             LogDx9Perf(
                 "event=capture_begin presentCount=%llu presentKind=%u.",
@@ -1203,6 +1658,17 @@ namespace ht::hook::dx9
                 return false;
             }
 
+            auto* captureSlot = FindFreeCaptureSlotLocked(rt);
+            if (captureSlot == nullptr)
+            {
+                LogDx9Perf(
+                    "event=capture_skip reason=capture_slot_busy presentCount=%llu ring=%u.",
+                    static_cast<unsigned long long>(rt.presentCount),
+                    static_cast<unsigned int>(rt.captureRingSize));
+                backBuffer->Release();
+                return false;
+            }
+
             IDirect3DSurface9* copySource = backBuffer;
             if (desc.MultiSampleType != D3DMULTISAMPLE_NONE)
             {
@@ -1224,14 +1690,14 @@ namespace ht::hook::dx9
                 copySource = rt.resolvedSurface;
             }
 
-            if (rt.stagingSurface == nullptr)
+            if (captureSlot->stagingSurface == nullptr)
             {
                 RecordCaptureFailureLocked(rt, "staging_surface_missing", E_FAIL);
                 backBuffer->Release();
                 return false;
             }
 
-            const HRESULT copyHr = device->GetRenderTargetData(copySource, rt.stagingSurface);
+            const HRESULT copyHr = device->GetRenderTargetData(copySource, captureSlot->stagingSurface);
             backBuffer->Release();
             if (FAILED(copyHr))
             {
@@ -1240,7 +1706,7 @@ namespace ht::hook::dx9
             }
 
             D3DLOCKED_RECT locked{};
-            const HRESULT lockHr = rt.stagingSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
+            const HRESULT lockHr = captureSlot->stagingSurface->LockRect(&locked, nullptr, D3DLOCK_READONLY);
             if (FAILED(lockHr) || locked.pBits == nullptr || locked.Pitch <= 0)
             {
                 RecordCaptureFailureLocked(rt, "staging_lock_failed", lockHr);
@@ -1251,107 +1717,48 @@ namespace ht::hook::dx9
             const std::uint32_t height = desc.Height;
             const std::uint32_t stride = width * 4u;
             const std::size_t payloadBytes = static_cast<std::size_t>(stride) * static_cast<std::size_t>(height);
-            rt.scratch.resize(payloadBytes);
-
-            for (std::uint32_t y = 0; y < height; y++)
-            {
-                const auto* src = static_cast<const std::uint8_t*>(locked.pBits) + (static_cast<std::size_t>(locked.Pitch) * y);
-                auto* dst = rt.scratch.data() + (static_cast<std::size_t>(stride) * y);
-                std::memcpy(dst, src, stride);
-            }
-
-            rt.stagingSurface->UnlockRect();
-
             const DWORD pid = GetCurrentProcessId();
             const std::uint64_t frameId = ++rt.frameId;
-            const auto mapName = rt.frameWriter.MappingName();
-            const auto mapNameUtf8 = WideToUtf8(mapName);
+
+            captureSlot->locked = locked;
+            captureSlot->lockedValid = true;
+            captureSlot->width = width;
+            captureSlot->height = height;
+            captureSlot->format = static_cast<std::uint32_t>(desc.Format);
+            captureSlot->publishQpc = rt.lastPresentQpc;
+            captureSlot->state = CaptureSlotState::LockedReadyToPublish;
+
+            Dx9PublishRequest request{};
+            request.slot = captureSlot;
+            request.pid = pid;
+            request.frameId = frameId;
+            request.publishQpc = rt.lastPresentQpc;
+            request.width = width;
+            request.height = height;
+            request.stride = stride;
+            request.payloadBytes = payloadBytes;
+
+            captureSlot->state = CaptureSlotState::Publishing;
+            if (!EnqueuePublishRequestLocked(rt, request))
+            {
+                (void)captureSlot->stagingSurface->UnlockRect();
+                captureSlot->lockedValid = false;
+                captureSlot->state = CaptureSlotState::Free;
+                captureSlot->publishQpc = 0;
+                RecordCaptureFailureLocked(rt, "publish_enqueue_failed", E_FAIL);
+                return false;
+            }
+
             LogDx9Perf(
-                "event=write_frame_begin frameId=%llu width=%u height=%u stride=%u payloadBytes=%llu map=\"%s\".",
+                "event=publish_enqueue frameId=%llu width=%u height=%u stride=%u payloadBytes=%llu ring=%u.",
                 static_cast<unsigned long long>(frameId),
                 width,
                 height,
                 stride,
                 static_cast<unsigned long long>(payloadBytes),
-                mapNameUtf8.c_str());
-            if (!rt.frameWriter.WriteFrame(
-                    pid,
-                    ipc::GraphicsApi::Dx9,
-                    frameId,
-                    width,
-                    height,
-                    stride,
-                    rt.lastPresentQpc,
-                    rt.scratch.data(),
-                    payloadBytes))
-            {
-                const auto errorKind = rt.frameWriter.LastError();
-                const auto errorName = FrameWriterErrorToString(errorKind);
-                const auto writerGle = rt.frameWriter.LastWin32Error();
-                const auto requestedBytes = rt.frameWriter.LastRequestedPayloadBytes();
-                const auto totalBytes = rt.frameWriter.LastTotalBytes();
-                const auto mapNameFail = rt.frameWriter.MappingName();
-                const auto mapNameFailUtf8 = WideToUtf8(mapNameFail);
-                const bool sameFailureAsLast =
-                    (rt.lastWriteFrameErrorKind == errorKind) &&
-                    (rt.lastWriteFrameErrorGle == writerGle);
-                if (sameFailureAsLast)
-                {
-                    rt.writeFrameErrorStreak++;
-                }
-                else
-                {
-                    rt.writeFrameErrorStreak = 1;
-                    rt.lastWriteFrameErrorKind = errorKind;
-                    rt.lastWriteFrameErrorGle = writerGle;
-                }
+                static_cast<unsigned int>(rt.captureRingSize));
 
-                const bool shouldLogFailure =
-                    (rt.writeFrameErrorStreak == 1) ||
-                    ((rt.writeFrameErrorStreak % 60ull) == 0);
-                if (shouldLogFailure)
-                {
-                    LogDx9(
-                        "event=write_frame_failed frameId=%llu reason=%s gle=%lu requestedPayloadBytes=%llu totalBytes=%llu map=\"%s\" streak=%llu.",
-                        static_cast<unsigned long long>(frameId),
-                        errorName,
-                        static_cast<unsigned long>(writerGle),
-                        static_cast<unsigned long long>(requestedBytes),
-                        static_cast<unsigned long long>(totalBytes),
-                        mapNameFailUtf8.c_str(),
-                        static_cast<unsigned long long>(rt.writeFrameErrorStreak));
-                }
-                RecordCaptureFailureLocked(rt, "shared_frame_write_failed", E_FAIL);
-                return false;
-            }
-
-            const auto mapNameOk = rt.frameWriter.MappingName();
-            const auto mapNameOkUtf8 = WideToUtf8(mapNameOk);
-            if (rt.writeFrameErrorStreak > 0)
-            {
-                LogDx9Perf(
-                    "event=write_frame_recovered frameId=%llu previousReason=%s previousGle=%lu previousStreak=%llu map=\"%s\".",
-                    static_cast<unsigned long long>(frameId),
-                    FrameWriterErrorToString(rt.lastWriteFrameErrorKind),
-                    static_cast<unsigned long>(rt.lastWriteFrameErrorGle),
-                    static_cast<unsigned long long>(rt.writeFrameErrorStreak),
-                    mapNameOkUtf8.c_str());
-                rt.writeFrameErrorStreak = 0;
-                rt.lastWriteFrameErrorKind = ipc::SharedFrameWriter::LastErrorKind::None;
-                rt.lastWriteFrameErrorGle = 0;
-            }
-            LogDx9Perf(
-                "event=write_frame_ok frameId=%llu width=%u height=%u payloadBytes=%llu map=\"%s\".",
-                static_cast<unsigned long long>(frameId),
-                width,
-                height,
-                static_cast<unsigned long long>(payloadBytes),
-                mapNameOkUtf8.c_str());
-
-            rt.lastCaptureFailureHr = 0;
-            rt.lastCaptureFailureQpc = 0;
-            rt.lastFrameWriteQpc = NowQpc();
-            rt.lastCaptureQpc = rt.lastPresentQpc;
+            rt.lastCaptureIssueQpc = rt.lastPresentQpc;
             rt.backBufferFormat = static_cast<std::uint32_t>(desc.Format);
             rt.backBufferWidth = width;
             rt.backBufferHeight = height;
@@ -1671,6 +2078,7 @@ namespace ht::hook::dx9
 
                 DrawImGuiOverlayV2Locked(g_rt, device);
 
+                DrainCompletedCaptureSlotsLocked(g_rt);
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalPresent;
             }
@@ -1757,6 +2165,7 @@ namespace ht::hook::dx9
                     DrawImGuiOverlayV2Locked(g_rt, device);
                 }
 
+                DrainCompletedCaptureSlotsLocked(g_rt);
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalSwapChainPresent;
             }
@@ -1783,11 +2192,13 @@ namespace ht::hook::dx9
                     ImGui::SetCurrentContext(g_rt.imguiContext);
                     ImGui_ImplDX9_InvalidateDeviceObjects();
                 }
+                DrainPublishQueueLocked(g_rt);
                 ReleaseCaptureSurfacesLocked(g_rt, "reset_begin");
                 g_rt.backBufferWidth = 0;
                 g_rt.backBufferHeight = 0;
                 g_rt.backBufferFormat = 0;
                 g_rt.lastCaptureQpc = 0;
+                g_rt.lastCaptureIssueQpc = 0;
                 presentCount = g_rt.presentCount;
                 original = g_rt.originalReset;
             }
@@ -1885,6 +2296,7 @@ namespace ht::hook::dx9
 
                 DrawImGuiOverlayV2Locked(g_rt, static_cast<IDirect3DDevice9*>(device));
 
+                DrainCompletedCaptureSlotsLocked(g_rt);
                 PublishStatusLocked(g_rt);
                 original = g_rt.originalPresentEx;
             }
@@ -1907,11 +2319,13 @@ namespace ht::hook::dx9
                     ImGui::SetCurrentContext(g_rt.imguiContext);
                     ImGui_ImplDX9_InvalidateDeviceObjects();
                 }
+                DrainPublishQueueLocked(g_rt);
                 ReleaseCaptureSurfacesLocked(g_rt, "reset_ex_begin");
                 g_rt.backBufferWidth = 0;
                 g_rt.backBufferHeight = 0;
                 g_rt.backBufferFormat = 0;
                 g_rt.lastCaptureQpc = 0;
+                g_rt.lastCaptureIssueQpc = 0;
                 presentCount = g_rt.presentCount;
                 original = g_rt.originalResetEx;
             }
@@ -2743,6 +3157,15 @@ namespace ht::hook::dx9
                     return false;
                 }
                 LogDx9("event=install_step step=mh_enable_reset_ex ok.");
+            }
+
+            if (!EnsurePublishWorkerLocked(rt))
+            {
+                LogDx9("event=install_hook_result result=fail reason=publish_worker_start_failed.");
+                (void)MH_DisableHook(MH_ALL_HOOKS);
+                (void)MH_Uninitialize();
+                ResetRuntimeStateLocked(rt);
+                return false;
             }
 
             rt.installed.store(true, std::memory_order_release);

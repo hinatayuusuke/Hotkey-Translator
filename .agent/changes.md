@@ -27,6 +27,42 @@
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
 
+**2026-03-16 15:34 (Asia/Taipei) — Implement DX9 off-Present publish worker and staging ring**
+
+### Summary
+- DX9 hook に off-Present publish worker と staging surface ring を実装し、`Present` hot path から CPU publish を外した。
+
+### Context / Goal
+- `Doc/GraphicsHook_DX9_TwoPhase_OffPresentPublish_Plan.md` に沿って、DX9 でも DX11/Vulkan と同じ方向で publish を `Present` 外へ逃がす必要があった。
+- 現行 DX9 は単発 `stagingSurface` 上で `GetRenderTargetData -> LockRect -> memcpy -> SharedFrameWriter.WriteFrame(...)` を同期実行していたため、まず CPU publish を worker 化し、次に surface 所有権を ring 化したかった。
+
+### Changes
+- `Dx9PresentHook.cpp` に Win32 thread/event ベースの publish worker、publish queue、completed queue、drain/stop helper を追加した。
+- 単発 `stagingSurface` を `captureSlots` ring に置き換え、free slot へ `GetRenderTargetData` / `LockRect` した後に publish request を enqueue する構成へ変えた。
+- worker は locked surface を CPU copy して `SharedFrameWriter.WriteFrame(...)` を実行し、hook thread は completed cleanup で `UnlockRect` と slot 解放を行うようにした。
+- `ShouldCaptureNowLocked` の gate を `lastCaptureIssueQpc` ベースへ寄せ、publish 完了待ちで capture cadence が崩れにくいようにした。
+- reset / resetEx / uninstall 前に publish queue を drain するようにし、`dllmain.cpp` に process-exit 方針コメントを追加した。
+
+### Files Touched
+- `Native/HookAgentDx9/Dx9PresentHook.cpp` — DX9 publish worker、capture slot ring、delayed cleanup、reset/uninstall drain を実装した。
+- `Native/HookAgentDx9/dllmain.cpp` — process-exit 中は `DllMain` から graceful shutdown をしない理由をコメントで補足した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- DX9 `Present` / `PresentEx` / `SwapChain::Present` では `LockRect` 後の CPU publish が worker thread 側へ移った。
+- publish 中の slot とは別の free slot に次回 capture を issue できるようになり、単発 staging surface 前提ではなくなった。
+- reset / device lost / uninstall 時は queue drain 後に surface を解放するため、worker が古い locked surface を触る競合を避ける挙動になった。
+
+### Risk & Mitigation
+- Risk: `GetRenderTargetData` と `LockRect` 自体は依然 `Present` に残るため、改善幅は DX11/Vulkan より小さい可能性がある。
+- Mitigation: まず CPU publish を外し、surface ring で capture と publish の重なりを増やす構成にした。
+- Risk: completed cleanup が次フレームまで遅れると slot 解放が 1 フレーム遅延する。
+- Mitigation: present path の status publish 前と reset/uninstall 前に completed queue を必ず回収するようにした。
+
+### Tests / Verification
+- `cmake --build .\\Native\\build --config Debug --target HookAgentDx9 -j 4`
+- `cmake --build .\\Native\\build_x86 --config Debug --target HookAgentDx9 -j 4`
+
 **2026-03-16 13:34 (Asia/Taipei) — Implement Vulkan off-Present publish worker**
 
 ### Summary
