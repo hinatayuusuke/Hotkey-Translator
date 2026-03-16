@@ -27,6 +27,71 @@
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
 
+**2026-03-16 18:00 (Asia/Taipei) — Add public GitHub README**
+
+### Summary
+- GitHub 公開向けのルート README を新規作成し、機能概要とサードパーティ注意書きを整理した。
+
+### Context / Goal
+- リポジトリ公開時に、用途、ビルド前提、実行時依存関係を README だけで把握できる状態にしたかった。
+- LunaTranslator 作者公開の改造版 Magpie、Dear ImGui、MinHook を使っている点を誤解なく明記する必要があった。
+
+### Changes
+- ルート `README.md` を追加し、概要、主な機能、動作環境、ビルド手順、使い始め、構成、ライセンス注意点を記載した。
+- サードパーティ節で Magpie 改造版の位置づけと、Dear ImGui / MinHook の同梱・ライセンス注意を明記した。
+- ルート `LICENSE` 不在のため、公開前にプロジェクト本体ライセンスを明示すべき旨を README に追記した。
+
+### Files Touched
+- `README.md` — GitHub 公開向けの紹介文、ビルド方法、依存関係、サードパーティ注意書きを新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 公開時にサードパーティ構成と再配布上の注意点を README から確認できるようになった。
+
+### Risk & Mitigation
+- Risk: Magpie 改造版の配布条件や原著作者表記が README だけでは法的に十分でない可能性がある。
+- Mitigation: README で注意喚起しつつ、公開前に実際の配布物へ個別ライセンス表記を同梱する前提を明記した。
+- Risk: ルート LICENSE 不在のまま公開すると、リポジトリ本体の利用条件が不明確になる。
+- Mitigation: README に公開前の追加対応として明記した。
+
+### Tests / Verification
+- `Get-Content README.md` で記載内容を確認
+- `Get-Content .agent/changes.md -Tail 50 -Encoding UTF8` で追記方針と既存フォーマットを確認
+
+**2026-03-16 18:32 (Asia/Taipei) — Add English README**
+
+### Summary
+- 英語版 README を追加し、日本語版 README と相互リンクできるようにした。
+
+### Context / Goal
+- GitHub 公開時に、日本語話者以外にもプロジェクト概要とサードパーティ注意点を伝えられる状態にしたかった。
+- 既存の日本語 README と同じ前提で、Magpie 改造版、Dear ImGui、MinHook の扱いを英語でも明示する必要があった。
+
+### Changes
+- `README.en.md` を新規追加し、日本語 README の内容を英語で再構成した。
+- `README.md` の冒頭に英語版へのリンクを追加した。
+- 英語版 README にもサードパーティ節と root `LICENSE` 不在の注意を反映した。
+
+### Files Touched
+- `README.md` — 冒頭に英語版 README への導線を追加した。
+- `README.en.md` — GitHub 公開向けの英語版 README を新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- GitHub 上で日本語版と英語版の README を切り替えて参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 日本語版と英語版の内容が将来的に乖離する可能性がある。
+- Mitigation: 同一構成で記述し、今後 README 更新時は両方を同時更新する前提を残した。
+- Risk: サードパーティの説明を英語化しても、実際の再配布条件確認を省略される可能性がある。
+- Mitigation: 英語版にも再配布条件を別途確認すべき旨を明記した。
+
+### Tests / Verification
+- `Get-Content README.md` でリンク追記を確認
+- `Get-Content README.en.md` で英語版内容を確認
+
 **2026-03-16 15:34 (Asia/Taipei) — Implement DX9 off-Present publish worker and staging ring**
 
 ### Summary
