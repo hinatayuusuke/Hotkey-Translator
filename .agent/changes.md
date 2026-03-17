@@ -255,3 +255,32 @@
 
 ### Tests / Verification
 - 未実施（ドキュメント追加のみ）
+
+**2026-03-17 11:17 (Asia/Taipei) — Add beginner GitHub Pages site policy**
+
+### Summary
+- GitHub Pages で公開する配布サイト向けに、Vite + React + Tailwind CSS の初心者向け方針書を追加した。
+
+### Context / Goal
+- Hotkey Translator の公開用サイトを作る前に、Web アプリ化へ広がりすぎない最小方針を先に固めたかった。
+- GitHub Pages 特有の `base` 設定や SPA ルーティング回避を含め、初心者が迷いにくい実装方針を文書化したかった。
+
+### Changes
+- GitHub Pages 上では WPF 本体ではなく紹介・配布ページを作る前提を明確化した。
+- `site/` 配下に Vite プロジェクトを分離する案、1 ページ構成、React Router 非導入、GitHub Actions デプロイを基本方針として整理した。
+- Hero、機能紹介、スクリーンショット、導入手順、Releases 導線を含む最低限のページ構成と実装順をまとめた。
+
+### Files Touched
+- `Doc/GitHubPages_ViteReactTailwind_Beginner_Policy.md` — GitHub Pages + Vite + React + Tailwind CSS の初心者向け公開方針書を新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はない。
+- 公開サイト実装時の前提、スコープ、推奨構成が明確になった。
+
+### Risk & Mitigation
+- Risk: 文書だけでは Vite / Tailwind の具体セットアップ差分がまだ未反映。
+- Mitigation: 次タスクで `site/` の初期作成と Pages デプロイ設定をこの方針に沿って実装する。
+
+### Tests / Verification
+- README と配布要件ドキュメントを確認し、方針が現行の Windows デスクトップ配布前提と矛盾しないことを確認
