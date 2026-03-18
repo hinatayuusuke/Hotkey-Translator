@@ -69,6 +69,7 @@ Tools/Magpie/effects/
 Tools/Magpie/cache/
 log/
 Reference/
+dist/
 
 # User-specific files
 *.rsuser

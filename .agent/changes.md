@@ -383,3 +383,39 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj`
+
+**2026-03-18 13:37 (Asia/Taipei) — Add online distribution build script**
+
+### Summary
+- online 配布用フォルダを生成する `build-dist.ps1` を追加し、WPF publish・native build・必要資産の収集を一括化した。
+
+### Context / Goal
+- WPF 本体を single-file EXE として配布しつつ、固定相対パスで参照する helper/native/python 資産も同じ構造で揃えたかった。
+- `TranslationService` と GGUF/Paddle 実モデルを除外した online 配布を再現可能なスクリプトにしたかった。
+
+### Changes
+- `build-dist.ps1` を追加し、`dotnet publish`、`cmake` x64/x86 build、配布フォルダの作成、必要ファイルのホワイトリストコピーを実装した。
+- Python 系サービスは `.venv`・テスト類・GGUF payload を除外し、`uv` と manifest ベースの初回セットアップ前提にした。
+- hook DLL がアンチウイルスで削除される前提を吸収するため、x64/x86 HookHost は必須、hook agent DLL は警告付き任意資産として扱うようにした。
+- 配布先に `DIST-NOTES.txt` を出力し、未同梱物と初回ダウンロード挙動、欠落した hook DLL を明示するようにした。
+
+### Files Touched
+- `build-dist.ps1` — online 配布フォルダ生成の自動化スクリプトを追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- `.\build-dist.ps1` で `dist\Hotkey-Translator-online` を再生成できるようになった。
+- 配布物には `TranslationService`、Python `.venv`、GGUF/mmproj、Paddle 実モデルは入らず、初回起動時に `uv sync` や manifest ダウンロードが走る。
+- ローカルのアンチウイルスにより hook DLL が隔離された場合でも、dist 生成自体は完了し、`DIST-NOTES.txt` に欠落一覧が残る。
+
+### Risk & Mitigation
+- Risk: アンチウイルスが hook agent DLL を削除すると、対象 API の hook 機能が配布物で欠落する。
+- Mitigation: HookHost のみを必須にし、hook DLL 欠落は警告と `DIST-NOTES.txt` に記録して配布生成を止めないようにした。
+- Risk: online 配布では初回起動時に Python runtime やモデルのダウンロード時間が発生する。
+- Mitigation: `DIST-NOTES.txt` に初回挙動を明記し、manifest/lock ファイルは必ず同梱する構成にした。
+
+### Tests / Verification
+- `powershell -ExecutionPolicy Bypass -File .\build-dist.ps1`
+- 出力確認: `dist\Hotkey-Translator-online`
+- 確認結果: `Hotkey-Translator.exe`、`Tools\uv\uv.exe`、`Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.exe`、`Native\HookHost\bin\HookHost.exe`、`Native\HookHost\bin\x86\HookHost.exe` を含む配布フォルダが生成された。
+- 確認結果: x64 の hook agent DLL は配布に含まれ、x86 hook agent DLL はアンチウイルス隔離前提により `DIST-NOTES.txt` の missing list に記録された。
