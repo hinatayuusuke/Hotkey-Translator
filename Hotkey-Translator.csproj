@@ -14,6 +14,7 @@
 
     <!-- アナライザ向け（OS下限の明示） -->
     <SupportedOSPlatformVersion>10.0.19041.0</SupportedOSPlatformVersion>
+    <ApplicationIcon>Ico\Hotkey-Translator.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -44,7 +45,12 @@
     <Compile Remove="Code-Reference\**\*" />
     <Page Remove="Code-Reference\**\*" />
     <None Remove="Code-Reference\**\*" />
+    <None Remove="Ico\Hotkey-Translator.ico" />
     
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Ico\Hotkey-Translator.ico" />
   </ItemGroup>
 
   <ItemGroup>

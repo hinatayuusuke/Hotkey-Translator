@@ -354,3 +354,32 @@
 - `cmake --build .\Native\build --config Debug --target HookAgentDx11 HookAgentDx9 HookAgentVulkan HookHost -j 4`
 - `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 HookAgentDx9 HookHost -j 4`
 - `dotnet build .\Hotkey-Translator.sln`
+
+**2026-03-18 11:40 (Asia/Taipei) — Set WPF application icon**
+
+### Summary
+- `Ico\Hotkey-Translator.ico` を WPF アプリの実行ファイルとメインウィンドウのアイコンとして設定した。
+
+### Context / Goal
+- 既存の `.ico` ファイルをアプリのアイコンとして反映したかった。
+- ビルド成果物と WPF ウィンドウ表示の両方で同じアイコンを使う状態にしたかった。
+
+### Changes
+- `.csproj` に `ApplicationIcon` を追加し、`Ico\Hotkey-Translator.ico` を参照するようにした。
+- `.ico` を WPF `Resource` として埋め込み、`MainWindow.xaml` の `Icon` に設定した。
+
+### Files Touched
+- `Hotkey-Translator.csproj` — アプリケーションアイコン設定と `.ico` の埋め込み設定を追加した。
+- `MainWindow.xaml` — メインウィンドウの `Icon` を追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- ビルドしたアプリの実行ファイルアイコンが `Hotkey-Translator.ico` になる。
+- メインウィンドウのタイトルバーとタスク切り替え表示で同じアイコンが使われる。
+
+### Risk & Mitigation
+- Risk: `.ico` がプロジェクトに埋め込まれていないと、WPF 側の `Icon` 解決に失敗する。
+- Mitigation: `Resource Include` を追加し、暗黙 `None` を除外して参照元を一意にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj`
