@@ -51,11 +51,15 @@ namespace ht::hook::ipc
     private:
         bool RecreateMapping(DWORD pid, GraphicsApi api, std::size_t payloadBytes);
         void SetLastError(LastErrorKind kind, DWORD win32Error, std::size_t requestedPayloadBytes, std::size_t totalBytes);
+        std::uint8_t* SlotBase(std::uint32_t slotIndex) const;
+        FramePipeHeaderV2* PipeHeader() const;
 
         HANDLE mappingHandle_ = nullptr;
         std::uint8_t* mappedView_ = nullptr;
         std::wstring mappingName_;
         std::size_t mappedCapacityBytes_ = 0;
+        std::size_t mappedTotalBytes_ = 0;
+        std::uint64_t nextPublishedSeq_ = 1;
         LastErrorKind lastErrorKind_ = LastErrorKind::None;
         DWORD lastWin32Error_ = 0;
         std::size_t lastRequestedPayloadBytes_ = 0;

@@ -284,3 +284,73 @@
 
 ### Tests / Verification
 - README と配布要件ドキュメントを確認し、方針が現行の Windows デスクトップ配布前提と矛盾しないことを確認
+
+**2026-03-18 10:02 (Asia/Taipei) — Add Frame Pipe v2 double-buffer implementation plan**
+
+### Summary
+- consumer 側の race 吸収コストを producer 側へ戻すための shared memory v2 実装案を追加した。
+
+### Context / Goal
+- `GraphicsHook_OBS_Reference_Performance_Improvement_Policy.md` の差分 2 について、現状実装を再確認した上で具体的な実装方針を文書化したかった。
+- Vulkan off-Present publish 実装後も `FrameHeader v1 + 単一 payload` 契約が残っているため、`GraphicsHookCaptureProvider` の reopen / sleep retry を減らす次段の設計を明確にしたかった。
+
+### Changes
+- `HookIpcProtocol.h`、`SharedFrameWriter.cpp`、`GraphicsHookCaptureProvider.cs` の現状契約を再確認し、reader 側に race 吸収が残っている点を整理した。
+- producer 側 double buffer + `publishedSeq` 契約を核にした frame pipe v2 実装案を書いた。
+- mapping 名分離、mapping/accessor cache、`Thread.Sleep(5)` 依存の除去方針、DX11/DX9 への横展開方針を含めた。
+
+### Files Touched
+- `Doc/GraphicsHook_FramePipeV2_DoubleBuffer_Implementation_Plan.md` — shared memory v2 の実装案を新規追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動の変更はまだない。
+- 差分 2 を解消するための producer/consumer 契約変更案が明文化された。
+
+### Risk & Mitigation
+- Risk: v2 案は shared memory サイズ増加と producer/consumer 同時更新を伴うため、実装時の切替事故が起きやすい。
+- Mitigation: Doc で mapping 名分離と fail-fast 前提を明記し、恒久的な自動フォールバックを入れない方針にした。
+
+### Tests / Verification
+- `Doc/GraphicsHook_OBS_Reference_Performance_Improvement_Policy.md` を UTF-8 で再読込し、差分 2 の前提と整合することを確認
+- `Services/GraphicsHookCaptureProvider.cs`、`Native/HookCommon/SharedFrameWriter.cpp`、`Native/HookCommon/HookIpcProtocol.h` の現状コードを参照し、Doc の現状整理が実装と一致することを確認
+
+**2026-03-18 10:25 (Asia/Taipei) — Implement frame pipe v2 double-buffer contract**
+
+### Summary
+- shared memory frame pipe を v2 化し、producer 側 double buffer + `publishedSeq` publish と C# reader 側 mapping cache を実装した。
+
+### Context / Goal
+- `Doc/GraphicsHook_FramePipeV2_DoubleBuffer_Implementation_Plan.md` を実装し、consumer 側の race 吸収コストと `Thread.Sleep(5)` retry を減らしたかった。
+- Vulkan/DX11/DX9 の off-Present publish 後も残っていた `FrameHeader v1 + 単一 payload` 契約を `HookCommon` で置き換えたかった。
+
+### Changes
+- `HookIpcProtocol.h` に `FramePipeHeaderV2` / `FrameSlotHeaderV2` と v2 mapping 名、slot/pipe size helper を追加した。
+- `SharedFrameWriter` を 2-slot publish へ更新し、inactive slot へ payload を書いてから `publishedIndex` / `publishedSeq` を更新する契約へ切り替えた。
+- C# `GraphicsHookCaptureProvider` を v2 reader に差し替え、mapping/accessor cache と `publishedSeq` confirm read による race 検出へ変更した。
+- `TryWaitForInitializedHeader` / `TryWaitForNewFrame` / `Thread.Sleep(5)` ベース wait を撤去した。
+- Vulkan の write-frame 診断ログを v2 mapping 名へ更新した。
+
+### Files Touched
+- `Native/HookCommon/HookIpcProtocol.h` — frame pipe v2 の header/slot layout と v2 mapping 名を追加した。
+- `Native/HookCommon/SharedFrameWriter.h` — v2 publish 用の内部 state と helper 宣言を追加した。
+- `Native/HookCommon/SharedFrameWriter.cpp` — 2-slot publish と固定容量 mapping を実装した。
+- `Services/GraphicsHookCaptureProvider.cs` — v2 reader、mapping/accessor cache、`publishedSeq` confirm read を実装した。
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — write-frame 診断ログの mapping 名を v2 に合わせた。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- frame mapping 名が `Local\\HT_HOOK_FRAME_{api}_{pid}_V2` に変わった。
+- reader は frame ごとに `OpenExisting` / `CreateViewAccessor` を繰り返さず、同一 mapping を再利用する。
+- writer race 時の reader retry は `publishedSeq` の confirm read に限定され、sleep wait は行わない。
+
+### Risk & Mitigation
+- Risk: mapping を固定容量 2-slot にしたため、共有メモリの予約サイズが大きくなる。
+- Mitigation: fixed capacity にした理由をコードコメントで明記し、reader cache と同居できる安全な named mapping 契約を優先した。
+- Risk: producer/consumer の v2 同時更新が揃わないと frame read が fail-fast する。
+- Mitigation: mapping 名を v2 専用に変え、旧契約との取り違えを避けた。
+
+### Tests / Verification
+- `cmake --build .\Native\build --config Debug --target HookAgentDx11 HookAgentDx9 HookAgentVulkan HookHost -j 4`
+- `cmake --build .\Native\build_x86 --config Debug --target HookAgentDx11 HookAgentDx9 HookHost -j 4`
+- `dotnet build .\Hotkey-Translator.sln`

@@ -10,6 +10,7 @@ namespace ht::hook::ipc
     namespace
     {
         constexpr std::size_t kMaxPayloadBytes = 7680ull * 4320ull * 4ull;
+        constexpr std::size_t kFramePipePayloadCapacityBytes = kMaxPayloadBytes;
     }
 
     SharedFrameWriter::~SharedFrameWriter()
@@ -33,7 +34,7 @@ namespace ht::hook::ipc
     {
         if (mappedView_ != nullptr && mappedCapacityBytes_ >= payloadBytes)
         {
-            SetLastError(LastErrorKind::None, 0, payloadBytes, sizeof(FrameHeader) + payloadBytes);
+            SetLastError(LastErrorKind::None, 0, payloadBytes, mappedTotalBytes_);
             return true;
         }
 
@@ -61,31 +62,47 @@ namespace ht::hook::ipc
         {
             if (lastErrorKind_ == LastErrorKind::None)
             {
-                SetLastError(LastErrorKind::EnsureCapacityFailed, GetLastError(), payloadBytes, sizeof(FrameHeader) + payloadBytes);
+                SetLastError(LastErrorKind::EnsureCapacityFailed, GetLastError(), payloadBytes, mappedTotalBytes_);
             }
             return false;
         }
 
-        auto* header = reinterpret_cast<FrameHeader*>(mappedView_);
-        auto* payloadDst = mappedView_ + sizeof(FrameHeader);
+        auto* pipeHeader = PipeHeader();
+        const std::uint64_t publishSeq = nextPublishedSeq_++;
+        if (nextPublishedSeq_ == 0)
+        {
+            nextPublishedSeq_ = 1;
+        }
+
+        std::uint32_t targetSlotIndex = 0;
+        if (pipeHeader->publishedSeq != 0)
+        {
+            targetSlotIndex = (pipeHeader->publishedIndex + 1u) % kFramePipeSlotCount;
+        }
+
+        auto* slotBase = SlotBase(targetSlotIndex);
+        auto* slotHeader = reinterpret_cast<FrameSlotHeaderV2*>(slotBase);
+        auto* payloadDst = slotBase + sizeof(FrameSlotHeaderV2);
 
         std::memcpy(payloadDst, payload, payloadBytes);
         MemoryBarrier();
 
-        header->magic = kFrameHeaderMagic;
-        header->version = kFrameHeaderVersion;
-        header->frameId = frameId;
-        header->width = width;
-        header->height = height;
-        header->stride = stride;
-        header->payloadBytes = static_cast<std::uint32_t>(payloadBytes);
-        header->pixelFormat = kFramePixelFormatBgra8;
-        header->api = static_cast<std::uint32_t>(api);
-        header->producerPid = pid;
-        header->reserved0 = 0;
-        header->timestampQpc = timestampQpc;
+        slotHeader->frameId = frameId;
+        slotHeader->width = width;
+        slotHeader->height = height;
+        slotHeader->stride = stride;
+        slotHeader->payloadBytes = static_cast<std::uint32_t>(payloadBytes);
+        slotHeader->pixelFormat = kFramePixelFormatBgra8;
+        slotHeader->timestampQpc = timestampQpc;
+        slotHeader->slotSeq = publishSeq;
         MemoryBarrier();
-        SetLastError(LastErrorKind::None, 0, payloadBytes, sizeof(FrameHeader) + payloadBytes);
+
+        pipeHeader->publishedIndex = targetSlotIndex;
+        MemoryBarrier();
+        pipeHeader->publishedSeq = publishSeq;
+        MemoryBarrier();
+
+        SetLastError(LastErrorKind::None, 0, payloadBytes, mappedTotalBytes_);
         return true;
     }
 
@@ -104,7 +121,9 @@ namespace ht::hook::ipc
         }
 
         mappedCapacityBytes_ = 0;
+        mappedTotalBytes_ = 0;
         mappingName_.clear();
+        nextPublishedSeq_ = 1;
         SetLastError(LastErrorKind::None, 0, 0, 0);
     }
 
@@ -114,11 +133,13 @@ namespace ht::hook::ipc
 
         if (payloadBytes == 0 || payloadBytes > kMaxPayloadBytes)
         {
-            SetLastError(LastErrorKind::MappingSizeInvalid, ERROR_INVALID_PARAMETER, payloadBytes, sizeof(FrameHeader) + payloadBytes);
+            SetLastError(LastErrorKind::MappingSizeInvalid, ERROR_INVALID_PARAMETER, payloadBytes, 0);
             return false;
         }
 
-        const std::uint64_t totalBytes64 = static_cast<std::uint64_t>(sizeof(FrameHeader)) + static_cast<std::uint64_t>(payloadBytes);
+        // WHY: C# reader caches the mapping handle, so the named mapping cannot resize after the first successful open.
+        // Keep a fixed payload capacity and publish into alternating slots instead of recreating the object on resize.
+        const std::uint64_t totalBytes64 = static_cast<std::uint64_t>(FramePipeTotalBytes(kFramePipePayloadCapacityBytes));
         if (totalBytes64 > static_cast<std::uint64_t>(std::numeric_limits<SIZE_T>::max()))
         {
             SetLastError(LastErrorKind::MappingSizeInvalid, ERROR_INVALID_PARAMETER, payloadBytes, 0);
@@ -154,9 +175,39 @@ namespace ht::hook::ipc
             return false;
         }
 
-        mappedCapacityBytes_ = payloadBytes;
+        mappedCapacityBytes_ = kFramePipePayloadCapacityBytes;
+        mappedTotalBytes_ = static_cast<std::size_t>(totalBytes);
         std::memset(mappedView_, 0, totalBytes);
-        SetLastError(LastErrorKind::None, 0, payloadBytes, static_cast<std::size_t>(totalBytes));
+
+        auto* pipeHeader = PipeHeader();
+        pipeHeader->magic = kFrameHeaderMagic;
+        pipeHeader->version = kFramePipeVersion;
+        pipeHeader->api = static_cast<std::uint32_t>(api);
+        pipeHeader->producerPid = pid;
+        pipeHeader->slotCount = kFramePipeSlotCount;
+        pipeHeader->payloadCapacity = static_cast<std::uint32_t>(mappedCapacityBytes_);
+        pipeHeader->publishedIndex = 0;
+        pipeHeader->reserved0 = 0;
+        pipeHeader->publishedSeq = 0;
+        pipeHeader->reserved1 = 0;
+
+        SetLastError(LastErrorKind::None, 0, payloadBytes, mappedTotalBytes_);
         return true;
+    }
+
+    std::uint8_t* SharedFrameWriter::SlotBase(std::uint32_t slotIndex) const
+    {
+        if (mappedView_ == nullptr || slotIndex >= kFramePipeSlotCount)
+        {
+            return nullptr;
+        }
+
+        const std::size_t slotOffset = sizeof(FramePipeHeaderV2) + (FrameSlotBytes(mappedCapacityBytes_) * slotIndex);
+        return mappedView_ + slotOffset;
+    }
+
+    FramePipeHeaderV2* SharedFrameWriter::PipeHeader() const
+    {
+        return reinterpret_cast<FramePipeHeaderV2*>(mappedView_);
     }
 }

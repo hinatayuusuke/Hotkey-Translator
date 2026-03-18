@@ -4,7 +4,6 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.IO.MemoryMappedFiles;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Windows;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.Hook;
@@ -14,9 +13,11 @@ namespace Hotkey_Translator.Services;
 public sealed class GraphicsHookCaptureProvider : ICaptureProvider
 {
     private const uint FrameHeaderMagic = 0x48465452; // "HFTR"
-    private const uint FrameHeaderVersion = 1;
+    private const uint FramePipeVersion = 2;
+    private const uint FramePipeSlotCount = 2;
     private const uint PixelFormatBgra8 = 1;
     private const int MaxReadAttempts = 5;
+    private const int MaxPayloadBytes = 7680 * 4320 * 4;
 
     internal GraphicsHookCaptureProvider(AppLogger logger, LauncherSessionTargetState launcherSessionTargetState)
     {
@@ -109,6 +110,11 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private readonly AppLogger _logger;
     private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly object _cacheLock = new();
+    private readonly object _mappingLock = new();
+    private int _openedPid;
+    private string _openedMapName = string.Empty;
+    private MemoryMappedFile? _openedMemoryMappedFile;
+    private MemoryMappedViewAccessor? _openedAccessor;
     private int _cachedPid;
     private string _cachedMapName = string.Empty;
     private ulong _cachedFrameId;
@@ -116,26 +122,37 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
     private DateTimeOffset _cachedBitmapUpdatedAtUtc;
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
-    private struct SharedFrameHeader
+    private struct SharedFramePipeHeader
     {
         public uint Magic;
         public uint Version;
+        public uint Api;
+        public uint ProducerPid;
+        public uint SlotCount;
+        public uint PayloadCapacity;
+        public uint PublishedIndex;
+        public uint Reserved0;
+        public ulong PublishedSeq;
+        public ulong Reserved1;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct SharedFrameHeader
+    {
         public ulong FrameId;
         public uint Width;
         public uint Height;
         public uint Stride;
         public uint PayloadBytes;
         public uint PixelFormat;
-        public uint Api;
-        public uint ProducerPid;
-        public uint Reserved0;
         public ulong TimestampQpc;
+        public ulong SlotSeq;
     }
 
     private static string BuildFrameMappingName(int pid, GraphicsHookApiKind api)
     {
         // NOTE: Must match Native/HookCommon/HookIpcProtocol.h naming.
-        return $@"Local\HT_HOOK_FRAME_{unchecked((uint)api)}_{pid}";
+        return $@"Local\HT_HOOK_FRAME_{unchecked((uint)api)}_{pid}_V2";
     }
 
     private bool TryResolveFrameMappingName(
@@ -187,77 +204,63 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         out Bitmap bitmap,
         out string? error)
     {
-        var headerBytes = Marshal.SizeOf<SharedFrameHeader>();
+        var pipeHeaderBytes = Marshal.SizeOf<SharedFramePipeHeader>();
+        var frameHeaderBytes = Marshal.SizeOf<SharedFrameHeader>();
         header = default;
         bitmap = null!;
         error = null;
 
         try
         {
-            using var mmf = MemoryMappedFile.OpenExisting(mappingName, MemoryMappedFileRights.Read);
-            using var accessor = mmf.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
-
-            for (var attempt = 0; attempt < MaxReadAttempts; attempt++)
+            lock (_mappingLock)
             {
-                accessor.Read(0, out header);
-                if (!ValidateHeader(header, out var headerError))
+                if (!TryGetAccessorLocked(pid, mappingName, out var accessor))
                 {
-                    // NOTE: Mapping exists but writer may not have produced a frame yet. Give it a short window.
-                    if (headerError == "Hook frame header not initialized." &&
-                        TryWaitForInitializedHeader(accessor, timeoutMs: 40, out header))
-                    {
-                        if (!ValidateHeader(header, out headerError))
-                        {
-                            error = headerError;
-                            return false;
-                        }
-                    }
-                    else
-                    {
-                        error = headerError;
-                        return false;
-                    }
-                }
-
-                // If the frame didn't change, return a cached bitmap (clone) instead of re-copying the same payload.
-                if (TryCloneCached(pid, mappingName, header.FrameId, out bitmap))
-                {
-                    return true;
-                }
-
-                // Give the writer a brief chance to advance (reduces fallback churn on watch-interval loops).
-                if (TryWaitForNewFrame(accessor, header.FrameId, timeoutMs: 25, out var advanced))
-                {
-                    header = advanced;
-                    // Re-validate the advanced header before reading payload.
-                    if (!ValidateHeader(header, out var advancedError))
-                    {
-                        error = advancedError;
-                        return false;
-                    }
-                }
-
-                var payloadBytes = checked((int)header.PayloadBytes);
-                if (payloadBytes <= 0 || payloadBytes > 7680 * 4320 * 4)
-                {
-                    error = $"Invalid payload size: {payloadBytes}.";
+                    error = $"Hook shared frame mapping not found. map=\"{mappingName}\" pid={pid}.";
                     return false;
                 }
 
-                var payload = new byte[payloadBytes];
-                accessor.ReadArray(headerBytes, payload, 0, payloadBytes);
-
-                // WHY: Writer stores payload first and header last. Re-read to detect races.
-                SharedFrameHeader confirm = default;
-                accessor.Read(0, out confirm);
-                if (confirm.FrameId == header.FrameId &&
-                    confirm.PayloadBytes == header.PayloadBytes &&
-                    confirm.Width == header.Width &&
-                    confirm.Height == header.Height &&
-                    confirm.Stride == header.Stride)
+                for (var attempt = 0; attempt < MaxReadAttempts; attempt++)
                 {
-                    bitmap = CreateBitmapFromBgraPayload(header, payload);
-                    return true;
+                    accessor.Read(0, out SharedFramePipeHeader pipeHeader);
+                    if (!ValidatePipeHeader(pipeHeader, out var pipeError))
+                    {
+                        error = pipeError;
+                        return false;
+                    }
+
+                    var slotHeaderOffset = checked((long)(pipeHeaderBytes + ((frameHeaderBytes + pipeHeader.PayloadCapacity) * pipeHeader.PublishedIndex)));
+                    accessor.Read(slotHeaderOffset, out header);
+                    if (!ValidateFrameHeader(pipeHeader, header, out var frameError))
+                    {
+                        error = frameError;
+                        return false;
+                    }
+
+                    // WHY: Same frameId means the published slot did not advance, so cloning is cheaper than decoding again.
+                    if (TryCloneCached(pid, mappingName, header.FrameId, out bitmap))
+                    {
+                        return true;
+                    }
+
+                    var payloadBytes = checked((int)header.PayloadBytes);
+                    var payloadOffset = checked(slotHeaderOffset + frameHeaderBytes);
+                    var payload = new byte[payloadBytes];
+                    accessor.ReadArray(payloadOffset, payload, 0, payloadBytes);
+
+                    accessor.Read(0, out SharedFramePipeHeader confirmPipeHeader);
+                    if (confirmPipeHeader.PublishedSeq == pipeHeader.PublishedSeq &&
+                        confirmPipeHeader.PublishedIndex == pipeHeader.PublishedIndex &&
+                        header.SlotSeq == pipeHeader.PublishedSeq)
+                    {
+                        bitmap = CreateBitmapFromBgraPayload(header, payload);
+                        return true;
+                    }
+
+                    if (attempt == MaxReadAttempts - 1)
+                    {
+                        break;
+                    }
                 }
             }
 
@@ -273,6 +276,14 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
         catch (FileNotFoundException)
         {
+            lock (_mappingLock)
+            {
+                if (_openedPid == pid && string.Equals(_openedMapName, mappingName, StringComparison.Ordinal))
+                {
+                    ResetOpenedMappingLocked();
+                }
+            }
+
             if (GraphicsHookStatusReader.TryReadAny(pid, out var status, out var statusApi))
             {
                 error =
@@ -295,55 +306,98 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         }
     }
 
-    private static bool TryWaitForInitializedHeader(UnmanagedMemoryAccessor accessor, int timeoutMs, out SharedFrameHeader header)
+    private bool TryGetAccessorLocked(int pid, string mappingName, out MemoryMappedViewAccessor accessor)
     {
-        header = default;
-        var deadline = Environment.TickCount64 + timeoutMs;
-        while (Environment.TickCount64 < deadline)
+        if (_openedAccessor != null &&
+            _openedMemoryMappedFile != null &&
+            _openedPid == pid &&
+            string.Equals(_openedMapName, mappingName, StringComparison.Ordinal))
         {
-            accessor.Read(0, out header);
-            if (header.Magic == FrameHeaderMagic && header.Version == FrameHeaderVersion)
-            {
-                return true;
-            }
-
-            Thread.Sleep(5);
+            accessor = _openedAccessor;
+            return true;
         }
 
-        return false;
+        ResetOpenedMappingLocked();
+        _openedMemoryMappedFile = MemoryMappedFile.OpenExisting(mappingName, MemoryMappedFileRights.Read);
+        _openedAccessor = _openedMemoryMappedFile.CreateViewAccessor(0, 0, MemoryMappedFileAccess.Read);
+        _openedPid = pid;
+        _openedMapName = mappingName;
+        accessor = _openedAccessor;
+        return true;
     }
 
-    private static bool TryWaitForNewFrame(UnmanagedMemoryAccessor accessor, ulong baselineFrameId, int timeoutMs, out SharedFrameHeader advanced)
+    private void ResetOpenedMappingLocked()
     {
-        advanced = default;
-        var deadline = Environment.TickCount64 + timeoutMs;
-        while (Environment.TickCount64 < deadline)
-        {
-            accessor.Read(0, out advanced);
-            if (advanced.FrameId != baselineFrameId)
-            {
-                return true;
-            }
-
-            Thread.Sleep(5);
-        }
-
-        return false;
+        _openedAccessor?.Dispose();
+        _openedAccessor = null;
+        _openedMemoryMappedFile?.Dispose();
+        _openedMemoryMappedFile = null;
+        _openedPid = 0;
+        _openedMapName = string.Empty;
     }
 
-    private static bool ValidateHeader(SharedFrameHeader header, out string? error)
+    private static bool ValidatePipeHeader(SharedFramePipeHeader header, out string? error)
     {
         error = null;
 
-        if (header.Magic != FrameHeaderMagic || header.Version != FrameHeaderVersion)
+        if (header.Magic != FrameHeaderMagic)
         {
-            error = "Hook frame header not initialized.";
+            error = "Hook frame pipe not initialized.";
+            return false;
+        }
+
+        if (header.Version != FramePipeVersion)
+        {
+            error = $"Unexpected hook frame pipe version: {header.Version}.";
             return false;
         }
 
         if (!Enum.IsDefined(typeof(GraphicsHookApiKind), header.Api) || header.Api == 0)
         {
             error = $"Unexpected hook api: {header.Api}.";
+            return false;
+        }
+
+        if (header.SlotCount != FramePipeSlotCount)
+        {
+            error = $"Unexpected hook frame slot count: {header.SlotCount}.";
+            return false;
+        }
+
+        if (header.PublishedIndex >= header.SlotCount)
+        {
+            error = $"Unexpected hook frame slot index: {header.PublishedIndex}.";
+            return false;
+        }
+
+        if (header.PayloadCapacity == 0 || header.PayloadCapacity > MaxPayloadBytes)
+        {
+            error = $"Unexpected hook payload capacity: {header.PayloadCapacity}.";
+            return false;
+        }
+
+        if (header.PublishedSeq == 0)
+        {
+            error = "Hook frame pipe not initialized.";
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool ValidateFrameHeader(SharedFramePipeHeader pipeHeader, SharedFrameHeader header, out string? error)
+    {
+        error = null;
+
+        if (header.FrameId == 0 || header.SlotSeq == 0)
+        {
+            error = "Hook frame slot not initialized.";
+            return false;
+        }
+
+        if (header.SlotSeq != pipeHeader.PublishedSeq)
+        {
+            error = "Hook frame slot sequence mismatch.";
             return false;
         }
 
@@ -356,6 +410,12 @@ public sealed class GraphicsHookCaptureProvider : ICaptureProvider
         if (header.Width == 0 || header.Height == 0 || header.Stride == 0)
         {
             error = "Invalid hook frame header dimensions.";
+            return false;
+        }
+
+        if (header.PayloadBytes == 0 || header.PayloadBytes > pipeHeader.PayloadCapacity)
+        {
+            error = $"Invalid payload size: {header.PayloadBytes}.";
             return false;
         }
 

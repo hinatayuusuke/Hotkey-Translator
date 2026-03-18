@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 
@@ -9,7 +10,9 @@ namespace ht::hook::ipc
 {
     constexpr std::uint32_t kFrameHeaderMagic = 0x48465452; // "HFTR"
     constexpr std::uint32_t kFrameHeaderVersion = 1;
+    constexpr std::uint32_t kFramePipeVersion = 2;
     constexpr std::uint32_t kFramePixelFormatBgra8 = 1;
+    constexpr std::uint32_t kFramePipeSlotCount = 2;
 
     constexpr std::uint32_t kConfigHeaderMagic = 0x48435446; // "HCTF"
     constexpr std::uint32_t kConfigHeaderVersion = 1;
@@ -57,6 +60,32 @@ namespace ht::hook::ipc
         std::uint32_t producerPid;
         std::uint32_t reserved0;
         std::uint64_t timestampQpc;
+    };
+
+    struct FramePipeHeaderV2
+    {
+        std::uint32_t magic;
+        std::uint32_t version;
+        std::uint32_t api;
+        std::uint32_t producerPid;
+        std::uint32_t slotCount;
+        std::uint32_t payloadCapacity;
+        std::uint32_t publishedIndex;
+        std::uint32_t reserved0;
+        std::uint64_t publishedSeq;
+        std::uint64_t reserved1;
+    };
+
+    struct FrameSlotHeaderV2
+    {
+        std::uint64_t frameId;
+        std::uint32_t width;
+        std::uint32_t height;
+        std::uint32_t stride;
+        std::uint32_t payloadBytes;
+        std::uint32_t pixelFormat;
+        std::uint64_t timestampQpc;
+        std::uint64_t slotSeq;
     };
 
     struct HookConfigHeader
@@ -131,12 +160,23 @@ namespace ht::hook::ipc
 
     inline std::wstring BuildFrameMappingName(DWORD pid, GraphicsApi api)
     {
-        // WHY: Backends use one naming convention so future OpenGL/Vulkan agents can reuse the same reader path.
+        // WHY: v2 reader caches the mapping handle, so the name must uniquely identify the new frame-pipe contract.
         std::wstring name = L"Local\\HT_HOOK_FRAME_";
         name += std::to_wstring(static_cast<std::uint32_t>(api));
         name += L"_";
         name += std::to_wstring(pid);
+        name += L"_V2";
         return name;
+    }
+
+    inline constexpr std::size_t FrameSlotBytes(std::size_t payloadCapacityBytes)
+    {
+        return sizeof(FrameSlotHeaderV2) + payloadCapacityBytes;
+    }
+
+    inline constexpr std::size_t FramePipeTotalBytes(std::size_t payloadCapacityBytes)
+    {
+        return sizeof(FramePipeHeaderV2) + (FrameSlotBytes(payloadCapacityBytes) * kFramePipeSlotCount);
     }
 
     inline std::wstring BuildConfigMappingName(DWORD pid, GraphicsApi api)

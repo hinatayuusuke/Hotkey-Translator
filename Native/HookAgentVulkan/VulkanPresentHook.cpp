@@ -1103,7 +1103,7 @@ namespace ht::hook::vulkan
                     if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastWriteFrameFailQpc, kDiagLogMinIntervalMs))
                     {
                         DebugLog(
-                            "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                            "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu_V2.",
                             static_cast<unsigned long>(GetCurrentProcessId()),
                             static_cast<unsigned long long>(item.frameId),
                             item.width,
@@ -1118,7 +1118,7 @@ namespace ht::hook::vulkan
                 if (ShouldEmitDiagLog(item.publishQpc, rt.qpcFreq, rt.lastWriteFrameOkQpc, kDiagSummaryIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                        "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu_V2.",
                         static_cast<unsigned long>(GetCurrentProcessId()),
                         static_cast<unsigned long long>(item.frameId),
                         item.width,
@@ -3129,7 +3129,7 @@ namespace ht::hook::vulkan
                 if (ShouldEmitDiagLog(now, rt.qpcFreq, rt.lastWriteFrameFailQpc, kDiagLogMinIntervalMs))
                 {
                     DebugLog(
-                        "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                        "stage=hook_vulkan event=write_frame result=fail pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu_V2.",
                         static_cast<unsigned long>(pid),
                         static_cast<unsigned long long>(frameId),
                         gpu.width,
@@ -3145,7 +3145,7 @@ namespace ht::hook::vulkan
             if (ShouldEmitDiagLog(ts, rt.qpcFreq, rt.lastWriteFrameOkQpc, kDiagSummaryIntervalMs))
             {
                 DebugLog(
-                    "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu.",
+                    "stage=hook_vulkan event=write_frame result=ok pid=%lu frameId=%llu width=%u height=%u bytes=%zu map=Local\\HT_HOOK_FRAME_4_%lu_V2.",
                     static_cast<unsigned long>(pid),
                     static_cast<unsigned long long>(frameId),
                     gpu.width,
