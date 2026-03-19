@@ -692,3 +692,30 @@
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln`
 - `git diff --check`（LF/CRLF warning のみ）
+
+**2026-03-19 15:32 (Asia/Taipei) — Reorder overview quick display controls**
+
+### Summary
+- Overview の Quick Display Settings で、表示系スライダーと Fixed ROI 設定の順序を整理した。
+
+### Context / Goal
+- `Overlay opacity` が Fixed ROI 設定群と同じ列にあり、表示調整と配置設定の文脈が混ざっていた。
+- `Overlay font size` と `Overlay opacity` を同じ列へまとめ、`Fixed ROI overlay mode` を右列の先頭へ移動したかった。
+
+### Changes
+- `Overlay opacity` のラベルとスライダーを左列へ移動した。
+- `Fixed ROI overlay mode` を右列の先頭に残し、その下に target / user frame 操作群が続く並びへ整理した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — Quick Display Settings のコントロール順序だけを変更した。
+
+### Behavioral Impact
+- 機能やバインディングは変わらず、Overview 内の表示順だけが変わる。
+- 表示調整系スライダーが左列にまとまり、Fixed ROI 設定の依存関係が右列で上から読めるようになる。
+
+### Risk & Mitigation
+- Risk: 既存スクリーンショットや手順書の見た目と位置がずれる。
+- Mitigation: 機能変更は伴わず、ラベルと操作内容はそのまま維持した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln`

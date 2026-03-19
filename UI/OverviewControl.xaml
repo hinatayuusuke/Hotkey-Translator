@@ -389,9 +389,6 @@
                             <TextBlock Style="{StaticResource SliderValueDecimalTextStyle}"
                                        Text="{Binding Settings.OverlayFontSize, StringFormat={}{0:F1}}" />
                         </StackPanel>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="2">
                         <TextBlock Text="Overlay opacity" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Slider Width="{StaticResource SliderStandardWidth}"
@@ -405,6 +402,9 @@
                             <TextBlock Style="{StaticResource SliderValueDecimalTextStyle}"
                                        Text="{Binding Settings.OverlayBackgroundOpacity, StringFormat={}{0:F2}}" />
                         </StackPanel>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
                         <CheckBox Content="Fixed ROI overlay mode"
                                   IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <StackPanel Margin="0,8,0,0">
