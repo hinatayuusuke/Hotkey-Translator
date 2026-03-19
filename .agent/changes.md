@@ -597,3 +597,32 @@
 - `git diff --check`（LF/CRLF warning のみ）
 - `dotnet build .\Hotkey-Translator.sln`（未成功: 既存の `Tools\WinRtLanguagePackElevator` 生成物で重複 AssemblyAttribute エラー）
 - `dotnet build .\Hotkey-Translator.csproj /p:BuildProjectReferences=false`（未成功: 既存の `obj\Debug\...\*_wpftmp.csproj` / `artifacts\mainobj` 由来の重複生成物エラー）
+
+**2026-03-19 13:48 (Asia/Taipei) — Fix Win32 hotkey self-collision during updates**
+
+### Summary
+- Win32 hotkey 更新時に既存登録と自己衝突して他の hotkey が落ちる不具合を修正した。
+
+### Context / Goal
+- `Select user frame` を含む hotkey を新規設定すると、変更していない既存 hotkey まで効かなくなっていた。
+- hotkey 更新時に既存登録を壊さず、変更分だけ安全に差し替えられるようにしたかった。
+
+### Changes
+- `HotkeyController.TryRegisterBindingsWin32` で、変更されていない Win32 hotkey 登録は再利用するようにした。
+- 同じ id で内容が変わった binding だけ旧登録を解除して再登録するようにした。
+- 使われなくなった旧 Win32 登録だけを最後に dispose するようにした。
+
+### Files Touched
+- `Services/Application/HotkeyController.cs` — Win32 hotkey 更新時の自己衝突を避けるため、 unchanged binding の再利用と差分更新に変更した。
+
+### Behavioral Impact
+- `Select user frame` を設定しても、変更していない既存 hotkey は引き続き有効のままになる。
+- Win32 backend で hotkey を 1 本追加・変更したとき、同一アプリ内の旧登録との再登録衝突が起きなくなる。
+
+### Risk & Mitigation
+- Risk: 同じ id の変更 hotkey が外部競合で再登録失敗した場合、その binding だけ失われる可能性がある。
+- Mitigation: 変更されていない binding は再利用し、影響範囲を変更対象 id のみに限定した。
+
+### Tests / Verification
+- `git diff --check -- Services/Application/HotkeyController.cs`（LF/CRLF warning のみ）
+- コード確認: unchanged binding は再登録せず再利用、変更 id のみ解除後に再登録することを確認

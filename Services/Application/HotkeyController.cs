@@ -89,12 +89,29 @@ internal sealed class HotkeyController : IDisposable
     private bool TryRegisterBindingsWin32(IReadOnlyList<HotkeyBindingRegistration> bindings)
     {
         var newSlots = new Dictionary<int, HotkeyManager>();
+        var remainingOldSlots = new Dictionary<int, HotkeyManager>(_slots);
         var failedCount = 0;
         foreach (var binding in bindings)
         {
+            if (remainingOldSlots.TryGetValue(binding.Id, out var existing) &&
+                existing.Key == binding.Key &&
+                existing.Modifiers == binding.Modifiers)
+            {
+                // WHY: Reuse unchanged Win32 registrations so hotkey updates do not collide with the app's own existing bindings.
+                newSlots.Add(binding.Id, existing);
+                remainingOldSlots.Remove(binding.Id);
+                continue;
+            }
+
             HotkeyManager? manager = null;
             try
             {
+                if (remainingOldSlots.TryGetValue(binding.Id, out var previous))
+                {
+                    previous.Dispose();
+                    remainingOldSlots.Remove(binding.Id);
+                }
+
                 manager = new HotkeyManager(_ownerWindow, binding.Key, binding.Modifiers, binding.Id);
                 manager.HotkeyPressed += binding.Handler;
                 manager.Register();
@@ -124,7 +141,8 @@ internal sealed class HotkeyController : IDisposable
 
         _rawInputManager?.Dispose();
         _rawInputManager = null;
-        foreach (var manager in _slots.Values)
+
+        foreach (var manager in remainingOldSlots.Values)
         {
             manager.Dispose();
         }
