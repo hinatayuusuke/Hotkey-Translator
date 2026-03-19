@@ -41,6 +41,7 @@ public partial class HotkeysControl : UserControl
         HotkeyOcrOnlyKeyBox.ItemsSource = options;
         HotkeyToggleSceneAutoTranslateKeyBox.ItemsSource = options;
         HotkeySelectRoiKeyBox.ItemsSource = options;
+        HotkeySelectFixedOverlayFrameKeyBox.ItemsSource = options;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = options;
         HotkeyUnlockCaptureWindowKeyBox.ItemsSource = options;
         HotkeyToggleMirrorFullscreenKeyBox.ItemsSource = options;

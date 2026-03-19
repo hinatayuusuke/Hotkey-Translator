@@ -30,6 +30,8 @@ internal static class HotkeyDefaults
     public const string ToggleSceneAutoTranslateModifiers = NoneModifiers;
     public const string SelectRoiKey = "F6";
     public const string SelectRoiModifiers = NoneModifiers;
+    public const string SelectFixedOverlayFrameKey = DisabledKey;
+    public const string SelectFixedOverlayFrameModifiers = NoneModifiers;
     public const string NextRoiPresetKey = DisabledKey;
     public const string NextRoiPresetModifiers = NoneModifiers;
     public const string PreviousRoiPresetKey = DisabledKey;

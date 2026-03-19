@@ -348,7 +348,7 @@ public sealed class PipelineOrchestrator
                     context.Translations[pair.Key] = pair.Value;
                 }
 
-                var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+                var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, frame.Bounds, settings, _overlayTextMode);
                 context.OverlayItems = overlayItems;
                 CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
                 var overlayStopwatch = perfProbe.BeginStep();
@@ -434,6 +434,7 @@ public sealed class PipelineOrchestrator
                 _lastReadingUnits,
                 _lastOverlayTranslations,
                 _lastOverlayRoiScreen,
+                _lastCaptureFrameBounds ?? Rect.Empty,
                 _settingsService.Settings,
                 mode);
             var suppressWpfOverlay = ShouldSuppressWpfOverlayForLastProvider(_settingsService.Settings);
@@ -655,7 +656,13 @@ public sealed class PipelineOrchestrator
                 context.Translations[pair.Key] = pair.Value;
             }
 
-            var overlayItems = _overlayStage.BuildItems(readingUnits, translations, roiScreen, settings, _overlayTextMode);
+            var overlayItems = _overlayStage.BuildItems(
+                readingUnits,
+                translations,
+                roiScreen,
+                _lastCaptureFrameBounds ?? roiScreen,
+                settings,
+                _overlayTextMode);
             context.OverlayItems = overlayItems;
             CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
             _overlayStage.Update(overlayItems, overlayClipScreen);

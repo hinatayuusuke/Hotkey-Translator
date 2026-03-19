@@ -47,6 +47,13 @@ public enum AppThemeMode
     Light = 1
 }
 
+public enum FixedOverlayPlacementMode
+{
+    // COMPAT: Persisted to settings.json; keep numeric values stable.
+    Roi = 0,
+    CustomFrame = 1
+}
+
 public sealed class AppSettings
 {
     public List<RoiPreset> RoiPresets { get; set; } = new();
@@ -91,6 +98,8 @@ public sealed class AppSettings
     public int OcrTwoPassHighThreshold { get; set; } = 180;
     public bool OcrTwoPassPreferAuto { get; set; } = true;
     public bool EnableFixedRoiOverlay { get; set; } = false;
+    public FixedOverlayPlacementMode FixedOverlayPlacementMode { get; set; } = FixedOverlayPlacementMode.Roi;
+    public NormalizedRect? FixedOverlayNormalizedRect { get; set; }
     public bool EnableOverlayFontStabilization { get; set; } = true;
     public bool EnableSmallBoxReadabilityBoost { get; set; } = false;
     public double SmallTextThresholdPx { get; set; } = 22;
@@ -268,6 +277,8 @@ public sealed class AppSettings
     public string HotkeyToggleSceneAutoTranslateModifiers { get; set; } = HotkeyDefaults.ToggleSceneAutoTranslateModifiers;
     public string HotkeySelectRoiKey { get; set; } = HotkeyDefaults.SelectRoiKey;
     public string HotkeySelectRoiModifiers { get; set; } = HotkeyDefaults.SelectRoiModifiers;
+    public string HotkeySelectFixedOverlayFrameKey { get; set; } = HotkeyDefaults.SelectFixedOverlayFrameKey;
+    public string HotkeySelectFixedOverlayFrameModifiers { get; set; } = HotkeyDefaults.SelectFixedOverlayFrameModifiers;
     public string HotkeyNextRoiPresetKey { get; set; } = HotkeyDefaults.NextRoiPresetKey;
     public string HotkeyNextRoiPresetModifiers { get; set; } = HotkeyDefaults.NextRoiPresetModifiers;
     public string HotkeyPreviousRoiPresetKey { get; set; } = HotkeyDefaults.PreviousRoiPresetKey;

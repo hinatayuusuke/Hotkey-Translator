@@ -407,6 +407,29 @@
                         </StackPanel>
                         <CheckBox Content="Fixed ROI overlay mode"
                                   IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Margin="0,8,0,0">
+                            <TextBlock Text="Fixed overlay target" Style="{StaticResource OverviewLabelStyle}" />
+                            <ComboBox Width="180"
+                                      Margin="0,0,0,6"
+                                      HorizontalAlignment="Left"
+                                      ItemsSource="{Binding Settings.FixedOverlayPlacementModeOptions}"
+                                      SelectedItem="{Binding Settings.FixedOverlayPlacementModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <Button Width="180"
+                                    HorizontalAlignment="Left"
+                                    Click="OnSelectFixedOverlayFrameClicked"
+                                    IsEnabled="{Binding Settings.IsFixedOverlayCustomFrameSelected}">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                    <TextBlock Text="Select user frame" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock Margin="0,6,0,0"
+                                       Style="{StaticResource HelpTextStyle}"
+                                       Text="{Binding Settings.FixedOverlayFrameStatusText}" />
+                            <TextBlock Margin="0,2,0,0"
+                                       Style="{StaticResource HelpTextStyle}"
+                                       Text="NOTE: This changes translation display position only, not the OCR ROI." />
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </StackPanel>

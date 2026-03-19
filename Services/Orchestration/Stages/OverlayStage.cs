@@ -19,6 +19,7 @@ internal sealed class OverlayStage
         IReadOnlyList<ReadingUnit> readingUnits,
         Dictionary<int, string> translations,
         Rect roiScreen,
+        Rect captureBounds,
         AppSettings settings,
         OverlayTextMode mode)
     {
@@ -48,8 +49,9 @@ internal sealed class OverlayStage
         var lineCount = Math.Max(1, readingUnits.Sum(unit => Math.Max(1, unit.LineCount)));
         var lineHeights = readingUnits.Select(unit => unit.LineHeight).Where(height => height > 0).ToList();
         var lineHeight = lineHeights.Count > 0 ? lineHeights.Average() : 0;
+        var targetRect = ResolveFixedOverlayTargetRect(settings, roiScreen, captureBounds);
 
-        return new[] { new OverlayItem(combined, roiScreen, lineCount, lineHeight) };
+        return new[] { new OverlayItem(combined, targetRect, lineCount, lineHeight) };
     }
 
     public void Update(IReadOnlyList<OverlayItem> overlayItems, Rect? overlayClipScreen)
@@ -102,5 +104,32 @@ internal sealed class OverlayStage
         var head = lines.Take(lineCount - 1);
         var tail = string.Join(" ", lines.Skip(lineCount - 1));
         return string.Join(Environment.NewLine, head.Append(tail));
+    }
+
+    private static Rect ResolveFixedOverlayTargetRect(AppSettings settings, Rect roiScreen, Rect captureBounds)
+    {
+        if (settings.FixedOverlayPlacementMode != FixedOverlayPlacementMode.CustomFrame)
+        {
+            return roiScreen;
+        }
+
+        if (captureBounds.IsEmpty || captureBounds.Width <= 0 || captureBounds.Height <= 0)
+        {
+            return roiScreen;
+        }
+
+        if (settings.FixedOverlayNormalizedRect is not { } normalized || normalized.IsEmpty)
+        {
+            return roiScreen;
+        }
+
+        var customRect = normalized.ToAbsolute(captureBounds);
+        if (customRect.IsEmpty || customRect.Width <= 0 || customRect.Height <= 0)
+        {
+            return roiScreen;
+        }
+
+        // WHY: Keep fixed-overlay custom target fail-safe; invalid or stale saved geometry falls back to ROI.
+        return customRect;
     }
 }

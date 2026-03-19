@@ -10,6 +10,8 @@ namespace Hotkey_Translator.ViewModels;
 internal sealed partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsChangeScheduler _changeScheduler;
+    private const string FixedOverlayPlacementModeRoiTag = "ROI";
+    private const string FixedOverlayPlacementModeCustomFrameTag = "User frame";
     private static readonly HashSet<string> BuiltInLanguageTags = new(StringComparer.OrdinalIgnoreCase)
     {
         "en",
@@ -90,6 +92,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableOcrTwoPass;
     [ObservableProperty] private bool _ocrTwoPassPreferAuto;
     [ObservableProperty] private bool _enableFixedRoiOverlay;
+    [ObservableProperty] private string _fixedOverlayPlacementModeTag = FixedOverlayPlacementModeRoiTag;
+    [ObservableProperty] private bool _hasFixedOverlayCustomFrame;
     [ObservableProperty] private bool _enableOverlayFontStabilization;
     [ObservableProperty] private bool _enableSmallBoxReadabilityBoost;
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
@@ -190,6 +194,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeySelectRoiCtrl;
     [ObservableProperty] private bool _hotkeySelectRoiAlt;
     [ObservableProperty] private bool _hotkeySelectRoiShift;
+    [ObservableProperty] private string _hotkeySelectFixedOverlayFrameKey = HotkeyDefaults.SelectFixedOverlayFrameKey;
+    [ObservableProperty] private bool _hotkeySelectFixedOverlayFrameCtrl;
+    [ObservableProperty] private bool _hotkeySelectFixedOverlayFrameAlt;
+    [ObservableProperty] private bool _hotkeySelectFixedOverlayFrameShift;
     [ObservableProperty] private string _hotkeyLockCaptureWindowKey = HotkeyDefaults.LockCaptureWindowKey;
     [ObservableProperty] private bool _hotkeyLockCaptureWindowCtrl;
     [ObservableProperty] private bool _hotkeyLockCaptureWindowAlt;
@@ -203,6 +211,32 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenAlt;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift = true;
     [ObservableProperty] private bool _enableRawInputHotkeys;
+
+    public IReadOnlyList<string> FixedOverlayPlacementModeOptions { get; } =
+        new[] { FixedOverlayPlacementModeRoiTag, FixedOverlayPlacementModeCustomFrameTag };
+
+    public bool IsFixedOverlayCustomFrameSelected =>
+        string.Equals(FixedOverlayPlacementModeTag, FixedOverlayPlacementModeCustomFrameTag, StringComparison.Ordinal);
+
+    public string FixedOverlayFrameStatusText
+    {
+        get
+        {
+            if (!EnableFixedRoiOverlay)
+            {
+                return "Fixed overlay target inactive";
+            }
+
+            if (!IsFixedOverlayCustomFrameSelected)
+            {
+                return "Using ROI as fixed overlay target";
+            }
+
+            return HasFixedOverlayCustomFrame
+                ? "Using saved user frame"
+                : "User frame not set; currently using ROI";
+        }
+    }
 
     public void LoadFrom(AppSettings settings)
     {
@@ -262,6 +296,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableOcrTwoPass = settings.EnableOcrTwoPass;
             OcrTwoPassPreferAuto = settings.OcrTwoPassPreferAuto;
             EnableFixedRoiOverlay = settings.EnableFixedRoiOverlay;
+            FixedOverlayPlacementModeTag = settings.FixedOverlayPlacementMode == FixedOverlayPlacementMode.CustomFrame
+                ? FixedOverlayPlacementModeCustomFrameTag
+                : FixedOverlayPlacementModeRoiTag;
+            HasFixedOverlayCustomFrame = settings.FixedOverlayNormalizedRect is { } fixedOverlayRect && !fixedOverlayRect.IsEmpty;
             EnableOverlayFontStabilization = settings.EnableOverlayFontStabilization;
             EnableSmallBoxReadabilityBoost = settings.EnableSmallBoxReadabilityBoost;
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
@@ -420,6 +458,9 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableOcrTwoPass = EnableOcrTwoPass;
         settings.OcrTwoPassPreferAuto = OcrTwoPassPreferAuto;
         settings.EnableFixedRoiOverlay = EnableFixedRoiOverlay;
+        settings.FixedOverlayPlacementMode = string.Equals(FixedOverlayPlacementModeTag, FixedOverlayPlacementModeCustomFrameTag, StringComparison.Ordinal)
+            ? FixedOverlayPlacementMode.CustomFrame
+            : FixedOverlayPlacementMode.Roi;
         settings.EnableOverlayFontStabilization = EnableOverlayFontStabilization;
         settings.EnableSmallBoxReadabilityBoost = EnableSmallBoxReadabilityBoost;
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
@@ -799,7 +840,21 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableOcrDownsamplingChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableOcrTwoPassChanged(bool value) => RequestSaveOnValueChange();
     partial void OnOcrTwoPassPreferAutoChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnEnableFixedRoiOverlayChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnEnableFixedRoiOverlayChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FixedOverlayFrameStatusText));
+        RequestSaveOnValueChange();
+    }
+    partial void OnFixedOverlayPlacementModeTagChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsFixedOverlayCustomFrameSelected));
+        OnPropertyChanged(nameof(FixedOverlayFrameStatusText));
+        RequestSaveOnValueChange();
+    }
+    partial void OnHasFixedOverlayCustomFrameChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FixedOverlayFrameStatusText));
+    }
     partial void OnEnableOverlayFontStabilizationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableSmallBoxReadabilityBoostChanged(bool value) => RequestSaveOnValueChange();
     partial void OnPhashThresholdTextChanged(string value)
@@ -971,6 +1026,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeySelectRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeySelectRoiAltChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeySelectRoiShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectFixedOverlayFrameKeyChanged(string value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectFixedOverlayFrameCtrlChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectFixedOverlayFrameAltChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeySelectFixedOverlayFrameShiftChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyLockCaptureWindowKeyChanged(string value) => RequestSaveOnValueChange();
     partial void OnHotkeyLockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
     partial void OnHotkeyLockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
@@ -1176,6 +1235,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
         HotkeySelectRoiAlt = selectRoiAlt;
         HotkeySelectRoiShift = selectRoiShift;
 
+        HotkeySelectFixedOverlayFrameKey = NormalizeHotkeyKey(settings.HotkeySelectFixedOverlayFrameKey);
+        AssignHotkeyModifiers(
+            settings.HotkeySelectFixedOverlayFrameKey,
+            settings.HotkeySelectFixedOverlayFrameModifiers,
+            out var selectFixedOverlayFrameCtrl,
+            out var selectFixedOverlayFrameAlt,
+            out var selectFixedOverlayFrameShift);
+        HotkeySelectFixedOverlayFrameCtrl = selectFixedOverlayFrameCtrl;
+        HotkeySelectFixedOverlayFrameAlt = selectFixedOverlayFrameAlt;
+        HotkeySelectFixedOverlayFrameShift = selectFixedOverlayFrameShift;
+
         HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyLockCaptureWindowKey);
         AssignHotkeyModifiers(settings.HotkeyLockCaptureWindowKey, settings.HotkeyLockCaptureWindowModifiers, out var lockWindowCtrl, out var lockWindowAlt,
             out var lockWindowShift);
@@ -1228,6 +1298,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
                 HotkeyToggleSceneAutoTranslateShift);
         settings.HotkeySelectRoiKey = NormalizeHotkeyKey(HotkeySelectRoiKey);
         settings.HotkeySelectRoiModifiers = BuildHotkeyModifiers(settings.HotkeySelectRoiKey, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        settings.HotkeySelectFixedOverlayFrameKey = NormalizeHotkeyKey(HotkeySelectFixedOverlayFrameKey);
+        settings.HotkeySelectFixedOverlayFrameModifiers =
+            BuildHotkeyModifiers(
+                settings.HotkeySelectFixedOverlayFrameKey,
+                HotkeySelectFixedOverlayFrameCtrl,
+                HotkeySelectFixedOverlayFrameAlt,
+                HotkeySelectFixedOverlayFrameShift);
         settings.HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(HotkeyLockCaptureWindowKey);
         settings.HotkeyLockCaptureWindowModifiers =
             BuildHotkeyModifiers(settings.HotkeyLockCaptureWindowKey, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);

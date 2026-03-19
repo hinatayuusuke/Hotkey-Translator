@@ -20,6 +20,7 @@ internal sealed class HotkeyCommandController
     private readonly WindowBindingService _windowBindingService;
     private readonly Func<Task> _saveSettingsAsync;
     private readonly Func<Task> _selectRoiAsync;
+    private readonly Func<Task> _selectFixedOverlayFrameAsync;
     private readonly Func<Task> _selectNextRoiPresetAsync;
     private readonly Func<Task> _selectPreviousRoiPresetAsync;
     private readonly Func<int, ForceRunOptions, Task> _runRoiPresetWithOffsetAsync;
@@ -43,6 +44,7 @@ internal sealed class HotkeyCommandController
         WindowBindingService windowBindingService,
         Func<Task> saveSettingsAsync,
         Func<Task> selectRoiAsync,
+        Func<Task> selectFixedOverlayFrameAsync,
         Func<Task> selectNextRoiPresetAsync,
         Func<Task> selectPreviousRoiPresetAsync,
         Func<int, ForceRunOptions, Task> runRoiPresetWithOffsetAsync,
@@ -65,6 +67,7 @@ internal sealed class HotkeyCommandController
         _windowBindingService = windowBindingService;
         _saveSettingsAsync = saveSettingsAsync;
         _selectRoiAsync = selectRoiAsync;
+        _selectFixedOverlayFrameAsync = selectFixedOverlayFrameAsync;
         _selectNextRoiPresetAsync = selectNextRoiPresetAsync;
         _selectPreviousRoiPresetAsync = selectPreviousRoiPresetAsync;
         _runRoiPresetWithOffsetAsync = runRoiPresetWithOffsetAsync;
@@ -201,6 +204,11 @@ internal sealed class HotkeyCommandController
     public Task HandleSelectRoiHotkeyAsync()
     {
         return _selectRoiAsync();
+    }
+
+    public Task HandleSelectFixedOverlayFrameHotkeyAsync()
+    {
+        return _selectFixedOverlayFrameAsync();
     }
 
     public Task HandleRunRoiPresetHotkeyAsync(int offset)

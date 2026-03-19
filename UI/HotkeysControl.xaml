@@ -34,6 +34,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                     <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,12,0" Text="Run once" VerticalAlignment="Center" />
@@ -168,10 +169,22 @@
                                                   IsChecked="{Binding Settings.HotkeySelectRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
 
-                                    <TextBlock Grid.Row="11" Grid.Column="0" Margin="0,6,12,0" Text="Lock window" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="11" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyLockCaptureWindowKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyLockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <TextBlock Grid.Row="11" Grid.Column="0" Margin="0,6,12,0" Text="Select user frame" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="11" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeySelectFixedOverlayFrameKeyBox" Width="88"
+                                              SelectedItem="{Binding Settings.HotkeySelectFixedOverlayFrameKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     <StackPanel Grid.Row="11" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
+                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameCtrl" Content="Ctrl"
+                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameAlt" Content="Alt" Margin="6,0,0,0"
+                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameShift" Content="Shift" Margin="6,0,0,0"
+                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Row="12" Grid.Column="0" Margin="0,6,12,0" Text="Lock window" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="12" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyLockCaptureWindowKeyBox" Width="88"
+                                              SelectedItem="{Binding Settings.HotkeyLockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <StackPanel Grid.Row="12" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
                                         <CheckBox x:Name="HotkeyLockCaptureWindowCtrl" Content="Ctrl"
                                                   IsChecked="{Binding Settings.HotkeyLockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <CheckBox x:Name="HotkeyLockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
@@ -180,10 +193,10 @@
                                                   IsChecked="{Binding Settings.HotkeyLockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
 
-                                    <TextBlock Grid.Row="12" Grid.Column="0" Margin="0,6,12,0" Text="Unlock window" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="12" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyUnlockCaptureWindowKeyBox" Width="88"
+                                    <TextBlock Grid.Row="13" Grid.Column="0" Margin="0,6,12,0" Text="Unlock window" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="13" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyUnlockCaptureWindowKeyBox" Width="88"
                                               SelectedItem="{Binding Settings.HotkeyUnlockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="12" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
+                                    <StackPanel Grid.Row="13" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
                                         <CheckBox x:Name="HotkeyUnlockCaptureWindowCtrl" Content="Ctrl"
                                                   IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <CheckBox x:Name="HotkeyUnlockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
@@ -192,10 +205,10 @@
                                                   IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </StackPanel>
 
-                                    <TextBlock Grid.Row="13" Grid.Column="0" Margin="0,6,12,0" Text="Mirror fullscreen toggle" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="13" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleMirrorFullscreenKeyBox" Width="88"
+                                    <TextBlock Grid.Row="14" Grid.Column="0" Margin="0,6,12,0" Text="Mirror fullscreen toggle" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="14" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleMirrorFullscreenKeyBox" Width="88"
                                               SelectedItem="{Binding Settings.HotkeyToggleMirrorFullscreenKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="13" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
+                                    <StackPanel Grid.Row="14" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
                                         <CheckBox x:Name="HotkeyToggleMirrorFullscreenCtrl" Content="Ctrl"
                                                   IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                         <CheckBox x:Name="HotkeyToggleMirrorFullscreenAlt" Content="Alt" Margin="6,0,0,0"

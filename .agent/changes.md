@@ -551,3 +551,49 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln`
 - `rg -n "UnlockCaptureWindowKey|UnlockCaptureWindowModifiers|ToggleMirrorFullscreenKey|ToggleMirrorFullscreenModifiers|Shift\+F7|Ctrl\+Shift\+F7" Models\HotkeyDefaults.cs ViewModels\SettingsViewModel.cs MainWindow.xaml.cs Doc\Hotkey_Defaults_DisabledState_Implementation_Plan.md`
+
+**2026-03-19 12:29 (Asia/Taipei) — Implement fixed overlay custom frame selection**
+
+### Summary
+- Fixed ROI overlay mode に、ROI と独立したユーザ描画表示枠の選択と切替 UI/Hotkey を追加した。
+
+### Context / Goal
+- Fixed ROI overlay の表示先を ROI 固定のままにせず、ユーザが別矩形を描画して表示位置を決められるようにしたかった。
+- 既存挙動を維持しつつ、Overview/Hotkeys から設定できる最小構成で実装したかった。
+
+### Changes
+- `AppSettings` に fixed overlay 表示先 enum、カスタム表示枠、専用 hotkey 設定を追加した。
+- ROI 選択処理を共通化し、ROI と fixed overlay frame の両方で同じ矩形選択 UI と hook preview を使うようにした。
+- Overview に `Fixed overlay target` ComboBox と `Select user frame` ボタン、Hotkeys に `Select user frame` 登録欄を追加した。
+- fixed overlay 描画時は設定に応じて ROI または保存済み custom frame を使い、未設定や無効矩形は ROI にフォールバックするようにした。
+
+### Files Touched
+- `MainWindow.xaml` — OverviewControl の固定表示枠選択イベントを配線した。
+- `MainWindow.xaml.cs` — 矩形選択処理の共通化、custom frame 選択処理、hotkey 登録、保存後の overlay 再反映を追加した。
+- `Models/AppSettings.cs` — fixed overlay 表示先 enum、custom frame、専用 hotkey 設定を追加した。
+- `Models/HotkeyDefaults.cs` — `Select user frame` hotkey の既定値を追加した。
+- `Services/Application/HotkeyCommandController.cs` — `Select user frame` hotkey の実行経路を追加した。
+- `Services/Orchestration/Stages/OverlayStage.cs` — fixed overlay の描画先を ROI / custom frame で切り替える解決処理を追加した。
+- `Services/PipelineOrchestrator.cs` — overlay item 構築時に capture bounds を渡し、表示先変更時に最新 overlay を再構築できるようにした。
+- `UI/HotkeysControl.xaml` — `Select user frame` hotkey 行を追加した。
+- `UI/HotkeysControl.xaml.cs` — 新しい hotkey ComboBox の候補を初期化した。
+- `UI/OverviewControl.xaml` — fixed overlay target UI と user frame 選択導線を追加した。
+- `UI/OverviewControl.xaml.cs` — user frame 選択イベントを追加した。
+- `ViewModels/SettingsViewModel.cs` — fixed overlay target UI 状態、ステータス文言、専用 hotkey の保存/読込を追加した。
+
+### Behavioral Impact
+- Fixed ROI overlay mode 利用時に、表示先を `ROI` または `User frame` から切り替えられる。
+- `User frame` 選択時は ROI と独立した矩形へ翻訳 overlay を集約表示できる。
+- custom frame が未設定または無効な場合は ROI を使う。
+- `Select user frame` hotkey は既定で `Disable` のまま追加される。
+
+### Risk & Mitigation
+- Risk: custom frame と ROI の役割差が UI 上で伝わらず、誤設定しやすい。
+- Mitigation: Overview に「翻訳表示位置のみ変更し、OCR ROI は変えない」注記と状態表示を追加した。
+- Risk: 既存 overlay 更新経路で表示先変更が即時反映されない。
+- Mitigation: 設定保存後と frame 選択後に最新データから overlay を再構築する経路を追加した。
+
+### Tests / Verification
+- `git diff --check`（LF/CRLF warning のみ）
+- `dotnet build .\Hotkey-Translator.sln`（未成功: 既存の `Tools\WinRtLanguagePackElevator` 生成物で重複 AssemblyAttribute エラー）
+- `dotnet build .\Hotkey-Translator.csproj /p:BuildProjectReferences=false`（未成功: 既存の `obj\Debug\...\*_wpftmp.csproj` / `artifacts\mainobj` 由来の重複生成物エラー）

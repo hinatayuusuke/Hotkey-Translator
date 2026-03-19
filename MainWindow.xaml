@@ -84,7 +84,8 @@
                     <StackPanel Margin="0,6,0,0">
                         <ui:OverviewControl x:Name="OverviewControl"
                                             InstallWinRtLanguagePackClicked="OnInstallWinRtLanguagePackClicked"
-                                            RoiPresetSlotSelectionChanged="OnRoiPresetSlotBoxSelectionChanged" />
+                                            RoiPresetSlotSelectionChanged="OnRoiPresetSlotBoxSelectionChanged"
+                                            SelectFixedOverlayFrameClicked="OnSelectFixedOverlayFrameClicked" />
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -266,6 +266,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _windowBindingService,
             () => _settingsService.SaveAsync(),
             SelectRoiAsync,
+            SelectFixedOverlayFrameAsync,
             () => ChangeRoiPresetByOffsetAsync(1, "hotkey"),
             () => ChangeRoiPresetByOffsetAsync(-1, "hotkey"),
             (offset, options) => RunRoiPresetWithOffsetAsync(offset, options),
@@ -526,6 +527,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private async void OnInstallWinRtLanguagePackClicked(object sender, RoutedEventArgs e)
     {
         await _winRtLanguagePackUiController.InstallNowAsync().ConfigureAwait(true);
+    }
+
+    private async void OnSelectFixedOverlayFrameClicked(object sender, RoutedEventArgs e)
+    {
+        await SelectFixedOverlayFrameAsync().ConfigureAwait(true);
     }
 
     private async void OnBrowseGraphicsHookLauncherExeClicked(object sender, RoutedEventArgs e)
@@ -1265,6 +1271,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
     }
 
+    private async void OnSelectFixedOverlayFrameHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleSelectFixedOverlayFrameHotkeyAsync().ConfigureAwait(true);
+    }
+
     private async void OnNextRoiPresetHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleNextRoiPresetHotkeyAsync().ConfigureAwait(true);
@@ -1515,6 +1526,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _pipeline?.UpdateHookRoiPreview(rectScreen);
         _roiPresetPreviewClearTimer.Stop();
         _roiPresetPreviewClearTimer.Start();
+    }
+
+    private void TryRefreshOverlayFromLastData()
+    {
+        if (_pipeline == null)
+        {
+            return;
+        }
+
+        // WHY: Display-target changes should take effect on the latest overlay immediately without forcing a rerun.
+        _pipeline.TrySetOverlayTextMode(_overlayTextMode, out _, allowModeUpdateWithoutData: true);
     }
 
     private static void EnsureRoiPresetSlots(AppSettings settings)
@@ -1795,6 +1817,84 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return roiOrCapture.IsEmpty ? captureBounds : roiOrCapture;
     }
 
+    private async Task<(bool? Result, Rect? SelectedRect, NormalizedRect? SelectedNormalizedRect)> RunRectSelectionAsync(
+        AppSettings settings,
+        string selectionSource)
+    {
+        if (_captureManager == null)
+        {
+            return (null, null, null);
+        }
+
+        var bounds = _captureManager.GetCaptureBounds(settings);
+        var selector = new RoiSelectorWindow(bounds);
+        RawInputMouseSession? rawInputMouseSession = null;
+        bool previewHookSubscribed = false;
+        bool? result = null;
+        Action<Rect?> onPreviewRectChanged = previewRect => _pipeline?.UpdateHookRoiPreview(previewRect);
+        try
+        {
+            if (settings.EnableRawInputHotkeys)
+            {
+                rawInputMouseSession = new RawInputMouseSession(
+                    selector,
+                    selector.BeginExternalDragFromScreen,
+                    selector.UpdateExternalDragFromScreen,
+                    selector.EndExternalDragFromScreen);
+                if (rawInputMouseSession.TryStart(out var failureReason))
+                {
+                    // WHY: During screen-region selection in RawInput mode, consume pointer updates from WM_INPUT only.
+                    // This avoids missing drag updates in focus-sensitive game windows.
+                    selector.SetExternalPointerInputEnabled(true);
+                    _logger?.Info($"stage=rawinput_mouse event=start source={selectionSource} result=ok.");
+                }
+                else
+                {
+                    rawInputMouseSession.Dispose();
+                    rawInputMouseSession = null;
+                    _logger?.Info(
+                        $"stage=rawinput_mouse event=start source={selectionSource} result=failed reason={failureReason ?? "unknown"}.");
+                }
+            }
+
+            if (_hookRoiTraceEnabled)
+            {
+                _logger?.Info(
+                    $"stage=hook_roi_preview event=selector_start source={selectionSource} " +
+                    $"bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
+            }
+
+            // WHY: In hook-only mode, the WPF selection frame is not visible over exclusive fullscreen.
+            // Stream preview rect updates to Hook overlay so the user can see the frame while dragging.
+            selector.PreviewRectChanged += onPreviewRectChanged;
+            previewHookSubscribed = true;
+            _pipeline?.UpdateHookRoiPreview(null);
+            result = selector.ShowDialog();
+            selector.PreviewRectChanged -= onPreviewRectChanged;
+            previewHookSubscribed = false;
+
+            if (_hookRoiTraceEnabled)
+            {
+                _logger?.Info(
+                    $"stage=hook_roi_preview event=selector_end source={selectionSource} " +
+                    $"result={(result == true ? "confirm" : "cancel")} selected={(selector.SelectedRect.HasValue ? 1 : 0)}.");
+            }
+
+            return (result, selector.SelectedRect, selector.SelectedNormalizedRect);
+        }
+        finally
+        {
+            if (previewHookSubscribed)
+            {
+                selector.PreviewRectChanged -= onPreviewRectChanged;
+            }
+
+            selector.SetExternalPointerInputEnabled(false);
+            rawInputMouseSession?.Dispose();
+            _pipeline?.UpdateHookRoiPreview(null);
+        }
+    }
+
     private async Task SelectRoiAsync()
     {
         if (_isSelectingRoi)
@@ -1817,78 +1917,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             var settings = _settingsService.Settings;
             var roiEnabledAtStart = settings.EnableRoi;
-            var bounds = _captureManager.GetCaptureBounds(settings);
-            var selector = new RoiSelectorWindow(bounds);
-            RawInputMouseSession? rawInputMouseSession = null;
-            bool previewHookSubscribed = false;
-            bool? result = null;
-            Action<Rect?> onPreviewRectChanged = previewRect => _pipeline?.UpdateHookRoiPreview(previewRect);
-            try
-            {
-                if (settings.EnableRawInputHotkeys)
-                {
-                    rawInputMouseSession = new RawInputMouseSession(
-                        selector,
-                        selector.BeginExternalDragFromScreen,
-                        selector.UpdateExternalDragFromScreen,
-                        selector.EndExternalDragFromScreen);
-                    if (rawInputMouseSession.TryStart(out var failureReason))
-                    {
-                        // WHY: During F6 ROI in RawInput mode, consume pointer updates from WM_INPUT only.
-                        // This avoids missing drag updates in focus-sensitive game windows.
-                        selector.SetExternalPointerInputEnabled(true);
-                        _logger?.Info("stage=rawinput_mouse event=start source=f6_roi result=ok.");
-                    }
-                    else
-                    {
-                        rawInputMouseSession.Dispose();
-                        rawInputMouseSession = null;
-                        _logger?.Info(
-                            $"stage=rawinput_mouse event=start source=f6_roi result=failed reason={failureReason ?? "unknown"}.");
-                    }
-                }
-
-                if (_hookRoiTraceEnabled)
-                {
-                    _logger?.Info(
-                        $"stage=hook_roi_preview event=selector_start bounds=[{bounds.X:0.##},{bounds.Y:0.##},{bounds.Width:0.##},{bounds.Height:0.##}]");
-                }
-                // WHY: In hook-only mode, WPF ROI selector frame is not visible over exclusive fullscreen.
-                // Stream preview rect updates to Hook overlay so the user can see the ROI frame while dragging.
-                selector.PreviewRectChanged += onPreviewRectChanged;
-                previewHookSubscribed = true;
-                _pipeline?.UpdateHookRoiPreview(null);
-                result = selector.ShowDialog();
-                selector.PreviewRectChanged -= onPreviewRectChanged;
-                previewHookSubscribed = false;
-            }
-            finally
-            {
-                if (previewHookSubscribed)
-                {
-                    selector.PreviewRectChanged -= onPreviewRectChanged;
-                }
-
-                selector.SetExternalPointerInputEnabled(false);
-                rawInputMouseSession?.Dispose();
-            }
-
-            if (_hookRoiTraceEnabled)
-            {
-                _logger?.Info(
-                    $"stage=hook_roi_preview event=selector_end result={(result == true ? "confirm" : "cancel")} " +
-                    $"selected={(selector.SelectedRect.HasValue ? 1 : 0)}.");
-            }
-            if (result == true && selector.SelectedRect is { } rect)
+            var selection = await RunRectSelectionAsync(settings, "f6_roi").ConfigureAwait(true);
+            if (selection.Result == true && selection.SelectedRect is { } rect)
             {
                 EnsureRoiPresetSlots(settings);
                 settings.Roi = SerializableRect.FromRect(rect);
-                settings.NormalizedRoi = selector.SelectedNormalizedRect;
+                settings.NormalizedRoi = selection.SelectedNormalizedRect;
                 var roiWasDisabled = !settings.EnableRoi;
                 settings.EnableRoi = true;
                 var activeSlotIndex = Math.Clamp(settings.ActiveRoiPresetIndex, 0, RoiPresetSlotCount - 1);
                 var preset = settings.RoiPresets[activeSlotIndex];
-                preset.NormalizedRoi = selector.SelectedNormalizedRect;
+                preset.NormalizedRoi = selection.SelectedNormalizedRect;
                 preset.EnableRoi = true;
                 _mainWindowViewModel.Settings.LoadFrom(settings);
 
@@ -1944,7 +1983,47 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
         finally
         {
-            _pipeline?.UpdateHookRoiPreview(null);
+            _isSelectingRoi = false;
+        }
+    }
+
+    private async Task SelectFixedOverlayFrameAsync()
+    {
+        if (_isSelectingRoi)
+        {
+            AppendLog("Overlay frame selection already in progress.");
+            return;
+        }
+
+        EnableOverlay();
+        if (_captureManager == null)
+        {
+            return;
+        }
+
+        _isSelectingRoi = true;
+        try
+        {
+            var settings = _settingsService.Settings;
+            var selection = await RunRectSelectionAsync(settings, "fixed_overlay_frame").ConfigureAwait(true);
+            if (selection.Result == true && selection.SelectedRect is { } rect)
+            {
+                settings.FixedOverlayNormalizedRect = selection.SelectedNormalizedRect;
+                _mainWindowViewModel.Settings.LoadFrom(settings);
+                await _settingsService.SaveAsync().ConfigureAwait(true);
+                ShowTransientRoiPreview(rect);
+                TryRefreshOverlayFromLastData();
+                var message = settings.FixedOverlayPlacementMode == FixedOverlayPlacementMode.CustomFrame
+                    ? "Fixed overlay user frame updated."
+                    : "Fixed overlay user frame updated. Switch display target to 'User frame' to use it.";
+                AppendLog(message);
+                return;
+            }
+
+            AppendLog("Fixed overlay user frame selection canceled.");
+        }
+        finally
+        {
             _isSelectingRoi = false;
         }
     }
@@ -2237,6 +2316,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _mainWindowViewModel.Settings.LoadFrom(settings);
         SyncRoiPresetSlotUi(settings);
         _overlayWindow?.ApplyStyle(settings);
+        TryRefreshOverlayFromLastData();
         UpdateLoggingState(settings.EnableLogging);
         _overlayPresenter?.UpdatePerfLogging(settings.EnableOcrPerfLog && settings.EnableLogging, settings.OcrPerfLogThresholdMs);
         UpdateAutoTranslateBadgeVisibility(settings);
@@ -2429,6 +2509,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
                       $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
+                      $"FixedOverlayFrame={FormatHotkey(config.SelectFixedOverlayFrameKey, config.SelectFixedOverlayFrameModifiers)}, " +
                       $"RoiNext={FormatHotkey(config.NextRoiPresetKey, config.NextRoiPresetModifiers)}, " +
                       $"RoiPrev={FormatHotkey(config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers)}, " +
                       $"Lock={FormatHotkey(config.LockCaptureWindowKey, config.LockCaptureWindowModifiers)}, " +
@@ -2473,6 +2554,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         AddIfEnabled("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed);
         AddIfEnabled("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9, OnToggleSceneAutoTranslateHotkeyPressed);
         AddIfEnabled("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed);
+        AddIfEnabled("SelectFixedOverlayFrame", config.SelectFixedOverlayFrameKey, config.SelectFixedOverlayFrameModifiers, 17, OnSelectFixedOverlayFrameHotkeyPressed);
         AddIfEnabled("NextRoiPreset", config.NextRoiPresetKey, config.NextRoiPresetModifiers, 11, OnNextRoiPresetHotkeyPressed);
         AddIfEnabled("PreviousRoiPreset", config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers, 12, OnPreviousRoiPresetHotkeyPressed);
         AddIfEnabled("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7, OnLockCaptureWindowHotkeyPressed);
@@ -2507,6 +2589,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ParseModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers),
             ParseKey(settings.HotkeySelectRoiKey),
             ParseModifiers(settings.HotkeySelectRoiModifiers),
+            ParseKey(settings.HotkeySelectFixedOverlayFrameKey),
+            ParseModifiers(settings.HotkeySelectFixedOverlayFrameModifiers),
             ParseKey(settings.HotkeyNextRoiPresetKey),
             ParseModifiers(settings.HotkeyNextRoiPresetModifiers),
             ParseKey(settings.HotkeyPreviousRoiPresetKey),
@@ -2795,6 +2879,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ModifierKeys ToggleSceneAutoTranslateModifiers,
         Key SelectRoiKey,
         ModifierKeys SelectRoiModifiers,
+        Key SelectFixedOverlayFrameKey,
+        ModifierKeys SelectFixedOverlayFrameModifiers,
         Key NextRoiPresetKey,
         ModifierKeys NextRoiPresetModifiers,
         Key PreviousRoiPresetKey,
@@ -2819,6 +2905,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
+            yield return ("Select user frame", SelectFixedOverlayFrameKey, SelectFixedOverlayFrameModifiers);
             yield return ("Next ROI slot", NextRoiPresetKey, NextRoiPresetModifiers);
             yield return ("Previous ROI slot", PreviousRoiPresetKey, PreviousRoiPresetModifiers);
             yield return ("Lock window", LockCaptureWindowKey, LockCaptureWindowModifiers);

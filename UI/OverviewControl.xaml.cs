@@ -29,6 +29,8 @@ public partial class OverviewControl : UserControl
 
     public event SelectionChangedEventHandler? RoiPresetSlotSelectionChanged;
 
+    public event RoutedEventHandler? SelectFixedOverlayFrameClicked;
+
     public IEnumerable? RoiPresetSlotItemsSource
     {
         get => (IEnumerable?)GetValue(RoiPresetSlotItemsSourceProperty);
@@ -53,5 +55,10 @@ public partial class OverviewControl : UserControl
     private void OnInstallWinRtLanguagePackClicked(object sender, RoutedEventArgs e)
     {
         InstallWinRtLanguagePackClicked?.Invoke(sender, e);
+    }
+
+    private void OnSelectFixedOverlayFrameClicked(object sender, RoutedEventArgs e)
+    {
+        SelectFixedOverlayFrameClicked?.Invoke(sender, e);
     }
 }
