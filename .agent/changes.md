@@ -626,3 +626,32 @@
 ### Tests / Verification
 - `git diff --check -- Services/Application/HotkeyController.cs`（LF/CRLF warning のみ）
 - コード確認: unchanged binding は再登録せず再利用、変更 id のみ解除後に再登録することを確認
+
+**2026-03-19 14:08 (Asia/Taipei) — Fix Win32 hotkey swap updates**
+
+### Summary
+- Win32 hotkey の入れ替え更新で途中衝突する不具合を修正した。
+
+### Context / Goal
+- `Run=F8` と `Overlay Toggle=F10` の状態から、片方を相手のキーへ変更するような swap 更新で、最終状態は重複していないのに登録失敗していた。
+- 変更対象 hotkey 同士の入れ替えでも、自己衝突せずに新しい組み合わせへ更新できるようにしたかった。
+
+### Changes
+- `HotkeyController.TryRegisterBindingsWin32` を 2 段階更新に変更した。
+- 変更されていない binding は再利用し、変更/廃止対象の旧 binding は先に一括解除するようにした。
+- 旧 binding をすべて外した後で、新しい変更 binding 群をまとめて登録するようにした。
+
+### Files Touched
+- `Services/Application/HotkeyController.cs` — swap 更新で途中状態が衝突しないよう、 changed binding の一括解除後に再登録する順序へ変更した。
+
+### Behavioral Impact
+- `F8 <-> F10` のような hotkey 入れ替え後も、最終状態が一意なら正しく有効化される。
+- 変更していない binding は引き続き再利用される。
+
+### Risk & Mitigation
+- Risk: 外部アプリとの競合で再登録失敗した changed binding は無効のまま残る。
+- Mitigation: 変更なし binding は再利用し、衝突ログを残すことで影響範囲を changed binding のみに限定した。
+
+### Tests / Verification
+- `git diff --check -- Services/Application/HotkeyController.cs`（LF/CRLF warning のみ）
+- コード確認: changed/retired old binding を先に dispose し、その後に changed binding を登録する順序へ変わったことを確認
