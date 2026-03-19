@@ -36,10 +36,10 @@ internal static class HotkeyDefaults
     public const string PreviousRoiPresetModifiers = NoneModifiers;
     public const string LockCaptureWindowKey = "F7";
     public const string LockCaptureWindowModifiers = NoneModifiers;
-    public const string UnlockCaptureWindowKey = DisabledKey;
-    public const string UnlockCaptureWindowModifiers = NoneModifiers;
-    public const string ToggleMirrorFullscreenKey = DisabledKey;
-    public const string ToggleMirrorFullscreenModifiers = NoneModifiers;
+    public const string UnlockCaptureWindowKey = "F7";
+    public const string UnlockCaptureWindowModifiers = "Shift";
+    public const string ToggleMirrorFullscreenKey = "F7";
+    public const string ToggleMirrorFullscreenModifiers = "Control, Shift";
 
     private static readonly IReadOnlyList<string> SupportedKeyValues = CreateSupportedKeyValues();
     private static readonly IReadOnlyDictionary<string, string> CanonicalKeyValues = CreateCanonicalKeyValues();

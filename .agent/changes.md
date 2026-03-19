@@ -518,3 +518,36 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln`
 - `rg -n 'compat_hotkey_f12_to_f7|HotkeyDefaultsRule|HotkeyConfig\.Default|ParseKey\([^\)]*,|NormalizeHotkeyKey\([^\)]*,[^\)]' .`
+
+**2026-03-19 10:41 (Asia/Taipei) — Extend default hotkeys for unlock and mirror actions**
+
+### Summary
+- 既定ホットキーに `Shift+F7` の Window Unlock と `Ctrl+Shift+F7` の Mirror Full Screen を追加した。
+
+### Context / Goal
+- Lock 系操作を `F7` 周辺へ揃えたまま、Unlock と Mirror を初期状態から使えるようにしたかった。
+- 既定値の単一定義を維持しつつ、案内ログと設計文書も新しい割り当てへ追従させたかった。
+
+### Changes
+- `Models/HotkeyDefaults.cs` で `UnlockCaptureWindow` を `Shift+F7`、`ToggleMirrorFullscreen` を `Ctrl+Shift+F7` に変更した。
+- `ViewModels/SettingsViewModel.cs` の初期 modifier 状態を新しい既定値に合わせて更新した。
+- `MainWindow.xaml.cs` の起動時ホットキー案内ログを新しい既定構成に更新した。
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` の既定値ポリシーとリスク記述を実装内容に合わせて更新した。
+
+### Files Touched
+- `Models/HotkeyDefaults.cs` — Unlock と Mirror の既定キー・modifier を更新した。
+- `ViewModels/SettingsViewModel.cs` — Unlock と Mirror の既定 modifier 初期値を更新した。
+- `MainWindow.xaml.cs` — 起動時ログ文言を新しい既定ホットキーへ合わせた。
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` — 既定値方針の記述を現実装に合わせた。
+
+### Behavioral Impact
+- 新規既定ホットキーは `F6` ROI、`F7` Lock、`Shift+F7` Unlock、`Ctrl+Shift+F7` Mirror、`F8` Run once、`F9` Toggle overlay、`F10` Force run になる。
+- Unlock と Mirror は初期状態から有効になるため、追加設定なしで利用できる。
+
+### Risk & Mitigation
+- Risk: `F7` 系の修飾キー違いを誤認すると意図しない操作をしやすい。
+- Mitigation: 起動ログと設定画面の既定値を揃え、`F7` / `Shift+F7` / `Ctrl+Shift+F7` の差を明示した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
+- `rg -n "UnlockCaptureWindowKey|UnlockCaptureWindowModifiers|ToggleMirrorFullscreenKey|ToggleMirrorFullscreenModifiers|Shift\+F7|Ctrl\+Shift\+F7" Models\HotkeyDefaults.cs ViewModels\SettingsViewModel.cs MainWindow.xaml.cs Doc\Hotkey_Defaults_DisabledState_Implementation_Plan.md`

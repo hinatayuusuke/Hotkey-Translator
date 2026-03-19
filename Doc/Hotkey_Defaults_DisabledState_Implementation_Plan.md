@@ -4,14 +4,14 @@
 
 ホットキー既定値の多重管理を一本化し、各ホットキーを明示的に無効化できる状態を導入する。  
 無効状態の保存値は空文字ではなく `Disable` を採用し、一般的な既定値補完ルールは廃止する。  
-新規既定値は `F6` から `F10` に絞り、補助系ホットキーは既定で `Disable` にする。
+新規既定値は `F6` から `F10` を中心に整理し、`Shift+F7` の Window Unlock と `Ctrl+Shift+F7` の Mirror Full Screen を含める。
 
 ## 2. ゴール / 非ゴール
 
 ### ゴール
 - ホットキー既定値の定義箇所を 1 か所に集約する。
 - ホットキーの `Disable` 状態を正式にサポートする。
-- 新規既定値を `F6` ROI、`F7` Lock、`F8` Run once、`F9` Toggle overlay、`F10` Force run に整理する。
+- 新規既定値を `F6` ROI、`F7` Lock、`Shift+F7` Unlock、`Ctrl+Shift+F7` Mirror Full Screen、`F8` Run once、`F9` Toggle overlay、`F10` Force run に整理する。
 - 補助系ホットキーは既定で `Disable` にする。
 
 ### 非ゴール
@@ -83,6 +83,8 @@
 - 有効のまま残す既定値
   - `SelectRoi` = `F6`
   - `LockCaptureWindow` = `F7`
+  - `UnlockCaptureWindow` = `Shift+F7`
+  - `ToggleMirrorFullscreen` = `Ctrl+Shift+F7`
   - `RunOnce` = `F8`
   - `ToggleOverlay` = `F9`
   - `ForceRun` = `F10`
@@ -94,8 +96,6 @@
   - `ForceGeminiStrict`
   - `OcrOnly`
   - `ToggleSceneAutoTranslate`
-  - `UnlockCaptureWindow`
-  - `ToggleMirrorFullscreen`
 
 ## 7. 実装手順
 
@@ -150,8 +150,8 @@
 - Risk: 既定値の一本化が不十分だと、新旧の既定値ズレが残る。
 - Mitigation: 既定キーの参照元を 1 か所に絞り、他箇所はその参照だけにする。
 
-- Risk: Unlock や Mirror の既定無効化で、一部操作が見つけにくくなる。
-- Mitigation: UI で再割り当て可能にし、ヘルプ文言に「補助ホットキーは既定で `Disable`」と明記する。
+- Risk: `F7` 系に Lock / Unlock / Mirror が集中するため、修飾キー違いを誤認しやすい。
+- Mitigation: 起動ログと設定 UI の表記を揃え、`F7` / `Shift+F7` / `Ctrl+Shift+F7` の役割差を明示する。
 
 ## 10. 影響範囲
 
@@ -175,7 +175,7 @@
 - 既定ホットキー定義が 1 か所に集約されている。
 - `Disable` を保存しても fallback で復活しない。
 - `Key.None` のバインドは登録されない。
-- 新規既定値が `F6` / `F7` / `F8` / `F9` / `F10` のみ有効になっている。
+- 新規既定値が `F6` / `F7` / `Shift+F7` / `Ctrl+Shift+F7` / `F8` / `F9` / `F10` で有効になっている。
 - 補助ホットキーは既定で `Disable` になっている。
 - UI から `Disable` を選べる。
 - 起動ログと更新ログに disabled 状態が正しく表示される。

@@ -197,11 +197,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _hotkeyUnlockCaptureWindowKey = HotkeyDefaults.UnlockCaptureWindowKey;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowCtrl;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowAlt;
-    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift;
+    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift = true;
     [ObservableProperty] private string _hotkeyToggleMirrorFullscreenKey = HotkeyDefaults.ToggleMirrorFullscreenKey;
-    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl;
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl = true;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenAlt;
-    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift;
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift = true;
     [ObservableProperty] private bool _enableRawInputHotkeys;
 
     public void LoadFrom(AppSettings settings)

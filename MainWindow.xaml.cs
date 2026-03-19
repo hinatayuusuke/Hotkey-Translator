@@ -375,7 +375,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-        AppendLog("Ready. F6: select ROI. F7: lock window. F8: run once. F9: toggle overlay. F10: force run. Other hotkeys: Disabled by default.");
+        AppendLog("Ready. F6: select ROI. F7: lock window. Shift+F7: unlock window. Ctrl+Shift+F7: mirror fullscreen. F8: run once. F9: toggle overlay. F10: force run. Other hotkeys: Disabled by default.");
         await TryHandleStartupHookLaunchAsync(settings).ConfigureAwait(true);
         _drawerLayoutController.SyncForCurrentState();
         _winRtLanguagePackUiController.Start();
