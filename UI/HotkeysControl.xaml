@@ -4,221 +4,431 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d">
+    <UserControl.Resources>
+        <Style x:Key="HotkeyRowBorderStyle" TargetType="{x:Type Border}">
+            <Setter Property="Margin" Value="0,0,0,6" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+        </Style>
+
+        <Style x:Key="HotkeyRowLabelStyle" TargetType="{x:Type TextBlock}">
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="HotkeyConflictHintStyle"
+               TargetType="{x:Type TextBlock}"
+               BasedOn="{StaticResource HelpTextStyle}">
+            <Setter Property="Margin" Value="0,6,0,0" />
+            <Setter Property="Visibility" Value="Collapsed" />
+        </Style>
+    </UserControl.Resources>
+
     <StackPanel>
-                                <TextBlock Text="Hotkey" Style="{StaticResource SectionTitleTextStyle}" />
-                                <CheckBox x:Name="EnableRawInputHotkeysCheck"
-                                          Content="Use RawInput hotkey backend (experimental)"
-                                          Margin="0,6,0,0"
-                                          IsChecked="{Binding Settings.EnableRawInputHotkeys, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBlock Text="NOTE: Use this when some apps ignore standard RegisterHotKey."
-                                           Style="{StaticResource HelpTextStyle}"
-                                           Margin="0,2,0,0" />
-                                <Grid Margin="0,6,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="Auto" MinWidth="210" />
-                                        <ColumnDefinition Width="96" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
+        <TextBlock Text="Hotkey" Style="{StaticResource SectionTitleTextStyle}" />
+        <CheckBox x:Name="EnableRawInputHotkeysCheck"
+                  Content="Use RawInput hotkey backend (experimental)"
+                  Margin="0,6,0,0"
+                  IsChecked="{Binding Settings.EnableRawInputHotkeys, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <TextBlock Text="NOTE: Use this when some apps ignore standard RegisterHotKey."
+                   Style="{StaticResource HelpTextStyle}"
+                   Margin="0,2,0,0" />
+        <TextBlock x:Name="HotkeyConflictSummaryText"
+                   Style="{StaticResource HelpTextStyle}"
+                   Visibility="Collapsed"
+                   Margin="0,8,0,0" />
 
-                                    <TextBlock Grid.Row="0" Grid.Column="0" Margin="0,0,12,0" Text="Run once" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="0" Grid.Column="1" x:Name="HotkeyRunOnceKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyRunOnceKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
-                                        <CheckBox x:Name="HotkeyRunOnceCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyRunOnceCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunOnceAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunOnceAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunOnceShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunOnceShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+        <Grid Margin="0,6,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" MinWidth="210" />
+                <ColumnDefinition Width="96" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Row="1" Grid.Column="0" Margin="0,6,12,0" Text="Run next ROI slot" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="1" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyRunNextRoiKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyRunNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyRunNextRoiCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunNextRoiAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunNextRoiShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyRunOnceRowBorder" Grid.Row="0" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyRunOnceLabel" Grid.Column="0" Text="Run once" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyRunOnceKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyRunOnceKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyRunOnceCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyRunOnceCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunOnceAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunOnceAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunOnceShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunOnceShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyRunOnceConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="2" Grid.Column="0" Margin="0,6,12,0" Text="Run next+1 ROI slot" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="2" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyRunNextNextRoiKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyRunNextNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyRunNextNextRoiCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunNextNextRoiAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyRunNextNextRoiShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyRunNextNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyRunNextRoiRowBorder" Grid.Row="1" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyRunNextRoiLabel" Grid.Column="0" Text="Run next ROI slot" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyRunNextRoiKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyRunNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyRunNextRoiCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyRunNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunNextRoiAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunNextRoiShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyRunNextRoiConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="3" Grid.Column="0" Margin="0,6,12,0" Text="Toggle overlay" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="3" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleOverlayKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyToggleOverlayKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="3" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyToggleOverlayCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyToggleOverlayCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleOverlayAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleOverlayAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleOverlayShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleOverlayShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyRunNextNextRoiRowBorder" Grid.Row="2" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyRunNextNextRoiLabel" Grid.Column="0" Text="Run next+1 ROI slot" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyRunNextNextRoiKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyRunNextNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyRunNextNextRoiCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyRunNextNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunNextNextRoiAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunNextNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyRunNextNextRoiShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyRunNextNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyRunNextNextRoiConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="4" Grid.Column="0" Margin="0,6,12,0" Text="Force run" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="4" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyForceRunKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyForceRunKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="4" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyForceRunCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyToggleOverlayRowBorder" Grid.Row="3" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyToggleOverlayLabel" Grid.Column="0" Text="Toggle overlay" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyToggleOverlayKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyToggleOverlayKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyToggleOverlayCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyToggleOverlayCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleOverlayAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleOverlayAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleOverlayShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleOverlayShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyToggleOverlayConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="5" Grid.Column="0" Margin="0,6,12,0" Text="Force run next ROI slot" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="5" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyForceRunNextRoiKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyForceRunNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="5" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyForceRunNextRoiCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunNextRoiAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunNextRoiShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyForceRunRowBorder" Grid.Row="4" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyForceRunLabel" Grid.Column="0" Text="Force run" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyForceRunKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyForceRunKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyForceRunCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyForceRunCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyForceRunConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="6" Grid.Column="0" Margin="0,6,12,0" Text="Force run next+1 ROI slot" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="6" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyForceRunNextNextRoiKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyForceRunNextNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="6" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyForceRunNextNextRoiCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunNextNextRoiAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceRunNextNextRoiShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyForceRunNextRoiRowBorder" Grid.Row="5" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyForceRunNextRoiLabel" Grid.Column="0" Text="Force run next ROI slot" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyForceRunNextRoiKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyForceRunNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyForceRunNextRoiCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunNextRoiAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunNextRoiShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyForceRunNextRoiConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="7" Grid.Column="0" Margin="0,6,12,0" Text="Force Gemini (strict)" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="7" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyForceGeminiStrictKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyForceGeminiStrictKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="7" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyForceGeminiStrictCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyForceGeminiStrictCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceGeminiStrictAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceGeminiStrictAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyForceGeminiStrictShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyForceGeminiStrictShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyForceRunNextNextRoiRowBorder" Grid.Row="6" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyForceRunNextNextRoiLabel" Grid.Column="0" Text="Force run next+1 ROI slot" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyForceRunNextNextRoiKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyForceRunNextNextRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyForceRunNextNextRoiCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunNextNextRoiAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceRunNextNextRoiShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceRunNextNextRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyForceRunNextNextRoiConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="8" Grid.Column="0" Margin="0,6,12,0" Text="Overlay text" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="8" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyOcrOnlyKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyOcrOnlyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="8" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyOcrOnlyCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyOcrOnlyCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyOcrOnlyAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyOcrOnlyAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyOcrOnlyShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyOcrOnlyShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyForceGeminiStrictRowBorder" Grid.Row="7" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyForceGeminiStrictLabel" Grid.Column="0" Text="Force Gemini (strict)" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyForceGeminiStrictKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyForceGeminiStrictKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyForceGeminiStrictCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyForceGeminiStrictCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceGeminiStrictAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceGeminiStrictAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyForceGeminiStrictShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyForceGeminiStrictShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyForceGeminiStrictConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="9" Grid.Column="0" Margin="0,6,12,0" Text="Scene auto-translate" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="9" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleSceneAutoTranslateKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyToggleSceneAutoTranslateKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="9" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyToggleSceneAutoTranslateCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleSceneAutoTranslateAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleSceneAutoTranslateShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyOcrOnlyRowBorder" Grid.Row="8" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyOcrOnlyLabel" Grid.Column="0" Text="Overlay text" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyOcrOnlyKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyOcrOnlyKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyOcrOnlyCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyOcrOnlyCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyOcrOnlyAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyOcrOnlyAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyOcrOnlyShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyOcrOnlyShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyOcrOnlyConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="10" Grid.Column="0" Margin="0,6,12,0" Text="Select ROI" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="10" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeySelectRoiKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeySelectRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="10" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeySelectRoiCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeySelectRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeySelectRoiAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeySelectRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeySelectRoiShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeySelectRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyToggleSceneAutoTranslateRowBorder" Grid.Row="9" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyToggleSceneAutoTranslateLabel" Grid.Column="0" Text="Scene auto-translate" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyToggleSceneAutoTranslateKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyToggleSceneAutoTranslateKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyToggleSceneAutoTranslateCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleSceneAutoTranslateAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleSceneAutoTranslateShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleSceneAutoTranslateShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyToggleSceneAutoTranslateConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="11" Grid.Column="0" Margin="0,6,12,0" Text="Select user frame" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="11" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeySelectFixedOverlayFrameKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeySelectFixedOverlayFrameKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="11" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeySelectFixedOverlayFrameShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeySelectRoiRowBorder" Grid.Row="10" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeySelectRoiLabel" Grid.Column="0" Text="Select ROI" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeySelectRoiKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeySelectRoiKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeySelectRoiCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectRoiAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectRoiShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeySelectRoiConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="12" Grid.Column="0" Margin="0,6,12,0" Text="Lock window" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="12" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyLockCaptureWindowKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyLockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="12" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyLockCaptureWindowCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyLockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyLockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyLockCaptureWindowAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyLockCaptureWindowShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyLockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeySelectFixedOverlayFrameRowBorder" Grid.Row="11" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeySelectFixedOverlayFrameLabel" Grid.Column="0" Text="Select user frame" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeySelectFixedOverlayFrameKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeySelectFixedOverlayFrameKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeySelectFixedOverlayFrameCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectFixedOverlayFrameAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectFixedOverlayFrameShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectFixedOverlayFrameShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeySelectFixedOverlayFrameConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="13" Grid.Column="0" Margin="0,6,12,0" Text="Unlock window" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="13" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyUnlockCaptureWindowKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyUnlockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="13" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyUnlockCaptureWindowCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyUnlockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyUnlockCaptureWindowShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
+            <Border x:Name="HotkeyLockCaptureWindowRowBorder" Grid.Row="12" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyLockCaptureWindowLabel" Grid.Column="0" Text="Lock window" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyLockCaptureWindowKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyLockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyLockCaptureWindowCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyLockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyLockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyLockCaptureWindowAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyLockCaptureWindowShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyLockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyLockCaptureWindowConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
 
-                                    <TextBlock Grid.Row="14" Grid.Column="0" Margin="0,6,12,0" Text="Mirror fullscreen toggle" VerticalAlignment="Center" />
-                                    <ComboBox Grid.Row="14" Grid.Column="1" Margin="0,6,0,0" x:Name="HotkeyToggleMirrorFullscreenKeyBox" Width="88"
-                                              SelectedItem="{Binding Settings.HotkeyToggleMirrorFullscreenKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    <StackPanel Grid.Row="14" Grid.Column="2" Orientation="Horizontal" Margin="8,6,0,0">
-                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenCtrl" Content="Ctrl"
-                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenAlt" Content="Alt" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                        <CheckBox x:Name="HotkeyToggleMirrorFullscreenShift" Content="Shift" Margin="6,0,0,0"
-                                                  IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </StackPanel>
-                                </Grid>
-                                <TextBlock Text="Note: Win key is not supported."
-                                           Style="{StaticResource HelpTextStyle}"
-                                           Margin="0,8,0,0" />
+            <Border x:Name="HotkeyUnlockCaptureWindowRowBorder" Grid.Row="13" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyUnlockCaptureWindowLabel" Grid.Column="0" Text="Unlock window" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyUnlockCaptureWindowKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyUnlockCaptureWindowKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyUnlockCaptureWindowCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyUnlockCaptureWindowAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyUnlockCaptureWindowShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyUnlockCaptureWindowShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyUnlockCaptureWindowConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="HotkeyToggleMirrorFullscreenRowBorder" Grid.Row="14" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeyToggleMirrorFullscreenLabel" Grid.Column="0" Text="Mirror fullscreen toggle" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeyToggleMirrorFullscreenKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeyToggleMirrorFullscreenKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeyToggleMirrorFullscreenCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleMirrorFullscreenAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeyToggleMirrorFullscreenShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeyToggleMirrorFullscreenShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeyToggleMirrorFullscreenConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <TextBlock Text="Note: Win key is not supported."
+                   Style="{StaticResource HelpTextStyle}"
+                   Margin="0,8,0,0" />
     </StackPanel>
 </UserControl>

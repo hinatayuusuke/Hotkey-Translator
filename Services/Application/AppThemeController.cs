@@ -17,6 +17,9 @@ internal readonly record struct AppThemeApplyResult(
 internal sealed class AppThemeController
 {
     private const string BusyDialogBackgroundBrushKey = "BusyDialogBackgroundBrush";
+    private const string HotkeyConflictBorderBrushKey = "HotkeyConflictBorderBrush";
+    private const string HotkeyConflictBackgroundBrushKey = "HotkeyConflictBackgroundBrush";
+    private const string HotkeyConflictTextBrushKey = "HotkeyConflictTextBrush";
     private const int DwmwaUseImmersiveDarkMode = 20;
     private const int DwmwaUseImmersiveDarkModeLegacy = 19;
     private const int DwmwaCaptionColor = 35;
@@ -88,6 +91,26 @@ internal sealed class AppThemeController
             : Color.FromRgb(0xF8, 0xF8, 0xF8));
         brush.Freeze();
         resources[BusyDialogBackgroundBrushKey] = brush;
+
+        // WHY: Hotkey conflict visuals need separate light/dark tuning so the warning stays legible
+        // without overpowering the rest of the settings panel in either theme.
+        var conflictBorderBrush = new SolidColorBrush(applicationTheme == ApplicationTheme.Dark
+            ? Color.FromRgb(0xCC, 0x6B, 0x6B)
+            : Color.FromRgb(0xC0, 0x3A, 0x3A));
+        conflictBorderBrush.Freeze();
+        resources[HotkeyConflictBorderBrushKey] = conflictBorderBrush;
+
+        var conflictBackgroundBrush = new SolidColorBrush(applicationTheme == ApplicationTheme.Dark
+            ? Color.FromArgb(0x33, 0xCC, 0x6B, 0x6B)
+            : Color.FromArgb(0x1A, 0xF2, 0x5B, 0x5B));
+        conflictBackgroundBrush.Freeze();
+        resources[HotkeyConflictBackgroundBrushKey] = conflictBackgroundBrush;
+
+        var conflictTextBrush = new SolidColorBrush(applicationTheme == ApplicationTheme.Dark
+            ? Color.FromRgb(0xFF, 0xB3, 0xB3)
+            : Color.FromRgb(0xB4, 0x23, 0x18));
+        conflictTextBrush.Freeze();
+        resources[HotkeyConflictTextBrushKey] = conflictTextBrush;
     }
 
     private static void ApplyStandardTitleBarTheme(IntPtr handle, ApplicationTheme applicationTheme)

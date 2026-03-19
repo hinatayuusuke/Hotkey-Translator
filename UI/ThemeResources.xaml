@@ -5,6 +5,9 @@
     <sys:Double x:Key="SliderStandardWidth">180</sys:Double>
     <CornerRadius x:Key="ShellCardCornerRadius">14</CornerRadius>
     <SolidColorBrush x:Key="BusyDialogBackgroundBrush" Color="#FF2B2B2B" />
+    <SolidColorBrush x:Key="HotkeyConflictBorderBrush" Color="#FFCC6B6B" />
+    <SolidColorBrush x:Key="HotkeyConflictBackgroundBrush" Color="#33CC6B6B" />
+    <SolidColorBrush x:Key="HotkeyConflictTextBrush" Color="#FFFFB3B3" />
 
     <Style x:Key="ShellSurfaceBorderStyle" TargetType="{x:Type Border}">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />

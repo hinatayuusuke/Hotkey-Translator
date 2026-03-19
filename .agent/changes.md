@@ -655,3 +655,40 @@
 ### Tests / Verification
 - `git diff --check -- Services/Application/HotkeyController.cs`（LF/CRLF warning のみ）
 - コード確認: changed/retired old binding を先に dispose し、その後に changed binding を登録する順序へ変わったことを確認
+
+**2026-03-19 15:13 (Asia/Taipei) — Highlight conflicting hotkey settings**
+
+### Summary
+- Hotkey 設定の重複を UI で即時検知し、ライト/ダークテーマ対応の赤表示と保存保留を追加した。
+
+### Context / Goal
+- これまでは hotkey 登録時に重複がログへ出るだけで、設定画面では衝突箇所が分からなかった。
+- アプリ内で同じ hotkey を複数行へ割り当てたとき、その場で衝突箇所を視認できるようにしたかった。
+
+### Changes
+- `SettingsViewModel` に hotkey 衝突検知ロジックと、行ごとの衝突メッセージ/サマリー状態を追加した。
+- `HotkeysControl` を行単位の `Border` 構成へ更新し、衝突行の枠・背景・補助文を赤系で表示するようにした。
+- `AppThemeController` と `ThemeResources.xaml` に衝突表示用ブラシを追加し、ライト/ダークで見やすい色へ切り替えるようにした。
+- `SettingsUiController` で hotkey 衝突中の保存を保留し、最後の有効な登録状態を維持するようにした。
+
+### Files Touched
+- `ViewModels/SettingsViewModel.cs` — hotkey 下書き値から重複を計算し、UI が参照する衝突状態を追加した。
+- `UI/HotkeysControl.xaml` — hotkey 行を衝突表示しやすいレイアウトへ更新し、衝突サマリー表示を追加した。
+- `UI/HotkeysControl.xaml.cs` — `SettingsViewModel` の衝突状態を監視し、各行の赤表示を切り替える処理を追加した。
+- `UI/ThemeResources.xaml` — hotkey 衝突表示の既定ブラシを追加した。
+- `Services/Application/AppThemeController.cs` — ライト/ダークテーマごとに hotkey 衝突ブラシを差し替えるようにした。
+- `Services/Application/SettingsUiController.cs` — hotkey 衝突中は保存を進めないガードを追加した。
+- `MainWindow.xaml.cs` — `ISettingsUiBridge` 経由で hotkey 衝突状態を `SettingsUiController` へ渡すようにした。
+
+### Behavioral Impact
+- 同一アプリ内で同じ hotkey 組み合わせを複数行に設定すると、該当行と説明文が赤く表示される。
+- 衝突が解消されるまで新しい hotkey 設定は保存・適用されず、直前の有効な登録状態が維持される。
+- ライトテーマとダークテーマの切り替え後も、衝突表示がそれぞれの背景で読める配色を使う。
+
+### Risk & Mitigation
+- Risk: hotkey 衝突中は他の設定変更も autosave で保留される。
+- Mitigation: 画面上に常時サマリーを表示し、衝突を解消すべき状態を明示した。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln`
+- `git diff --check`（LF/CRLF warning のみ）

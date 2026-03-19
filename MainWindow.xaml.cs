@@ -1693,6 +1693,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ConfirmResourceBootstrapAsync(settings, intent);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
+    bool ISettingsUiBridge.HasHotkeyConflicts => _mainWindowViewModel.Settings.HasHotkeyConflicts;
     bool ISettingsUiBridge.TryValidateResourceHostBudget(AppSettings settings, out string? message) =>
         _resourceHostFacade.TryValidateBudget(settings, out message);
     void ISettingsUiBridge.SyncSettingsToView(AppSettings settings, bool updateTranslationStatus) =>

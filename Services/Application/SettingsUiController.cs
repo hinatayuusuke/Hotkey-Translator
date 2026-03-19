@@ -11,6 +11,7 @@ internal interface ISettingsUiBridge
 {
     bool IsLoaded { get; }
     bool IsApplyingSettings { get; set; }
+    bool HasHotkeyConflicts { get; }
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
@@ -60,6 +61,12 @@ internal sealed class SettingsUiController
         _bridge.IsApplyingSettings = true;
         try
         {
+            if (_bridge.HasHotkeyConflicts)
+            {
+                // WHY: Keep the last valid hotkey set active until duplicate bindings in the editor are resolved.
+                return false;
+            }
+
             var settings = _settingsService.Settings;
             var previousSettings = CloneSettings(settings);
             _applySettingsInput(settings);

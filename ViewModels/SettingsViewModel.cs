@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Hotkey_Translator.Models;
@@ -9,6 +10,22 @@ namespace Hotkey_Translator.ViewModels;
 
 internal sealed partial class SettingsViewModel : ObservableObject
 {
+    public const string HotkeyIdRunOnce = "RunOnce";
+    public const string HotkeyIdRunNextRoi = "RunNextRoi";
+    public const string HotkeyIdRunNextNextRoi = "RunNextNextRoi";
+    public const string HotkeyIdToggleOverlay = "ToggleOverlay";
+    public const string HotkeyIdForceRun = "ForceRun";
+    public const string HotkeyIdForceRunNextRoi = "ForceRunNextRoi";
+    public const string HotkeyIdForceRunNextNextRoi = "ForceRunNextNextRoi";
+    public const string HotkeyIdForceGeminiStrict = "ForceGeminiStrict";
+    public const string HotkeyIdOverlayText = "OverlayText";
+    public const string HotkeyIdSceneAutoTranslate = "SceneAutoTranslate";
+    public const string HotkeyIdSelectRoi = "SelectRoi";
+    public const string HotkeyIdSelectUserFrame = "SelectUserFrame";
+    public const string HotkeyIdLockWindow = "LockWindow";
+    public const string HotkeyIdUnlockWindow = "UnlockWindow";
+    public const string HotkeyIdMirrorFullscreen = "MirrorFullscreen";
+
     private readonly ISettingsChangeScheduler _changeScheduler;
     private const string FixedOverlayPlacementModeRoiTag = "ROI";
     private const string FixedOverlayPlacementModeCustomFrameTag = "User frame";
@@ -24,6 +41,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     private bool _suspendMirrorModeSync;
     private bool _suspendAutoSave;
     private bool _suspendNumericFieldSync;
+    private Dictionary<string, string> _hotkeyConflictMessages = new(StringComparer.Ordinal);
 
     public SettingsViewModel(ISettingsChangeScheduler changeScheduler)
     {
@@ -212,6 +230,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift = true;
     [ObservableProperty] private bool _enableRawInputHotkeys;
 
+    public bool HasHotkeyConflicts => _hotkeyConflictMessages.Count > 0;
+
+    public string HotkeyConflictSummary => HasHotkeyConflicts
+        ? "Conflicting hotkeys are not applied until resolved."
+        : string.Empty;
+
     public IReadOnlyList<string> FixedOverlayPlacementModeOptions { get; } =
         new[] { FixedOverlayPlacementModeRoiTag, FixedOverlayPlacementModeCustomFrameTag };
 
@@ -392,6 +416,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             AssignHotkeySettings(settings);
             EnableRawInputHotkeys = settings.EnableRawInputHotkeys;
             AssignLanguageSettings(settings);
+            RefreshHotkeyConflicts();
         }
         finally
         {
@@ -982,66 +1007,66 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLApiKeyTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnApiKeyTextChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunOnceKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunOnceCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunOnceAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunOnceShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyRunNextNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleOverlayKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleOverlayCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleOverlayAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleOverlayShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextNextRoiKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextNextRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextNextRoiAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceRunNextNextRoiShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceGeminiStrictKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceGeminiStrictCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceGeminiStrictAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyForceGeminiStrictShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyOcrOnlyKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyOcrOnlyCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyOcrOnlyAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyOcrOnlyShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleSceneAutoTranslateKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleSceneAutoTranslateCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleSceneAutoTranslateAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleSceneAutoTranslateShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectRoiKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectRoiCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectRoiAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectRoiShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectFixedOverlayFrameKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectFixedOverlayFrameCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectFixedOverlayFrameAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeySelectFixedOverlayFrameShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyLockCaptureWindowKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyLockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyLockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyLockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyUnlockCaptureWindowKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyUnlockCaptureWindowCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleMirrorFullscreenKeyChanged(string value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleMirrorFullscreenCtrlChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleMirrorFullscreenAltChanged(bool value) => RequestSaveOnValueChange();
-    partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnHotkeyRunOnceKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunOnceCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunOnceAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunOnceShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextRoiKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextRoiAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextNextRoiKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextNextRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextNextRoiAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyRunNextNextRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleOverlayKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleOverlayCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleOverlayAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleOverlayShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextRoiKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextRoiAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextNextRoiKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextNextRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextNextRoiAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceRunNextNextRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceGeminiStrictKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceGeminiStrictCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceGeminiStrictAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyForceGeminiStrictShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyOcrOnlyKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyOcrOnlyCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyOcrOnlyAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyOcrOnlyShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleSceneAutoTranslateKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleSceneAutoTranslateCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleSceneAutoTranslateAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleSceneAutoTranslateShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectFixedOverlayFrameKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectFixedOverlayFrameCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectFixedOverlayFrameAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectFixedOverlayFrameShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyLockCaptureWindowKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyLockCaptureWindowCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyLockCaptureWindowAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyLockCaptureWindowShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyUnlockCaptureWindowKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyUnlockCaptureWindowCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyUnlockCaptureWindowAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyUnlockCaptureWindowShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleMirrorFullscreenKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleMirrorFullscreenCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleMirrorFullscreenAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnEnableRawInputHotkeysChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookPipelineChanged(bool value)
@@ -1404,6 +1429,132 @@ internal sealed partial class SettingsViewModel : ObservableObject
         return normalized == "fp16" ? "fp16" : "fp32";
     }
 
+    public bool TryGetHotkeyConflict(string hotkeyId, out string message)
+    {
+        if (_hotkeyConflictMessages.TryGetValue(hotkeyId, out message!))
+        {
+            return true;
+        }
+
+        message = string.Empty;
+        return false;
+    }
+
+    private void HandleHotkeyValueChanged()
+    {
+        RefreshHotkeyConflicts();
+        RequestSaveOnValueChange();
+    }
+
+    private void RefreshHotkeyConflicts()
+    {
+        var conflicts = BuildHotkeyConflictMessages();
+        if (HasSameHotkeyConflicts(conflicts))
+        {
+            return;
+        }
+
+        _hotkeyConflictMessages = conflicts;
+        OnPropertyChanged(nameof(HasHotkeyConflicts));
+        OnPropertyChanged(nameof(HotkeyConflictSummary));
+    }
+
+    private bool HasSameHotkeyConflicts(Dictionary<string, string> conflicts)
+    {
+        return _hotkeyConflictMessages.Count == conflicts.Count &&
+               !_hotkeyConflictMessages.Except(conflicts).Any();
+    }
+
+    private Dictionary<string, string> BuildHotkeyConflictMessages()
+    {
+        var bindings = BuildHotkeyBindings();
+        var conflicts = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var group in bindings.GroupBy(binding => binding.Gesture))
+        {
+            var entries = group.ToArray();
+            if (entries.Length <= 1)
+            {
+                continue;
+            }
+
+            foreach (var binding in entries)
+            {
+                var others = entries
+                    .Where(other => !string.Equals(other.Id, binding.Id, StringComparison.Ordinal))
+                    .Select(other => other.DisplayName);
+                conflicts[binding.Id] = $"Conflicts with {string.Join(", ", others)} ({binding.Gesture}).";
+            }
+        }
+
+        return conflicts;
+    }
+
+    private List<HotkeyBindingDraft> BuildHotkeyBindings()
+    {
+        var bindings = new List<HotkeyBindingDraft>(15);
+        AddHotkeyBinding(bindings, HotkeyIdRunOnce, "Run once", HotkeyRunOnceKey, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        AddHotkeyBinding(bindings, HotkeyIdRunNextRoi, "Run next ROI slot", HotkeyRunNextRoiKey, HotkeyRunNextRoiCtrl, HotkeyRunNextRoiAlt, HotkeyRunNextRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdRunNextNextRoi, "Run next+1 ROI slot", HotkeyRunNextNextRoiKey, HotkeyRunNextNextRoiCtrl, HotkeyRunNextNextRoiAlt, HotkeyRunNextNextRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdToggleOverlay, "Toggle overlay", HotkeyToggleOverlayKey, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt, HotkeyToggleOverlayShift);
+        AddHotkeyBinding(bindings, HotkeyIdForceRun, "Force run", HotkeyForceRunKey, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        AddHotkeyBinding(bindings, HotkeyIdForceRunNextRoi, "Force run next ROI slot", HotkeyForceRunNextRoiKey, HotkeyForceRunNextRoiCtrl, HotkeyForceRunNextRoiAlt, HotkeyForceRunNextRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdForceRunNextNextRoi, "Force run next+1 ROI slot", HotkeyForceRunNextNextRoiKey, HotkeyForceRunNextNextRoiCtrl, HotkeyForceRunNextNextRoiAlt, HotkeyForceRunNextNextRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdForceGeminiStrict, "Force Gemini (strict)", HotkeyForceGeminiStrictKey, HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt, HotkeyForceGeminiStrictShift);
+        AddHotkeyBinding(bindings, HotkeyIdOverlayText, "Overlay text", HotkeyOcrOnlyKey, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        AddHotkeyBinding(bindings, HotkeyIdSceneAutoTranslate, "Scene auto-translate", HotkeyToggleSceneAutoTranslateKey, HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
+        AddHotkeyBinding(bindings, HotkeyIdSelectRoi, "Select ROI", HotkeySelectRoiKey, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdSelectUserFrame, "Select user frame", HotkeySelectFixedOverlayFrameKey, HotkeySelectFixedOverlayFrameCtrl, HotkeySelectFixedOverlayFrameAlt,
+            HotkeySelectFixedOverlayFrameShift);
+        AddHotkeyBinding(bindings, HotkeyIdLockWindow, "Lock window", HotkeyLockCaptureWindowKey, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
+        AddHotkeyBinding(bindings, HotkeyIdUnlockWindow, "Unlock window", HotkeyUnlockCaptureWindowKey, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
+        AddHotkeyBinding(bindings, HotkeyIdMirrorFullscreen, "Mirror fullscreen toggle", HotkeyToggleMirrorFullscreenKey, HotkeyToggleMirrorFullscreenCtrl, HotkeyToggleMirrorFullscreenAlt,
+            HotkeyToggleMirrorFullscreenShift);
+        return bindings;
+    }
+
+    private static void AddHotkeyBinding(
+        ICollection<HotkeyBindingDraft> bindings,
+        string id,
+        string displayName,
+        string key,
+        bool ctrl,
+        bool alt,
+        bool shift)
+    {
+        var normalizedKey = NormalizeHotkeyKey(key);
+        if (HotkeyDefaults.IsDisabledKey(normalizedKey))
+        {
+            return;
+        }
+
+        bindings.Add(new HotkeyBindingDraft(
+            id,
+            displayName,
+            FormatHotkeyGesture(normalizedKey, ctrl, alt, shift)));
+    }
+
+    private static string FormatHotkeyGesture(string key, bool ctrl, bool alt, bool shift)
+    {
+        var parts = new List<string>(4);
+        if (ctrl)
+        {
+            parts.Add("Ctrl");
+        }
+
+        if (alt)
+        {
+            parts.Add("Alt");
+        }
+
+        if (shift)
+        {
+            parts.Add("Shift");
+        }
+
+        parts.Add(NormalizeHotkeyKey(key));
+        return string.Join(" + ", parts);
+    }
+
     private void RequestSaveOnValueChange()
     {
         if (_suspendAutoSave)
@@ -1434,6 +1585,11 @@ internal sealed partial class SettingsViewModel : ObservableObject
         custom = normalized;
         return "custom";
     }
+
+    private readonly record struct HotkeyBindingDraft(
+        string Id,
+        string DisplayName,
+        string Gesture);
 
     private static string ResolveLanguageTag(string selectedTag, string customText)
     {
