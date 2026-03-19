@@ -419,3 +419,102 @@
 - 出力確認: `dist\Hotkey-Translator-online`
 - 確認結果: `Hotkey-Translator.exe`、`Tools\uv\uv.exe`、`Tools\WinRtLanguagePackElevator\WinRtLanguagePackElevator.exe`、`Native\HookHost\bin\HookHost.exe`、`Native\HookHost\bin\x86\HookHost.exe` を含む配布フォルダが生成された。
 - 確認結果: x64 の hook agent DLL は配布に含まれ、x86 hook agent DLL はアンチウイルス隔離前提により `DIST-NOTES.txt` の missing list に記録された。
+
+**2026-03-19 10:00 (Asia/Taipei) — Add hotkey defaults consolidation proposal**
+
+### Summary
+- ホットキー既定値の一本化、無効設定、F6～F10 既定への整理方針を `Doc` に実装案として追加した。
+
+### Context / Goal
+- ホットキー既定値が複数箇所で管理されており、変更時のズレや空設定の扱いが不安定だった。
+- 「多重管理を一本化」「無効設定できる」「デフォルトは F6～F10」という方針を実装前に整理したかった。
+
+### Changes
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` を追加した。
+- 現状の多重管理箇所、disabled 状態の設計、F6～F10 を中心にした既定ポリシー、実装手順、影響範囲、DoD を文書化した。
+
+### Files Touched
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` — ホットキー既定値整理の実装案を追加した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行挙動の変更はまだ無い。
+- 次の実装で何を一本化し、どのホットキーを既定有効/無効にするかが明確になった。
+
+### Risk & Mitigation
+- Risk: 実装案だけでコードはまだ変わっていないため、現行挙動はそのまま残る。
+- Mitigation: 設計を先に固定し、次の実装で保存表現・UI・登録処理を一括で変更する前提を文書化した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\Hotkey_Defaults_DisabledState_Implementation_Plan.md' -Encoding UTF8 -TotalCount 40`
+
+**2026-03-19 10:12 (Asia/Taipei) — Revise hotkey defaults plan to use Disable and remove fallback rule**
+
+### Summary
+- ホットキー実装案を `Disable` 明示保存と補完ルール廃止の方針へ更新し、文書全体の整合性を取り直した。
+
+### Context / Goal
+- 空文字ではなく `Disable` を保存したい方針が固まった。
+- `HotkeyDefaultsRule` を廃止し、未リリース前提で既存ユーザー互換を考えない内容へ実装案を揃えたかった。
+
+### Changes
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` の保存表現を空文字から `Disable` に変更した。
+- 一般的な既定値補完ルールを廃止し、`HotkeyDefaultsRule` を削除対象とする内容へ更新した。
+- 未リリース前提のため移行・既存ユーザー互換の記述を整理した。
+- 文書全体を再確認し、`Disable`、補完廃止、F6～F10 既定方針で表現を統一した。
+
+### Files Touched
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` — `Disable` 保存と補完廃止前提へ実装案を更新した。
+- `.agent/changes.md` — 本タスクの記録を追記した。
+
+### Behavioral Impact
+- 実行挙動の変更はまだ無い。
+- 今後の実装方針が「`Disable` 保存」「`HotkeyDefaultsRule` 廃止」「既定値補完の常時実行なし」で確定した。
+
+### Risk & Mitigation
+- Risk: 文書だけ更新され、コード側の旧方針がまだ残っている。
+- Mitigation: 実装時はこの文書を基準に、設定保存・UI・登録処理・既定値定義を同時に更新する前提を明記した。
+
+### Tests / Verification
+- `Get-Content -Path 'Doc\Hotkey_Defaults_DisabledState_Implementation_Plan.md' -Encoding UTF8`
+- `rg -n "未割り当て|Disable|HotkeyDefaultsRule|補完ルール|既存ユーザー互換" 'Doc\Hotkey_Defaults_DisabledState_Implementation_Plan.md'`
+
+**2026-03-19 10:33 (Asia/Taipei) — Implement hotkey Disable defaults and remove fallback restoration**
+
+### Summary
+- ホットキー既定値を `HotkeyDefaults` に一本化し、`Disable` を明示保存する実装へ切り替えた。
+
+### Context / Goal
+- `Doc/Hotkey_Defaults_DisabledState_Implementation_Plan.md` の方針どおり、既定値の多重管理を解消したかった。
+- `F6` から `F10` 以外を既定で無効化し、補完ルールで勝手に復活しない状態にしたかった。
+
+### Changes
+- `Models/HotkeyDefaults.cs` を追加し、ホットキー既定値・`Disable` 定数・キー選択肢・保存値正規化を集約した。
+- `Models/AppSettings.cs` と `ViewModels/SettingsViewModel.cs` の既定値参照を `HotkeyDefaults` へ寄せ、`Disable` のとき modifier を強制的に `None` とするようにした。
+- `MainWindow.xaml.cs` の hotkey 設定構築を fallback なしへ変更し、`Disable` を `Key.None` として扱い、登録対象から除外するようにした。
+- `Services/Application/HotkeyController.cs` を更新し、登録対象が 0 件でも正常状態として扱えるようにした。
+- `Services/Settings/Rules/HotkeyDefaultsRule.cs` を削除し、`Services/Settings/AppSettingsValidator.cs` から参照を外した。
+- 未リリース前提に合わせて `Services/Settings/AppSettingsMigrator.cs` の旧ホットキー互換 migration を削除した。
+
+### Files Touched
+- `Models/HotkeyDefaults.cs` — ホットキー既定値と `Disable` の正規化ロジックを追加した。
+- `Models/AppSettings.cs` — 各ホットキー既定値を単一定義参照へ置き換えた。
+- `ViewModels/SettingsViewModel.cs` — `Disable` を保持したまま読み書きし、disabled 時は modifier を無効化するようにした。
+- `MainWindow.xaml.cs` — `Disable` を `Key.None` に変換し、登録・ログ表示を disabled 対応へ更新した。
+- `Services/Application/HotkeyController.cs` — 登録対象 0 件を正常扱いにした。
+- `Services/Settings/AppSettingsValidator.cs` — `HotkeyDefaultsRule` を除去した。
+- `Services/Settings/Rules/HotkeyDefaultsRule.cs` — 廃止に伴い削除した。
+- `Services/Settings/AppSettingsMigrator.cs` — 旧ホットキー互換 migration を削除した。
+
+### Behavioral Impact
+- 新規既定ホットキーは `F6` ROI、`F7` Lock window、`F8` Run once、`F9` Toggle overlay、`F10` Force run のみ有効になる。
+- 補助ホットキーは既定で `Disable` になり、設定保存後に自動補完で復活しない。
+- すべてのホットキーを `Disable` にしても、登録失敗ではなく「登録対象なし」の正常状態として起動できる。
+
+### Risk & Mitigation
+- Risk: `Disable` に対応していない箇所が残ると、UI 表示と実際の登録状態がずれる。
+- Mitigation: 設定保存、ランタイム変換、登録処理、ログ表示を同時に更新し、ソリューション全体でビルド確認した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
+- `rg -n 'compat_hotkey_f12_to_f7|HotkeyDefaultsRule|HotkeyConfig\.Default|ParseKey\([^\)]*,|NormalizeHotkeyKey\([^\)]*,[^\)]' .`

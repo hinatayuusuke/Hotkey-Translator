@@ -12,7 +12,6 @@ internal sealed class AppSettingsValidator
     {
         _rules = new ISettingsRule[]
         {
-            new HotkeyDefaultsRule(),
             new ResourceHostBudgetSettingsRule(),
             new RoiPresetSettingsRule(),
             new SceneSemanticSettingsRule(),

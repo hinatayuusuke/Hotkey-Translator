@@ -146,60 +146,60 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _deepLEndpointText = string.Empty;
     [ObservableProperty] private string _deepLApiKeyText = string.Empty;
     [ObservableProperty] private string _apiKeyText = string.Empty;
-    [ObservableProperty] private string _hotkeyRunOnceKey = "F8";
+    [ObservableProperty] private string _hotkeyRunOnceKey = HotkeyDefaults.RunOnceKey;
     [ObservableProperty] private bool _hotkeyRunOnceCtrl;
     [ObservableProperty] private bool _hotkeyRunOnceAlt;
     [ObservableProperty] private bool _hotkeyRunOnceShift;
-    [ObservableProperty] private string _hotkeyRunNextRoiKey = "F8";
+    [ObservableProperty] private string _hotkeyRunNextRoiKey = HotkeyDefaults.RunNextRoiKey;
     [ObservableProperty] private bool _hotkeyRunNextRoiCtrl;
     [ObservableProperty] private bool _hotkeyRunNextRoiAlt;
-    [ObservableProperty] private bool _hotkeyRunNextRoiShift = true;
-    [ObservableProperty] private string _hotkeyRunNextNextRoiKey = "F8";
-    [ObservableProperty] private bool _hotkeyRunNextNextRoiCtrl = true;
+    [ObservableProperty] private bool _hotkeyRunNextRoiShift;
+    [ObservableProperty] private string _hotkeyRunNextNextRoiKey = HotkeyDefaults.RunNextNextRoiKey;
+    [ObservableProperty] private bool _hotkeyRunNextNextRoiCtrl;
     [ObservableProperty] private bool _hotkeyRunNextNextRoiAlt;
     [ObservableProperty] private bool _hotkeyRunNextNextRoiShift;
-    [ObservableProperty] private string _hotkeyToggleOverlayKey = "F9";
+    [ObservableProperty] private string _hotkeyToggleOverlayKey = HotkeyDefaults.ToggleOverlayKey;
     [ObservableProperty] private bool _hotkeyToggleOverlayCtrl;
     [ObservableProperty] private bool _hotkeyToggleOverlayAlt;
     [ObservableProperty] private bool _hotkeyToggleOverlayShift;
-    [ObservableProperty] private string _hotkeyForceRunKey = "F10";
+    [ObservableProperty] private string _hotkeyForceRunKey = HotkeyDefaults.ForceRunKey;
     [ObservableProperty] private bool _hotkeyForceRunCtrl;
     [ObservableProperty] private bool _hotkeyForceRunAlt;
     [ObservableProperty] private bool _hotkeyForceRunShift;
-    [ObservableProperty] private string _hotkeyForceRunNextRoiKey = "F10";
+    [ObservableProperty] private string _hotkeyForceRunNextRoiKey = HotkeyDefaults.ForceRunNextRoiKey;
     [ObservableProperty] private bool _hotkeyForceRunNextRoiCtrl;
     [ObservableProperty] private bool _hotkeyForceRunNextRoiAlt;
-    [ObservableProperty] private bool _hotkeyForceRunNextRoiShift = true;
-    [ObservableProperty] private string _hotkeyForceRunNextNextRoiKey = "F10";
-    [ObservableProperty] private bool _hotkeyForceRunNextNextRoiCtrl = true;
+    [ObservableProperty] private bool _hotkeyForceRunNextRoiShift;
+    [ObservableProperty] private string _hotkeyForceRunNextNextRoiKey = HotkeyDefaults.ForceRunNextNextRoiKey;
+    [ObservableProperty] private bool _hotkeyForceRunNextNextRoiCtrl;
     [ObservableProperty] private bool _hotkeyForceRunNextNextRoiAlt;
     [ObservableProperty] private bool _hotkeyForceRunNextNextRoiShift;
-    [ObservableProperty] private string _hotkeyForceGeminiStrictKey = "F10";
+    [ObservableProperty] private string _hotkeyForceGeminiStrictKey = HotkeyDefaults.ForceGeminiStrictKey;
     [ObservableProperty] private bool _hotkeyForceGeminiStrictCtrl;
-    [ObservableProperty] private bool _hotkeyForceGeminiStrictAlt = true;
+    [ObservableProperty] private bool _hotkeyForceGeminiStrictAlt;
     [ObservableProperty] private bool _hotkeyForceGeminiStrictShift;
-    [ObservableProperty] private string _hotkeyOcrOnlyKey = "F11";
+    [ObservableProperty] private string _hotkeyOcrOnlyKey = HotkeyDefaults.OcrOnlyKey;
     [ObservableProperty] private bool _hotkeyOcrOnlyCtrl;
     [ObservableProperty] private bool _hotkeyOcrOnlyAlt;
     [ObservableProperty] private bool _hotkeyOcrOnlyShift;
-    [ObservableProperty] private string _hotkeyToggleSceneAutoTranslateKey = "F5";
+    [ObservableProperty] private string _hotkeyToggleSceneAutoTranslateKey = HotkeyDefaults.ToggleSceneAutoTranslateKey;
     [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateCtrl;
     [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateAlt;
     [ObservableProperty] private bool _hotkeyToggleSceneAutoTranslateShift;
-    [ObservableProperty] private string _hotkeySelectRoiKey = "F6";
+    [ObservableProperty] private string _hotkeySelectRoiKey = HotkeyDefaults.SelectRoiKey;
     [ObservableProperty] private bool _hotkeySelectRoiCtrl;
     [ObservableProperty] private bool _hotkeySelectRoiAlt;
     [ObservableProperty] private bool _hotkeySelectRoiShift;
-    [ObservableProperty] private string _hotkeyLockCaptureWindowKey = "F7";
+    [ObservableProperty] private string _hotkeyLockCaptureWindowKey = HotkeyDefaults.LockCaptureWindowKey;
     [ObservableProperty] private bool _hotkeyLockCaptureWindowCtrl;
     [ObservableProperty] private bool _hotkeyLockCaptureWindowAlt;
     [ObservableProperty] private bool _hotkeyLockCaptureWindowShift;
-    [ObservableProperty] private string _hotkeyUnlockCaptureWindowKey = "F7";
+    [ObservableProperty] private string _hotkeyUnlockCaptureWindowKey = HotkeyDefaults.UnlockCaptureWindowKey;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowCtrl;
     [ObservableProperty] private bool _hotkeyUnlockCaptureWindowAlt;
-    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift = true;
-    [ObservableProperty] private string _hotkeyToggleMirrorFullscreenKey = "F7";
-    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl = true;
+    [ObservableProperty] private bool _hotkeyUnlockCaptureWindowShift;
+    [ObservableProperty] private string _hotkeyToggleMirrorFullscreenKey = HotkeyDefaults.ToggleMirrorFullscreenKey;
+    [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenCtrl;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenAlt;
     [ObservableProperty] private bool _hotkeyToggleMirrorFullscreenShift;
     [ObservableProperty] private bool _enableRawInputHotkeys;
@@ -1107,91 +1107,91 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
     private void AssignHotkeySettings(AppSettings settings)
     {
-        HotkeyRunOnceKey = NormalizeHotkeyKey(settings.HotkeyRunOnceKey, "F8");
-        AssignHotkeyModifiers(settings.HotkeyRunOnceModifiers, out var runOnceCtrl, out var runOnceAlt, out var runOnceShift);
+        HotkeyRunOnceKey = NormalizeHotkeyKey(settings.HotkeyRunOnceKey);
+        AssignHotkeyModifiers(settings.HotkeyRunOnceKey, settings.HotkeyRunOnceModifiers, out var runOnceCtrl, out var runOnceAlt, out var runOnceShift);
         HotkeyRunOnceCtrl = runOnceCtrl;
         HotkeyRunOnceAlt = runOnceAlt;
         HotkeyRunOnceShift = runOnceShift;
 
-        HotkeyRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextRoiKey, "F8");
-        AssignHotkeyModifiers(settings.HotkeyRunNextRoiModifiers, out var runNextRoiCtrl, out var runNextRoiAlt, out var runNextRoiShift);
+        HotkeyRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextRoiKey);
+        AssignHotkeyModifiers(settings.HotkeyRunNextRoiKey, settings.HotkeyRunNextRoiModifiers, out var runNextRoiCtrl, out var runNextRoiAlt, out var runNextRoiShift);
         HotkeyRunNextRoiCtrl = runNextRoiCtrl;
         HotkeyRunNextRoiAlt = runNextRoiAlt;
         HotkeyRunNextRoiShift = runNextRoiShift;
 
-        HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextNextRoiKey, "F8");
-        AssignHotkeyModifiers(settings.HotkeyRunNextNextRoiModifiers, out var runNextNextRoiCtrl, out var runNextNextRoiAlt, out var runNextNextRoiShift);
+        HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyRunNextNextRoiKey);
+        AssignHotkeyModifiers(settings.HotkeyRunNextNextRoiKey, settings.HotkeyRunNextNextRoiModifiers, out var runNextNextRoiCtrl, out var runNextNextRoiAlt, out var runNextNextRoiShift);
         HotkeyRunNextNextRoiCtrl = runNextNextRoiCtrl;
         HotkeyRunNextNextRoiAlt = runNextNextRoiAlt;
         HotkeyRunNextNextRoiShift = runNextNextRoiShift;
 
-        HotkeyToggleOverlayKey = NormalizeHotkeyKey(settings.HotkeyToggleOverlayKey, "F9");
-        AssignHotkeyModifiers(settings.HotkeyToggleOverlayModifiers, out var toggleOverlayCtrl, out var toggleOverlayAlt,
+        HotkeyToggleOverlayKey = NormalizeHotkeyKey(settings.HotkeyToggleOverlayKey);
+        AssignHotkeyModifiers(settings.HotkeyToggleOverlayKey, settings.HotkeyToggleOverlayModifiers, out var toggleOverlayCtrl, out var toggleOverlayAlt,
             out var toggleOverlayShift);
         HotkeyToggleOverlayCtrl = toggleOverlayCtrl;
         HotkeyToggleOverlayAlt = toggleOverlayAlt;
         HotkeyToggleOverlayShift = toggleOverlayShift;
 
-        HotkeyForceRunKey = NormalizeHotkeyKey(settings.HotkeyForceRunKey, "F10");
-        AssignHotkeyModifiers(settings.HotkeyForceRunModifiers, out var forceRunCtrl, out var forceRunAlt, out var forceRunShift);
+        HotkeyForceRunKey = NormalizeHotkeyKey(settings.HotkeyForceRunKey);
+        AssignHotkeyModifiers(settings.HotkeyForceRunKey, settings.HotkeyForceRunModifiers, out var forceRunCtrl, out var forceRunAlt, out var forceRunShift);
         HotkeyForceRunCtrl = forceRunCtrl;
         HotkeyForceRunAlt = forceRunAlt;
         HotkeyForceRunShift = forceRunShift;
 
-        HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextRoiKey, "F10");
-        AssignHotkeyModifiers(settings.HotkeyForceRunNextRoiModifiers, out var forceRunNextRoiCtrl, out var forceRunNextRoiAlt, out var forceRunNextRoiShift);
+        HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextRoiKey);
+        AssignHotkeyModifiers(settings.HotkeyForceRunNextRoiKey, settings.HotkeyForceRunNextRoiModifiers, out var forceRunNextRoiCtrl, out var forceRunNextRoiAlt, out var forceRunNextRoiShift);
         HotkeyForceRunNextRoiCtrl = forceRunNextRoiCtrl;
         HotkeyForceRunNextRoiAlt = forceRunNextRoiAlt;
         HotkeyForceRunNextRoiShift = forceRunNextRoiShift;
 
-        HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextNextRoiKey, "F10");
-        AssignHotkeyModifiers(settings.HotkeyForceRunNextNextRoiModifiers, out var forceRunNextNextRoiCtrl, out var forceRunNextNextRoiAlt, out var forceRunNextNextRoiShift);
+        HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(settings.HotkeyForceRunNextNextRoiKey);
+        AssignHotkeyModifiers(settings.HotkeyForceRunNextNextRoiKey, settings.HotkeyForceRunNextNextRoiModifiers, out var forceRunNextNextRoiCtrl, out var forceRunNextNextRoiAlt, out var forceRunNextNextRoiShift);
         HotkeyForceRunNextNextRoiCtrl = forceRunNextNextRoiCtrl;
         HotkeyForceRunNextNextRoiAlt = forceRunNextNextRoiAlt;
         HotkeyForceRunNextNextRoiShift = forceRunNextNextRoiShift;
 
-        HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(settings.HotkeyForceGeminiStrictKey, "F10");
-        AssignHotkeyModifiers(settings.HotkeyForceGeminiStrictModifiers, out var forceGeminiCtrl, out var forceGeminiAlt,
+        HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(settings.HotkeyForceGeminiStrictKey);
+        AssignHotkeyModifiers(settings.HotkeyForceGeminiStrictKey, settings.HotkeyForceGeminiStrictModifiers, out var forceGeminiCtrl, out var forceGeminiAlt,
             out var forceGeminiShift);
         HotkeyForceGeminiStrictCtrl = forceGeminiCtrl;
         HotkeyForceGeminiStrictAlt = forceGeminiAlt;
         HotkeyForceGeminiStrictShift = forceGeminiShift;
 
-        HotkeyOcrOnlyKey = NormalizeHotkeyKey(settings.HotkeyOcrOnlyKey, "F11");
-        AssignHotkeyModifiers(settings.HotkeyOcrOnlyModifiers, out var ocrOnlyCtrl, out var ocrOnlyAlt, out var ocrOnlyShift);
+        HotkeyOcrOnlyKey = NormalizeHotkeyKey(settings.HotkeyOcrOnlyKey);
+        AssignHotkeyModifiers(settings.HotkeyOcrOnlyKey, settings.HotkeyOcrOnlyModifiers, out var ocrOnlyCtrl, out var ocrOnlyAlt, out var ocrOnlyShift);
         HotkeyOcrOnlyCtrl = ocrOnlyCtrl;
         HotkeyOcrOnlyAlt = ocrOnlyAlt;
         HotkeyOcrOnlyShift = ocrOnlyShift;
 
-        HotkeyToggleSceneAutoTranslateKey = NormalizeHotkeyKey(settings.HotkeyToggleSceneAutoTranslateKey, "F5");
-        AssignHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers, out var sceneToggleCtrl, out var sceneToggleAlt,
+        HotkeyToggleSceneAutoTranslateKey = NormalizeHotkeyKey(settings.HotkeyToggleSceneAutoTranslateKey);
+        AssignHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateKey, settings.HotkeyToggleSceneAutoTranslateModifiers, out var sceneToggleCtrl, out var sceneToggleAlt,
             out var sceneToggleShift);
         HotkeyToggleSceneAutoTranslateCtrl = sceneToggleCtrl;
         HotkeyToggleSceneAutoTranslateAlt = sceneToggleAlt;
         HotkeyToggleSceneAutoTranslateShift = sceneToggleShift;
 
-        HotkeySelectRoiKey = NormalizeHotkeyKey(settings.HotkeySelectRoiKey, "F6");
-        AssignHotkeyModifiers(settings.HotkeySelectRoiModifiers, out var selectRoiCtrl, out var selectRoiAlt, out var selectRoiShift);
+        HotkeySelectRoiKey = NormalizeHotkeyKey(settings.HotkeySelectRoiKey);
+        AssignHotkeyModifiers(settings.HotkeySelectRoiKey, settings.HotkeySelectRoiModifiers, out var selectRoiCtrl, out var selectRoiAlt, out var selectRoiShift);
         HotkeySelectRoiCtrl = selectRoiCtrl;
         HotkeySelectRoiAlt = selectRoiAlt;
         HotkeySelectRoiShift = selectRoiShift;
 
-        HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyLockCaptureWindowKey, "F7");
-        AssignHotkeyModifiers(settings.HotkeyLockCaptureWindowModifiers, out var lockWindowCtrl, out var lockWindowAlt,
+        HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyLockCaptureWindowKey);
+        AssignHotkeyModifiers(settings.HotkeyLockCaptureWindowKey, settings.HotkeyLockCaptureWindowModifiers, out var lockWindowCtrl, out var lockWindowAlt,
             out var lockWindowShift);
         HotkeyLockCaptureWindowCtrl = lockWindowCtrl;
         HotkeyLockCaptureWindowAlt = lockWindowAlt;
         HotkeyLockCaptureWindowShift = lockWindowShift;
 
-        HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyUnlockCaptureWindowKey, "F7");
-        AssignHotkeyModifiers(settings.HotkeyUnlockCaptureWindowModifiers, out var unlockWindowCtrl, out var unlockWindowAlt,
+        HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(settings.HotkeyUnlockCaptureWindowKey);
+        AssignHotkeyModifiers(settings.HotkeyUnlockCaptureWindowKey, settings.HotkeyUnlockCaptureWindowModifiers, out var unlockWindowCtrl, out var unlockWindowAlt,
             out var unlockWindowShift);
         HotkeyUnlockCaptureWindowCtrl = unlockWindowCtrl;
         HotkeyUnlockCaptureWindowAlt = unlockWindowAlt;
         HotkeyUnlockCaptureWindowShift = unlockWindowShift;
 
-        HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(settings.HotkeyToggleMirrorFullscreenKey, "F7");
-        AssignHotkeyModifiers(settings.HotkeyToggleMirrorFullscreenModifiers, out var toggleMirrorCtrl, out var toggleMirrorAlt,
+        HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(settings.HotkeyToggleMirrorFullscreenKey);
+        AssignHotkeyModifiers(settings.HotkeyToggleMirrorFullscreenKey, settings.HotkeyToggleMirrorFullscreenModifiers, out var toggleMirrorCtrl, out var toggleMirrorAlt,
             out var toggleMirrorShift);
         HotkeyToggleMirrorFullscreenCtrl = toggleMirrorCtrl;
         HotkeyToggleMirrorFullscreenAlt = toggleMirrorAlt;
@@ -1200,50 +1200,55 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
     private void ApplyHotkeySettings(AppSettings settings)
     {
-        settings.HotkeyRunOnceKey = NormalizeHotkeyKey(HotkeyRunOnceKey, "F8");
-        settings.HotkeyRunOnceModifiers = BuildHotkeyModifiers(HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
-        settings.HotkeyRunNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextRoiKey, "F8");
-        settings.HotkeyRunNextRoiModifiers = BuildHotkeyModifiers(HotkeyRunNextRoiCtrl, HotkeyRunNextRoiAlt, HotkeyRunNextRoiShift);
-        settings.HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextNextRoiKey, "F8");
-        settings.HotkeyRunNextNextRoiModifiers = BuildHotkeyModifiers(HotkeyRunNextNextRoiCtrl, HotkeyRunNextNextRoiAlt, HotkeyRunNextNextRoiShift);
-        settings.HotkeyToggleOverlayKey = NormalizeHotkeyKey(HotkeyToggleOverlayKey, "F9");
-        settings.HotkeyToggleOverlayModifiers = BuildHotkeyModifiers(HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt,
+        settings.HotkeyRunOnceKey = NormalizeHotkeyKey(HotkeyRunOnceKey);
+        settings.HotkeyRunOnceModifiers = BuildHotkeyModifiers(settings.HotkeyRunOnceKey, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
+        settings.HotkeyRunNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextRoiKey);
+        settings.HotkeyRunNextRoiModifiers = BuildHotkeyModifiers(settings.HotkeyRunNextRoiKey, HotkeyRunNextRoiCtrl, HotkeyRunNextRoiAlt, HotkeyRunNextRoiShift);
+        settings.HotkeyRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyRunNextNextRoiKey);
+        settings.HotkeyRunNextNextRoiModifiers = BuildHotkeyModifiers(settings.HotkeyRunNextNextRoiKey, HotkeyRunNextNextRoiCtrl, HotkeyRunNextNextRoiAlt, HotkeyRunNextNextRoiShift);
+        settings.HotkeyToggleOverlayKey = NormalizeHotkeyKey(HotkeyToggleOverlayKey);
+        settings.HotkeyToggleOverlayModifiers = BuildHotkeyModifiers(settings.HotkeyToggleOverlayKey, HotkeyToggleOverlayCtrl, HotkeyToggleOverlayAlt,
             HotkeyToggleOverlayShift);
-        settings.HotkeyForceRunKey = NormalizeHotkeyKey(HotkeyForceRunKey, "F10");
-        settings.HotkeyForceRunModifiers = BuildHotkeyModifiers(HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
-        settings.HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextRoiKey, "F10");
-        settings.HotkeyForceRunNextRoiModifiers = BuildHotkeyModifiers(HotkeyForceRunNextRoiCtrl, HotkeyForceRunNextRoiAlt, HotkeyForceRunNextRoiShift);
-        settings.HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextNextRoiKey, "F10");
+        settings.HotkeyForceRunKey = NormalizeHotkeyKey(HotkeyForceRunKey);
+        settings.HotkeyForceRunModifiers = BuildHotkeyModifiers(settings.HotkeyForceRunKey, HotkeyForceRunCtrl, HotkeyForceRunAlt, HotkeyForceRunShift);
+        settings.HotkeyForceRunNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextRoiKey);
+        settings.HotkeyForceRunNextRoiModifiers = BuildHotkeyModifiers(settings.HotkeyForceRunNextRoiKey, HotkeyForceRunNextRoiCtrl, HotkeyForceRunNextRoiAlt, HotkeyForceRunNextRoiShift);
+        settings.HotkeyForceRunNextNextRoiKey = NormalizeHotkeyKey(HotkeyForceRunNextNextRoiKey);
         settings.HotkeyForceRunNextNextRoiModifiers =
-            BuildHotkeyModifiers(HotkeyForceRunNextNextRoiCtrl, HotkeyForceRunNextNextRoiAlt, HotkeyForceRunNextNextRoiShift);
-        settings.HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(HotkeyForceGeminiStrictKey, "F10");
-        settings.HotkeyForceGeminiStrictModifiers = BuildHotkeyModifiers(HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt,
+            BuildHotkeyModifiers(settings.HotkeyForceRunNextNextRoiKey, HotkeyForceRunNextNextRoiCtrl, HotkeyForceRunNextNextRoiAlt, HotkeyForceRunNextNextRoiShift);
+        settings.HotkeyForceGeminiStrictKey = NormalizeHotkeyKey(HotkeyForceGeminiStrictKey);
+        settings.HotkeyForceGeminiStrictModifiers = BuildHotkeyModifiers(settings.HotkeyForceGeminiStrictKey, HotkeyForceGeminiStrictCtrl, HotkeyForceGeminiStrictAlt,
             HotkeyForceGeminiStrictShift);
-        settings.HotkeyOcrOnlyKey = NormalizeHotkeyKey(HotkeyOcrOnlyKey, "F11");
-        settings.HotkeyOcrOnlyModifiers = BuildHotkeyModifiers(HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
+        settings.HotkeyOcrOnlyKey = NormalizeHotkeyKey(HotkeyOcrOnlyKey);
+        settings.HotkeyOcrOnlyModifiers = BuildHotkeyModifiers(settings.HotkeyOcrOnlyKey, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
         settings.HotkeyToggleSceneAutoTranslateKey =
-            NormalizeHotkeyKey(HotkeyToggleSceneAutoTranslateKey, "F5");
+            NormalizeHotkeyKey(HotkeyToggleSceneAutoTranslateKey);
         settings.HotkeyToggleSceneAutoTranslateModifiers =
-            BuildHotkeyModifiers(HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt,
+            BuildHotkeyModifiers(settings.HotkeyToggleSceneAutoTranslateKey, HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt,
                 HotkeyToggleSceneAutoTranslateShift);
-        settings.HotkeySelectRoiKey = NormalizeHotkeyKey(HotkeySelectRoiKey, "F6");
-        settings.HotkeySelectRoiModifiers = BuildHotkeyModifiers(HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
-        settings.HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(HotkeyLockCaptureWindowKey, "F7");
+        settings.HotkeySelectRoiKey = NormalizeHotkeyKey(HotkeySelectRoiKey);
+        settings.HotkeySelectRoiModifiers = BuildHotkeyModifiers(settings.HotkeySelectRoiKey, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        settings.HotkeyLockCaptureWindowKey = NormalizeHotkeyKey(HotkeyLockCaptureWindowKey);
         settings.HotkeyLockCaptureWindowModifiers =
-            BuildHotkeyModifiers(HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
-        settings.HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(HotkeyUnlockCaptureWindowKey, "F7");
+            BuildHotkeyModifiers(settings.HotkeyLockCaptureWindowKey, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
+        settings.HotkeyUnlockCaptureWindowKey = NormalizeHotkeyKey(HotkeyUnlockCaptureWindowKey);
         settings.HotkeyUnlockCaptureWindowModifiers =
-            BuildHotkeyModifiers(HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
-        settings.HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(HotkeyToggleMirrorFullscreenKey, "F7");
+            BuildHotkeyModifiers(settings.HotkeyUnlockCaptureWindowKey, HotkeyUnlockCaptureWindowCtrl, HotkeyUnlockCaptureWindowAlt, HotkeyUnlockCaptureWindowShift);
+        settings.HotkeyToggleMirrorFullscreenKey = NormalizeHotkeyKey(HotkeyToggleMirrorFullscreenKey);
         settings.HotkeyToggleMirrorFullscreenModifiers =
-            BuildHotkeyModifiers(HotkeyToggleMirrorFullscreenCtrl, HotkeyToggleMirrorFullscreenAlt, HotkeyToggleMirrorFullscreenShift);
+            BuildHotkeyModifiers(settings.HotkeyToggleMirrorFullscreenKey, HotkeyToggleMirrorFullscreenCtrl, HotkeyToggleMirrorFullscreenAlt, HotkeyToggleMirrorFullscreenShift);
     }
 
-    private static void AssignHotkeyModifiers(string modifiers, out bool ctrl, out bool alt, out bool shift)
+    private static void AssignHotkeyModifiers(string key, string modifiers, out bool ctrl, out bool alt, out bool shift)
     {
         ctrl = false;
         alt = false;
         shift = false;
+        if (HotkeyDefaults.IsDisabledKey(key))
+        {
+            return;
+        }
+
         var tokens = (modifiers ?? string.Empty).Split(new[] { ',', '+', ';' }, StringSplitOptions.RemoveEmptyEntries);
         foreach (var token in tokens)
         {
@@ -1264,8 +1269,13 @@ internal sealed partial class SettingsViewModel : ObservableObject
         }
     }
 
-    private static string BuildHotkeyModifiers(bool ctrl, bool alt, bool shift)
+    private static string BuildHotkeyModifiers(string key, bool ctrl, bool alt, bool shift)
     {
+        if (HotkeyDefaults.IsDisabledKey(key))
+        {
+            return HotkeyDefaults.NoneModifiers;
+        }
+
         var parts = new List<string>(3);
         if (ctrl)
         {
@@ -1282,13 +1292,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
             parts.Add("Shift");
         }
 
-        return parts.Count == 0 ? "None" : string.Join(", ", parts);
+        return parts.Count == 0 ? HotkeyDefaults.NoneModifiers : string.Join(", ", parts);
     }
 
-    private static string NormalizeHotkeyKey(string value, string fallback)
+    private static string NormalizeHotkeyKey(string value)
     {
-        var normalized = (value ?? string.Empty).Trim();
-        return string.IsNullOrWhiteSpace(normalized) ? fallback : normalized;
+        return HotkeyDefaults.NormalizeStoredKey(value);
     }
 
     private static string ToPaddleVlLayoutDetectionModeTag(bool? value)

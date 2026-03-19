@@ -375,7 +375,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
         await _graphicsHookClientService.ApplySettingsAsync(settings).ConfigureAwait(true);
-        AppendLog("Ready. F5: toggle scene auto-translate. F6: select ROI. Shift+F6: next ROI slot. Ctrl+F6: previous ROI slot. F8: run once. F9: toggle overlay. F10: force run. Shift+F10: force Gemini strict. F11: toggle overlay text. F7: lock window. Shift+F7: unlock window. Ctrl+F7: toggle mirror fullscreen.");
+        AppendLog("Ready. F6: select ROI. F7: lock window. F8: run once. F9: toggle overlay. F10: force run. Other hotkeys: Disabled by default.");
         await TryHandleStartupHookLaunchAsync(settings).ConfigureAwait(true);
         _drawerLayoutController.SyncForCurrentState();
         _winRtLanguagePackUiController.Start();
@@ -2383,18 +2383,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private static IReadOnlyList<string> BuildHotkeyKeyOptions()
     {
-        var keys = new List<string>();
-        for (var i = 1; i <= 12; i++)
-        {
-            keys.Add($"F{i}");
-        }
-
-        for (var c = 'A'; c <= 'Z'; c++)
-        {
-            keys.Add(c.ToString());
-        }
-
-        return keys;
+        return HotkeyDefaults.KeyOptions;
     }
 
     private void InitializeHotkeys(AppSettings settings)
@@ -2460,72 +2449,87 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private IReadOnlyList<HotkeyBindingRegistration> BuildHotkeyRegistrations(HotkeyConfig config)
     {
-        return new List<HotkeyBindingRegistration>
+        var registrations = new List<HotkeyBindingRegistration>();
+
+        void AddIfEnabled(string name, Key key, ModifierKeys modifiers, int id, EventHandler handler)
         {
-            new("RunOnce", config.RunOnceKey, config.RunOnceModifiers, 1, OnHotkeyPressed),
-            new("RunNextRoi", config.RunNextRoiKey, config.RunNextRoiModifiers, 13, OnRunNextRoiHotkeyPressed),
-            new("RunNextNextRoi", config.RunNextNextRoiKey, config.RunNextNextRoiModifiers, 14, OnRunNextNextRoiHotkeyPressed),
-            new("ToggleOverlay", config.ToggleOverlayKey, config.ToggleOverlayModifiers, 2, OnToggleOverlayHotkeyPressed),
-            new("ForceRun", config.ForceRunKey, config.ForceRunModifiers, 3, OnForceRunHotkeyPressed),
-            new("ForceRunNextRoi", config.ForceRunNextRoiKey, config.ForceRunNextRoiModifiers, 15, OnForceRunNextRoiHotkeyPressed),
-            new("ForceRunNextNextRoi", config.ForceRunNextNextRoiKey, config.ForceRunNextNextRoiModifiers, 16, OnForceRunNextNextRoiHotkeyPressed),
-            new("ForceGeminiStrict", config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, 4,
-                OnForceGeminiStrictHotkeyPressed),
-            new("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed),
-            new("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9,
-                OnToggleSceneAutoTranslateHotkeyPressed),
-            new("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed),
-            new("NextRoiPreset", config.NextRoiPresetKey, config.NextRoiPresetModifiers, 11, OnNextRoiPresetHotkeyPressed),
-            new("PreviousRoiPreset", config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers, 12, OnPreviousRoiPresetHotkeyPressed),
-            new("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7,
-                OnLockCaptureWindowHotkeyPressed),
-            new("UnlockWindow", config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, 8,
-                OnUnlockCaptureWindowHotkeyPressed),
-            new("MirrorFullscreen", config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers, 10,
-                OnToggleMirrorFullscreenHotkeyPressed)
-        };
+            if (key == Key.None)
+            {
+                return;
+            }
+
+            registrations.Add(new HotkeyBindingRegistration(name, key, modifiers, id, handler));
+        }
+
+        // WHY: Disabled hotkeys intentionally stay out of the registration list so users can opt into them selectively.
+        AddIfEnabled("RunOnce", config.RunOnceKey, config.RunOnceModifiers, 1, OnHotkeyPressed);
+        AddIfEnabled("RunNextRoi", config.RunNextRoiKey, config.RunNextRoiModifiers, 13, OnRunNextRoiHotkeyPressed);
+        AddIfEnabled("RunNextNextRoi", config.RunNextNextRoiKey, config.RunNextNextRoiModifiers, 14, OnRunNextNextRoiHotkeyPressed);
+        AddIfEnabled("ToggleOverlay", config.ToggleOverlayKey, config.ToggleOverlayModifiers, 2, OnToggleOverlayHotkeyPressed);
+        AddIfEnabled("ForceRun", config.ForceRunKey, config.ForceRunModifiers, 3, OnForceRunHotkeyPressed);
+        AddIfEnabled("ForceRunNextRoi", config.ForceRunNextRoiKey, config.ForceRunNextRoiModifiers, 15, OnForceRunNextRoiHotkeyPressed);
+        AddIfEnabled("ForceRunNextNextRoi", config.ForceRunNextNextRoiKey, config.ForceRunNextNextRoiModifiers, 16, OnForceRunNextNextRoiHotkeyPressed);
+        AddIfEnabled("ForceGeminiStrict", config.ForceGeminiStrictKey, config.ForceGeminiStrictModifiers, 4, OnForceGeminiStrictHotkeyPressed);
+        AddIfEnabled("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed);
+        AddIfEnabled("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9, OnToggleSceneAutoTranslateHotkeyPressed);
+        AddIfEnabled("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed);
+        AddIfEnabled("NextRoiPreset", config.NextRoiPresetKey, config.NextRoiPresetModifiers, 11, OnNextRoiPresetHotkeyPressed);
+        AddIfEnabled("PreviousRoiPreset", config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers, 12, OnPreviousRoiPresetHotkeyPressed);
+        AddIfEnabled("LockWindow", config.LockCaptureWindowKey, config.LockCaptureWindowModifiers, 7, OnLockCaptureWindowHotkeyPressed);
+        AddIfEnabled("UnlockWindow", config.UnlockCaptureWindowKey, config.UnlockCaptureWindowModifiers, 8, OnUnlockCaptureWindowHotkeyPressed);
+        AddIfEnabled("MirrorFullscreen", config.ToggleMirrorFullscreenKey, config.ToggleMirrorFullscreenModifiers, 10, OnToggleMirrorFullscreenHotkeyPressed);
+
+        return registrations;
     }
 
     private static HotkeyConfig BuildHotkeyConfigFromSettings(AppSettings settings)
     {
         return new HotkeyConfig(
-            ParseKey(settings.HotkeyRunOnceKey, Key.F8),
+            ParseKey(settings.HotkeyRunOnceKey),
             ParseModifiers(settings.HotkeyRunOnceModifiers),
-            ParseKey(settings.HotkeyRunNextRoiKey, Key.F8),
+            ParseKey(settings.HotkeyRunNextRoiKey),
             ParseModifiers(settings.HotkeyRunNextRoiModifiers),
-            ParseKey(settings.HotkeyRunNextNextRoiKey, Key.F8),
+            ParseKey(settings.HotkeyRunNextNextRoiKey),
             ParseModifiers(settings.HotkeyRunNextNextRoiModifiers),
-            ParseKey(settings.HotkeyToggleOverlayKey, Key.F9),
+            ParseKey(settings.HotkeyToggleOverlayKey),
             ParseModifiers(settings.HotkeyToggleOverlayModifiers),
-            ParseKey(settings.HotkeyForceRunKey, Key.F10),
+            ParseKey(settings.HotkeyForceRunKey),
             ParseModifiers(settings.HotkeyForceRunModifiers),
-            ParseKey(settings.HotkeyForceRunNextRoiKey, Key.F10),
+            ParseKey(settings.HotkeyForceRunNextRoiKey),
             ParseModifiers(settings.HotkeyForceRunNextRoiModifiers),
-            ParseKey(settings.HotkeyForceRunNextNextRoiKey, Key.F10),
+            ParseKey(settings.HotkeyForceRunNextNextRoiKey),
             ParseModifiers(settings.HotkeyForceRunNextNextRoiModifiers),
-            ParseKey(settings.HotkeyForceGeminiStrictKey, Key.F10),
+            ParseKey(settings.HotkeyForceGeminiStrictKey),
             ParseModifiers(settings.HotkeyForceGeminiStrictModifiers),
-            ParseKey(settings.HotkeyOcrOnlyKey, Key.F11),
+            ParseKey(settings.HotkeyOcrOnlyKey),
             ParseModifiers(settings.HotkeyOcrOnlyModifiers),
-            ParseKey(settings.HotkeyToggleSceneAutoTranslateKey, Key.F5),
+            ParseKey(settings.HotkeyToggleSceneAutoTranslateKey),
             ParseModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers),
-            ParseKey(settings.HotkeySelectRoiKey, Key.F6),
+            ParseKey(settings.HotkeySelectRoiKey),
             ParseModifiers(settings.HotkeySelectRoiModifiers),
-            ParseKey(settings.HotkeyNextRoiPresetKey, Key.F6),
+            ParseKey(settings.HotkeyNextRoiPresetKey),
             ParseModifiers(settings.HotkeyNextRoiPresetModifiers),
-            ParseKey(settings.HotkeyPreviousRoiPresetKey, Key.F6),
+            ParseKey(settings.HotkeyPreviousRoiPresetKey),
             ParseModifiers(settings.HotkeyPreviousRoiPresetModifiers),
-            ParseKey(settings.HotkeyLockCaptureWindowKey, Key.F7),
+            ParseKey(settings.HotkeyLockCaptureWindowKey),
             ParseModifiers(settings.HotkeyLockCaptureWindowModifiers),
-            ParseKey(settings.HotkeyUnlockCaptureWindowKey, Key.F7),
+            ParseKey(settings.HotkeyUnlockCaptureWindowKey),
             ParseModifiers(settings.HotkeyUnlockCaptureWindowModifiers),
-            ParseKey(settings.HotkeyToggleMirrorFullscreenKey, Key.F7),
+            ParseKey(settings.HotkeyToggleMirrorFullscreenKey),
             ParseModifiers(settings.HotkeyToggleMirrorFullscreenModifiers));
     }
 
-    private static Key ParseKey(string value, Key fallback)
+    private static Key ParseKey(string value)
     {
-        return Enum.TryParse(value, true, out Key parsed) && parsed != Key.None ? parsed : fallback;
+        var normalized = HotkeyDefaults.NormalizeStoredKey(value);
+        if (HotkeyDefaults.IsDisabledKey(normalized))
+        {
+            return Key.None;
+        }
+
+        return Enum.TryParse(normalized, true, out Key parsed) && parsed != Key.None
+            ? parsed
+            : Key.None;
     }
 
     private static ModifierKeys ParseModifiers(string value)
@@ -2535,6 +2539,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private static string FormatHotkey(Key key, ModifierKeys modifiers)
     {
+        if (key == Key.None)
+        {
+            return "Disabled";
+        }
+
         if (modifiers == ModifierKeys.None)
         {
             return key.ToString();
@@ -2817,39 +2826,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Mirror fullscreen", ToggleMirrorFullscreenKey, ToggleMirrorFullscreenModifiers);
         }
 
-        public static HotkeyConfig Default => new(
-            Key.F8,
-            ModifierKeys.None,
-            Key.F8,
-            ModifierKeys.Shift,
-            Key.F8,
-            ModifierKeys.Control,
-            Key.F9,
-            ModifierKeys.None,
-            Key.F10,
-            ModifierKeys.None,
-            Key.F10,
-            ModifierKeys.Shift,
-            Key.F10,
-            ModifierKeys.Control,
-            Key.F10,
-            ModifierKeys.Alt,
-            Key.F11,
-            ModifierKeys.None,
-            Key.F5,
-            ModifierKeys.None,
-            Key.F6,
-            ModifierKeys.None,
-            Key.F6,
-            ModifierKeys.Shift,
-            Key.F6,
-            ModifierKeys.Control,
-            Key.F7,
-            ModifierKeys.None,
-            Key.F7,
-            ModifierKeys.Shift,
-            Key.F7,
-            ModifierKeys.Control);
     }
 }
 

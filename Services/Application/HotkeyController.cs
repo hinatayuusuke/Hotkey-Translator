@@ -31,6 +31,19 @@ internal sealed class HotkeyController : IDisposable
             return false;
         }
 
+        if (bindings.Count == 0)
+        {
+            foreach (var manager in _slots.Values)
+            {
+                manager.Dispose();
+            }
+
+            _slots.Clear();
+            _rawInputManager?.Dispose();
+            _rawInputManager = null;
+            return true;
+        }
+
         if (useRawInputBackend)
         {
             return TryRegisterBindingsRawInput(bindings);
