@@ -1148,3 +1148,31 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln`
 - 実効値確認: Horizontal Merge Strength の weight は `0=5.000`, `25=0.981`, `50=0.743`, `75=0.537`, `100=0.100` を確認した。
+
+**2026-03-20 19:37 (Asia/Taipei) — Rename writing-mode merge strength labels**
+
+### Summary
+- OCR 設定 UI の merge strength ラベルを writing mode 基準の名称へ変更した。
+
+### Context / Goal
+- `Horizontal Merge Strength` と `Vertical Merge Strength` は方向ではなく writing mode に対応しており、名称が挙動を誤解させやすかった。
+- UI 上で、横書き時の merge 全体 / 縦書き時の merge 全体だと分かる名称へ揃えたかった。
+
+### Changes
+- `Horizontal merge strength` を `Horizontal writing merge strength` に変更した。
+- `Vertical merge strength` を `Vertical writing merge strength` に変更した。
+
+### Files Touched
+- `UI/OcrSettingsControl.xaml` — simple merge tuning の 2 つのスライダーラベルを writing mode 基準の文言へ更新した。
+
+### Behavioral Impact
+- UI 表示のみの変更で、設定値や merge ロジックの動作自体は変わらない。
+- ユーザーはスライダーが「方向」ではなく「横書き / 縦書きモード」の merge 強度を表すと理解しやすくなる。
+
+### Risk & Mitigation
+- Risk: 既存ユーザーが旧名称に慣れていて一時的に違和感を持つ可能性がある。
+- Mitigation: 用語は挙動により近く、補助 NOTE も残っているため、実際の意味は従来より分かりやすい。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln` を実行したが、起動中の `Hotkey-Translator.exe` によるファイルロックで最終コピーに失敗した。
+- 変更箇所は `UI/OcrSettingsControl.xaml` の表示文字列のみであることを確認した。
