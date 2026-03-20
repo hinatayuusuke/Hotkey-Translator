@@ -14,6 +14,7 @@ internal interface ISettingsUiBridge
     bool HasHotkeyConflicts { get; }
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent);
+    bool EnsureOneOcrVendorAvailable(AppSettings settings);
     Task<bool> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
     bool TryValidateResourceHostBudget(AppSettings settings, out string? message);
@@ -83,6 +84,14 @@ internal sealed class SettingsUiController
             if (!settings.EnableSceneChangeAutoTranslate)
             {
                 _bridge.ClearSceneChangeAutoTranslatePending("auto-translate disabled");
+            }
+
+            if (!_bridge.EnsureOneOcrVendorAvailable(settings))
+            {
+                _settingsService.ReplaceSettings(previousSettings);
+                _bridge.SyncSettingsToView(previousSettings, true);
+                _bridge.AppendLog("Settings change canceled because OneOCR vendor setup did not complete.");
+                return false;
             }
 
             var bootstrapConfirmation = await _bridge

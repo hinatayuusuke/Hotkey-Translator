@@ -53,6 +53,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly BusyOverlayController _busyOverlayController;
     private readonly AppThemeController _appThemeController = new();
     private readonly WinRtLanguagePackUiController _winRtLanguagePackUiController;
+    private readonly OneOcrVendorUiController _oneOcrVendorUiController;
     private readonly LauncherSessionTargetState _launcherSessionTargetState;
     private readonly GraphicsHookClientService _graphicsHookClientService;
     private readonly GraphicsHookLauncherService _graphicsHookLauncherService;
@@ -217,6 +218,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _winRtLanguagePackUiController.BeginInstallUi,
             _winRtLanguagePackUiController.UpdateInstallUi,
             _winRtLanguagePackUiController.EndInstallUi);
+        _oneOcrVendorUiController = new OneOcrVendorUiController(
+            this,
+            Dispatcher,
+            _busyOverlayController,
+            () => _logger,
+            AppendLog);
         SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
@@ -1691,6 +1698,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void ISettingsUiBridge.ApplyRuntimeStateAfterSave(AppSettings settings) => ApplyRuntimeStateAfterSave(settings);
     Task<ResourceBootstrapConfirmationResult> ISettingsUiBridge.ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent) =>
         ConfirmResourceBootstrapAsync(settings, intent);
+    bool ISettingsUiBridge.EnsureOneOcrVendorAvailable(AppSettings settings) =>
+        _oneOcrVendorUiController.EnsureVendorAvailable(settings);
     Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
     Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
     bool ISettingsUiBridge.HasHotkeyConflicts => _mainWindowViewModel.Settings.HasHotkeyConflicts;

@@ -1210,3 +1210,33 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -p:UseAppHost=false`
 - 35 基準値確認: `OFF` default が `ON + slider=35` の解決値 (`MergeOverlapRatioThreshold=0.129560`, `MergeVerticalWeight=0.880399`, `MergeThresholdRatio=0.961320` など) と一致することを確認した。
+**2026-03-20 21:01 (Asia/Taipei) — Auto-provision OneOCR vendor files on selection**
+
+### Summary
+- `OneOCR` を選択した時、vendor DLL/モデルが無ければダイアログ確認後に Snipping Tool パッケージから自動コピーするようにした。
+
+### Context / Goal
+- `OneOCR` は helper と vendor 3 ファイルに依存するが、既存実装は helper 側で遅延失敗しやすく、選択時に不足を解消できなかった。
+- `OneOCR` を選んだ時点で不足ファイルを補完し、失敗時は設定を元に戻せるようにしたかった。
+
+### Changes
+- settings save フローに `OneOCR` vendor 補完ガードを追加し、不足解消が完了しなければ保存をロールバックするようにした。
+- Snipping Tool の installed package を `PackageManager` で検出し、`oneocr.dll` / `oneocr.onemodel` / `onnxruntime.dll` を vendor フォルダへコピーする provisioner を追加した。
+- ユーザー確認ダイアログ、busy overlay、失敗時メッセージ、ログ出力をまとめた `OneOcrVendorUiController` を追加した。
+
+### Files Touched
+- `Services/Application/OneOcrVendorProvisioner.cs` — Snipping Tool パッケージ検出、OneOCR vendor 状態判定、3 ファイルのコピーと再検証を追加した。
+- `Services/Application/OneOcrVendorUiController.cs` — `OneOCR` 選択時の確認ダイアログ、busy overlay、失敗通知、ログ出力を追加した。
+- `Services/Application/SettingsUiController.cs` — settings save 中に `OneOCR` vendor 準備を必須化し、未完了時に設定をロールバックするようにした。
+- `MainWindow.xaml.cs` — `ISettingsUiBridge` 経由で `OneOcrVendorUiController` を呼び出す配線を追加した。
+
+### Behavioral Impact
+- `OneOCR` を選択して vendor ファイルが不足している場合、確認ダイアログが出て、OK なら Snipping Tool から自動コピーされる。
+- helper 未配置、Snipping Tool 未インストール、コピー失敗のいずれでも設定変更は元に戻り、`OneOCR` が半端な状態で有効化されない。
+
+### Risk & Mitigation
+- Risk: Snipping Tool の private ファイル配置や package API の挙動が将来変わると自動コピーが失敗する。
+- Mitigation: package 未検出、source 側欠落、copy 失敗を区別して明示メッセージを出し、設定は fail fast でロールバックする。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
