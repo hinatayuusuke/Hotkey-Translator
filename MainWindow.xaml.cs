@@ -2405,7 +2405,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ShowMissingBinaryDialogIfNeeded("bin_llamaserver_vision_missing", FixedLlamaServerRelativePath, "VisionLLM OCR");
         }
 
-        if (settings.OcrEngine == OcrEngineKind.OneOcr && settings.EnableOneOcrHelper)
+        if (IsOneOcrRequired(settings))
         {
             ShowMissingBinaryDialogIfNeeded("bin_oneocr_helper_missing", settings.OneOcrHelperRelativePath, "OneOCR helper");
         }
@@ -2434,6 +2434,23 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         return settings.OcrEngine == OcrEngineKind.VisionLlm && settings.EnableVisionLlmGrpcHost;
+    }
+
+    private static bool IsOneOcrRequired(AppSettings settings)
+    {
+        if (!settings.EnableOneOcrHelper)
+        {
+            return false;
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.OneOcr)
+        {
+            return true;
+        }
+
+        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
+               settings.EnableVisionGeometryHybridOcr &&
+               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.OneOcr;
     }
 
     private void ShowMissingBinaryDialogIfNeeded(string key, string relativePath, string featureName)

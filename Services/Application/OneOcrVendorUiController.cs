@@ -36,7 +36,7 @@ internal sealed class OneOcrVendorUiController
             return _dispatcher.Invoke(() => EnsureVendorAvailable(settings));
         }
 
-        if (settings.OcrEngine != OcrEngineKind.OneOcr || !settings.EnableOneOcrHelper)
+        if (!IsOneOcrRequired(settings))
         {
             return true;
         }
@@ -120,6 +120,23 @@ internal sealed class OneOcrVendorUiController
             $"Target folder:{Environment.NewLine}{status.VendorDirectory}{Environment.NewLine}{Environment.NewLine}" +
             "Select OK to copy them from the installed Snipping Tool package now. " +
             "Select Cancel to keep the previous OCR engine.";
+    }
+
+    private static bool IsOneOcrRequired(AppSettings settings)
+    {
+        if (!settings.EnableOneOcrHelper)
+        {
+            return false;
+        }
+
+        if (settings.OcrEngine == OcrEngineKind.OneOcr)
+        {
+            return true;
+        }
+
+        return settings.OcrEngine == OcrEngineKind.VisionLlm &&
+               settings.EnableVisionGeometryHybridOcr &&
+               settings.VisionGeometryHybridBaseEngine == VisionGeometryHybridBaseEngineKind.OneOcr;
     }
 
     private void ShowFailure(string title, string message)

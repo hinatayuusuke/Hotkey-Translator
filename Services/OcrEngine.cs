@@ -179,6 +179,7 @@ public sealed class OcrEngine : IDisposable
             VisionGeometryHybridBaseEngineKind.WinRt => _winRtProvider,
             VisionGeometryHybridBaseEngineKind.Ndl => _ndlProvider,
             VisionGeometryHybridBaseEngineKind.Paddle => _paddleProvider,
+            VisionGeometryHybridBaseEngineKind.OneOcr => _oneOcrProvider,
             _ => null
         };
     }

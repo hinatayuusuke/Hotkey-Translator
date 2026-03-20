@@ -296,6 +296,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             {
                 VisionGeometryHybridBaseEngineKind.Ndl => "Ndl",
                 VisionGeometryHybridBaseEngineKind.Paddle => "Paddle",
+                VisionGeometryHybridBaseEngineKind.OneOcr => "OneOcr",
                 _ => "WinRt"
             };
             EnableDeepL = settings.EnableDeepL;
@@ -713,6 +714,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         {
             "Ndl" => VisionGeometryHybridBaseEngineKind.Ndl,
             "Paddle" => VisionGeometryHybridBaseEngineKind.Paddle,
+            "OneOcr" => VisionGeometryHybridBaseEngineKind.OneOcr,
             _ => VisionGeometryHybridBaseEngineKind.WinRt
         };
 

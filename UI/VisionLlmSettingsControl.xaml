@@ -92,6 +92,7 @@
                                           <ComboBoxItem Content="WinRT" Tag="WinRt" />
                                           <ComboBoxItem Content="NDL" Tag="Ndl" />
                                           <ComboBoxItem Content="PaddleOCR" Tag="Paddle" />
+                                          <ComboBoxItem Content="OneOCR (native helper)" Tag="OneOcr" />
                                       </ComboBox>
                                   </StackPanel>
                                   <TextBlock Text="NOTE: VisionLLM text stays primary. The selected OCR engine is used only to provide geometry hints for overlay placement."

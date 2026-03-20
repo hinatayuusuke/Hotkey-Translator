@@ -251,6 +251,7 @@ internal sealed class OcrAndGroupStage
             VisionGeometryHybridBaseEngineKind.WinRt => OcrEngineKind.WinRt,
             VisionGeometryHybridBaseEngineKind.Ndl => OcrEngineKind.Ndl,
             VisionGeometryHybridBaseEngineKind.Paddle => OcrEngineKind.Paddle,
+            VisionGeometryHybridBaseEngineKind.OneOcr => OcrEngineKind.OneOcr,
             _ => OcrEngineKind.WinRt
         };
     }

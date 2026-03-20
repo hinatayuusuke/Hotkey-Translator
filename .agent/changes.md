@@ -1240,3 +1240,37 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
+
+**2026-03-20 21:18 (Asia/Taipei) — Add OneOCR as VisionLLM hybrid base OCR**
+
+### Summary
+- VisionLLM の geometry assist hybrid OCR で `OneOCR` を補助 OCR として選べるようにした。
+
+### Context / Goal
+- VisionLLM の text を primary のまま使いつつ、geometry 補助 OCR に `OneOCR` を使いたかった。
+- `OneOCR` は helper/vendor 依存があるため、主 OCR だけでなく hybrid base engine として使う場合も prerequisite と vendor setup が必要だった。
+
+### Changes
+- `VisionGeometryHybridBaseEngineKind` に `OneOcr` を追加し、settings / UI から選択できるようにした。
+- Vision hybrid geometry provider 解決と effective engine kind 解決に `OneOCR` を追加した。
+- `OneOCR` vendor setup と prerequisite dialog の発火条件を拡張し、VisionLLM hybrid base engine が `OneOcr` の時にも helper/vendor を要求するようにした。
+
+### Files Touched
+- `Models/VisionGeometryHybridBaseEngineKind.cs` — `OneOcr = 3` を追加し、既存 enum 値の互換性を維持した。
+- `ViewModels/SettingsViewModel.cs` — hybrid base OCR の load/apply switch に `OneOcr` を追加した。
+- `UI/VisionLlmSettingsControl.xaml` — VisionLLM hybrid base OCR のコンボに `OneOCR (native helper)` を追加した。
+- `Services/OcrEngine.cs` — Vision geometry provider 解決で `OneOCR` provider を返せるようにした。
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — hybrid geometry の effective engine kind として `OneOcr` を返すようにした。
+- `Services/Application/OneOcrVendorUiController.cs` — `OneOCR` が VisionLLM hybrid 補助 OCR として必要な場合も vendor setup を実行するようにした。
+- `MainWindow.xaml.cs` — prerequisite dialog の helper チェックを VisionLLM hybrid + `OneOcr` にも適用するようにした。
+
+### Behavioral Impact
+- VisionLLM 設定で `Hybrid base OCR` に `OneOCR (native helper)` を選べる。
+- VisionLLM 本体を使う設定でも、補助 OCR が `OneOCR` の場合は helper / vendor が不足していれば保存時に補完または失敗ロールバックされる。
+
+### Risk & Mitigation
+- Risk: Snipping Tool private 依存の `OneOCR` が Vision hybrid 経路でも失敗しうる。
+- Mitigation: helper/vendor は設定保存時に事前確認し、実行時は既存の Vision hybrid fallback 経路を維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
