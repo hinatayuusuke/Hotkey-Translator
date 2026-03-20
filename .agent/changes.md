@@ -1,4 +1,4 @@
-**2026-03-16 11:59 (Asia/Taipei) — Add DX11 no-std-thread publish worker plan**
+﻿**2026-03-16 11:59 (Asia/Taipei) — Add DX11 no-std-thread publish worker plan**
 
 ### Summary
 - DX11 publish worker を `std::thread` 非依存へ寄せる実装案を `Doc/` に追加した。
@@ -1298,6 +1298,62 @@
 ### Risk & Mitigation
 - Risk: Snipping Tool private 依存の `OneOCR` が Vision hybrid 経路でも失敗しうる。
 - Mitigation: helper/vendor は設定保存時に事前確認し、実行時は既存の Vision hybrid fallback 経路を維持する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+
+**2026-03-21 02:04 (Asia/Taipei) — Document Japanese ruby OCR handling plan**
+
+### Summary
+- 日本語ルビ対処のおすすめ実装案を `Doc/` に新規追加した。
+
+### Context / Goal
+- ルビが本文 merge や翻訳入力へ混入する問題に対して、実装前に方針を固定したかった。
+- OCR 直後・line merge 前にルビ候補を分離する案を、最小スコープで整理することを目標にした。
+
+### Changes
+- `Doc/JapaneseRuby_OcrHandling_Implementation_Plan.md` を追加し、ゴール、非ゴール、判定方針、差し込み位置、リスクを整理した。
+- v1 を「ルビを翻訳入力から除外する」に限定し、overlay 再表示や完全復元は非ゴールとして明記した。
+
+### Files Touched
+- `Doc/JapaneseRuby_OcrHandling_Implementation_Plan.md` — 日本語ルビ対処の実装案を新規追加した。
+
+### Behavioral Impact
+- 実装は未着手で、アプリ挙動の変化はない。
+- 今後の実装時に `OcrAndGroupStage` 前処理として差し込む方針が明確になった。
+
+### Risk & Mitigation
+- Risk: ドキュメントだけが先行し、実装時に現物とズレる可能性がある。
+- Mitigation: v1 の責務を限定し、I/F 変更なしの前処理案として記載した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+
+**2026-03-21 02:13 (Asia/Taipei) — Implement Japanese ruby filtering before OCR line merge**
+
+### Summary
+- 日本語 OCR の line merge 前にルビ候補を分離し、本文だけを merge / translation input に流す処理を追加した。
+
+### Context / Goal
+- ルビが本文 line merge を壊し、翻訳入力に混ざるケースを減らしたかった。
+- `Doc/JapaneseRuby_OcrHandling_Implementation_Plan.md` の v1 方針に沿って、最小スコープで実装したかった。
+
+### Changes
+- `RubyCandidateDetector` を追加し、日本語限定で geometry と文字種の軽量 heuristic によるルビ候補判定を実装した。
+- `OcrAndGroupStage` に detector を統合し、通常 OCR と geometry helper OCR で本文 line のみを `_lineGrouper.MergeLines(...)` に流すようにした。
+- ルビ候補が除外された場合の既存 logger 向け情報ログを追加した。
+
+### Files Touched
+- `Services/RubyCandidateDetector.cs` — 日本語ルビ候補を本文から分離する detector と結果 record を追加した。
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — line merge 前にルビ検出を呼び出し、本文のみを merge / reading unit 化するようにした。
+
+### Behavioral Impact
+- `SourceLanguage` が日本語の OCR では、かな中心で小さい注釈 box が本文の上側または右側に付くケースで、translation input から外れるようになった。
+- `VisionLLM` / `PaddleOCR-VL` の coarse block 経路は直接の対象外にし、geometry helper 側だけ本文抽出に反映する。
+
+### Risk & Mitigation
+- Risk: 小さい注釈や UI 小文字列をルビと誤判定する可能性がある。
+- Mitigation: 日本語限定、かな比率、位置関係、サイズ差、本文側の漢字存在を複合条件にして、迷うケースは除外しない実装にした。
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`

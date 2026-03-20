@@ -26,6 +26,7 @@ internal sealed class OcrAndGroupStage
     private readonly OcrPreprocessCoordinator _ocrPreprocessCoordinator;
     private readonly OcrLineGrouper _lineGrouper;
     private readonly ReadingUnitBuilder _readingUnitBuilder;
+    private readonly RubyCandidateDetector _rubyCandidateDetector;
     private readonly VisionGeometryHybridAligner _visionGeometryHybridAligner;
     private readonly AppLogger? _logger;
 
@@ -38,6 +39,7 @@ internal sealed class OcrAndGroupStage
         _ocrPreprocessCoordinator = ocrPreprocessCoordinator;
         _lineGrouper = lineGrouper;
         _readingUnitBuilder = readingUnitBuilder;
+        _rubyCandidateDetector = new RubyCandidateDetector();
         _visionGeometryHybridAligner = new VisionGeometryHybridAligner(logger);
         _logger = logger;
     }
@@ -134,10 +136,14 @@ internal sealed class OcrAndGroupStage
                             settings,
                             geometryEngineKind,
                             out _);
+                        var geometryRubyDetection = DetectRubyCandidates(
+                            geometryFilteredLines,
+                            settings,
+                            geometryEngineKind);
                         // WHY: VisionLLM naturally merges visual lines into semantic sentences, so hybrid
                         // matching is more stable after the helper OCR has gone through the existing line grouper.
                         var groupedGeometryLines = _lineGrouper
-                            .MergeLines(geometryFilteredLines, settings, geometryEngineKind)
+                            .MergeLines(geometryRubyDetection.BodyLines, settings, geometryEngineKind)
                             .ToList();
                         var aligned = _visionGeometryHybridAligner.Align(
                             groupedGeometryLines,
@@ -149,6 +155,7 @@ internal sealed class OcrAndGroupStage
                         _logger?.Info(
                             $"stage=vision_geometry_hybrid event=stage_summary geometryRawLineCount={geometryPass.Result.Lines.Count} " +
                             $"groupedGeometryLineCount={groupedGeometryLines.Count} visionLineCount={filteredLines.Count} " +
+                            $"rubyFilteredCount={geometryRubyDetection.RubyLines.Count} " +
                             $"assigned11={aligned.AssignedOneToOneCount} assignedN1={aligned.AssignedManyToOneCount} " +
                             $"postSplit={aligned.SplitCount} syntheticCount={aligned.SyntheticFallbackCount} mergedCount={aligned.SyntheticMergedCount}.");
 
@@ -179,10 +186,11 @@ internal sealed class OcrAndGroupStage
             }
             else
             {
+                var rubyDetection = DetectRubyCandidates(filteredLines, settings, effectiveEngineKind);
                 // WHY: PaddleOCR-VL and VisionLLM already return coarse blocks or synthesized lines; extra merge can over-merge.
                 groupedLocalLines = effectiveEngineKind is OcrEngineKind.PaddleVllm or OcrEngineKind.VisionLlm
-                    ? filteredLines
-                    : _lineGrouper.MergeLines(filteredLines, settings, effectiveEngineKind).ToList();
+                    ? rubyDetection.BodyLines
+                    : _lineGrouper.MergeLines(rubyDetection.BodyLines, settings, effectiveEngineKind).ToList();
             }
 
             var groupedLines = MapLinesToScreen(groupedLocalLines, roiScreen);
@@ -254,5 +262,30 @@ internal sealed class OcrAndGroupStage
             VisionGeometryHybridBaseEngineKind.OneOcr => OcrEngineKind.OneOcr,
             _ => OcrEngineKind.WinRt
         };
+    }
+
+    private RubyDetectionResult DetectRubyCandidates(
+        IReadOnlyList<OcrLine> lines,
+        AppSettings settings,
+        OcrEngineKind effectiveEngineKind)
+    {
+        if (effectiveEngineKind is OcrEngineKind.VisionLlm or OcrEngineKind.PaddleVllm)
+        {
+            return new RubyDetectionResult(
+                lines.ToList(),
+                Array.Empty<OcrLine>(),
+                new Dictionary<int, IReadOnlyList<int>>(),
+                settings.VerticalModeOverride == VerticalModeOverride.Vertical);
+        }
+
+        var detection = _rubyCandidateDetector.Detect(lines, settings);
+        if (detection.RubyLines.Count > 0)
+        {
+            _logger?.Info(
+                $"stage=ocr_ruby event=filtered engine={effectiveEngineKind} bodyLineCount={detection.BodyLines.Count} " +
+                $"rubyLineCount={detection.RubyLines.Count} vertical={(detection.IsVerticalWriting ? 1 : 0)}.");
+        }
+
+        return detection;
     }
 }
