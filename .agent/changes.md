@@ -1012,3 +1012,55 @@
 - `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\bin\OneOcrHelper.exe`
 - `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\vendor\.gitkeep`
 - `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\vendor\oneocr.dll` が `False` であることを確認
+
+**2026-03-20 18:48 (Asia/Taipei) — Fix OneOCR request JSON casing mismatch**
+
+### Summary
+- OneOCR helper への request JSON が PascalCase で送られていた問題を修正し、helper の lower camel-case 契約に合わせた。
+
+### Context / Goal
+- 実行ログで `OneOCR helper failed: Unsupported request type.` が出ており、helper は起動しているのに OCR request だけ解釈できていなかった。
+- helper 側は `type` / `imageBytesBase64` / `maxLineCount` を文字列検索しているため、C# 側の JSON キー名と一致させる必要があった。
+
+### Changes
+- `Services/OneOcrProtocolClient.cs` の `JsonSerializerOptions` に `PropertyNamingPolicy = JsonNamingPolicy.CamelCase` を追加した。
+
+### Files Touched
+- `Services/OneOcrProtocolClient.cs` — helper へ送る request JSON を camelCase でシリアライズするよう修正。
+
+### Behavioral Impact
+- OneOCR helper は `type=recognize` を正しく読めるようになり、`Unsupported request type.` で即 fallback する挙動が解消する見込み。
+
+### Risk & Mitigation
+- Risk: 将来 protocol DTO に新しいフィールドを足したとき、helper 側と casing 契約が再びずれる可能性がある。
+- Mitigation: OneOCR protocol は camelCase JSON を前提とし、送受信の serializer option をこのクライアントに固定した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
+- ログ原因の確認: helper は起動済みで、`Unsupported request type.` は request JSON の `type` 不一致で説明できることを確認
+
+**2026-03-20 18:53 (Asia/Taipei) — Fix OneOCR JSON unicode escaping in base64 payloads**
+
+### Summary
+- OneOCR request JSON の base64 が `\uXXXX` へ再エスケープされないようにし、helper の簡易 JSON parser と整合させた。
+
+### Context / Goal
+- 新しい実行ログでは `OneOCR helper failed: Unsupported JSON escape sequence.` が出ており、request の `type` 解釈は通ったが base64 文字列のパースで失敗していた。
+- `System.Text.Json` の既定 encoder は base64 内の一部文字を `\u002B` などへ変換しうるため、`\u` を未対応の helper parser が落としていた。
+
+### Changes
+- `Services/OneOcrProtocolClient.cs` の `JsonSerializerOptions` に `Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping` を追加した。
+
+### Files Touched
+- `Services/OneOcrProtocolClient.cs` — helper へ送る JSON で base64 payload が不要に `\uXXXX` へ変換されないよう修正。
+
+### Behavioral Impact
+- OneOCR helper は `imageBytesBase64` をそのまま読めるようになり、`Unsupported JSON escape sequence.` による即 fallback が解消する見込み。
+
+### Risk & Mitigation
+- Risk: encoder を緩めると JSON 文字列のエスケープ量が減る。
+- Mitigation: この protocol はローカル helper 向けの内部 IPC に限定され、HTML へ埋め込む用途ではないため `UnsafeRelaxedJsonEscaping` の方が適切。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
+- ログ原因の確認: `Unsupported JSON escape sequence.` は helper 側の `\u` 未対応と request base64 payload の再エスケープで説明できることを確認

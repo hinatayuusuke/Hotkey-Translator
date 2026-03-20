@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.IO;
 using System.IO.Pipes;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
@@ -14,6 +15,8 @@ internal sealed class OneOcrProtocolClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
     };
