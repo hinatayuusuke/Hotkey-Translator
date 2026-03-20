@@ -1176,3 +1176,37 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln` を実行したが、起動中の `Hotkey-Translator.exe` によるファイルロックで最終コピーに失敗した。
 - 変更箇所は `UI/OcrSettingsControl.xaml` の表示文字列のみであることを確認した。
+
+**2026-03-20 19:50 (Asia/Taipei) — Rebase merge defaults to strength 35**
+
+### Summary
+- simple merge tuning の既定基準を 50 から 35 へ移し、OFF 時の granular default も ON+35 と揃えた。
+
+### Context / Goal
+- 検証上、merge strength は 35 付近が最も扱いやすく、現在の 50 基準は実運用とズレていた。
+- `EnableSimpleMergeTuning=false` の既定挙動と `EnableSimpleMergeTuning=true` かつ slider=35 の挙動を一致させたかった。
+
+### Changes
+- `AppSettings` の merge 関連 default を slider=35 相当へ更新した。
+- `HorizontalMergeStrength` / `VerticalMergeStrength` の default と clamp fallback を 35 に変更した。
+- `SettingsViewModel` の初期表示値も 35 に揃えた。
+- `OcrLineGrouper` の vertical Stage A 固定閾値を 35 基準へ更新し、simple tuning OFF の baseline と一致させた。
+
+### Files Touched
+- `Models/AppSettings.cs` — merge strength 既定値と、simple tuning OFF 時に使う granular threshold default を 35 相当へ更新した。
+- `ViewModels/SettingsViewModel.cs` — merge strength スライダーの初期表示値を 35 に変更した。
+- `Services/Settings/Rules/WritingModeSettingsRule.cs` — 設定欠損時の clamp fallback を 35 に変更した。
+- `Services/OcrLineGrouper.cs` — vertical writing baseline の固定閾値を 35 基準へ更新し、理由コメントを追加した。
+
+### Behavioral Impact
+- 新規設定や欠損設定では、merge の基準点が 50 ではなく 35 になる。
+- simple merge tuning を OFF から ON に切り替えても、slider=35 のときは従来より挙動差が出にくくなる。
+- 既存の settings.json に保存済みの個別値は自動変更されない。
+
+### Risk & Mitigation
+- Risk: 新規ユーザーと既存保存設定なしの環境で、merge の見え方が従来の 50 基準より少し保守的になる可能性がある。
+- Mitigation: 変更後の既定値は実測済みの 35 基準に合わせており、simple tuning ON/OFF の整合性も改善している。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -p:UseAppHost=false`
+- 35 基準値確認: `OFF` default が `ON + slider=35` の解決値 (`MergeOverlapRatioThreshold=0.129560`, `MergeVerticalWeight=0.880399`, `MergeThresholdRatio=0.961320` など) と一致することを確認した。

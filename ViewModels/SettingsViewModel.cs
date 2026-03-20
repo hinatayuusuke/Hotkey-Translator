@@ -97,8 +97,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableGemini;
     [ObservableProperty] private string _verticalModeOverrideTag = "Auto";
     [ObservableProperty] private bool _enableSimpleMergeTuning;
-    [ObservableProperty] private double _horizontalMergeStrength = 50;
-    [ObservableProperty] private double _verticalMergeStrength = 50;
+    [ObservableProperty] private double _horizontalMergeStrength = 35;
+    [ObservableProperty] private double _verticalMergeStrength = 35;
     [ObservableProperty] private bool _enableLogging;
     [ObservableProperty] private bool _enableOcrPerfLog;
     [ObservableProperty] private bool _enableOcrBinarization;

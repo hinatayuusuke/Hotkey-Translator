@@ -15,9 +15,11 @@ public sealed class OcrLineGrouper
     private const double AutoModeScoreEpsilon = 0.03;
     private const double AspectFilterMinArea = 16.0;
     private const double AspectFilterMedianAreaRatio = 0.15;
-    private const double VerticalColumnCenterToleranceRatio = 0.55;
-    private const double VerticalColumnWidthRatioMin = 0.55;
-    private const double VerticalColumnOverlapRatioMin = 0.10;
+    // WHY: These fixed thresholds back the "simple merge tuning disabled" baseline and should match
+    // the tuned result at the default writing-mode strength (35) so toggling the feature preserves behavior.
+    private const double VerticalColumnCenterToleranceRatio = 0.61132;
+    private const double VerticalColumnWidthRatioMin = 0.58868;
+    private const double VerticalColumnOverlapRatioMin = 0.1826;
     private const double VerticalHardBreakMultiplier = 1.5;
     private const double OverlapClampMin = 0.05;
     private const double OverlapClampMax = 0.95;

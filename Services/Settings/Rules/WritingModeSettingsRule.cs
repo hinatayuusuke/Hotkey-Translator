@@ -29,8 +29,8 @@ internal sealed class WritingModeSettingsRule : ISettingsRule
             changed = true;
         }
 
-        changed |= SettingsRuleHelpers.ClampSetting(settings.HorizontalMergeStrength, 0, 100, 50, out var horizontalMergeStrength);
-        changed |= SettingsRuleHelpers.ClampSetting(settings.VerticalMergeStrength, 0, 100, 50, out var verticalMergeStrength);
+        changed |= SettingsRuleHelpers.ClampSetting(settings.HorizontalMergeStrength, 0, 100, 35, out var horizontalMergeStrength);
+        changed |= SettingsRuleHelpers.ClampSetting(settings.VerticalMergeStrength, 0, 100, 35, out var verticalMergeStrength);
         settings.HorizontalMergeStrength = horizontalMergeStrength;
         settings.VerticalMergeStrength = verticalMergeStrength;
 
