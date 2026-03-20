@@ -1064,3 +1064,57 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln`
 - ログ原因の確認: `Unsupported JSON escape sequence.` は helper 側の `\u` 未対応と request base64 payload の再エスケープで説明できることを確認
+
+**2026-03-20 19:04 (Asia/Taipei) — Add OneOCR line merge enablement plan**
+
+### Summary
+- OneOCR を `merge skip` ではなく shared line merge へ流すための新規計画書を `Doc/` に追加した。
+
+### Context / Goal
+- `test2.png` 比較で Python CLI と native helper の raw 出力が一致し、枠結合の弱さは wrapper 差ではなくアプリ後段の merge 方針で説明できる状態になった。
+- 既存の native helper 計画書は維持したまま、この件だけを切り出した新規実装方針が必要だった。
+
+### Changes
+- `Doc/OneOCR_LineMerge_Enablement_Plan.md` を新規追加した。
+- OneOCR を shared merge 経路へ戻す背景、実装差分、検証ステップ、リスクを整理した。
+
+### Files Touched
+- `Doc/OneOCR_LineMerge_Enablement_Plan.md` — OneOCR line merge 有効化専用の新規実装計画書を追加。
+
+### Behavioral Impact
+- アプリ動作自体にはまだ影響しない。
+- 実装時の方針として、OneOCR を `merge skip` から shared merge へ切り替える前提が明文化された。
+
+### Risk & Mitigation
+- Risk: 既存計画書と新規計画書の方針が一時的に並立する。
+- Mitigation: 今回は既存文書を変更せず、line merge 論点だけを新規計画書に分離して判断しやすくした。
+
+### Tests / Verification
+- `Get-Content -Path .\Doc\OneOCR_LineMerge_Enablement_Plan.md -Encoding UTF8`
+
+**2026-03-20 19:08 (Asia/Taipei) — Enable shared line merge for OneOCR**
+
+### Summary
+- OneOCR を `merge skip` 対象から外し、WinRT と同じ shared line merge 経路へ戻した。
+
+### Context / Goal
+- `test2.png` 比較で Python CLI と native helper の raw line 出力が一致し、OneOCR の枠結合の弱さは wrapper 差ではなく app 後段の merge 方針で説明できる状態だった。
+- OneOCR を `PaddleVllm / VisionLlm` と同列の skip 扱いにするのをやめ、既存 `_lineGrouper.MergeLines(...)` を適用したかった。
+
+### Changes
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` から `OcrEngineKind.OneOcr` を merge skip 条件から外した。
+- コメントも `PaddleOCR-VL / VisionLLM` のみが skip 対象である内容に合わせて更新した。
+
+### Files Touched
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — OneOCR を shared line merge 経路へ戻すよう条件分岐を修正。
+
+### Behavioral Impact
+- OneOCR 実行時、helper raw line はそのまま overlay へ流れず、既存 line grouper を通る。
+- `test2.png` のようなケースでは WinRT に近い line 結合結果になる見込み。
+
+### Risk & Mitigation
+- Risk: 一部画像では shared merge が OneOCR 行を過剰結合する可能性がある。
+- Mitigation: まず既存 merge のみ適用し、問題が残るケースが出たら OneOCR 専用 tuning を別途検討する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
