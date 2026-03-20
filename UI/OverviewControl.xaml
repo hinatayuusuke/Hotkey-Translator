@@ -285,11 +285,11 @@
                                   SelectedValuePath="Tag"
                                   SelectedValue="{Binding Settings.OcrEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                             <ComboBoxItem Content="WinRT (Windows)" Tag="WinRt" />
+                            <ComboBoxItem Content="OneOCR (native helper)" Tag="OneOcr" />
                             <ComboBoxItem Content="PaddleOCR (uv)" Tag="Paddle" />
                             <ComboBoxItem Content="PaddleOCR-VL (gRPC)" Tag="PaddleVllm" />
                             <ComboBoxItem Content="NDLOCR-Lite (gRPC)" Tag="Ndl" />
                             <ComboBoxItem Content="VisionLLM (gRPC)" Tag="VisionLlm" />
-                            <ComboBoxItem Content="OneOCR (native helper)" Tag="OneOcr" />
                         </ComboBox>
 
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,2">

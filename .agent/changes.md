@@ -1241,6 +1241,33 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
 
+**2026-03-20 21:23 (Asia/Taipei) — Reorder OCR engine combo so OneOCR follows WinRT**
+
+### Summary
+- 通常 OCR のコンボボックスで `OneOCR` を `WinRT` の直後へ移動した。
+
+### Context / Goal
+- 通常 OCR の選択肢表示順を見直し、`OneOCR` を `WinRT` のすぐ後に置きたかった。
+- 設定保存値や enum 互換性は変えず、UI の表示順だけを調整したかった。
+
+### Changes
+- 通常 OCR コンボボックスの `ComboBoxItem` 並び順を変更した。
+- `Tag` 値は維持し、表示順だけを変更した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — OCR engine コンボボックスで `OneOCR (native helper)` を `WinRT (Windows)` の直後へ移動した。
+
+### Behavioral Impact
+- 通常 OCR のドロップダウン表示順が `WinRT -> OneOCR -> PaddleOCR -> PaddleOCR-VL -> NDLOCR-Lite -> VisionLLM` になる。
+- 保存値やロード処理には影響しない。
+
+### Risk & Mitigation
+- Risk: `OneOCR` が上位に見えることで未セットアップ時の選択が増える可能性がある。
+- Mitigation: `Tag` 値は変更しておらず、既存の prerequisite / vendor setup 導線はそのまま機能する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+
 **2026-03-20 21:18 (Asia/Taipei) — Add OneOCR as VisionLLM hybrid base OCR**
 
 ### Summary
