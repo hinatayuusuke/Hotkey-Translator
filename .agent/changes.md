@@ -745,3 +745,104 @@
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln`
+
+**2026-03-20 17:01 (Asia/Taipei) — Add OneOCR experiment scaffold and plan**
+
+### Summary
+- Snipping Tool 系 OneOCR を検証するための独立した実験フォルダと作成方針書を追加した。
+
+### Context / Goal
+- private OCR 実装を本体へ直接混ぜる前に、画像 1 枚から `text + bbox + confidence` を抜けるかを安全に切り分けたかった。
+- 依存物や検証成果物を Git 管理対象外にしつつ、後続 PoC の前提と手順を明文化したかった。
+
+### Changes
+- `Tools/OneOcrExperiment/` を追加し、`input/`、`output/`、`vendor/` の作業ディレクトリを用意した。
+- `Tools/OneOcrExperiment/README.md` に、実験のゴール、非ゴール、提案アーキテクチャ、CLI 入出力、実装手順、リスクを記載した。
+- `Tools/OneOcrExperiment/.gitignore` で private DLL やテスト画像、出力成果物を Git 管理対象外にした。
+
+### Files Touched
+- `Tools/OneOcrExperiment/README.md` — OneOCR 実験の作成方針と手順を新規追加した。
+- `Tools/OneOcrExperiment/.gitignore` — 実験依存物と生成物を除外する設定を追加した。
+- `Tools/OneOcrExperiment/input/.gitkeep` — テスト画像置き場を初期化した。
+- `Tools/OneOcrExperiment/output/.gitkeep` — OCR 結果出力先を初期化した。
+- `Tools/OneOcrExperiment/vendor/.gitkeep` — private OCR 依存物の配置先を初期化した。
+
+### Behavioral Impact
+- 本体アプリの挙動やビルドには影響しない。
+- リポジトリ内に OneOCR 検証用の独立作業領域が追加され、以後の PoC をこの配下へ限定できる。
+
+### Risk & Mitigation
+- Risk: README の方針と今後の PoC 実装が乖離する可能性がある。
+- Mitigation: 実装は `Tools/OneOcrExperiment` 配下に閉じ、方針変更があれば同ディレクトリ内で更新する。
+
+### Tests / Verification
+- `Get-ChildItem Tools\OneOcrExperiment -Force -Recurse`
+
+**2026-03-20 17:05 (Asia/Taipei) — Add UV-based OneOCR experiment implementation plan**
+
+### Summary
+- `uv` 前提で OneOCR 実験を進めるための実装案を `Doc/` に追加した。
+
+### Context / Goal
+- OneOCR の PoC をシステム Python 依存にせず、再現しやすい `uv` 実行環境で進める方針を先に固定したかった。
+- 本体統合前に、CLI 契約、依存方針、実装ステップをドキュメントとして残したかった。
+
+### Changes
+- `Doc/OneOCR_Uv_Experiment_Implementation_Plan.md` を新規追加した。
+- `uv` を使う理由、`pyproject.toml` / `probe.py` / `oneocr_bridge.py` の責務、`uv sync` / `uv run` の運用方針を明記した。
+
+### Files Touched
+- `Doc/OneOCR_Uv_Experiment_Implementation_Plan.md` — `uv` ベースの OneOCR 実験構成、CLI 契約、実装手順、リスクを新規記載した。
+
+### Behavioral Impact
+- 本体アプリの挙動には影響しない。
+- OneOCR 実験は `uv` 起点で進める前提がドキュメント上で固定された。
+
+### Risk & Mitigation
+- Risk: 実装が進む中で Doc と実際の PoC 構成がずれる可能性がある。
+- Mitigation: `Tools/OneOcrExperiment` 配下の実装追加時に、この計画書を同時更新する。
+
+### Tests / Verification
+- `Get-Content 'Doc\OneOCR_Uv_Experiment_Implementation_Plan.md' -Encoding UTF8 | Select-Object -First 40`
+
+**2026-03-20 17:16 (Asia/Taipei) — Implement UV-based OneOCR experiment CLI**
+
+### Summary
+- `Tools/OneOcrExperiment` に `uv` ベースの OneOCR 実験 CLI と thin bridge を実装した。
+
+### Context / Goal
+- `Doc/OneOCR_Uv_Experiment_Implementation_Plan.md` に沿って、画像 1 枚から `text + bbox + confidence` を抽出する最小 PoC を実体化したかった。
+- 先行実装の exported function 定義と画素フォーマットを踏襲しつつ、依存を最小化した独立実験環境を作りたかった。
+
+### Changes
+- `pyproject.toml`、`.python-version`、`uv.lock` を追加し、`uv` で再現可能な Python 実験環境を固定した。
+- `oneocr_bridge.py` を追加し、`AuroraWright/oneocr` と `b1tg/win11-oneocr` を参考に private DLL の初期化、OCR 実行、line / word / polygon / confidence 抽出を実装した。
+- `probe.py` を追加し、単一画像入力から JSON 出力と overlay 出力を行う CLI を実装した。
+- `README.md` を実装後の実行手順に更新し、`bbox` の意味と `uv` コマンド例を明記した。
+- `.gitignore` を更新し、`.venv/` を Git 管理対象外にした。
+
+### Files Touched
+- `Tools/OneOcrExperiment/pyproject.toml` — `uv` プロジェクト定義と `Pillow` 依存を追加した。
+- `Tools/OneOcrExperiment/.python-version` — 実験用 Python バージョンを固定した。
+- `Tools/OneOcrExperiment/uv.lock` — `uv sync` により依存ロックファイルを生成した。
+- `Tools/OneOcrExperiment/oneocr_bridge.py` — OneOCR DLL の thin bridge と結果変換を追加した。
+- `Tools/OneOcrExperiment/probe.py` — 画像入力、JSON 出力、overlay 出力を行う CLI を追加した。
+- `Tools/OneOcrExperiment/README.md` — 実行手順と出力形式を実装に合わせて更新した。
+- `Tools/OneOcrExperiment/.gitignore` — `.venv/` を除外対象に追加した。
+
+### Behavioral Impact
+- 本体アプリには影響しない。
+- `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment ...` で独立 OneOCR CLI を実行できるようになった。
+- `vendor/` に必須 DLL が無い場合は、自動フォールバックせず明示エラーで停止する。
+
+### Risk & Mitigation
+- Risk: private DLL の関数契約が Snipping Tool 更新で変わると、この bridge は壊れる。
+- Mitigation: 実装を `Tools/OneOcrExperiment` 配下に閉じ、thin bridge に限定して差し替えしやすくした。
+- Risk: 実機 DLL が未配置のため、OCR 成功ケースは未確認である。
+- Mitigation: vendor 欠落時の fail-fast と CLI/構文検証までは通し、次段で実機ファイル配置後に OCR 実行確認を行う。
+
+### Tests / Verification
+- `.\Tools\uv\uv.exe sync --project .\Tools\OneOcrExperiment`
+- `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python .\Tools\OneOcrExperiment\probe.py --help`
+- `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python -m py_compile .\Tools\OneOcrExperiment\probe.py .\Tools\OneOcrExperiment\oneocr_bridge.py`
+- `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python .\Tools\OneOcrExperiment\probe.py --image .\Tools\OneOcrExperiment\output\smoke.png`（vendor 未配置時に明示エラーで停止することを確認）

@@ -1,0 +1,15 @@
+[project]
+name = "oneocr-experiment"
+version = "0.1.0"
+description = "Experimental CLI for Snipping Tool OneOCR"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "Pillow>=11.2.1,<12",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+package = false
