@@ -14,6 +14,7 @@ public sealed class OcrEngine : IDisposable
     private readonly IOcrProvider _paddleVlProvider;
     private readonly IOcrProvider _ndlProvider;
     private readonly IOcrProvider _visionLlmProvider;
+    private readonly IOcrProvider _oneOcrProvider;
     private readonly AppLogger? _logger;
 
     public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
@@ -24,6 +25,7 @@ public sealed class OcrEngine : IDisposable
         _paddleVlProvider = new PaddleVlGrpcOcrProvider(logger);
         _ndlProvider = new NdlGrpcOcrProvider(logger);
         _visionLlmProvider = new VisionLlmGrpcOcrProvider(logger);
+        _oneOcrProvider = new OneOcrProcessOcrProvider(logger);
     }
 
     public async Task<OcrResultModel> RecognizeAsync(Bitmap bitmap, AppSettings settings, CancellationToken cancellationToken)
@@ -93,6 +95,22 @@ public sealed class OcrEngine : IDisposable
                 _logger?.Error(ex, "VisionLLM OCR failed; falling back to WinRT.");
             }
         }
+        else if (settings.OcrEngine == OcrEngineKind.OneOcr)
+        {
+            try
+            {
+                _logger?.Info("OCR engine: OneOCR.");
+                return await _oneOcrProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error(ex, "OneOCR failed; falling back to WinRT.");
+            }
+        }
 
         return await RecognizeWinRtAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
     }
@@ -117,6 +135,11 @@ public sealed class OcrEngine : IDisposable
         if (_visionLlmProvider is IDisposable visionDisposable)
         {
             visionDisposable.Dispose();
+        }
+
+        if (_oneOcrProvider is IDisposable oneOcrDisposable)
+        {
+            oneOcrDisposable.Dispose();
         }
     }
 

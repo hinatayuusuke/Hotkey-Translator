@@ -179,8 +179,8 @@ internal sealed class OcrAndGroupStage
             }
             else
             {
-                // WHY: PaddleOCR-VL and VisionLLM already return coarse blocks or synthesized lines; extra merge can over-merge.
-                groupedLocalLines = effectiveEngineKind is OcrEngineKind.PaddleVllm or OcrEngineKind.VisionLlm
+                // WHY: PaddleOCR-VL, VisionLLM, and OneOCR already return coarse blocks or completed lines; extra merge can over-merge.
+                groupedLocalLines = effectiveEngineKind is OcrEngineKind.PaddleVllm or OcrEngineKind.VisionLlm or OcrEngineKind.OneOcr
                     ? filteredLines
                     : _lineGrouper.MergeLines(filteredLines, settings, effectiveEngineKind).ToList();
             }

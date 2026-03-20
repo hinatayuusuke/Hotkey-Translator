@@ -23,6 +23,7 @@ cmake --build Native/build --config Release --target HookHost
 cmake --build Native/build --config Release --target HookAgentDx11
 cmake --build Native/build --config Release --target HookAgentDx9
 cmake --build Native/build --config Release --target HookAgentVulkan
+cmake --build Native/build --config Release --target OneOcrHelper
 ```
 
 Build each native x86 hook individually:

@@ -277,6 +277,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
                 OcrEngineKind.PaddleVllm => "PaddleVllm",
                 OcrEngineKind.Ndl => "Ndl",
                 OcrEngineKind.VisionLlm => "VisionLlm",
+                OcrEngineKind.OneOcr => "OneOcr",
                 _ => "WinRt"
             };
             PaddleDetectionModelName = settings.PaddleTextDetectionModelName;
@@ -447,6 +448,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             "PaddleVllm" => OcrEngineKind.PaddleVllm,
             "Ndl" => OcrEngineKind.Ndl,
             "VisionLlm" => OcrEngineKind.VisionLlm,
+            "OneOcr" => OcrEngineKind.OneOcr,
             _ => OcrEngineKind.WinRt
         };
         settings.PaddleTextDetectionModelName = PaddleDetectionModelName;

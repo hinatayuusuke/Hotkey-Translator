@@ -134,6 +134,12 @@ public sealed class AppSettings
     public int SceneSemanticRequireConfirmTicks { get; set; } = 1;
     public GraphicsResourceBudgetProfile ResourceBudgetProfile { get; set; } = GraphicsResourceBudgetProfile.Balanced;
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.WinRt;
+    public bool EnableOneOcrHelper { get; set; } = true;
+    public string OneOcrPipeName { get; set; } = "hotkey_translator_oneocr";
+    public int OneOcrReadyTimeoutMs { get; set; } = 30000;
+    public int OneOcrMaxLineCount { get; set; } = 1000;
+    public string OneOcrHelperRelativePath { get; set; } = "Native\\OneOcrHelper\\bin\\OneOcrHelper.exe";
+    public string OneOcrVendorRelativePath { get; set; } = "Native\\OneOcrHelper\\vendor";
     public string PaddleDevice { get; set; } = "gpu";
     public string? PaddleModelDir { get; set; }
     public string PaddleTextDetectionModelName { get; set; } = "PP-OCRv5_mobile_det";

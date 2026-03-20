@@ -8,5 +8,6 @@ public enum OcrEngineKind
     PaddleVllm = 2,
     Florence2 = 3,
     Ndl = 4,
-    VisionLlm = 5
+    VisionLlm = 5,
+    OneOcr = 6
 }

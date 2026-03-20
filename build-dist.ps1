@@ -26,6 +26,7 @@ $helperPublishDir = Join-Path $publishRoot "elevator"
 $nativeStageRoot = Join-Path $artifactsRoot "native-staging"
 $nativeStageX64Dir = Join-Path $nativeStageRoot "x64"
 $nativeStageX86Dir = Join-Path $nativeStageRoot "x86"
+$oneOcrVendorStubPath = Join-Path $repoRoot "Native\\OneOcrHelper\\vendor\\.gitkeep"
 $script:missingHookArtifacts = [System.Collections.Generic.List[string]]::new()
 
 function Write-Step {
@@ -342,6 +343,7 @@ if (-not $SkipNativeBuild) {
     [void](Save-ArtifactIfPresent -Source (Join-Path $repoRoot "Native\HookHost\bin\HookAgentDx9.dll") -Destination (Join-Path $nativeStageX64Dir "HookAgentDx9.dll") -Description "x64 HookAgentDx9")
     [void](Save-ArtifactIfPresent -Source (Join-Path $repoRoot "Native\HookHost\bin\HookAgentDx11.dll") -Destination (Join-Path $nativeStageX64Dir "HookAgentDx11.dll") -Description "x64 HookAgentDx11")
     [void](Save-ArtifactIfPresent -Source (Join-Path $repoRoot "Native\HookHost\bin\HookAgentVulkan.dll") -Destination (Join-Path $nativeStageX64Dir "HookAgentVulkan.dll") -Description "x64 HookAgentVulkan")
+    [void](Save-ArtifactIfPresent -Source (Join-Path $repoRoot "Native\OneOcrHelper\bin\OneOcrHelper.exe") -Destination (Join-Path $nativeStageX64Dir "OneOcrHelper.exe") -Description "x64 OneOcrHelper")
 
     Write-Step "Configuring and building native hook binaries (x86)"
     Invoke-External -FilePath "cmake" -Arguments @(
@@ -361,6 +363,7 @@ $hookHostX64Path = Join-Path $nativeStageX64Dir "HookHost.exe"
 $hookDx9X64Path = Join-Path $nativeStageX64Dir "HookAgentDx9.dll"
 $hookDx11X64Path = Join-Path $nativeStageX64Dir "HookAgentDx11.dll"
 $hookVulkanX64Path = Join-Path $nativeStageX64Dir "HookAgentVulkan.dll"
+$oneOcrHelperX64Path = Join-Path $nativeStageX64Dir "OneOcrHelper.exe"
 
 Write-Step "Collecting x86 native hook outputs"
 [void](Save-ArtifactIfPresent -Source (Join-Path $repoRoot "Native\HookHost\bin\x86\HookHost.exe") -Destination (Join-Path $nativeStageX86Dir "HookHost.exe") -Description "x86 HookHost" -Required)
@@ -381,6 +384,7 @@ Assert-PathExists -Path $hookHostX86Path -Description "x86 HookHost"
 [void](Assert-OptionalPath -Path $hookVulkanX64Path -Description "x64 HookAgentVulkan")
 [void](Assert-OptionalPath -Path $hookDx9X64Path -Description "x64 HookAgentDx9")
 [void](Assert-OptionalPath -Path $hookDx11X64Path -Description "x64 HookAgentDx11")
+[void](Assert-OptionalPath -Path $oneOcrHelperX64Path -Description "x64 OneOcrHelper")
 [void](Assert-OptionalPath -Path $hookDx9X86Path -Description "x86 HookAgentDx9")
 [void](Assert-OptionalPath -Path $hookDx11X86Path -Description "x86 HookAgentDx11")
 [void](Assert-OptionalPath -Path $hookVulkanX86Path -Description "x86 HookAgentVulkan")
@@ -409,6 +413,13 @@ if (Test-Path -LiteralPath $hookDx11X64Path) {
 }
 if (Test-Path -LiteralPath $hookVulkanX64Path) {
     Copy-File -Source $hookVulkanX64Path -Destination (Join-Path $distributionRoot "Native\HookHost\bin\HookAgentVulkan.dll")
+}
+if (Test-Path -LiteralPath $oneOcrHelperX64Path) {
+    Copy-File -Source $oneOcrHelperX64Path -Destination (Join-Path $distributionRoot "Native\OneOcrHelper\bin\OneOcrHelper.exe")
+}
+Ensure-Directory -Path (Join-Path $distributionRoot "Native\OneOcrHelper\vendor")
+if (Test-Path -LiteralPath $oneOcrVendorStubPath) {
+    Copy-File -Source $oneOcrVendorStubPath -Destination (Join-Path $distributionRoot "Native\OneOcrHelper\vendor\.gitkeep")
 }
 
 Copy-File -Source $hookHostX86Path -Destination (Join-Path $distributionRoot "Native\HookHost\bin\x86\HookHost.exe")
@@ -441,6 +452,7 @@ $notesPath = Join-Path $distributionRoot "DIST-NOTES.txt"
     "- Single-file WPF application",
     "- WinRtLanguagePackElevator helper",
     "- x64/x86 HookHost and DirectX hook agents",
+    "- x64 OneOCR native helper binary",
     "- uv runtime bootstrapper",
     "- Magpie runtime files",
     "- OCR/translation Python service sources",
@@ -450,6 +462,7 @@ $notesPath = Join-Path $distributionRoot "DIST-NOTES.txt"
     "- TranslationService directory",
     "- Python .venv directories",
     "- GGUF and mmproj model files",
+    "- OneOCR vendor files from Snipping Tool",
     "- Paddle managed model payloads",
     "",
     "Hook DLL note:",

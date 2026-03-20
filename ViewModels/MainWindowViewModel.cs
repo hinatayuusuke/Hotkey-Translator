@@ -160,6 +160,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         "PaddleVllm" => "PaddleOCR-VL (gRPC)",
         "Ndl" => "NDLOCR-Lite (gRPC)",
         "VisionLlm" => "VisionLLM (gRPC)",
+        "OneOcr" => "OneOCR (native helper)",
         _ => "WinRT (Windows)"
     };
 

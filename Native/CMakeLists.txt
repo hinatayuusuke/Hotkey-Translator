@@ -9,3 +9,10 @@ add_subdirectory(HookHost)
 add_subdirectory(HookAgentDx11)
 add_subdirectory(HookAgentDx9)
 add_subdirectory(HookAgentVulkan)
+
+# WHY: OneOCR helper is currently packaged and consumed only as an x64 sidecar.
+# Building the same target in the Win32 tree would collide with the shared output path
+# and provides no runtime value because the WPF app itself is distributed as x64.
+if (CMAKE_SIZEOF_VOID_P EQUAL 8)
+    add_subdirectory(OneOcrHelper)
+endif()

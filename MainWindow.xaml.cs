@@ -2395,6 +2395,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             ShowMissingBinaryDialogIfNeeded("bin_llamaserver_vision_missing", FixedLlamaServerRelativePath, "VisionLLM OCR");
         }
+
+        if (settings.OcrEngine == OcrEngineKind.OneOcr && settings.EnableOneOcrHelper)
+        {
+            ShowMissingBinaryDialogIfNeeded("bin_oneocr_helper_missing", settings.OneOcrHelperRelativePath, "OneOCR helper");
+        }
     }
 
     private static bool IsUvRequired(AppSettings settings)

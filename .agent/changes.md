@@ -846,3 +846,169 @@
 - `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python .\Tools\OneOcrExperiment\probe.py --help`
 - `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python -m py_compile .\Tools\OneOcrExperiment\probe.py .\Tools\OneOcrExperiment\oneocr_bridge.py`
 - `.\Tools\uv\uv.exe run --project .\Tools\OneOcrExperiment python .\Tools\OneOcrExperiment\probe.py --image .\Tools\OneOcrExperiment\output\smoke.png`（vendor 未配置時に明示エラーで停止することを確認）
+
+**2026-03-20 17:26 (Asia/Taipei) — Add OneOCR integration direction document**
+
+### Summary
+- OneOCR を本体へ統合するための方針書を `Doc/` に追加した。
+
+### Context / Goal
+- OneOCR の実験実行と精度確認が終わったため、本体へどう差し込むかを既存アーキテクチャ前提で整理したかった。
+- direct CLI 呼び出しではなく、既存の gRPC host パターンに合わせる実装方針を先に固定したかった。
+
+### Changes
+- `Doc/OneOCR_Integration_Implementation_Plan.md` を新規追加した。
+- OneOCR を `uv + Python` の長寿命 gRPC host として統合する案、必要な設定項目、影響範囲、実装ステップ、リスクを記載した。
+
+### Files Touched
+- `Doc/OneOCR_Integration_Implementation_Plan.md` — OneOCR 本体統合の推奨アーキテクチャ、UI/設定方針、resource host 接続方針を新規記載した。
+
+### Behavioral Impact
+- 本体アプリの挙動には影響しない。
+- OneOCR 統合は「manual vendor 配置前提の long-lived local gRPC host」で進める方針が文書化された。
+
+### Risk & Mitigation
+- Risk: 実装時に一部設計が変わり、Doc とズレる可能性がある。
+- Mitigation: 実装着手時はこの方針書を基準にし、必要な設計変更は同ファイルへ追記して同期を保つ。
+
+### Tests / Verification
+- `Get-Content 'Doc\OneOCR_Integration_Implementation_Plan.md' -Encoding UTF8 | Select-Object -First 80`
+
+**2026-03-20 17:33 (Asia/Taipei) — Add OneOCR native helper integration plan**
+
+### Summary
+- OneOCR を `small native helper process` で統合するための実装案を `Doc/` に追加した。
+
+### Context / Goal
+- `gRPC + Python` より軽い統合方式として、OneOCR 専用の native helper を採る案を具体化したかった。
+- private DLL を本体から隔離しつつ、Python/uv 依存を増やさない統合方針を先に固定したかった。
+
+### Changes
+- `Doc/OneOCR_NativeHelper_Integration_Plan.md` を新規追加した。
+- native helper の責務、Named Pipe ベース IPC、helper / C# 側の分割、設定項目、実装ステップ、リスクを記載した。
+
+### Files Touched
+- `Doc/OneOCR_NativeHelper_Integration_Plan.md` — OneOCR を native helper process で統合する推奨アーキテクチャと実装方針を新規記載した。
+
+### Behavioral Impact
+- 本体アプリの挙動には影響しない。
+- OneOCR の推奨統合方式として `native helper process + Named Pipe` 案がドキュメント化された。
+
+### Risk & Mitigation
+- Risk: 実装時に helper の IPC 方式やディレクトリ配置が変わる可能性がある。
+- Mitigation: 実装着手時はこの計画書を基準にし、変更が必要なら同ドキュメントへ反映して同期を保つ。
+
+### Tests / Verification
+- `Get-Content 'Doc\OneOCR_NativeHelper_Integration_Plan.md' -Encoding UTF8 | Select-Object -First 120`
+
+**2026-03-20 17:41 (Asia/Taipei) — Refine OneOCR native helper plan for merge-skip integration**
+
+### Summary
+- `OneOCR` を重い共通 OCR 枠へ寄せすぎない前提に合わせて、native helper 統合案を整理し直した。
+
+### Context / Goal
+- OneOCR は実測上すでに line 単位が十分まとまっており、既存 OCR 向けの枠統合や merge tuning をそのまま当てる必要が薄いことを文書へ反映したかった。
+- `OneOCR` 専用 helper、軽量 supervisor、`OcrAndGroupStage` の merge skip を軸に、全体の整合を取りたかった。
+
+### Changes
+- `Doc/OneOCR_NativeHelper_Integration_Plan.md` を更新し、OneOCR を `PaddleVllm / VisionLlm` と同様の merge skip エンジンとして扱う方針を追記した。
+- OneOCR のライフサイクルは `ResourceHostFacade` の重い gRPC 前提へ無理に統合せず、専用 supervisor を第一候補とする記述へ整理した。
+- UI/設定は OneOCR 専用の最小構成に寄せ、`Restart OCR host` 便乗ではなく helper 専用再起動経路を推奨する文言へ修正した。
+
+### Files Touched
+- `Doc/OneOCR_NativeHelper_Integration_Plan.md` — merge skip 前提、専用 supervisor、最小 UI/設定方針に合わせて全体の整合を更新した。
+
+### Behavioral Impact
+- 本体アプリの挙動には影響しない。
+- OneOCR 統合方針は「native helper + Named Pipe + merge skip」が明確な前提として固定された。
+
+### Risk & Mitigation
+- Risk: 実装時に helper と UI の責務分割がさらに簡略化される可能性がある。
+- Mitigation: 変更があっても、この文書の中で OneOCR 専用最小統合という軸を維持して更新する。
+
+### Tests / Verification
+- `Get-Content 'Doc\OneOCR_NativeHelper_Integration_Plan.md' -Encoding UTF8`
+
+**2026-03-20 18:31 (Asia/Taipei) — Implement OneOCR native helper integration**
+
+### Summary
+- OneOCR native helper process を実装し、WPF 本体から選択可能な OCR エンジンとして統合した。
+
+### Context / Goal
+- `Doc/OneOCR_NativeHelper_Integration_Plan.md` の方針どおり、private `oneocr.dll` を本体へ直結せず別プロセスへ隔離したかった。
+- OneOCR の完成済み line geometry を既存パイプラインへ最小差分で流し込み、既存 merge を過剰適用しない構成にしたかった。
+
+### Changes
+- `Native/OneOcrHelper/` を追加し、`oneocr.dll` をロードする C++ helper、WIC PNG decode、Named Pipe length-prefixed JSON IPC を実装した。
+- C# 側に `OneOcrProtocolClient`、`OneOcrProcessHost`、`OneOcrProcessOcrProvider` を追加し、helper 起動・ready 待機・PNG 送信・OCR 応答の `OcrResultModel` 変換を実装した。
+- `OcrEngineKind.OneOcr`、`AppSettings` の OneOCR 設定、UI 選択肢、概要表示、`OcrEngine` 分岐、`OcrAndGroupStage` の merge skip を追加した。
+- native build / dist 手順に OneOCR helper target と配布物コピーを追加した。
+
+### Files Touched
+- `Native/OneOcrHelper/CMakeLists.txt` — OneOCR helper の native target と出力先を追加。
+- `Native/OneOcrHelper/main.cpp` — OneOCR DLL bridge、WIC decode、Named Pipe JSON protocol、OCR 実行ループを実装。
+- `Native/OneOcrHelper/README.md` — vendor 配置前提を明記。
+- `Native/OneOcrHelper/.gitignore` — vendor 配下を ignore し `.gitkeep` のみ残すようにした。
+- `Native/CMakeLists.txt` — `OneOcrHelper` subdirectory を追加。
+- `Services/OneOcrProtocolClient.cs` — length-prefixed JSON の送受信と protocol DTO を追加。
+- `Services/OneOcrProcessHost.cs` — helper の起動・接続・再起動・終了管理を追加。
+- `Services/OneOcrProcessOcrProvider.cs` — bitmap を PNG 化して helper 結果を `OcrResultModel` に変換する provider を追加。
+- `Services/OcrEngine.cs` — `OcrEngineKind.OneOcr` 分岐と dispose を追加。
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — OneOCR を merge skip 対象へ追加。
+- `Models/OcrEngineKind.cs` — `OneOcr = 6` を追加。
+- `Models/AppSettings.cs` — helper path / vendor path / pipe name / timeout / max line count を追加。
+- `ViewModels/SettingsViewModel.cs` — `OneOcr` の load/apply マッピングを追加。
+- `ViewModels/MainWindowViewModel.cs` — OneOCR の概要表示名を追加。
+- `UI/OverviewControl.xaml` — OCR engine selector に OneOCR を追加。
+- `MainWindow.xaml.cs` — OneOCR helper バイナリ欠落の前提チェックを追加。
+- `Cpp_Build.md` — OneOCR helper target の build 手順を追記。
+- `build-dist.ps1` — OneOCR helper binary と vendor stub の配布コピーを追加。
+
+### Behavioral Impact
+- 設定 UI から `OneOCR (native helper)` を選べるようになり、選択時は native helper 経由で OCR を実行する。
+- OneOCR の line 結果は `PaddleOCR-VL / VisionLLM` と同様に追加 merge をスキップするため、helper 側の geometry をそのまま活かす。
+- helper または OneOCR 実行が失敗した場合は既存方針どおり WinRT へ fallback する。
+
+### Risk & Mitigation
+- Risk: private OneOCR DLL の更新で export や戻り値仕様が変わると helper が起動不能になる。
+- Mitigation: helper 起動時に vendor / export を fail fast で検証し、アプリ側はエラーをログ化して WinRT fallback する。
+- Risk: 配布物に vendor ファイルを含めないため、helper binary だけでは OneOCR は動かない。
+- Mitigation: `README.md` と dist note で manual vendor 配置前提を明示し、helper / model 欠落は事前チェックで通知する。
+
+### Tests / Verification
+- `cmake -S Native -B Native/build -A x64`
+- `cmake --build Native/build --config Release --target OneOcrHelper`
+- `dotnet build .\Hotkey-Translator.sln`
+- `Copy-Item .\Tools\OneOcrExperiment\vendor\{oneocr.dll,oneocr.onemodel,onnxruntime.dll} .\Native\OneOcrHelper\vendor`
+- OneOCR helper を起動し、Named Pipe 経由で `Tools\OneOcrExperiment\input\test.png` を送信して `ok=true / 20 lines / 2427x989 / durationMs=289.209` を確認
+
+**2026-03-20 18:40 (Asia/Taipei) — Fix OneOCR helper packaging for x64-only native builds**
+
+### Summary
+- OneOCR helper を x64 native build のみに限定し、`build-dist.ps1` が最後まで成功するように修正した。
+
+### Context / Goal
+- 配布確認で `build-dist.ps1` の Win32 native build でも `OneOcrHelper` がビルド対象に入り、x64 と同じ出力先へリンクしようとして失敗していた。
+- OneOCR helper は現状 x64 配布専用なので、Win32 tree から外すのが最小で整合的だった。
+
+### Changes
+- `Native/CMakeLists.txt` で `OneOcrHelper` を `CMAKE_SIZEOF_VOID_P == 8` のときだけ追加するようにした。
+- 修正後に `build-dist.ps1` を再実行し、OneOCR helper を含む dist 作成が完了することを確認した。
+
+### Files Touched
+- `Native/CMakeLists.txt` — OneOCR helper を x64 native build のみで生成する条件分岐を追加。
+
+### Behavioral Impact
+- `build-dist.ps1` 実行時、x86 native build と OneOCR helper の出力衝突が起きなくなった。
+- dist には `Native\OneOcrHelper\bin\OneOcrHelper.exe` が含まれ、vendor は `.gitkeep` のみで手動配置前提を維持する。
+
+### Risk & Mitigation
+- Risk: 将来 x86 helper を本当に必要にしたとき、この条件分岐だけでは足りない。
+- Mitigation: 現状の WPF 配布は x64 前提なので helper も x64 専用に固定し、x86 対応が必要になった時点で出力先と packaging を別設計にする。
+
+### Tests / Verification
+- `powershell -ExecutionPolicy Bypass -File .\build-dist.ps1`
+- `Get-ChildItem .\dist\Hotkey-Translator-online\Native\OneOcrHelper -Recurse -Force`
+- `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\bin\OneOcrHelper.exe`
+- `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\vendor\.gitkeep`
+- `Test-Path .\dist\Hotkey-Translator-online\Native\OneOcrHelper\vendor\oneocr.dll` が `False` であることを確認
