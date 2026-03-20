@@ -1118,3 +1118,33 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln`
+
+**2026-03-20 19:15 (Asia/Taipei) — Tune horizontal merge strength for vertical paragraph gaps**
+
+### Summary
+- Horizontal Merge Strength が横書き時の上下結合コストにも効くよう simple merge tuning を調整した。
+
+### Context / Goal
+- Horizontal Merge Strength を 50 以下へ下げても、横書きの上下方向結合がほとんど弱まらない挙動があった。
+- 既存の simple merge tuning は overlap / threshold / row gap だけを変え、上下結合コストの `MergeVerticalWeight` は固定のままだった。
+
+### Changes
+- `Services/OcrLineGrouper.cs` に `ResolveHorizontalVerticalWeight` を追加した。
+- `ApplySimpleMergeTuning` で `HorizontalMergeStrength` から `MergeVerticalWeight` も上書きするよう変更した。
+- simple merge tuning ログに `weight` を追加し、実効値を追跡しやすくした。
+- 低い Horizontal Merge Strength ほど vertical gap のペナルティが強くなるカーブを追加した。
+
+### Files Touched
+- `Services/OcrLineGrouper.cs` — horizontal simple merge tuning に `MergeVerticalWeight` の解決関数と適用処理、ログ出力を追加した。
+
+### Behavioral Impact
+- 横書き時、Horizontal Merge Strength を下げると同一行内の横結合だけでなく、行どうしの上下結合も従来より明確に弱くなる。
+- 特に 50 以下で、段落的な縦結合が以前より保守的になる。
+
+### Risk & Mitigation
+- Risk: 既存設定で、これまで 1 ブロックにまとまっていた行が分割されるケースが増える可能性がある。
+- Mitigation: 変更は simple merge tuning 有効時だけに限定し、ログへ `weight` を出して実効閾値を確認できるようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln`
+- 実効値確認: Horizontal Merge Strength の weight は `0=5.000`, `25=0.981`, `50=0.743`, `75=0.537`, `100=0.100` を確認した。

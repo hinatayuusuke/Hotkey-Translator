@@ -41,6 +41,10 @@ public sealed class OcrLineGrouper
     private const double SimpleHorizontalThresholdAggressive = 1.80;
     private const double SimpleHorizontalRowMaxGapAggressive = 3.20;
     private const double SimpleHorizontalRowHardBreakAggressive = 4.50;
+    private const double SimpleHorizontalVerticalWeightMin = 1.35;
+    private const double SimpleHorizontalVerticalWeightMax = 0.35;
+    private const double SimpleHorizontalVerticalWeightDisabled = 5.00;
+    private const double SimpleHorizontalVerticalWeightAggressive = 0.10;
     private const double HorizontalHeadingWidthRatioMax = 0.72;
     private const double HorizontalHeadingCenterToleranceRatio = 0.30;
     private const double HorizontalHeadingGapRatio = 0.60;
@@ -969,7 +973,7 @@ public sealed class OcrLineGrouper
 
         var key =
             $"{settings.HorizontalMergeStrength}|{settings.VerticalMergeStrength}|" +
-            $"{thresholds.MergeOverlapRatioThreshold:0.###}|{thresholds.MergeThresholdRatio:0.###}|{thresholds.RowMergeMaxGapRatio:0.###}|{thresholds.RowMergeHardBreakRatio:0.###}|" +
+            $"{thresholds.MergeOverlapRatioThreshold:0.###}|{thresholds.MergeVerticalWeight:0.###}|{thresholds.MergeThresholdRatio:0.###}|{thresholds.RowMergeMaxGapRatio:0.###}|{thresholds.RowMergeHardBreakRatio:0.###}|" +
             $"{thresholds.VerticalGapRatio:0.###}|{thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}|{thresholds.VerticalColumnMergeThresholdRatio:0.###}|{thresholds.VerticalColumnMergeHardBreakRatio:0.###}";
         if (string.Equals(key, _lastLoggedSimpleTuningKey, StringComparison.Ordinal))
         {
@@ -979,7 +983,7 @@ public sealed class OcrLineGrouper
         _lastLoggedSimpleTuningKey = key;
         _logger.Info(
             $"Simple merge tuning: enabled=1 h={settings.HorizontalMergeStrength} v={settings.VerticalMergeStrength}, " +
-            $"h(overlap={thresholds.MergeOverlapRatioThreshold:0.###}, threshold={thresholds.MergeThresholdRatio:0.###}, rowMaxGap={thresholds.RowMergeMaxGapRatio:0.###}, rowHardBreak={thresholds.RowMergeHardBreakRatio:0.###}), " +
+            $"h(overlap={thresholds.MergeOverlapRatioThreshold:0.###}, weight={thresholds.MergeVerticalWeight:0.###}, threshold={thresholds.MergeThresholdRatio:0.###}, rowMaxGap={thresholds.RowMergeMaxGapRatio:0.###}, rowHardBreak={thresholds.RowMergeHardBreakRatio:0.###}), " +
             $"v(stageA_centerTol={thresholds.VerticalStageACenterToleranceRatio:0.###}, stageA_widthMin={thresholds.VerticalStageAWidthRatioMin:0.###}, stageA_overlapMin={thresholds.VerticalStageAOverlapRatioMin:0.###}, " +
             $"gap={thresholds.VerticalGapRatio:0.###}, colOverlap={thresholds.VerticalColumnMergeOverlapRatioThreshold:0.###}, colThreshold={thresholds.VerticalColumnMergeThresholdRatio:0.###}, colHardBreak={thresholds.VerticalColumnMergeHardBreakRatio:0.###}).");
     }
@@ -992,6 +996,7 @@ public sealed class OcrLineGrouper
         }
 
         var tunedHorizontalOverlap = ResolveHorizontalOverlap(settings.HorizontalMergeStrength);
+        var tunedHorizontalVerticalWeight = ResolveHorizontalVerticalWeight(settings.HorizontalMergeStrength);
         var tunedHorizontalThreshold = ResolveHorizontalThreshold(settings.HorizontalMergeStrength);
         var tunedHorizontalRowMaxGap = ResolveHorizontalRowMaxGap(settings.HorizontalMergeStrength);
         var tunedHorizontalRowHardBreak = ResolveHorizontalRowHardBreak(settings.HorizontalMergeStrength);
@@ -1006,6 +1011,10 @@ public sealed class OcrLineGrouper
         return current with
         {
             MergeOverlapRatioThreshold = tunedHorizontalOverlap,
+            // WHY: In horizontal writing mode, users expect this slider to affect paragraph-style
+            // vertical merges as well as same-row token merges. Weighting the vertical gap here
+            // makes low strengths noticeably more conservative without adding another slider.
+            MergeVerticalWeight = tunedHorizontalVerticalWeight,
             MergeThresholdRatio = tunedHorizontalThreshold,
             RowMergeMaxGapRatio = tunedHorizontalRowMaxGap,
             RowMergeHardBreakRatio = tunedHorizontalRowHardBreak,
@@ -1059,6 +1068,26 @@ public sealed class OcrLineGrouper
             1.0,
             RatioClampMin,
             RatioClampMax);
+    }
+
+    private static double ResolveHorizontalVerticalWeight(int strength)
+    {
+        if (strength <= 0)
+        {
+            return SimpleHorizontalVerticalWeightDisabled;
+        }
+
+        if (strength >= 100)
+        {
+            return SimpleHorizontalVerticalWeightAggressive;
+        }
+
+        var ratio = NormalizeSimpleMergeStrengthRatio(strength, SimpleHorizontalStrengthGamma);
+        return ClampScaled(
+            Lerp(SimpleHorizontalVerticalWeightMin, SimpleHorizontalVerticalWeightMax, ratio),
+            1.0,
+            WeightClampMin,
+            WeightClampMax);
     }
 
     private static double ResolveHorizontalRowMaxGap(int strength)
