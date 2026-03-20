@@ -691,6 +691,32 @@
 
 ### Tests / Verification
 - `dotnet build Hotkey-Translator.sln`
+
+**2026-03-20 14:25 (Asia/Taipei) — Enable Google Web on first run defaults**
+
+### Summary
+- 初回起動時の既定設定で Google Web 翻訳を有効化した。
+
+### Context / Goal
+- API キー不要で初回から翻訳を体験できるようにしたかった。
+- 既存ユーザー設定や一時的な `new AppSettings()` 利用箇所には影響させず、初回デフォルトだけを変えたかった。
+
+### Changes
+- `SettingsService.CreateFirstRunDefaults()` で `settings.EnableGoogleWeb = true;` を追加した。
+
+### Files Touched
+- `Services/SettingsService.cs` — 初回作成される `AppSettings` に対して Google Web を既定 ON にした。
+
+### Behavioral Impact
+- `settings.json` が存在しない初回起動では、Google Web 翻訳がデフォルトで有効になる。
+- 既存の `settings.json` を持つユーザー設定や migration 挙動は変更しない。
+
+### Risk & Mitigation
+- Risk: Google Web は非公式 endpoint 依存のため、外部仕様変更時に初回既定が機能しなくなる可能性がある。
+- Mitigation: 変更範囲を first-run defaults のみに限定し、既存ユーザー設定は上書きしない。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.sln`
 - `git diff --check`（LF/CRLF warning のみ）
 
 **2026-03-19 15:32 (Asia/Taipei) — Reorder overview quick display controls**
