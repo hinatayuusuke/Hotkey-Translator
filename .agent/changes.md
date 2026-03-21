@@ -1241,6 +1241,33 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
 
+**2026-03-21 10:47 (Asia/Taipei) — Raise ForceGemini image path to low thinking budget**
+
+### Summary
+- `ForceGemini` の画像直送経路だけ `Thinking Low` 相当の budget に変更した。
+
+### Context / Goal
+- 画像直送の Gemini 応答で、text 経路は変えずに少しだけ reasoning を増やしたかった。
+- 通常の text translation schema 応答には影響を出したくなかった。
+
+### Changes
+- `GeminiClient.TranslateImagePreservingLayoutAsync(...)` の `generationConfig.thinkingConfig.thinkingBudget` を `0` から `1024` に変更した。
+- text translation 側の `thinkingBudget = 0` はそのまま維持した。
+
+### Files Touched
+- `Services/GeminiClient.cs` — 画像直送の Gemini request だけ low thinking budget に変更した。
+
+### Behavioral Impact
+- `ForceGeminiStrict` の画像直送モードでのみ、Gemini が少量の reasoning budget を使うようになる。
+- 通常の text translation 経路の latency / schema 応答挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 画像経路の応答時間が少し増える可能性がある。
+- Mitigation: budget は小さめに留め、thought text は引き続き非表示にしている。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+
 **2026-03-21 10:11 (Asia/Taipei) — Document ForceGemini image layout translation plan**
 
 ### Summary

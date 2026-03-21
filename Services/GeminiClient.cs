@@ -240,7 +240,9 @@ public sealed class GeminiClient
                 thinkingConfig = new
                 {
                     includeThoughts = false,
-                    thinkingBudget = 0
+                    // WHY: Image-to-layout translation benefits from a small amount of reasoning,
+                    // but we still hide thought text and keep latency bounded for hotkey use.
+                    thinkingBudget = 1024
                 }
             }
         };
@@ -346,10 +348,9 @@ public sealed class GeminiClient
     {
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
         return $@"Translate all visible text in this image into {targetLanguage}.
-Output only the translated text in UTF-8 characters.
-Do not output JSON, Markdown, notes, explanations, or image descriptions.
-Preserve line breaks, blank lines, paragraph breaks, list formatting, and rough reading order as much as possible.
-If some text is unreadable, leave it unclear rather than inventing content.";
+Output only the translated text.
+Do not output JSON, Markdown, notes, or image descriptions.
+If some text is unreadable, do not invent missing content";
     }
 
     private static string ResolveGeminiLanguageName(string? language)
