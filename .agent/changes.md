@@ -1470,3 +1470,31 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
+**2026-03-21 12:34 (Asia/Taipei) — Prevent duplicate app launches**
+
+### Summary
+- `App` 起動時に single-instance guard を追加し、2重起動時は既存ウィンドウを前面化して終了するようにした。
+
+### Context / Goal
+- アプリの重複起動を防ぎ、誤って複数プロセスを立ち上げても UI を増やさないようにしたかった。
+- 2個目の起動でも既存インスタンスへ戻れる最低限の UX を確保したかった。
+
+### Changes
+- `App.xaml` から `StartupUri` を外し、起動フローを `App.OnStartup(...)` 管理へ切り替えた。
+- `App.xaml.cs` に named mutex ベースの single-instance guard を追加した。
+- 2重起動時は同じ exe path / session の既存プロセスを探し、最小化解除と前面化を試みてから終了するようにした。
+
+### Files Touched
+- `App.xaml` — `StartupUri` を削除し、`App` 側で起動制御できるようにした。
+- `App.xaml.cs` — mutex 取得、既存インスタンス前面化、明示的な `MainWindow` 生成を実装した。
+
+### Behavioral Impact
+- 同一セッションでアプリを再起動しても、新しいメインウィンドウは開かれず、既存インスタンスのウィンドウ復元を試みてから終了する。
+- 起動シーケンスは `App` 管理に変わるが、初回起動時の通常表示は従来どおり `MainWindow` が開く。
+
+### Risk & Mitigation
+- Risk: 既存インスタンスのメインウィンドウハンドルがまだ無い場合、前面化できずに静かに終了する可能性がある。
+- Mitigation: 既存候補は exe path と session を突き合わせて誤検出を避け、前面化は best effort に留めた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
