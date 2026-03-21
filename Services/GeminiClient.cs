@@ -80,7 +80,7 @@ public sealed class GeminiClient
             },
             generationConfig = new
             {
-                temperature = 0.3,
+                temperature = 0.8,
                 // NOTE: Cap output to avoid runaway verbose responses that stall the overlay.
                 maxOutputTokens = 4096,
                 responseMimeType = "application/json",
@@ -348,9 +348,9 @@ public sealed class GeminiClient
     {
         var targetLanguage = ResolveGeminiLanguageName(settings.TargetLanguage);
         return $@"Translate all visible text in this image into {targetLanguage}.
-Output only the translated text.
-Do not output JSON, Markdown, notes, or image descriptions.
-If some text is unreadable, do not invent missing content";
+                Output only the translated text.
+                Combine into a single paragraph, except for menus and lists.
+                Do not output JSON, Markdown, notes, or image descriptions.";
     }
 
     private static string ResolveGeminiLanguageName(string? language)
