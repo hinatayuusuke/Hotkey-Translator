@@ -2934,7 +2934,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Force run", ForceRunKey, ForceRunModifiers);
             yield return ("Force run next ROI slot", ForceRunNextRoiKey, ForceRunNextRoiModifiers);
             yield return ("Force run next+1 ROI slot", ForceRunNextNextRoiKey, ForceRunNextNextRoiModifiers);
-            yield return ("Force Gemini (strict)", ForceGeminiStrictKey, ForceGeminiStrictModifiers);
+            yield return ("Gemini Image Translate", ForceGeminiStrictKey, ForceGeminiStrictModifiers);
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);

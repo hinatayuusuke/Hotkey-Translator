@@ -1241,6 +1241,34 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
 
+**2026-03-21 11:52 (Asia/Taipei) — Rename ForceGemini UI label to Gemini Image Translate**
+
+### Summary
+- `ForceGeminiStrict` の UI 表示名を `Gemini Image Translate` に変更した。
+
+### Context / Goal
+- 現在の機能内容が「Force Gemini」より「Gemini 画像直送翻訳」に近く、UI 名称を合わせたかった。
+- まずは内部名を変えず、ユーザーに見える表示文言だけを調整したかった。
+
+### Changes
+- ホットキー設定画面のラベル文言を `Gemini Image Translate` に変更した。
+- ホットキー一覧の表示名を `Gemini Image Translate` に変更した。
+
+### Files Touched
+- `UI/HotkeysControl.xaml` — ホットキー設定のラベルを `Gemini Image Translate` に変更した。
+- `MainWindow.xaml.cs` — ホットキー一覧向け表示名を `Gemini Image Translate` に変更した。
+
+### Behavioral Impact
+- ユーザーに見えるホットキー名が `Gemini Image Translate` になる。
+- 内部キー名、設定保存キー、処理ロジックには影響しない。
+
+### Risk & Mitigation
+- Risk: ログや内部名との用語差が一時的に残る。
+- Mitigation: 今回は UI 名だけに限定し、内部リネームは別タスクに分けた。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+
 **2026-03-21 10:47 (Asia/Taipei) — Raise ForceGemini image path to low thinking budget**
 
 ### Summary

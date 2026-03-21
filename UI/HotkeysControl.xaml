@@ -242,7 +242,7 @@
                             <ColumnDefinition Width="96" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <TextBlock x:Name="HotkeyForceGeminiStrictLabel" Grid.Column="0" Text="Force Gemini (strict)" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <TextBlock x:Name="HotkeyForceGeminiStrictLabel" Grid.Column="0" Text="Gemini Image Translate" Style="{StaticResource HotkeyRowLabelStyle}" />
                         <ComboBox Grid.Column="1" x:Name="HotkeyForceGeminiStrictKeyBox" Width="88"
                                   SelectedItem="{Binding Settings.HotkeyForceGeminiStrictKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
