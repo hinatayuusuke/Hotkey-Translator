@@ -78,7 +78,7 @@ public sealed class AppSettings
     public double BlackVarianceThreshold { get; set; } = 8.0;
     public int BlackSampleStride { get; set; } = 8;
     public double ProviderCooldownSeconds { get; set; } = 0.5;
-    public int PhashThreshold { get; set; } = 4;
+    public int PhashThreshold { get; set; } = 0;
     public double OcrIouThreshold { get; set; } = 0.85;
     public bool EnableOcrBinarization { get; set; } = false;
     public int OcrBinarizationThreshold { get; set; } = 160;
