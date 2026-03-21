@@ -16,6 +16,7 @@ internal sealed class TranslateStage
     private readonly CacheKeyBuilder _cacheKeyBuilder;
     private readonly TranslationFallbackService _translationService;
     private readonly AppLogger _logger;
+    private readonly UserGlossaryService _userGlossaryService;
     private readonly Dictionary<string, string> _lastTranslations = new(StringComparer.Ordinal);
 
     public TranslateStage(
@@ -24,6 +25,7 @@ internal sealed class TranslateStage
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         TranslationFallbackService translationService,
+        UserGlossaryService userGlossaryService,
         AppLogger logger)
     {
         _normalizationService = normalizationService;
@@ -31,6 +33,7 @@ internal sealed class TranslateStage
         _cacheRepository = cacheRepository;
         _cacheKeyBuilder = cacheKeyBuilder;
         _translationService = translationService;
+        _userGlossaryService = userGlossaryService;
         _logger = logger;
     }
 
@@ -51,16 +54,19 @@ internal sealed class TranslateStage
         var translations = new Dictionary<int, string>();
         var pending = new List<PendingTranslation>();
         var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
+        var glossaryScope = _userGlossaryService.BuildGlossaryScope(settings);
 
         foreach (var unit in units)
         {
             var translationSourceText = _translationTextNormalizer.NormalizeForTranslation(unit.Text, settings.SourceLanguage);
+            var glossaryPrepared = _userGlossaryService.Prepare(translationSourceText, settings);
             var normalized = _normalizationService.Normalize(translationSourceText);
             if (string.IsNullOrWhiteSpace(normalized))
             {
                 continue;
             }
 
+            var normalizedKey = BuildLastTranslationKey(glossaryScope, normalized);
             var key = _cacheKeyBuilder.Build(settings, normalized);
             if (!options.SkipTranslationCache)
             {
@@ -68,20 +74,20 @@ internal sealed class TranslateStage
                 if (!string.IsNullOrWhiteSpace(cached))
                 {
                     translations[unit.Id] = cached;
-                    _lastTranslations[normalized] = cached;
+                    _lastTranslations[normalizedKey] = cached;
                     continue;
                 }
 
-                if (_lastTranslations.TryGetValue(normalized, out var last))
+                if (_lastTranslations.TryGetValue(normalizedKey, out var last))
                 {
                     translations[unit.Id] = last;
                     continue;
                 }
             }
 
-            if (changedUnitIds.Contains(unit.Id) && pendingNormalized.Add(normalized))
+            if (changedUnitIds.Contains(unit.Id) && pendingNormalized.Add(normalizedKey))
             {
-                pending.Add(new PendingTranslation(unit.Id, translationSourceText, normalized, key));
+                pending.Add(new PendingTranslation(unit.Id, translationSourceText, glossaryPrepared, normalizedKey, key));
             }
         }
 
@@ -92,7 +98,12 @@ internal sealed class TranslateStage
         }
 
         _logger.Info($"Translation pending: {pending.Count} items.");
-        var pendingTexts = pending.Select(item => item.SourceText).ToList();
+        var pendingTexts = pending.Select(item => item.Prepared.ProtectedSourceText).ToList();
+        var glossaryHitCount = pending.Sum(item => item.Prepared.HitCount);
+        if (glossaryHitCount > 0)
+        {
+            _logger.Info($"glossary_prepare hits={glossaryHitCount} items={pending.Count}.");
+        }
         _logger.Info(BuildTranslationPayloadLog(pending));
         onTranslationStarted?.Invoke();
         IReadOnlyDictionary<string, string> results;
@@ -107,14 +118,25 @@ internal sealed class TranslateStage
 
         foreach (var item in pending)
         {
-            if (!results.TryGetValue(item.SourceText, out var translated) || string.IsNullOrWhiteSpace(translated))
+            if (!results.TryGetValue(item.Prepared.ProtectedSourceText, out var translated) || string.IsNullOrWhiteSpace(translated))
             {
                 continue;
             }
 
-            await _cacheRepository.SaveAsync(item.CacheKey, translated, cancellationToken).ConfigureAwait(false);
-            _lastTranslations[item.Normalized] = translated;
-            translations[item.UnitId] = translated;
+            var restoreResult = _userGlossaryService.Restore(translated, item.Prepared);
+            if (restoreResult.UnresolvedCount > 0)
+            {
+                _logger.Info($"glossary_restore miss unit={item.UnitId} unresolved={restoreResult.UnresolvedCount}.");
+            }
+
+            if (restoreResult.RestoredCount > 0)
+            {
+                _logger.Info($"glossary_restore restored unit={item.UnitId} count={restoreResult.RestoredCount}.");
+            }
+
+            await _cacheRepository.SaveAsync(item.CacheKey, restoreResult.Text, cancellationToken).ConfigureAwait(false);
+            _lastTranslations[item.NormalizedKey] = restoreResult.Text;
+            translations[item.UnitId] = restoreResult.Text;
         }
 
         if (options.SkipTranslationCache)
@@ -126,7 +148,8 @@ internal sealed class TranslateStage
         {
             var translationSourceText = _translationTextNormalizer.NormalizeForTranslation(unit.Text, settings.SourceLanguage);
             var normalized = _normalizationService.Normalize(translationSourceText);
-            if (_lastTranslations.TryGetValue(normalized, out var translated))
+            var normalizedKey = BuildLastTranslationKey(glossaryScope, normalized);
+            if (_lastTranslations.TryGetValue(normalizedKey, out var translated))
             {
                 translations[unit.Id] = translated;
             }
@@ -161,6 +184,16 @@ internal sealed class TranslateStage
                 builder.Append("...(truncated)");
             }
             builder.Append('"');
+            if (!string.Equals(item.SourceText, item.Prepared.ProtectedSourceText, StringComparison.Ordinal))
+            {
+                var protectedPreview = ToVisiblePreview(item.Prepared.ProtectedSourceText, maxPreviewChars, out var protectedTruncated);
+                builder.Append($", protected=\"{protectedPreview}");
+                if (protectedTruncated)
+                {
+                    builder.Append("...(truncated)");
+                }
+                builder.Append('"');
+            }
         }
 
         if (pending.Count > previewCount)
@@ -227,5 +260,15 @@ internal sealed class TranslateStage
         return escaped[..maxChars];
     }
 
-    private sealed record PendingTranslation(int UnitId, string SourceText, string Normalized, string CacheKey);
+    private static string BuildLastTranslationKey(string glossaryScope, string normalized)
+    {
+        return $"{glossaryScope}_{normalized}";
+    }
+
+    private sealed record PendingTranslation(
+        int UnitId,
+        string SourceText,
+        UserGlossaryService.GlossaryPreparedText Prepared,
+        string NormalizedKey,
+        string CacheKey);
 }

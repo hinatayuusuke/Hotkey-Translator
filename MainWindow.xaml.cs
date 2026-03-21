@@ -357,7 +357,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var ocrPreprocess = new OcrPreprocessService();
         var lineGrouper = new OcrLineGrouper(_logger);
         _sceneTextSnapshotService = new SceneTextSnapshotService(_captureManager, _ocrEngine, lineGrouper, _logger);
-        var keyBuilder = new CacheKeyBuilder();
+        var userGlossaryService = new UserGlossaryService(_settingsService.UserGlossaryDirectoryPath, _logger);
+        var keyBuilder = new CacheKeyBuilder(userGlossaryService);
         var translationService = new TranslationFallbackService(translationProviders, _logger);
 
         _pipeline = new PipelineOrchestrator(
@@ -373,6 +374,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _cacheRepository,
             keyBuilder,
             translationService,
+            userGlossaryService,
             geminiClient,
             _overlayPresenter,
             _settingsService,

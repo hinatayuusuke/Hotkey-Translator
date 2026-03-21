@@ -1498,3 +1498,79 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
+**2026-03-21 23:09 (Asia/Taipei) — Add current-pipeline user glossary term fixing**
+
+### Summary
+- 通常翻訳経路に user glossary の保護・復元を追加し、cache と直近訳再利用も glossary 変更で正しく切り替わるようにした。
+
+### Context / Goal
+- `Doc/UserGlossary_TermFix_CurrentPipeline_Implementation_Plan.md` に沿って、現行 `TranslateStage` ベースの glossary 固定訳を実装したかった。
+- provider 共通で用語を安定化しつつ、`ForceGeminiStrict` 画像直送のような別経路には影響を広げたくなかった。
+
+### Changes
+- `UserGlossaryEntry` と `UserGlossaryService` を追加し、言語フィルタ付き glossary の最長一致保護、ASCII 単語境界ガード、placeholder 復元を実装した。
+- `AppSettings` に `UserGlossaryEntries` を追加した。
+- `CacheKeyBuilder` を更新し、`GlossaryVersion` に加えて有効 glossary entries の deterministic hash を含む scope を cache key に使うようにした。
+- `TranslateStage` に glossary 適用を統合し、provider へは protected text を送信、復元後の最終訳を cache / `_lastTranslations` / overlay へ流すようにした。
+- `_lastTranslations` のキーも glossary scope を含む形に変え、settings.json 手編集時でも stale reuse を避けるようにした。
+- glossary hit / restore の既存 logger 向け情報ログを追加し、payload preview に protected text も出せるようにした。
+
+### Files Touched
+- `Models/UserGlossaryEntry.cs` — glossary entry model を追加した。
+- `Models/AppSettings.cs` — `UserGlossaryEntries` を追加した。
+- `Services/Translation/UserGlossaryService.cs` — glossary 保護・復元・scope hash 計算を実装した。
+- `Services/CacheKeyBuilder.cs` — glossary scope を cache key に反映するようにした。
+- `Services/Orchestration/Stages/TranslateStage.cs` — glossary の prepare/restore と `_lastTranslations` の scope-aware 化を実装した。
+
+### Behavioral Impact
+- 通常翻訳経路では、settings に登録した glossary 用語が provider 共通で placeholder 保護され、翻訳後に固定訳へ戻るようになった。
+- glossary entries や `GlossaryVersion` が変わると、cache と `_lastTranslations` の再利用キーも変わる。
+- `ForceGeminiStrict` の画像直送モードは `TranslateStage` を通らないため、本実装の対象外のままである。
+- UI はまだ無いため、初期利用は `settings.json` の `UserGlossaryEntries` 手編集前提である。
+
+### Risk & Mitigation
+- Risk: placeholder を provider が壊すと復元できない可能性がある。
+- Mitigation: 壊れにくい ASCII placeholder を使い、未復元件数をログへ出すようにした。
+- Risk: 短い ASCII glossary が部分一致で誤爆する可能性がある。
+- Mitigation: ASCII-only terms には単語境界ガードを入れ、CJK terms は従来どおり部分一致で扱うようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+**2026-03-21 23:14 (Asia/Taipei) — Switch user glossary to startup-loaded glossary files**
+
+### Summary
+- user glossary の読込元を `Settings.json` から辞書フォルダ配下の JSON ファイルへ切り替え、起動時に一度だけロードする方式へ変更した。
+
+### Context / Goal
+- glossary が設定ファイル肥大化の原因になりやすく、翻訳資産として別管理したかった。
+- 読み込み失敗した辞書は無視し、まずは起動時ロードだけで十分という要件に合わせたかった。
+
+### Changes
+- `SettingsService` に `UserGlossaryDirectoryPath` を追加し、`%AppData%\Hotkey-Translator\UserGlossaries` を glossary ルートとして起動時に作成するようにした。
+- `UserGlossaryService` を folder-backed 実装へ置き換え、`*.json` を起動時に読み込んで保持するようにした。
+- glossary ファイルは `{ name, entries }` 形式と bare array 形式の両方を受け付け、壊れたファイルはログを出して無視するようにした。
+- `CacheKeyBuilder` と `TranslateStage` は `Settings.json` ではなく、起動時にロードした glossary snapshot を共有するようにした。
+- `AppSettings` から `UserGlossaryEntries` を削除し、glossary 本体を settings 永続化対象から外した。
+
+### Files Touched
+- `Services/SettingsService.cs` — glossary directory path を追加し、起動時に辞書フォルダを作成するようにした。
+- `Services/Translation/UserGlossaryService.cs` — folder-backed glossary loader と保護・復元処理を実装した。
+- `Services/CacheKeyBuilder.cs` — 起動時 glossary snapshot 由来の scope を cache key に使うようにした。
+- `Services/Orchestration/Stages/TranslateStage.cs` — injected glossary service を参照するようにした。
+- `Services/PipelineOrchestrator.cs` — glossary service を `TranslateStage` へ流すようにした。
+- `MainWindow.xaml.cs` — app load 後に glossary service を生成して pipeline へ渡すようにした。
+- `Models/AppSettings.cs` — `UserGlossaryEntries` を削除した。
+
+### Behavioral Impact
+- glossary は `%AppData%\Hotkey-Translator\UserGlossaries\*.json` からだけ読み込まれる。
+- 読み込み失敗した glossary ファイルは無視され、アプリ起動自体は継続する。
+- glossary 変更は次回起動時に反映される。runtime watcher や自動再読込はまだ無い。
+
+### Risk & Mitigation
+- Risk: フォルダ移行後に既存 `Settings.json` 内 glossary を参照しなくなる。
+- Mitigation: `AppSettings` から本体を外し、今後の glossary source を folder に一本化した。
+- Risk: 壊れた glossary ファイルに気づきにくい可能性がある。
+- Mitigation: ファイルごとの skip を既存 logger に出し、他ファイルの読込は継続するようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`

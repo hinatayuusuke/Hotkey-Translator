@@ -107,6 +107,7 @@ public sealed class PipelineOrchestrator
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         TranslationFallbackService translationService,
+        UserGlossaryService userGlossaryService,
         GeminiClient geminiClient,
         OverlayPresenter overlayPresenter,
         SettingsService settingsService,
@@ -127,6 +128,7 @@ public sealed class PipelineOrchestrator
             cacheRepository,
             cacheKeyBuilder,
             translationService,
+            userGlossaryService,
             _logger);
         _geminiClient = geminiClient;
         _overlayPresenter = overlayPresenter;

@@ -17,6 +17,7 @@ public sealed class SettingsService
         var root = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Hotkey-Translator");
         SettingsPath = Path.Combine(root, "settings.json");
         CachePath = Path.Combine(root, "cache.sqlite");
+        UserGlossaryDirectoryPath = Path.Combine(root, "UserGlossaries");
         _repository = new JsonSettingsRepository(SettingsPath);
         _secretProtector = new DpapiSecretProtector();
     }
@@ -24,21 +25,25 @@ public sealed class SettingsService
     internal SettingsService(
         string settingsPath,
         string cachePath,
+        string userGlossaryDirectoryPath,
         ISettingsRepository repository,
         ISecretProtector secretProtector)
     {
         SettingsPath = settingsPath;
         CachePath = cachePath;
+        UserGlossaryDirectoryPath = userGlossaryDirectoryPath;
         _repository = repository;
         _secretProtector = secretProtector;
     }
 
     public string SettingsPath { get; }
     public string CachePath { get; }
+    public string UserGlossaryDirectoryPath { get; }
     public AppSettings Settings { get; private set; } = new();
 
     public async Task LoadAsync()
     {
+        Directory.CreateDirectory(UserGlossaryDirectoryPath);
         var loaded = await _repository.LoadAsync(CancellationToken.None).ConfigureAwait(false);
         if (loaded is null)
         {
