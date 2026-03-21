@@ -373,6 +373,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _cacheRepository,
             keyBuilder,
             translationService,
+            geminiClient,
             _overlayPresenter,
             _settingsService,
             _logger);

@@ -1241,6 +1241,64 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
 
+**2026-03-21 10:11 (Asia/Taipei) — Document ForceGemini image layout translation plan**
+
+### Summary
+- `ForceGeminiStrict` を OCR スキップの Gemini 画像直送モードへ変える実装案を `Doc/` に追加した。
+
+### Context / Goal
+- `Force Gemini` を OCR 後の text translation 固定ではなく、ROI 画像を Gemini に直接渡してレイアウト保持翻訳させる機能へ変えたかった。
+- 実装前に pipeline 分岐、Gemini API、overlay 表示方針を整理したかった。
+
+### Changes
+- `Doc/ForceGemini_ImageLayoutTranslation_Implementation_Plan.md` を追加し、専用 pipeline 分岐、Gemini image API、single-block overlay 方針を整理した。
+- v1 は座標要求なし、ROI 全体単一ブロック表示、通常 OCR 経路非変更を前提とすることを明記した。
+
+### Files Touched
+- `Doc/ForceGemini_ImageLayoutTranslation_Implementation_Plan.md` — ForceGemini 画像直送翻訳の実装案を新規追加した。
+
+### Behavioral Impact
+- 実装は未着手で、現行アプリの挙動に変化はない。
+- 今後の実装方針として、`TranslationFallbackService` ではなく `PipelineOrchestrator` の専用分岐で扱う方針が明確になった。
+
+### Risk & Mitigation
+- Risk: 現行の `ForceGeminiStrict` の意味変更による利用者認識ズレがある。
+- Mitigation: ドキュメント上で hotkey 意味変更と単一ブロック overlay の制約を先に明記した。
+
+### Tests / Verification
+- 未実施（ドキュメント追加のみ）
+
+**2026-03-21 10:22 (Asia/Taipei) — Implement ForceGemini image layout translation mode**
+
+### Summary
+- `ForceGeminiStrict` を OCR スキップの Gemini 画像直送モードとして実装した。
+
+### Context / Goal
+- `Force Gemini` を OCR 後の text translation 固定ではなく、ROI 画像を Gemini に直接渡してレイアウト保持翻訳させたかった。
+- 座標要求なしで、既存 overlay へ最小差分で載せる必要があった。
+
+### Changes
+- `GeminiClient` に ROI bitmap を PNG/base64 で Gemini へ送り、plain text のレイアウト保持翻訳を返す `TranslateImagePreservingLayoutAsync(...)` を追加した。
+- `PipelineOrchestrator` に `ForceGeminiStrict` 専用分岐を追加し、OCR / diff / translate stage を通さず、ROI 全体を覆う synthetic reading unit 1 件として overlay へ流すようにした。
+- hotkey ログ文言を新しい挙動に合わせて更新し、`PipelineOrchestrator` 生成時に `GeminiClient` を直接注入するようにした。
+
+### Files Touched
+- `Services/GeminiClient.cs` — Gemini 画像直送 API、画像用 prompt、plain text 応答整形を追加した。
+- `Services/PipelineOrchestrator.cs` — `ForceGeminiStrict` 時の OCR バイパス分岐と single-block overlay 経路を追加した。
+- `Services/Application/HotkeyCommandController.cs` — hotkey 実行ログを OCR スキップ画像モード向けに更新した。
+- `MainWindow.xaml.cs` — `GeminiClient` を `PipelineOrchestrator` へ渡すようにした。
+
+### Behavioral Impact
+- `ForceGeminiStrict` 実行時は OCR を行わず、ROI 画像を Gemini へ直接送って翻訳結果を ROI 全体 single block として表示する。
+- 通常 OCR モード、通常の translation provider fallback、VisionLLM など既存経路の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 座標なしのため、複数吹き出しや複雑なレイアウトでも ROI 全体単一ブロック表示になる。
+- Mitigation: v1 は single-block overlay に限定し、座標復元は行わない前提を維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -c Release`
+
 **2026-03-20 21:23 (Asia/Taipei) — Reorder OCR engine combo so OneOCR follows WinRT**
 
 ### Summary

@@ -104,7 +104,7 @@ internal sealed class HotkeyCommandController
     public async Task HandleForceGeminiStrictHotkeyAsync()
     {
         EnsureTranslatedOverlayForRunHotkeys();
-        _appendLog("Force Gemini strict run: skip pHash, OCR diff, translation cache.");
+        _appendLog("Force Gemini image run: skip pHash, OCR, OCR diff, translation cache.");
         await _runOnceWithOptionsAsync(
                 new ForceRunOptions(
                     SkipPhash: true,

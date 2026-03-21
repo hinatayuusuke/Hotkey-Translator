@@ -46,6 +46,7 @@ public sealed class PipelineOrchestrator
     private readonly OcrAndGroupStage _ocrAndGroupStage;
     private readonly DiffStage _diffStage;
     private readonly TranslateStage _translateStage;
+    private readonly GeminiClient _geminiClient;
     private readonly OverlayPresenter _overlayPresenter;
     private readonly OverlayStage _overlayStage;
     private readonly SettingsService _settingsService;
@@ -106,6 +107,7 @@ public sealed class PipelineOrchestrator
         CacheRepository cacheRepository,
         CacheKeyBuilder cacheKeyBuilder,
         TranslationFallbackService translationService,
+        GeminiClient geminiClient,
         OverlayPresenter overlayPresenter,
         SettingsService settingsService,
         AppLogger logger)
@@ -126,6 +128,7 @@ public sealed class PipelineOrchestrator
             cacheKeyBuilder,
             translationService,
             _logger);
+        _geminiClient = geminiClient;
         _overlayPresenter = overlayPresenter;
         _overlayStage = new OverlayStage(_overlayPresenter);
         _settingsService = settingsService;
@@ -257,6 +260,22 @@ public sealed class PipelineOrchestrator
             else
             {
                 _lastHash = null;
+            }
+
+            if (options.ForceGeminiStrict &&
+                await TryRunForceGeminiImageLayoutAsync(
+                        context,
+                        roiBitmap,
+                        roiScreen,
+                        overlayClipScreen,
+                        frame,
+                        settings,
+                        cancellationToken,
+                        perfProbe,
+                        suppressWpfOverlay)
+                    .ConfigureAwait(false))
+            {
+                return;
             }
 
             Bitmap? ocrInput = null;
@@ -401,6 +420,100 @@ public sealed class PipelineOrchestrator
 
             _gate.Release();
         }
+    }
+
+    private async Task<bool> TryRunForceGeminiImageLayoutAsync(
+        PipelineExecutionContext context,
+        Bitmap roiBitmap,
+        Rect roiScreen,
+        Rect? overlayClipScreen,
+        CaptureFrame frame,
+        AppSettings settings,
+        CancellationToken cancellationToken,
+        PipelinePerfProbe perfProbe,
+        bool suppressWpfOverlay)
+    {
+        _logger.Info("stage=force_gemini_image event=begin.");
+        TranslationStarted?.Invoke();
+        string? translatedText;
+        try
+        {
+            translatedText = await _geminiClient
+                .TranslateImagePreservingLayoutAsync(roiBitmap, settings, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            TranslationCompleted?.Invoke();
+        }
+
+        if (string.IsNullOrWhiteSpace(translatedText))
+        {
+            _logger.Info("stage=force_gemini_image event=empty.");
+            ApplyStopResult(
+                context,
+                PipelineStageResult.Stop(
+                    PipelineStopReason.NoTextDetected,
+                    PipelineOverlayAction.ShowLast,
+                    "Gemini image translation returned empty output."),
+                frame.Bounds,
+                suppressWpfOverlay: suppressWpfOverlay);
+            return true;
+        }
+
+        var syntheticUnit = BuildForceGeminiReadingUnit(translatedText, roiScreen);
+        var readingUnits = new[] { syntheticUnit };
+        var groupedLines = new[]
+        {
+            new OcrLine(
+                syntheticUnit.Text,
+                syntheticUnit.Rect,
+                1.0f,
+                syntheticUnit.LineCount,
+                syntheticUnit.LineHeight)
+        };
+        var translations = new Dictionary<int, string>
+        {
+            [syntheticUnit.Id] = translatedText
+        };
+
+        context.GroupedLines = groupedLines;
+        context.ReadingUnits = readingUnits;
+        context.ChangedUnitIds = new HashSet<int> { syntheticUnit.Id };
+        context.IsDiffUnchanged = false;
+        context.Translations[syntheticUnit.Id] = translatedText;
+
+        var overlayItems = _overlayStage.BuildItems(
+            readingUnits,
+            translations,
+            roiScreen,
+            frame.Bounds,
+            settings,
+            _overlayTextMode);
+        context.OverlayItems = overlayItems;
+        CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
+        var overlayStopwatch = perfProbe.BeginStep();
+        UpdateWpfOverlayRouting(overlayItems, overlayClipScreen, suppressWpfOverlay);
+        TryUpdateGraphicsHookOverlayV2(frame, overlayItems, settings);
+        context.FinalStageResult = PipelineStageResult.ContinueExecution();
+        perfProbe.RecordOverlay(overlayStopwatch);
+        _logger.Info(
+            $"stage=force_gemini_image event=success chars={translatedText.Length} lineCount={syntheticUnit.LineCount}.");
+        return true;
+    }
+
+    private static ReadingUnit BuildForceGeminiReadingUnit(string translatedText, Rect roiScreen)
+    {
+        var normalized = translatedText
+            .Replace("\r\n", "\n")
+            .Replace('\r', '\n');
+        var lineCount = Math.Max(1, normalized.Split('\n', StringSplitOptions.None).Length);
+        var lineHeight = roiScreen.Height > 0
+            ? roiScreen.Height / Math.Max(1, lineCount)
+            : 0;
+        // WHY: Force Gemini image mode has no per-line geometry, so the translated payload is treated
+        // as a single ROI-sized synthetic block rather than pretending to preserve OCR coordinates.
+        return new ReadingUnit(0, normalized, roiScreen, lineCount, lineHeight, new[] { 0 });
     }
 
     public bool TrySetOverlayTextMode(
