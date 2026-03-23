@@ -1574,3 +1574,157 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
+
+**2026-03-23 14:59 (Asia/Taipei) — Add reset-all-settings action with confirmation**
+
+### Summary
+- System ページに全設定リセットボタンを追加し、確認後に first-run default へ戻せるようにした。
+
+### Context / Goal
+- 全ての設定を既定値へ戻す操作を追加したかった。
+- 誤操作コストが高いため、System ページに配置し、確認ダイアログを必須にしたかった。
+
+### Changes
+- `SystemSettingsControl` に `Reset All Settings` ボタンと説明文を追加した。
+- `SystemSettingsControl` から親ウィンドウへ click を中継するイベントを追加した。
+- `MainWindow` に確認ダイアログ付きの reset handler を追加した。
+- reset は `SettingsService.CreateDefaultSettings()` を使って first-run default を生成し、既存の save pipeline に流すようにした。
+- `SettingsService` に既定設定生成メソッドを公開し、初期化時にも同じ既定値経路を使うよう揃えた。
+
+### Files Touched
+- `UI/SystemSettingsControl.xaml` — System ページ下部に `Reset All Settings` ボタンと補助文を追加した。
+- `UI/SystemSettingsControl.xaml.cs` — reset ボタンの RoutedEvent を親へ中継するイベントを追加した。
+- `MainWindow.xaml` — `SystemSettingsControl` の reset イベントを `OnResetAllSettingsClicked` へ配線した。
+- `MainWindow.xaml.cs` — 確認ダイアログ表示、default 設定ロード、既存 save pipeline 実行、結果ログ出力を追加した。
+- `Services/SettingsService.cs` — first-run default を返す `CreateDefaultSettings()` を公開し、サービス初期状態にも適用した。
+
+### Behavioral Impact
+- System ページから全設定を既定値へ戻せるようになった。
+- リセット時は必ず確認ダイアログが表示され、承認後にのみ保存処理へ進む。
+- 実際の保存は既存の settings save pipeline を通るため、通常の設定変更と同じ validation / host setup / rollback が適用される。
+
+### Risk & Mitigation
+- Risk: 全設定リセットは影響範囲が広く、誤操作すると ROI や hotkey を含む保存設定が失われる。
+- Mitigation: ボタンを System ページへ隔離し、確認ダイアログを必須にしたうえで、キャンセル時はログを出して何も変更しないようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -p:UseAppHost=false`
+- `rg -n "Reset All Settings|ResetAllSettingsClicked|OnResetAllSettingsClicked|CreateDefaultSettings\(" UI/SystemSettingsControl.xaml UI/SystemSettingsControl.xaml.cs MainWindow.xaml MainWindow.xaml.cs Services/SettingsService.cs`
+
+**2026-03-23 15:08 (Asia/Taipei) — Update Japanese and English README for bundled uv and llama.cpp**
+
+### Summary
+- 日本語 / 英語 README を、配布版に `uv` と llama.cpp ランタイムが同梱される前提へ更新した。
+
+### Context / Goal
+- 配布物では `Tools\uv\uv.exe` と `TranslationServiceLlama\LlamaCpp\` が含まれるようになっており、README の依存関係説明が古くなっていた。
+- ソース実行時の前提と、配布版に含まれる実行要素 / 含まれない要素を両言語で明確にしたかった。
+
+### Changes
+- `README.md` を全面更新し、配布版に含まれるもの、未同梱物、初回実行時の挙動、ソース実行時の前提を整理した。
+- `README.en.md` も同じ構成で更新し、英語版の内容を現在の distribution に合わせた。
+- OCR エンジン一覧に OneOCR を反映した。
+- llama.cpp ランタイムは同梱、ただし GGUF / mmproj は未同梱である点を明記した。
+
+### Files Touched
+- `README.md` — 日本語 README を現行 distribution 前提で全面更新した。
+- `README.en.md` — 英語 README を現行 distribution 前提で全面更新した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- 利用者は、配布版では `uv` と llama.cpp ランタイムを別途用意しなくてよい一方、モデルや OneOCR vendor は別扱いであることを README から理解できるようになる。
+
+### Risk & Mitigation
+- Risk: README の説明が build-dist の実装とズレると、配布時の期待値が再び不一致になる。
+- Mitigation: `build-dist.ps1` の同梱内容 (`uv`, `TranslationServiceLlama`, `Magpie`, `OneOcrHelper`) と `DIST-NOTES` 相当の内容に合わせて記述した。
+
+### Tests / Verification
+- `rg -n "配布版に含まれるもの|Tools\\uv\\uv.exe|llama.cpp runtime|OneOCR vendor|ソースから動かす場合の前提|What The Distribution Includes|Requirements For Running From Source|model payloads|OneOCR / PaddleOCR" README.md README.en.md`
+
+**2026-03-23 15:13 (Asia/Taipei) — Add uv and llama.cpp to third-party notes**
+
+### Summary
+- 日本語 / 英語 README のサードパーティ節に `uv` と llama.cpp runtime の記述を追加した。
+
+### Context / Goal
+- 配布版に `Tools\uv\uv.exe` と `TranslationServiceLlama\LlamaCpp\` を含めている一方、サードパーティ節にはその記載がなかった。
+- 再配布時の注意点として、同梱 third-party runtime を README 上でも明示したかった。
+
+### Changes
+- 日本語 README のサードパーティ節に Astral `uv` と llama.cpp runtime の項目を追加した。
+- 英語 README のサードパーティ節にも同内容を追加した。
+- どちらも upstream license / notice と、model file 再配布条件の確認が必要である点を明記した。
+
+### Files Touched
+- `README.md` — サードパーティ節へ `uv` と llama.cpp runtime の説明を追加した。
+- `README.en.md` — サードパーティ節へ `uv` と llama.cpp runtime の説明を追加した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- README 上で、配布物に含まれる third-party runtime の一覧がより完全になった。
+
+### Risk & Mitigation
+- Risk: upstream 側の実際のライセンス文書同梱状況と README の説明がズレる可能性がある。
+- Mitigation: README では断定的なライセンス本文を書かず、upstream license / notice の確認を促す表現に留めた。
+
+### Tests / Verification
+- `rg -n "Astral|llama.cpp runtime|Tools/uv/uv.exe|TranslationServiceLlama/LlamaCpp" README.md README.en.md`
+
+**2026-03-23 15:36 (Asia/Taipei) — Add MIT license file and update README license sections**
+
+### Summary
+- ルート `LICENSE` に MIT License を追加し、日本語 / 英語 README のライセンス節を更新した。
+
+### Context / Goal
+- MIT ライセンスを使う前提で、プロジェクト本体のライセンスを明示したかった。
+- README 末尾には「LICENSE がない」と残っていたため、実際の状態へ合わせて修正する必要があった。
+
+### Changes
+- ルートに MIT License の本文を持つ `LICENSE` を追加した。
+- `README.md` のライセンス節を、プロジェクト本体は MIT である旨に更新した。
+- `README.en.md` のライセンス節も同様に更新した。
+
+### Files Touched
+- `LICENSE` — プロジェクト本体の MIT License を追加した。
+- `README.md` — ライセンス節を MIT 前提の説明へ更新した。
+- `README.en.md` — ライセンス節を MIT 前提の説明へ更新した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- リポジトリのルートでプロジェクト本体のライセンスを明示できるようになった。
+
+### Risk & Mitigation
+- Risk: 著作権者表記の名義が公開時の運用方針と異なる可能性がある。
+- Mitigation: `Hotkey Translator contributors` として一般的な表記に留め、必要なら後で名義だけ差し替えやすい独立ファイルにした。
+
+### Tests / Verification
+- `Get-Content -Path LICENSE -Encoding UTF8 | Select-Object -First 6`
+- `Get-Content -Path README.md -Encoding UTF8 | Select-Object -Last 6`
+- `Get-Content -Path README.en.md -Encoding UTF8 | Select-Object -Last 6`
+
+**2026-03-24 00:10 (Asia/Taipei) — Resolve SettingsService merge conflict**
+
+### Summary
+- `SettingsService` の未解決 merge conflict を解消し、glossary ディレクトリ設定と既定設定初期化の両方を保持した。
+
+### Context / Goal
+- `Services/SettingsService.cs` に conflict marker が残っており、ビルド不能状態になっていた。
+- glossary フォルダ対応を維持しつつ、初回起動時の既定設定も `CreateDefaultSettings()` に統一する必要があった。
+
+### Changes
+- `<<<<<<<` / `=======` / `>>>>>>>` を削除した。
+- `UserGlossaryDirectoryPath` プロパティと `Settings = CreateDefaultSettings()` 初期化を両立する形に整理した。
+
+### Files Touched
+- `Services/SettingsService.cs` — merge conflict を解消し、glossary directory と default settings 初期化を同時に保持した。
+
+### Behavioral Impact
+- glossary ディレクトリ作成処理を維持したまま、初回起動時の既定設定が従来どおり適用される。
+- ビルド不能状態が解消された。
+
+### Risk & Mitigation
+- Risk: conflict 解消時にどちらか一方の初期化を落とすと、glossary 読み込みまたは初期設定が壊れる。
+- Mitigation: `UserGlossaryDirectoryPath` と `CreateDefaultSettings()` の両方を残し、Release ビルドで確認した。
+
+### Tests / Verification
+- `dotnet build .\\Hotkey-Translator.sln -c Release`

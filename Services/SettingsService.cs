@@ -39,7 +39,7 @@ public sealed class SettingsService
     public string SettingsPath { get; }
     public string CachePath { get; }
     public string UserGlossaryDirectoryPath { get; }
-    public AppSettings Settings { get; private set; } = new();
+    public AppSettings Settings { get; private set; } = CreateDefaultSettings();
 
     public async Task LoadAsync()
     {
@@ -47,7 +47,7 @@ public sealed class SettingsService
         var loaded = await _repository.LoadAsync(CancellationToken.None).ConfigureAwait(false);
         if (loaded is null)
         {
-            Settings = CreateFirstRunDefaults();
+            Settings = CreateDefaultSettings();
             return;
         }
 
@@ -64,7 +64,7 @@ public sealed class SettingsService
         Settings = loaded;
     }
 
-    private static AppSettings CreateFirstRunDefaults()
+    public static AppSettings CreateDefaultSettings()
     {
         var settings = new AppSettings();
         settings.EnableGoogleWeb = true;
