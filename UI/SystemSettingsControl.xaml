@@ -67,5 +67,20 @@
                                         </TextBox.Style>
                                     </TextBox>
                                 </StackPanel>
+                                <Separator Margin="0,10,0,8" />
+                                <TextBlock Text="Settings Management" Style="{StaticResource SectionTitleTextStyle}" />
+                                <Button x:Name="ResetAllSettingsButton"
+                                        Margin="0,6,0,0"
+                                        HorizontalAlignment="Left"
+                                        Padding="12,4"
+                                        Click="OnResetAllSettingsClicked">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE74D;" Margin="0,0,6,0" />
+                                        <TextBlock Text="Reset All Settings" />
+                                    </StackPanel>
+                                </Button>
+                                <TextBlock Text="NOTE: Resets all saved settings to the first-run defaults after confirmation."
+                                           Style="{StaticResource HelpTextStyle}"
+                                           Margin="0,4,0,0" />
     </StackPanel>
 </UserControl>

@@ -172,7 +172,7 @@
                             <StackPanel x:Name="SettingsPanelSystem"
                                         Margin="0,12,0,0"
                                         Visibility="{Binding SelectedSettingsCategoryIndex, Converter={StaticResource IntToVisibilityConverter}, ConverterParameter=9}">
-                                <ui:SystemSettingsControl />
+                                <ui:SystemSettingsControl ResetAllSettingsClicked="OnResetAllSettingsClicked" />
                             </StackPanel>
                         </StackPanel>
                     </Grid>

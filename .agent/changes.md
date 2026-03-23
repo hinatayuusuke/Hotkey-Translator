@@ -1498,3 +1498,39 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.sln -c Release`
+
+**2026-03-23 14:59 (Asia/Taipei) — Add reset-all-settings action with confirmation**
+
+### Summary
+- System ページに全設定リセットボタンを追加し、確認後に first-run default へ戻せるようにした。
+
+### Context / Goal
+- 全ての設定を既定値へ戻す操作を追加したかった。
+- 誤操作コストが高いため、System ページに配置し、確認ダイアログを必須にしたかった。
+
+### Changes
+- `SystemSettingsControl` に `Reset All Settings` ボタンと説明文を追加した。
+- `SystemSettingsControl` から親ウィンドウへ click を中継するイベントを追加した。
+- `MainWindow` に確認ダイアログ付きの reset handler を追加した。
+- reset は `SettingsService.CreateDefaultSettings()` を使って first-run default を生成し、既存の save pipeline に流すようにした。
+- `SettingsService` に既定設定生成メソッドを公開し、初期化時にも同じ既定値経路を使うよう揃えた。
+
+### Files Touched
+- `UI/SystemSettingsControl.xaml` — System ページ下部に `Reset All Settings` ボタンと補助文を追加した。
+- `UI/SystemSettingsControl.xaml.cs` — reset ボタンの RoutedEvent を親へ中継するイベントを追加した。
+- `MainWindow.xaml` — `SystemSettingsControl` の reset イベントを `OnResetAllSettingsClicked` へ配線した。
+- `MainWindow.xaml.cs` — 確認ダイアログ表示、default 設定ロード、既存 save pipeline 実行、結果ログ出力を追加した。
+- `Services/SettingsService.cs` — first-run default を返す `CreateDefaultSettings()` を公開し、サービス初期状態にも適用した。
+
+### Behavioral Impact
+- System ページから全設定を既定値へ戻せるようになった。
+- リセット時は必ず確認ダイアログが表示され、承認後にのみ保存処理へ進む。
+- 実際の保存は既存の settings save pipeline を通るため、通常の設定変更と同じ validation / host setup / rollback が適用される。
+
+### Risk & Mitigation
+- Risk: 全設定リセットは影響範囲が広く、誤操作すると ROI や hotkey を含む保存設定が失われる。
+- Mitigation: ボタンを System ページへ隔離し、確認ダイアログを必須にしたうえで、キャンセル時はログを出して何も変更しないようにした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.sln -p:UseAppHost=false`
+- `rg -n "Reset All Settings|ResetAllSettingsClicked|OnResetAllSettingsClicked|CreateDefaultSettings\(" UI/SystemSettingsControl.xaml UI/SystemSettingsControl.xaml.cs MainWindow.xaml MainWindow.xaml.cs Services/SettingsService.cs`

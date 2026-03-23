@@ -532,6 +532,37 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         MessageBox.Show(this, message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
+    private async void OnResetAllSettingsClicked(object sender, RoutedEventArgs e)
+    {
+        if (_isApplyingSettings)
+        {
+            return;
+        }
+
+        var result = MessageBox.Show(
+            this,
+            "Reset all saved settings to the first-run defaults?\n\nThis clears saved OCR, translation, overlay, ROI, hotkey, and system settings.",
+            "Reset all settings",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.OK)
+        {
+            AppendLog("Reset all settings canceled.");
+            return;
+        }
+
+        _mainWindowViewModel.Settings.CancelPendingSave();
+        var defaults = SettingsService.CreateDefaultSettings();
+        _settingsUiController.NormalizeOnLoad(defaults);
+        // WHY: Route reset through the normal save pipeline so validation, host setup, and rollback
+        // behavior stay identical to a regular settings edit.
+        _mainWindowViewModel.Settings.LoadFrom(defaults);
+        var saved = await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
+        AppendLog(saved
+            ? "All settings reset to defaults."
+            : "Reset all settings did not complete.");
+    }
+
     private async void OnInstallWinRtLanguagePackClicked(object sender, RoutedEventArgs e)
     {
         await _winRtLanguagePackUiController.InstallNowAsync().ConfigureAwait(true);
