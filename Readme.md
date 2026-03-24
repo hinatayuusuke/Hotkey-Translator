@@ -25,12 +25,15 @@ Hotkey Translator は、画面上のテキストをホットキーで取得し�
 - `Tools\Magpie\`
 - `Native\HookHost\bin\` の x64 / x86 HookHost と Hook agent
 - `Native\OneOcrHelper\bin\OneOcrHelper.exe`
+- `OcrServiceNDL\` で利用する NDLOCR-Lite モデル
 - OCR / 翻訳用の Python サービスソース
 
 そのため、配布版を使うだけなら `uv` や `llama-server.exe` を別途手動配置する前提ではありません。  
 ただし、次のものは配布版には含まれません。
 
 - GGUF / mmproj モデルファイル
+- LlamaCpp の既定 GGUF モデル
+- VisionLLM の既定 GGUF / mmproj モデル
 - OneOCR vendor ファイル
   - `oneocr.dll`
   - `oneocr.onemodel`
@@ -119,12 +122,16 @@ cmake --build Native/build_x86 --config Release --target HookAgentVulkan
   配布時は upstream のライセンスと notice を確認してください。
 - [`TranslationServiceLlama/LlamaCpp/`](./TranslationServiceLlama/LlamaCpp) には llama.cpp runtime バイナリを含みます。  
   配布時は upstream ライセンスに加え、同梱または別配布するモデルファイルの再配布条件も確認してください。
+- `OcrServiceNDL` で利用する NDLOCR-Lite モデルは、[`ndl-lab/ndlocr-lite`](https://github.com/ndl-lab/ndlocr-lite) に基づくものです。  
+  upstream リポジトリでは CC BY 4.0 で公開されているため、配布時はモデル本体・付随ファイル・表示義務を含めて upstream 条件を確認してください。
+- PaddleOCR / PaddleOCR-VL の managed model、LlamaCpp の既定 GGUF、VisionLLM の既定 GGUF / mmproj は配布物に含めていません。  
+  実行時に取得または別途配置して利用する場合は、それぞれの upstream ライセンスとモデル利用条件を確認してください。
 - [`Native/ThirdParty/imgui`](./Native/ThirdParty/imgui) には Dear ImGui を含みます。  
   同梱ライセンスは MIT です。
 - [`Native/ThirdParty/MinHook`](./Native/ThirdParty/MinHook) には MinHook を含みます。  
   同梱ライセンスは BSD 2-Clause です。
 
-公開バイナリを配布する場合は、Magpie 改造版バイナリ、モデルファイル、各 OCR / 推論ランタイム、OneOCR vendor ファイルの扱いについても再配布条件を別途確認してください。
+公開バイナリを配布する場合は、Magpie 改造版バイナリ、NDLOCR-Lite を含むモデルファイル、Paddle / LlamaCpp / VisionLLM の各モデル、各 OCR / 推論ランタイム、OneOCR vendor ファイルの扱いについても再配布条件を別途確認してください。
 
 ## ライセンス
 

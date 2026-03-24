@@ -25,12 +25,15 @@ The online distribution produced by `build-dist.ps1` includes these runtime comp
 - `Tools\\Magpie\\`
 - x64 / x86 HookHost and hook agents under `Native\\HookHost\\bin\\`
 - `Native\\OneOcrHelper\\bin\\OneOcrHelper.exe`
+- NDLOCR-Lite model files used by `OcrServiceNDL`
 - Python OCR / translation service sources
 
 That means the distributed package no longer assumes the user will manually provide `uv` or `llama-server.exe` first.  
 However, the following are still not bundled:
 
 - GGUF / mmproj model payloads
+- Default LlamaCpp GGUF models
+- Default VisionLLM GGUF / mmproj models
 - OneOCR vendor files
   - `oneocr.dll`
   - `oneocr.onemodel`
@@ -119,12 +122,16 @@ This repository includes third-party components that are not original work of th
   When redistributing binaries, verify the upstream license and notice requirements.
 - [`TranslationServiceLlama/LlamaCpp/`](./TranslationServiceLlama/LlamaCpp) includes llama.cpp runtime binaries.  
   When redistributing binaries, verify the upstream license and also the redistribution terms for any model files you bundle or expect users to provide separately.
+- The NDLOCR-Lite models used by `OcrServiceNDL` are based on [`ndl-lab/ndlocr-lite`](https://github.com/ndl-lab/ndlocr-lite).  
+  The upstream repository states that it is published under CC BY 4.0, so verify the upstream redistribution and attribution requirements for the model files and related assets you ship.
+- PaddleOCR / PaddleOCR-VL managed models, default LlamaCpp GGUF models, and default VisionLLM GGUF / mmproj models are not bundled in the distribution.  
+  If you download or place those models at runtime, verify the upstream license and model usage terms for each source.
 - [`Native/ThirdParty/imgui`](./Native/ThirdParty/imgui) contains Dear ImGui.  
   The bundled copy is under the MIT License.
 - [`Native/ThirdParty/MinHook`](./Native/ThirdParty/MinHook) contains MinHook.  
   The bundled copy is under the BSD 2-Clause License.
 
-If you distribute binaries, also verify the redistribution terms for the modified Magpie binaries, model files, OCR / inference runtimes, and any OneOCR vendor files you expect users to provide separately.
+If you distribute binaries, also verify the redistribution terms for the modified Magpie binaries, model files including NDLOCR-Lite assets, Paddle / LlamaCpp / VisionLLM models, OCR / inference runtimes, and any OneOCR vendor files you expect users to provide separately.
 
 ## License
 

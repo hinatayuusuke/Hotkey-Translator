@@ -1728,3 +1728,63 @@
 
 ### Tests / Verification
 - `dotnet build .\\Hotkey-Translator.sln -c Release`
+
+**2026-03-24 13:21 (Asia/Taipei) — Document bundled NDLOCR-Lite models in README**
+
+### Summary
+- 日本語 / 英語 README に、配布物へ NDLOCR-Lite モデルを含む前提の注意書きを追加した。
+
+### Context / Goal
+- 配布物には `ndl-lab/ndlocr-lite` 系のモデルも含まれるため、README の配布内容とサードパーティ節にその記載が必要だった。
+- upstream リポジトリでは CC BY 4.0 公開と明記されているため、再配布条件と attribution 注意を README で補足したかった。
+
+### Changes
+- `README.md` の配布版同梱物一覧へ NDLOCR-Lite モデルを追加した。
+- `README.en.md` の distribution section にも NDLOCR-Lite model files を追加した。
+- 両 README のサードパーティ節へ、`ndl-lab/ndlocr-lite` と CC BY 4.0 に基づく再配布 / 表示義務の確認事項を追記した。
+- 再配布時の総合注意文にも NDLOCR-Lite assets を含めた。
+
+### Files Touched
+- `README.md` — NDLOCR-Lite モデル同梱と upstream ライセンス注意を追記した。
+- `README.en.md` — NDLOCR-Lite model bundling and upstream license note を追記した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- README 上で、配布物に含まれる NDLOCR-Lite モデルと、その再配布条件の確認必要性が明確になった。
+
+### Risk & Mitigation
+- Risk: upstream 側のライセンス表記や再配布条件が将来変わる可能性がある。
+- Mitigation: README では upstream リポジトリ基準の確認を促す表現に留め、固定的な法的断定は避けた。
+
+### Tests / Verification
+- `rg -n "NDLOCR-Lite|ndl-lab/ndlocr-lite|CC BY 4.0|OcrServiceNDL" README.md README.en.md`
+
+**2026-03-24 13:41 (Asia/Taipei) — Clarify non-bundled Paddle, LlamaCpp, and VisionLLM models in README**
+
+### Summary
+- 日本語 / 英語 README に、未同梱だが実行時に利用されうる Paddle / LlamaCpp / VisionLLM モデルの注意書きを追加した。
+
+### Context / Goal
+- PaddleOCR モデルは配布していない一方で、実行時に取得・利用される可能性がある。
+- 同様に、LlamaCpp と VisionLLM の既定モデルも未同梱であるため、README 上で同じ区分として明示する必要があった。
+
+### Changes
+- `README.md` の未同梱一覧へ LlamaCpp と VisionLLM の既定モデルを追加した。
+- `README.en.md` の not bundled section にも default LlamaCpp / VisionLLM models を追加した。
+- 両 README のサードパーティ節に、PaddleOCR / PaddleOCR-VL managed models、LlamaCpp 既定 GGUF、VisionLLM 既定 GGUF / mmproj は未同梱であり、利用時は upstream 条件確認が必要と追記した。
+- 再配布時の総合注意文にも Paddle / LlamaCpp / VisionLLM models を含めた。
+
+### Files Touched
+- `README.md` — 未同梱モデルと再配布注意を追記した。
+- `README.en.md` — not bundled models and redistribution note を追記した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- README 上で、配布物に含まれないが実行時に使われるモデル群の扱いが明確になった。
+
+### Risk & Mitigation
+- Risk: 各 upstream モデルの配布条件は個別で異なり、README だけで完全には網羅できない。
+- Mitigation: README では upstream 条件確認を促す表現に留め、固定的な法的断定は避けた。
+
+### Tests / Verification
+- `rg -n "LlamaCpp|VisionLLM|PaddleOCR / PaddleOCR-VL|Paddle / LlamaCpp / VisionLLM|Default LlamaCpp|Default VisionLLM" README.md README.en.md`
