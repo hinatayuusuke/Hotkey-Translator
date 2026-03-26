@@ -54,7 +54,7 @@
                                           Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.EnableSimpleMergeTuning, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Horizontal writing merge strength" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="Horizontal writing merge" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="HorizontalMergeStrengthSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -69,7 +69,7 @@
                                                Text="{Binding ElementName=HorizontalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Vertical writing merge strength" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="Vertical writing merge" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="VerticalMergeStrengthSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
