@@ -1788,3 +1788,31 @@
 
 ### Tests / Verification
 - `rg -n "LlamaCpp|VisionLLM|PaddleOCR / PaddleOCR-VL|Paddle / LlamaCpp / VisionLLM|Default LlamaCpp|Default VisionLLM" README.md README.en.md`
+
+**2026-03-27 15:42 (Asia/Taipei) — Add text export implementation plan via sub-agent**
+
+### Summary
+- OCR 原文と翻訳文の出力機能について、推奨実装案の計画書を `Doc/` に追加した。
+
+### Context / Goal
+- 直近の pipeline 結果から OCR 原文と翻訳文を出力する機能の推奨方針を、計画書として残したかった。
+- overlay 表示ではなく committed pipeline state を正本にする方針を、後続実装へそのまま渡せる形に整理したかった。
+
+### Changes
+- `Doc/TextExport_OCR_Translation_Implementation_Plan.md` を新規追加した。
+- 内容は `TextExportSnapshot`、`TextExportService`、`PipelineOrchestrator` の read API、clipboard export v1、paired text を既定とする方針で構成した。
+- サブエージェントに文書作成を委譲し、戻り後に UTF-8 で内容確認した。
+
+### Files Touched
+- `Doc/TextExport_OCR_Translation_Implementation_Plan.md` — OCR 原文 / 翻訳文 export 機能の推奨実装案を記述した。
+
+### Behavioral Impact
+- コード動作への影響はない。
+- 後続実装の前提となる設計方針が `Doc/` に明文化された。
+
+### Risk & Mitigation
+- Risk: 実装前提の一部が今後の UI 要件や出力形式要求で変わる可能性がある。
+- Mitigation: v1 を clipboard + paired text に限定し、JSON や hotkey は段階追加にできる構成として整理した。
+
+### Tests / Verification
+- `Get-Content -Path Doc\TextExport_OCR_Translation_Implementation_Plan.md -Encoding UTF8 | Select-Object -First 120`
