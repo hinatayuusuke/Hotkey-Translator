@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.ViewModels;
 
@@ -61,6 +62,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         RuntimeStatus = runtimeStatus;
         Settings.PropertyChanged += OnOverviewDependencyChanged;
         RuntimeStatus.PropertyChanged += OnOverviewDependencyChanged;
+        LocalizationService.Instance.LanguageChanged += OnLocalizationLanguageChanged;
         LlamaModelOptions = new ObservableCollection<LlamaModelOption>();
         VisionLlmModelOptions = new ObservableCollection<LlamaModelOption>();
         VisionLlmMmprojOptions = new ObservableCollection<LlamaModelOption>();
@@ -135,8 +137,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
 
     public string CaptureModeSummary => Settings.CaptureModeTag switch
     {
-        "Screen" => "Screen capture",
-        _ => "Active window capture"
+        "Screen" => LocalizationService.Instance.GetString("Summary_CaptureMode_Screen"),
+        _ => LocalizationService.Instance.GetString("Summary_CaptureMode_ActiveWindow")
     };
 
     public string CaptureProviderSummary
@@ -150,7 +152,9 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                 _ => "GDI"
             };
 
-            return Settings.IsCaptureProviderFixed ? $"{provider} (fixed only)" : provider;
+            return Settings.IsCaptureProviderFixed
+                ? LocalizationService.Instance.GetString("Summary_CaptureProvider_FixedOnly", provider)
+                : provider;
         }
     }
 
@@ -195,7 +199,9 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                 routes.Add("VisionLLM local");
             }
 
-            return routes.Count == 0 ? "No translation engine enabled" : string.Join(" + ", routes);
+            return routes.Count == 0
+                ? LocalizationService.Instance.GetString("Summary_Translation_NoEngine")
+                : string.Join(" + ", routes);
         }
     }
 
@@ -216,16 +222,18 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                     _ => "DX11"
                 };
 
-                var overlay = Settings.GraphicsHookOverlayEnabled ? "overlay on" : "overlay off";
-                return $"Graphics Hook ({api}, {overlay})";
+                var overlay = Settings.GraphicsHookOverlayEnabled
+                    ? LocalizationService.Instance.GetString("Summary_Hook_OverlayOn")
+                    : LocalizationService.Instance.GetString("Summary_Hook_OverlayOff");
+                return LocalizationService.Instance.GetString("Summary_Hook_GraphicsHook", api, overlay);
             }
 
             if (Settings.EnableMirrorFullscreenMode)
             {
-                return "Mirror fullscreen (Magpie)";
+                return LocalizationService.Instance.GetString("Summary_Hook_MirrorFullscreen");
             }
 
-            return "Off";
+            return LocalizationService.Instance.GetString("Summary_Hook_Off");
         }
     }
 
@@ -521,18 +529,25 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     {
         if (string.Equals(tag, "custom", StringComparison.OrdinalIgnoreCase))
         {
-            return string.IsNullOrWhiteSpace(customValue) ? "Custom" : $"Custom ({customValue.Trim()})";
+            return string.IsNullOrWhiteSpace(customValue)
+                ? LocalizationService.Instance.GetString("Language_Custom")
+                : LocalizationService.Instance.GetString("Language_Custom_WithValue", customValue.Trim());
         }
 
         return tag switch
         {
-            "en" => "English",
-            "ja" => "Japanese",
-            "zh-Hant" => "Chinese (Traditional)",
-            "zh-Hans" => "Chinese (Simplified)",
-            "ru" => "Russian",
+            "en" => LocalizationService.Instance.GetString("Language_English"),
+            "ja" => LocalizationService.Instance.GetString("Language_Japanese"),
+            "zh-Hant" => LocalizationService.Instance.GetString("Language_ChineseTraditional"),
+            "zh-Hans" => LocalizationService.Instance.GetString("Language_ChineseSimplified"),
+            "ru" => LocalizationService.Instance.GetString("Language_Russian"),
             _ => tag
         };
+    }
+
+    private void OnLocalizationLanguageChanged(object? sender, EventArgs e)
+    {
+        OnOverviewDependencyChanged(this, new PropertyChangedEventArgs(null));
     }
 
     private static string FormatHotkey(string key, bool ctrl, bool alt, bool shift)

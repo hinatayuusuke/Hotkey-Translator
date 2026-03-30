@@ -1816,3 +1816,57 @@
 
 ### Tests / Verification
 - `Get-Content -Path Doc\TextExport_OCR_Translation_Implementation_Plan.md -Encoding UTF8 | Select-Object -First 120`
+**2026-03-30 10:06 (Asia/Taipei) — Implement WPF resx localization for settings UI**
+
+### Summary
+- 設定コンソール UI と主要な利用者向けメッセージを `resx` ベースで日英切替できるようにした。
+
+### Context / Goal
+- `Doc/Wpf_Resx_Localization_Implementation_Plan.md` に沿って、WPF UI 文言をコード/XAML 直書きから切り離したかった。
+- `System / English / 日本語` を保存可能な UI 言語設定として追加し、起動時反映と即時反映の両方を成立させたかった。
+
+### Changes
+- `Resources/Strings.resx` / `Resources/Strings.ja.resx`、`LocalizationService`、`LocExtension` を追加し、XAML と C# の両方から同じ翻訳キーを参照できるようにした。
+- `AppSettings.UiLanguage`、`UiLanguageSettingsRule`、`SettingsViewModel.UiLanguageTag` を追加し、UI 言語設定の保存・正規化・即時適用を実装した。
+- `App` で設定を先読みして保存済み UI 言語を初回描画前に適用し、`MainWindow` / `Overview` / `SystemSettings` / `Translation` / `RuntimeLogs` の主要文言を `LocExtension` に置換した。
+- `MessageBox`、WinRT language pack UI、OneOCR vendor setup、resource host busy/failure message、Overview 要約文をローカライズ基盤経由へ変更した。
+
+### Files Touched
+- `App.xaml.cs` — 設定先読みと保存済み UI 言語の起動時適用を追加した。
+- `Models/AppSettings.cs` — `UiLanguage` 設定を追加した。
+- `Services/LocalizationService.cs` — `resx` 解決、`CultureInfo` 適用、変更通知を実装した。
+- `UI/Localization/LocExtension.cs` — XAML からローカライズ文字列を参照する `MarkupExtension` を追加した。
+- `Resources/Strings.resx` — 既定英語の UI / ダイアログ文言を追加した。
+- `Resources/Strings.ja.resx` — 日本語 UI / ダイアログ文言を追加した。
+- `Services/Settings/Rules/UiLanguageSettingsRule.cs` — 不正な UI 言語値を `system` に正規化するルールを追加した。
+- `Services/Settings/AppSettingsValidator.cs` — UI 言語正規化ルールを登録した。
+- `Services/SettingsService.cs` — 設定ロード済み状態を保持するようにした。
+- `ViewModels/SettingsViewModel.cs` — UI 言語の保存・即時反映、固定オーバーレイ文言のローカライズを追加した。
+- `ViewModels/MainWindowViewModel.cs` — Overview 要約文のローカライズと言語変更時の再通知を追加した。
+- `ViewModels/RuntimeStatusViewModel.cs` — 初期ランタイム文言をローカライズ対応にした。
+- `MainWindow.xaml` — サイドバー、共通ボタン、タイトルをローカライズ参照へ置換した。
+- `MainWindow.xaml.cs` — 主要 `MessageBox`、ROI/翻訳状態文言、前提条件メッセージをローカライズ参照へ置換した。
+- `UI/OverviewControl.xaml` — 主要ラベル、ボタン、言語選択、固定オーバーレイ文言をローカライズ参照へ置換した。
+- `UI/SystemSettingsControl.xaml` — UI 言語選択 UI を追加し、Appearance/Performance/Reset 文言をローカライズ参照へ置換した。
+- `UI/TranslationControl.xaml` — 翻訳優先順位と Llama 設定の主要文言をローカライズ参照へ置換した。
+- `UI/RuntimeLogsControl.xaml` — Preview/Log/Hint 文言をローカライズ参照へ置換した。
+- `Services/Application/WinRtLanguagePackUiController.cs` — WinRT language pack の確認/進捗 UI をローカライズ対応にした。
+- `Services/Application/OneOcrVendorUiController.cs` — OneOCR vendor setup のダイアログと busy 文言をローカライズ対応にした。
+- `Services/Application/ResourceHostFacade.cs` — resource host の busy/failure user message をローカライズ対応にした。
+- `Services/GrpcHost/GrpcHostDescriptor.cs` — failure user message を動的解決できるようにした。
+- `Services/GrpcHost/GrpcHostOrchestrator.cs` — 現在言語で failure user message を表示するようにした。
+
+### Behavioral Impact
+- 利用者は `System / English / 日本語` から UI 言語を選べ、設定は保存され次回起動時も維持される。
+- `MainWindow` 配下の主要設定 UI と主要ダイアログが現在の UI 言語で表示される。
+- `system` は OS UI 言語を `ja / en` に正規化して追従する。
+
+### Risk & Mitigation
+- Risk: まだ未移行の画面やログ文言には英語直書きが残る可能性がある。
+- Mitigation: 今回は計画書対象の主要設定 UI と主要ダイアログに範囲を絞り、`LocalizationService` / `LocExtension` を追加済みなので残りも同じ方式で拡張できる。
+- Risk: 実行中プロセスが既存 `bin\Debug` 出力をロックして通常ビルドが失敗する。
+- Mitigation: 回帰確認は別出力先 `artifacts\localization-build` へのビルドで実施した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`
+- `dotnet build .\Hotkey-Translator.csproj` は実行中 `Hotkey-Translator.exe` による `bin\Debug` ロックのため出力コピー段階で失敗

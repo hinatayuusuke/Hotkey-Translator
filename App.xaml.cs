@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator;
 
@@ -25,7 +26,11 @@ public partial class App : Application
             return;
         }
 
-        MainWindow = new MainWindow();
+        var settingsService = new SettingsService();
+        settingsService.LoadAsync().GetAwaiter().GetResult();
+        LocalizationService.Instance.ApplyUiLanguage(settingsService.Settings.UiLanguage);
+
+        MainWindow = new MainWindow(settingsService);
         MainWindow.Show();
 
         base.OnStartup(e);

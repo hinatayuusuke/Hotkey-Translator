@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
 using Hotkey_Translator.ViewModels;
 
 namespace Hotkey_Translator.Services.Application;
@@ -98,12 +99,11 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
         }
 
         var message =
-            $"WinRT OCR language pack '{localeTag}' is not installed.{Environment.NewLine}{Environment.NewLine}" +
-            "Install it now? This may require administrator permission and network access.";
+            LocalizationService.Instance.GetString("WinRtPack_ConfirmInstall_Message", localeTag);
         var result = MessageBox.Show(
             _ownerWindow,
             message,
-            "OCR language pack required",
+            LocalizationService.Instance.GetString("Dialog_OcrLanguagePackRequired_Title"),
             MessageBoxButton.OKCancel,
             MessageBoxImage.Question);
         return result == MessageBoxResult.OK;
@@ -117,7 +117,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             return;
         }
 
-        MessageBox.Show(_ownerWindow, message, "OCR language pack required", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(_ownerWindow, message, LocalizationService.Instance.GetString("Dialog_OcrLanguagePackRequired_Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     public void ShowInstallSuccess(string message)
@@ -128,14 +128,14 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             return;
         }
 
-        MessageBox.Show(_ownerWindow, message, "OCR language pack required", MessageBoxButton.OK, MessageBoxImage.Information);
+        MessageBox.Show(_ownerWindow, message, LocalizationService.Instance.GetString("Dialog_OcrLanguagePackRequired_Title"), MessageBoxButton.OK, MessageBoxImage.Information);
     }
 
     public void BeginInstallUi(string localeTag)
     {
-        _busyOverlayController.BeginProgressScope($"Installing OCR language pack ({localeTag})...");
+        _busyOverlayController.BeginProgressScope(LocalizationService.Instance.GetString("WinRtPack_BeginInstall_Busy", localeTag));
         ShowStatusUi(
-            $"Installing WinRT OCR language pack ({localeTag})...",
+            LocalizationService.Instance.GetString("WinRtPack_BeginInstall_Status", localeTag),
             Brushes.DimGray,
             showInstallButton: false,
             enableInstallButton: false);
@@ -232,7 +232,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             }
 
             ShowStatusUi(
-                "WinRT OCR language pack: checking...",
+                LocalizationService.Instance.GetString("WinRtPack_Status_Checking"),
                 Brushes.DimGray,
                 showInstallButton: false,
                 enableInstallButton: false);
@@ -247,7 +247,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             if (string.IsNullOrWhiteSpace(locale))
             {
                 ShowStatusUi(
-                    "WinRT OCR language pack: source language is not set.",
+                    LocalizationService.Instance.GetString("WinRtPack_Status_SourceLanguageNotSet"),
                     Brushes.DarkOrange,
                     showInstallButton: false,
                     enableInstallButton: false);
@@ -263,7 +263,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             if (supported)
             {
                 ShowStatusUi(
-                    $"WinRT OCR language pack: available ({locale}).",
+                    LocalizationService.Instance.GetString("WinRtPack_Status_Available", locale),
                     Brushes.DimGray,
                     showInstallButton: false,
                     enableInstallButton: false);
@@ -271,7 +271,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
             }
 
             ShowStatusUi(
-                $"WinRT OCR language pack: missing ({locale}).",
+                LocalizationService.Instance.GetString("WinRtPack_Status_Missing", locale),
                 Brushes.DarkOrange,
                 showInstallButton: true,
                 enableInstallButton: !_busyOverlayController.IsScopedBusyActive);
@@ -280,7 +280,7 @@ internal sealed class WinRtLanguagePackUiController : IDisposable
         {
             _loggerAccessor()?.Error(ex, "Failed to evaluate WinRT language-pack precheck.");
             ShowStatusUi(
-                "WinRT OCR language pack: precheck failed.",
+                LocalizationService.Instance.GetString("WinRtPack_Status_PrecheckFailed"),
                 Brushes.DarkOrange,
                 showInstallButton: true,
                 enableInstallButton: !_busyOverlayController.IsScopedBusyActive);

@@ -26,7 +26,7 @@ namespace Hotkey_Translator;
 // NOTE: Global hotkey registration and Window lifecycle handling remain in View because they depend on HWND and WPF dispatcher boundaries.
 public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBridge
 {
-    private readonly SettingsService _settingsService = new();
+    private readonly SettingsService _settingsService;
     private readonly LlamaModelCatalog _llamaModelCatalog = new();
     private readonly WindowBindingService _windowBindingService = new();
     private readonly HttpClient _httpClient = new();
@@ -113,9 +113,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const string FixedHookAgentVulkanX86RelativePath = "Native\\HookHost\\bin\\x86\\HookAgentVulkan.dll";
     private const string FixedMagpieCoreRelativePath = "Tools\\Magpie\\Magpie.Core.exe";
     private const string FixedLlamaServerRelativePath = "TranslationServiceLlama\\LlamaCpp\\llama-server.exe";
+    private static LocalizationService Localizer => LocalizationService.Instance;
 
     public MainWindow()
+        : this(new SettingsService())
     {
+    }
+
+    public MainWindow(SettingsService settingsService)
+    {
+        _settingsService = settingsService;
+        LocalizationService.Instance.ApplyUiLanguage(_settingsService.Settings.UiLanguage);
         _settingsUiController = new SettingsUiController(_settingsService, this, () => _logger, ApplyViewModelInputToSettings);
         // WHY: XAML initialization can raise ValueChanged handlers before constructor finishes.
         _settingsChangeScheduler = new SettingsChangeScheduler(
@@ -175,6 +183,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ApplyPreviewBitmapSource,
             ex => _logger?.Error(ex, "Failed to update OCR preprocess preview."));
         _mainWindowViewModel.PropertyChanged += OnMainWindowViewModelPropertyChanged;
+        Localizer.LanguageChanged += OnLocalizationLanguageChanged;
         _busyOverlayController = new BusyOverlayController(Dispatcher, _mainWindowViewModel.RuntimeStatus);
         _hotkeyController = new HotkeyController(this, () => _logger, FormatHotkey);
         _launcherSessionTargetState = new LauncherSessionTargetState(() => _logger);
@@ -306,7 +315,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _logger = new AppLogger(AppendLog);
         InitializeLogBuffer();
-        await _settingsService.LoadAsync().ConfigureAwait(true);
+        if (!_settingsService.IsLoaded)
+        {
+            await _settingsService.LoadAsync().ConfigureAwait(true);
+        }
         var settings = _settingsService.Settings;
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         var geminiClient = new GeminiClient(_httpClient, _logger);
@@ -480,6 +492,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _previewFrameDispatcher.Dispose();
         _drawerLayoutController.Reset();
         _mainWindowViewModel.PropertyChanged -= OnMainWindowViewModelPropertyChanged;
+        Localizer.LanguageChanged -= OnLocalizationLanguageChanged;
         _magpieSessionController.ActiveStateChanged -= OnMirrorSessionActiveStateChanged;
         _winRtLanguagePackUiController.Dispose();
         _runCoordinator.Dispose();
@@ -531,7 +544,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        MessageBox.Show(this, message, "Load failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        MessageBox.Show(this, message, Localizer.GetString("Dialog_LoadFailed_Title"), MessageBoxButton.OK, MessageBoxImage.Error);
     }
 
     private async void OnResetAllSettingsClicked(object sender, RoutedEventArgs e)
@@ -543,8 +556,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         var result = MessageBox.Show(
             this,
-            "Reset all saved settings to the first-run defaults?\n\nThis clears saved OCR, translation, overlay, ROI, hotkey, and system settings.",
-            "Reset all settings",
+            Localizer.GetString("Dialog_ResetAll_Message"),
+            Localizer.GetString("Dialog_ResetAll_Title"),
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning);
         if (result != MessageBoxResult.OK)
@@ -1768,7 +1781,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var result = MessageBox.Show(
             this,
             message,
-            "Download confirmation",
+            Localizer.GetString("Dialog_DownloadConfirmation_Title"),
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning);
         if (result != MessageBoxResult.OK)
@@ -1795,17 +1808,19 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: settingsChanged));
     }
 
-    private static string BuildResourceBootstrapConfirmationMessage(
+    private string BuildResourceBootstrapConfirmationMessage(
         ResourceBootstrapPlan plan,
         ResourceBootstrapIntent intent)
     {
         var builder = new StringBuilder();
-        builder.AppendLine("Starting the selected OCR/translation resources requires setup or model downloads.");
+        builder.AppendLine(Localizer.GetString("ResourceBootstrap_Intro"));
         builder.AppendLine();
 
         foreach (var item in plan.Items)
         {
-            var category = item.IsDefinite ? "Will run" : "May run";
+            var category = item.IsDefinite
+                ? Localizer.GetString("ResourceBootstrap_WillRun")
+                : Localizer.GetString("ResourceBootstrap_MayRun");
             builder.Append("- ");
             builder.Append(item.DisplayName);
             builder.Append(": ");
@@ -1814,9 +1829,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             builder.Append(item.Detail);
             if (item.KnownDownloadBytes is > 0)
             {
-                builder.Append(" Known model download: ");
-                builder.Append(FormatByteSize(item.KnownDownloadBytes.Value));
-                builder.Append('.');
+                builder.Append(' ');
+                builder.Append(Localizer.GetString("ResourceBootstrap_KnownModelDownload", FormatByteSize(item.KnownDownloadBytes.Value)));
             }
 
             builder.AppendLine();
@@ -1824,8 +1838,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         builder.AppendLine();
         builder.Append(intent == ResourceBootstrapIntent.SettingsSave
-            ? "Select OK to continue. Select Cancel to cancel this settings change and restore the previous settings."
-            : "Select OK to continue. Select Cancel to skip starting these resource hosts for now.");
+            ? Localizer.GetString("ResourceBootstrap_SettingsSaveTail")
+            : Localizer.GetString("ResourceBootstrap_AppLoadTail"));
         return builder.ToString().TrimEnd();
     }
 
@@ -2096,37 +2110,48 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var slotLabel = $"slot {settings.ActiveRoiPresetIndex + 1}";
         if (!settings.EnableRoi)
         {
-            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = $"ROI: disabled ({slotLabel})";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = Localizer.GetString("Runtime_RoiStatus_Disabled", slotLabel);
             return;
         }
 
         if (settings.NormalizedRoi is null || settings.NormalizedRoi.Value.IsEmpty)
         {
-            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = $"ROI: not set ({slotLabel})";
+            _mainWindowViewModel.RuntimeStatus.RoiStatusMessage = Localizer.GetString("Runtime_RoiStatus_NotSet", slotLabel);
             return;
         }
 
         var roi = settings.NormalizedRoi.Value;
         _mainWindowViewModel.RuntimeStatus.RoiStatusMessage =
-            $"ROI ({slotLabel}): {roi.X:0.000},{roi.Y:0.000} {roi.Width:0.000}x{roi.Height:0.000}";
+            Localizer.GetString("Runtime_RoiStatus_Coordinates", slotLabel, roi.X, roi.Y, roi.Width, roi.Height);
     }
 
     private void UpdateTranslationStatus(AppSettings settings)
     {
         var llamaStatus = settings.EnableLlamaCppTranslation
-            ? "Llama: enabled"
-            : "Llama: disabled";
+            ? Localizer.GetString("Runtime_ProviderStatus_Enabled", "Llama")
+            : Localizer.GetString("Runtime_ProviderStatus_Disabled", "Llama");
         var geminiStatus = settings.EnableGemini
-            ? (string.IsNullOrWhiteSpace(settings.ApiKey) ? "Gemini: key missing" : "Gemini: enabled")
-            : "Gemini: disabled";
+            ? (string.IsNullOrWhiteSpace(settings.ApiKey)
+                ? Localizer.GetString("Runtime_ProviderStatus_KeyMissing", "Gemini")
+                : Localizer.GetString("Runtime_ProviderStatus_Enabled", "Gemini"))
+            : Localizer.GetString("Runtime_ProviderStatus_Disabled", "Gemini");
         var deepLStatus = settings.EnableDeepL
-            ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey) ? "DeepL: key missing" : "DeepL: enabled")
-            : "DeepL: disabled";
+            ? (string.IsNullOrWhiteSpace(settings.DeepLApiKey)
+                ? Localizer.GetString("Runtime_ProviderStatus_KeyMissing", "DeepL")
+                : Localizer.GetString("Runtime_ProviderStatus_Enabled", "DeepL"))
+            : Localizer.GetString("Runtime_ProviderStatus_Disabled", "DeepL");
         var googleWebStatus = settings.EnableGoogleWeb
-            ? "GoogleWeb: enabled"
-            : "GoogleWeb: disabled";
+            ? Localizer.GetString("Runtime_ProviderStatus_Enabled", "GoogleWeb")
+            : Localizer.GetString("Runtime_ProviderStatus_Disabled", "GoogleWeb");
         _mainWindowViewModel.RuntimeStatus.TranslationStatusMessage =
-            $"Translation status: {llamaStatus} | {geminiStatus} | {deepLStatus} | {googleWebStatus}";
+            Localizer.GetString("Runtime_TranslationStatus_Summary", llamaStatus, geminiStatus, deepLStatus, googleWebStatus);
+    }
+
+    private void OnLocalizationLanguageChanged(object? sender, EventArgs e)
+    {
+        UpdateTranslationStatus(_settingsService.Settings);
+        UpdateRoiStatus(_settingsService.Settings);
+        _winRtLanguagePackUiController.SchedulePrecheck();
     }
 
     private void UpdateAutoTranslateBadgeVisibility(AppSettings settings)
@@ -2383,14 +2408,14 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             ShowPrerequisiteDialogOnce(
                 "api_gemini_missing",
-                "Gemini is enabled but Gemini API key is empty.\nSet the Gemini API key in settings or disable Gemini.");
+                Localizer.GetString("ResourceBootstrap_Prerequisite_GeminiMissing"));
         }
 
         if (settings.EnableDeepL && string.IsNullOrWhiteSpace(settings.DeepLApiKey))
         {
             ShowPrerequisiteDialogOnce(
                 "api_deepl_missing",
-                "DeepL is enabled but DeepL API key is empty.\nSet the DeepL API key in settings or disable DeepL.");
+                Localizer.GetString("ResourceBootstrap_Prerequisite_DeepLMissing"));
         }
 
         if (IsUvRequired(settings))
@@ -2497,7 +2522,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
         ShowPrerequisiteDialogOnce(
             key,
-            $"Required file for {featureName} is missing:\n{fullPath}\n\nPlace the file at this path or disable {featureName}.");
+            Localizer.GetString("ResourceBootstrap_Prerequisite_MissingFile", featureName, fullPath));
     }
 
     private static string ResolveAppRelativePath(string relativePath)
@@ -2518,7 +2543,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             return;
         }
 
-        MessageBox.Show(this, message, "Configuration required", MessageBoxButton.OK, MessageBoxImage.Warning);
+        MessageBox.Show(this, message, Localizer.GetString("Dialog_ConfigurationRequired_Title"), MessageBoxButton.OK, MessageBoxImage.Warning);
     }
 
     private void PopulateHotkeyKeyBoxes()

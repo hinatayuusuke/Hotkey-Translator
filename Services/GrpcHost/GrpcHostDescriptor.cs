@@ -24,7 +24,7 @@ internal sealed class GrpcHostDescriptor
 
     public required string FailureLogMessage { get; init; }
 
-    public required string FailureUserMessage { get; init; }
+    public required Func<AppSettings, string> FailureUserMessage { get; init; }
 
     public IReadOnlyList<string> StopBeforeStartHostIds { get; init; } = Array.Empty<string>();
 

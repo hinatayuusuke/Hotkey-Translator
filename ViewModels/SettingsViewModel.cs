@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
 
 namespace Hotkey_Translator.ViewModels;
@@ -46,6 +47,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     public SettingsViewModel(ISettingsChangeScheduler changeScheduler)
     {
         _changeScheduler = changeScheduler;
+        LocalizationService.Instance.LanguageChanged += OnLocalizationLanguageChanged;
     }
 
     [ObservableProperty] private double _paddleConfidenceThreshold;
@@ -125,6 +127,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableGraphicsHookPerfDiagLog;
     [ObservableProperty] private bool _enableGraphicsHookDiagFileSink;
     [ObservableProperty] private bool _enableGraphicsHookLauncher;
+    [ObservableProperty] private string _uiLanguageTag = LocalizationService.UiLanguageSystem;
     [ObservableProperty] private string _resourceBudgetProfileTag = "Balanced";
     [ObservableProperty] private string _appThemeModeTag = "Dark";
     [ObservableProperty] private bool _enableSceneChangeTextWeighted;
@@ -233,7 +236,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     public bool HasHotkeyConflicts => _hotkeyConflictMessages.Count > 0;
 
     public string HotkeyConflictSummary => HasHotkeyConflicts
-        ? "Conflicting hotkeys are not applied until resolved."
+        ? LocalizationService.Instance.GetString("Settings_HotkeyConflictSummary")
         : string.Empty;
 
     public IReadOnlyList<string> FixedOverlayPlacementModeOptions { get; } =
@@ -248,17 +251,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
         {
             if (!EnableFixedRoiOverlay)
             {
-                return "Fixed overlay target inactive";
+                return LocalizationService.Instance.GetString("Settings_FixedOverlayTarget_Inactive");
             }
 
             if (!IsFixedOverlayCustomFrameSelected)
             {
-                return "Using ROI as fixed overlay target";
+                return LocalizationService.Instance.GetString("Settings_FixedOverlayTarget_Roi");
             }
 
             return HasFixedOverlayCustomFrame
-                ? "Using saved user frame"
-                : "User frame not set; currently using ROI";
+                ? LocalizationService.Instance.GetString("Settings_FixedOverlayTarget_SavedUserFrame")
+                : LocalizationService.Instance.GetString("Settings_FixedOverlayTarget_UserFrameFallback");
         }
     }
 
@@ -344,6 +347,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableGraphicsHookPerfDiagLog = settings.EnableGraphicsHookPerfDiagLog;
             EnableGraphicsHookDiagFileSink = settings.EnableGraphicsHookDiagFileSink;
             EnableGraphicsHookLauncher = settings.EnableGraphicsHookLauncher;
+            UiLanguageTag = LocalizationService.Instance.NormalizeUiLanguage(settings.UiLanguage);
             AppThemeModeTag = settings.ThemeMode == AppThemeMode.Light ? "Light" : "Dark";
             ResourceBudgetProfileTag = settings.ResourceBudgetProfile switch
             {
@@ -507,6 +511,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableGraphicsHookPerfDiagLog = EnableGraphicsHookPerfDiagLog;
         settings.EnableGraphicsHookDiagFileSink = EnableGraphicsHookDiagFileSink;
         settings.EnableGraphicsHookLauncher = EnableGraphicsHookLauncher;
+        settings.UiLanguage = LocalizationService.Instance.NormalizeUiLanguage(UiLanguageTag);
         settings.ThemeMode = string.Equals(AppThemeModeTag, "Light", StringComparison.OrdinalIgnoreCase)
             ? AppThemeMode.Light
             : AppThemeMode.Dark;
@@ -1128,6 +1133,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnEnableGraphicsHookDiagFileSinkChanged(bool value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookCaptureFpsLimitTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookLauncherChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnUiLanguageTagChanged(string value)
+    {
+        LocalizationService.Instance.ApplyUiLanguage(value);
+        RequestSaveOnValueChange();
+    }
+
     partial void OnAppThemeModeTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnResourceBudgetProfileTagChanged(string value) => RequestSaveOnValueChange();
     partial void OnGraphicsHookLauncherExePathChanged(string value) => RequestSaveOnValueChange();
@@ -1603,6 +1614,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
         }
 
         return (selectedTag ?? string.Empty).Trim();
+    }
+
+    private void OnLocalizationLanguageChanged(object? sender, EventArgs e)
+    {
+        OnPropertyChanged(nameof(HotkeyConflictSummary));
+        OnPropertyChanged(nameof(FixedOverlayFrameStatusText));
     }
 }
 

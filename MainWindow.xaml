@@ -4,9 +4,10 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Hotkey_Translator"
+        xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
         xmlns:ui="clr-namespace:Hotkey_Translator.UI"
         mc:Ignorable="d"
-        Title="Hotkey Translator"
+        Title="{uiLoc:Loc Key=App_Title}"
         Icon="Ico/Hotkey-Translator.ico"
         Height="880"
         Width="1060"
@@ -59,17 +60,17 @@
                          ItemContainerStyle="{StaticResource SidebarListBoxItemStyle}"
                          VerticalAlignment="Stretch"
                          SelectedIndex="{Binding SelectedSidebarIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                    <ListBoxItem Content="Overview" />
-                    <ListBoxItem Content="Capture" />
-                    <ListBoxItem Content="OCR Settings" />
-                    <ListBoxItem Content="OCREngines" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Overview}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Capture}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrSettings}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrEngines}" />
                     <ListBoxItem Content="VisionLLM" />
-                    <ListBoxItem Content="Overlay" />
-                    <ListBoxItem Content="Auto Translate" />
-                    <ListBoxItem Content="Hook" />
-                    <ListBoxItem Content="Translation" />
-                    <ListBoxItem Content="Hotkey" />
-                    <ListBoxItem Content="System" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Overlay}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_AutoTranslate}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Hook}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Translation}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Hotkey}" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_System}" />
                 </ListBox>
             </Grid>
         </Border>
@@ -200,13 +201,13 @@
                     <Button Command="{Binding TogglePreviewPaneCommand}" Padding="12,4" Margin="0,0,8,0">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8A1;" Margin="0,0,6,0" />
-                            <TextBlock Text="Preview" />
+                             <TextBlock Text="{uiLoc:Loc Key=Common_Preview}" />
                         </StackPanel>
                     </Button>
                     <Button Command="{Binding ToggleLogPaneCommand}" Padding="12,4">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C3;" Margin="0,0,6,0" />
-                            <TextBlock Text="Log" />
+                             <TextBlock Text="{uiLoc:Loc Key=Common_Log}" />
                         </StackPanel>
                     </Button>
             </StackPanel>
@@ -236,7 +237,7 @@
                             Visibility="{Binding RuntimeStatus.CanCancelCurrentRun, Converter={StaticResource BooleanToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                             <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE711;" Margin="0,0,6,0" />
-                            <TextBlock Text="Cancel" />
+                            <TextBlock Text="{uiLoc:Loc Key=Common_Cancel}" />
                         </StackPanel>
                     </Button>
                 </StackPanel>

@@ -3,6 +3,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Threading;
 using Hotkey_Translator.Models;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.Services.Application;
 
@@ -49,17 +50,15 @@ internal sealed class OneOcrVendorUiController
         catch (Exception ex)
         {
             _loggerAccessor()?.Error(ex, "Failed to evaluate OneOCR vendor prerequisites.");
-            ShowFailure("Failed to evaluate OneOCR prerequisites.", ex.Message);
+            ShowFailure(LocalizationService.Instance.GetString("Dialog_OneOcrVendorFailed_Title"), ex.Message);
             return false;
         }
 
         if (!status.HelperExists)
         {
-            var message =
-                $"OneOCR helper is missing:{Environment.NewLine}{status.HelperPath}{Environment.NewLine}{Environment.NewLine}" +
-                "Build or place the helper before selecting OneOCR.";
+            var message = LocalizationService.Instance.GetString("OneOcr_HelperMissing_Message", status.HelperPath);
             _loggerAccessor()?.Error($"stage=oneocr event=vendor_setup_blocked reason=helper_missing path=\"{status.HelperPath}\".");
-            ShowFailure("OneOCR helper required", message);
+            ShowFailure(LocalizationService.Instance.GetString("Dialog_OneOcrHelperRequired_Title"), message);
             return false;
         }
 
@@ -71,7 +70,7 @@ internal sealed class OneOcrVendorUiController
         var result = MessageBox.Show(
             _ownerWindow,
             BuildConfirmationMessage(status),
-            "OneOCR vendor files required",
+            LocalizationService.Instance.GetString("Dialog_OneOcrVendorRequired_Title"),
             MessageBoxButton.OKCancel,
             MessageBoxImage.Question);
         if (result != MessageBoxResult.OK)
@@ -80,7 +79,7 @@ internal sealed class OneOcrVendorUiController
             return false;
         }
 
-        _busyOverlayController.BeginProgressScope("Copying OneOCR vendor files from Snipping Tool...");
+        _busyOverlayController.BeginProgressScope(LocalizationService.Instance.GetString("OneOcr_VendorCopyBusy"));
         OneOcrVendorCopyResult copyResult;
         try
         {
@@ -96,7 +95,9 @@ internal sealed class OneOcrVendorUiController
             _loggerAccessor()?.Error(
                 $"stage=oneocr event=vendor_copy_failed target=\"{copyResult.VendorDirectory}\" reason=\"{copyResult.ErrorMessage ?? "unknown"}\".");
             _appendLog($"OneOCR vendor setup failed: {copyResult.ErrorMessage ?? "unknown"}");
-            ShowFailure("OneOCR vendor setup failed", copyResult.ErrorMessage ?? "Unknown error.");
+            ShowFailure(
+                LocalizationService.Instance.GetString("Dialog_OneOcrVendorFailed_Title"),
+                copyResult.ErrorMessage ?? LocalizationService.Instance.GetString("OneOcr_UnknownError"));
             return false;
         }
 
@@ -115,11 +116,7 @@ internal sealed class OneOcrVendorUiController
         var missingFiles = string.Join(
             Environment.NewLine,
             status.MissingVendorFiles.Select(fileName => $"- {fileName}"));
-        return
-            $"OneOCR requires vendor files that are not present:{Environment.NewLine}{missingFiles}{Environment.NewLine}{Environment.NewLine}" +
-            $"Target folder:{Environment.NewLine}{status.VendorDirectory}{Environment.NewLine}{Environment.NewLine}" +
-            "Select OK to copy them from the installed Snipping Tool package now. " +
-            "Select Cancel to keep the previous OCR engine.";
+        return LocalizationService.Instance.GetString("OneOcr_VendorConfirmation_Message", missingFiles, status.VendorDirectory);
     }
 
     private static bool IsOneOcrRequired(AppSettings settings)

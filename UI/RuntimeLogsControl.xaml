@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
@@ -34,12 +35,12 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Text="Preview"
+                    <TextBlock Text="{uiLoc:Loc Key=RuntimeLogs_PreviewTitle}"
                                Style="{StaticResource SectionTitleTextStyle}"
                                Margin="0,0,0,8" />
                     <TabControl Grid.Row="1"
                                 MinHeight="220">
-                        <TabItem Header="OCR">
+                        <TabItem Header="{uiLoc:Loc Key=RuntimeLogs_Tab_Ocr}">
                             <Grid MinHeight="140"
                                   Cursor="Hand"
                                   MouseLeftButtonUp="OnOcrPreviewClicked">
@@ -49,14 +50,14 @@
                                        VerticalAlignment="Top"
                                        Margin="0,12,0,0" />
                                 <TextBlock x:Name="OcrPreprocessPreviewHint"
-                                           Text="Run OCR to update preview."
+                                           Text="{uiLoc:Loc Key=RuntimeLogs_Hint_RunOcrToUpdatePreview}"
                                            Style="{StaticResource HelpTextStyle}"
                                            TextAlignment="Center"
                                            HorizontalAlignment="Center"
                                            VerticalAlignment="Center" />
                             </Grid>
                         </TabItem>
-                        <TabItem Header="Pinned">
+                        <TabItem Header="{uiLoc:Loc Key=Common_Pinned}">
                             <Grid MinHeight="140"
                                   Cursor="Hand"
                                   MouseLeftButtonUp="OnPinnedPreviewClicked">
@@ -66,7 +67,7 @@
                                        VerticalAlignment="Top"
                                        Margin="0,12,0,0" />
                                 <TextBlock x:Name="PinnedCaptureThumbnailHint"
-                                           Text="No fixed target"
+                                           Text="{uiLoc:Loc Key=RuntimeLogs_Hint_NoFixedTarget}"
                                            Style="{StaticResource HelpTextStyle}"
                                            TextAlignment="Center"
                                            HorizontalAlignment="Center"
@@ -86,7 +87,7 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <TextBlock Text="Log"
+                    <TextBlock Text="{uiLoc:Loc Key=RuntimeLogs_LogTitle}"
                                Style="{StaticResource SectionTitleTextStyle}"
                                Margin="0,0,0,8" />
                     <TextBox x:Name="LogBox"

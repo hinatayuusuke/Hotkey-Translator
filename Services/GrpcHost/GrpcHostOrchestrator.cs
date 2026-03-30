@@ -74,7 +74,7 @@ internal sealed class GrpcHostOrchestrator
                 descriptor.Stop();
                 descriptor.OnStopped?.Invoke();
                 descriptor.DisableOnFailure(settings);
-                _showLoadFailure(descriptor.FailureUserMessage);
+                _showLoadFailure(descriptor.FailureUserMessage(settings));
                 settingsChanged = true;
             }
             finally

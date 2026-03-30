@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="App_Title" xml:space="preserve"><value>Hotkey Translator</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>Cancel</value></data>
+  <data name="Common_Dark" xml:space="preserve"><value>Dark</value></data>
+  <data name="Common_Down" xml:space="preserve"><value>Down</value></data>
+  <data name="Common_English" xml:space="preserve"><value>English</value></data>
+  <data name="Common_Install" xml:space="preserve"><value>Install</value></data>
+  <data name="Common_Japanese" xml:space="preserve"><value>日本語</value></data>
+  <data name="Common_Light" xml:space="preserve"><value>Light</value></data>
+  <data name="Common_Log" xml:space="preserve"><value>Log</value></data>
+  <data name="Common_Pinned" xml:space="preserve"><value>Pinned</value></data>
+  <data name="Common_Port" xml:space="preserve"><value>Port</value></data>
+  <data name="Common_Preview" xml:space="preserve"><value>Preview</value></data>
+  <data name="Common_Reload" xml:space="preserve"><value>Reload</value></data>
+  <data name="Common_System" xml:space="preserve"><value>System</value></data>
+  <data name="Common_Up" xml:space="preserve"><value>Up</value></data>
+  <data name="Dialog_ConfigurationRequired_Title" xml:space="preserve"><value>Configuration required</value></data>
+  <data name="Dialog_DownloadConfirmation_Title" xml:space="preserve"><value>Download confirmation</value></data>
+  <data name="Dialog_LoadFailed_Title" xml:space="preserve"><value>Load failed</value></data>
+  <data name="Dialog_OcrLanguagePackRequired_Title" xml:space="preserve"><value>OCR language pack required</value></data>
+  <data name="Dialog_OneOcrHelperRequired_Title" xml:space="preserve"><value>OneOCR helper required</value></data>
+  <data name="Dialog_OneOcrVendorFailed_Title" xml:space="preserve"><value>OneOCR vendor setup failed</value></data>
+  <data name="Dialog_OneOcrVendorRequired_Title" xml:space="preserve"><value>OneOCR vendor files required</value></data>
+  <data name="Dialog_ResetAll_Message" xml:space="preserve"><value>Reset all saved settings to the first-run defaults?
+
+This clears saved OCR, translation, overlay, ROI, hotkey, and system settings.</value></data>
+  <data name="Dialog_ResetAll_Title" xml:space="preserve"><value>Reset all settings</value></data>
+  <data name="Language_ChineseSimplified" xml:space="preserve"><value>Simplified Chinese</value></data>
+  <data name="Language_ChineseTraditional" xml:space="preserve"><value>Traditional Chinese</value></data>
+  <data name="Language_Custom" xml:space="preserve"><value>Custom</value></data>
+  <data name="Language_Custom_WithValue" xml:space="preserve"><value>Custom ({0})</value></data>
+  <data name="Language_English" xml:space="preserve"><value>English</value></data>
+  <data name="Language_Japanese" xml:space="preserve"><value>Japanese</value></data>
+  <data name="Language_Russian" xml:space="preserve"><value>Russian</value></data>
+  <data name="Overview_Actions" xml:space="preserve"><value>Actions</value></data>
+  <data name="Overview_CurrentSetupTitle" xml:space="preserve"><value>Current Setup</value></data>
+  <data name="Overview_EnableGraphicsHookPipeline" xml:space="preserve"><value>Enable Graphics Hook pipeline</value></data>
+  <data name="Overview_EnableHookOverlayRendering" xml:space="preserve"><value>Enable hook overlay rendering</value></data>
+  <data name="Overview_EnableMirrorFullscreenMode" xml:space="preserve"><value>Enable mirror fullscreen mode</value></data>
+  <data name="Overview_EnableRoi" xml:space="preserve"><value>Enable ROI</value></data>
+  <data name="Overview_FixedOverlayMode" xml:space="preserve"><value>Fixed ROI overlay mode</value></data>
+  <data name="Overview_FixedOverlayNote" xml:space="preserve"><value>NOTE: This changes translation display position only, not the OCR ROI.</value></data>
+  <data name="Overview_FixedOverlayTarget" xml:space="preserve"><value>Fixed overlay target</value></data>
+  <data name="Overview_FixedOverlayTarget_Roi" xml:space="preserve"><value>ROI</value></data>
+  <data name="Overview_FixedOverlayTarget_UserFrame" xml:space="preserve"><value>User frame</value></data>
+  <data name="Overview_HookFullscreenTitle" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Overview_Label_Capture" xml:space="preserve"><value>Capture</value></data>
+  <data name="Overview_Label_HookFullscreen" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Overview_Label_MirrorMode" xml:space="preserve"><value>Mirror mode</value></data>
+  <data name="Overview_Label_ModeSummary" xml:space="preserve"><value>Mode summary</value></data>
+  <data name="Overview_Label_OcrEngine" xml:space="preserve"><value>OCR engine</value></data>
+  <data name="Overview_Label_OverlayFontSize" xml:space="preserve"><value>Overlay font size</value></data>
+  <data name="Overview_Label_OverlayOpacity" xml:space="preserve"><value>Overlay opacity</value></data>
+  <data name="Overview_Label_Provider" xml:space="preserve"><value>Provider</value></data>
+  <data name="Overview_Label_Roi" xml:space="preserve"><value>ROI</value></data>
+  <data name="Overview_Label_RoiStatus" xml:space="preserve"><value>ROI status</value></data>
+  <data name="Overview_Label_SourceLanguage" xml:space="preserve"><value>Source language</value></data>
+  <data name="Overview_Label_TargetLanguage" xml:space="preserve"><value>Target language</value></data>
+  <data name="Overview_Label_Translation" xml:space="preserve"><value>Translation</value></data>
+  <data name="Overview_Label_TranslationEngines" xml:space="preserve"><value>Translation engines</value></data>
+  <data name="Overview_LanguageActionsTitle" xml:space="preserve"><value>Language &amp; Actions</value></data>
+  <data name="Overview_LockOcrWindow" xml:space="preserve"><value>Lock OCR window</value></data>
+  <data name="Overview_QuickControlsTitle" xml:space="preserve"><value>Quick Controls Hotkey</value></data>
+  <data name="Overview_QuickDisplaySettingsTitle" xml:space="preserve"><value>Quick Display Settings</value></data>
+  <data name="Overview_RunOcrTranslate" xml:space="preserve"><value>Run OCR / Translate</value></data>
+  <data name="Overview_RunTest" xml:space="preserve"><value>Run test</value></data>
+  <data name="Overview_SelectRoi" xml:space="preserve"><value>Select ROI</value></data>
+  <data name="Overview_SelectUserFrame" xml:space="preserve"><value>Select user frame</value></data>
+  <data name="Overview_SwapLanguagesToolTip" xml:space="preserve"><value>Swap languages</value></data>
+  <data name="Overview_ToggleOverlay" xml:space="preserve"><value>Toggle overlay</value></data>
+  <data name="ResourceBootstrap_AppLoadTail" xml:space="preserve"><value>Select OK to continue. Select Cancel to skip starting these resource hosts for now.</value></data>
+  <data name="ResourceBootstrap_Intro" xml:space="preserve"><value>Starting the selected OCR/translation resources requires setup or model downloads.</value></data>
+  <data name="ResourceBootstrap_KnownModelDownload" xml:space="preserve"><value>Known model download: {0}.</value></data>
+  <data name="ResourceBootstrap_MayRun" xml:space="preserve"><value>May run</value></data>
+  <data name="ResourceBootstrap_Prerequisite_DeepLMissing" xml:space="preserve"><value>DeepL is enabled but DeepL API key is empty.
+Set the DeepL API key in settings or disable DeepL.</value></data>
+  <data name="ResourceBootstrap_Prerequisite_GeminiMissing" xml:space="preserve"><value>Gemini is enabled but Gemini API key is empty.
+Set the Gemini API key in settings or disable Gemini.</value></data>
+  <data name="ResourceBootstrap_Prerequisite_MissingFile" xml:space="preserve"><value>Required file for {0} is missing:
+{1}
+
+Place the file at this path or disable {0}.</value></data>
+  <data name="ResourceBootstrap_SettingsSaveTail" xml:space="preserve"><value>Select OK to continue. Select Cancel to cancel this settings change and restore the previous settings.</value></data>
+  <data name="ResourceBootstrap_WillRun" xml:space="preserve"><value>Will run</value></data>
+  <data name="ResourceHost_Failed_Llama" xml:space="preserve"><value>Failed to load Llama.cpp. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Failed_Ndl" xml:space="preserve"><value>Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Failed_Paddle" xml:space="preserve"><value>Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Failed_PaddleVl" xml:space="preserve"><value>Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Loading_Llama" xml:space="preserve"><value>Loading Llama.cpp...</value></data>
+  <data name="ResourceHost_Loading_Ndl" xml:space="preserve"><value>Loading NDLOCR-Lite...</value></data>
+  <data name="ResourceHost_Loading_Paddle" xml:space="preserve"><value>Loading PaddleOCR...</value></data>
+  <data name="ResourceHost_Loading_PaddleVl" xml:space="preserve"><value>Loading PaddleOCR-VL...</value></data>
+  <data name="ResourceHost_Loading_VisionLlm" xml:space="preserve"><value>Loading VisionLLM OCR...</value></data>
+  <data name="RuntimeLogs_Hint_NoFixedTarget" xml:space="preserve"><value>No fixed target</value></data>
+  <data name="RuntimeLogs_Hint_RunOcrToUpdatePreview" xml:space="preserve"><value>Run OCR to update preview.</value></data>
+  <data name="RuntimeLogs_LogTitle" xml:space="preserve"><value>Log</value></data>
+  <data name="RuntimeLogs_PreviewTitle" xml:space="preserve"><value>Preview</value></data>
+  <data name="RuntimeLogs_Tab_Ocr" xml:space="preserve"><value>OCR</value></data>
+  <data name="Sidebar_AutoTranslate" xml:space="preserve"><value>Auto Translate</value></data>
+  <data name="Sidebar_Capture" xml:space="preserve"><value>Capture</value></data>
+  <data name="Sidebar_Hook" xml:space="preserve"><value>Hook</value></data>
+  <data name="Sidebar_Hotkey" xml:space="preserve"><value>Hotkey</value></data>
+  <data name="Sidebar_OcrEngines" xml:space="preserve"><value>OCR Engines</value></data>
+  <data name="Sidebar_OcrSettings" xml:space="preserve"><value>OCR Settings</value></data>
+  <data name="Sidebar_Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="Sidebar_Overlay" xml:space="preserve"><value>Overlay</value></data>
+  <data name="Sidebar_System" xml:space="preserve"><value>System</value></data>
+  <data name="Sidebar_Translation" xml:space="preserve"><value>Translation</value></data>
+  <data name="Summary_CaptureMode_ActiveWindow" xml:space="preserve"><value>Active window capture</value></data>
+  <data name="Summary_CaptureMode_Screen" xml:space="preserve"><value>Screen capture</value></data>
+  <data name="Summary_CaptureProvider_FixedOnly" xml:space="preserve"><value>{0} (fixed only)</value></data>
+  <data name="Summary_Hook_GraphicsHook" xml:space="preserve"><value>Graphics Hook ({0}, {1})</value></data>
+  <data name="Summary_Hook_MirrorFullscreen" xml:space="preserve"><value>Mirror fullscreen (Magpie)</value></data>
+  <data name="Summary_Hook_Off" xml:space="preserve"><value>Off</value></data>
+  <data name="Summary_Hook_OverlayOff" xml:space="preserve"><value>overlay off</value></data>
+  <data name="Summary_Hook_OverlayOn" xml:space="preserve"><value>overlay on</value></data>
+  <data name="Summary_Translation_NoEngine" xml:space="preserve"><value>No translation engine enabled</value></data>
+  <data name="SystemSettings_AppearanceTitle" xml:space="preserve"><value>Appearance</value></data>
+  <data name="SystemSettings_BudgetNote" xml:space="preserve"><value>NOTE: Controls how many OCR and translation hosts may stay resident at the same time.</value></data>
+  <data name="SystemSettings_EnableLogging" xml:space="preserve"><value>Enable logging</value></data>
+  <data name="SystemSettings_EnableOcrPerfLog" xml:space="preserve"><value>Enable OCR perf log</value></data>
+  <data name="SystemSettings_Label_LogThresholdMs" xml:space="preserve"><value>Log threshold (ms)</value></data>
+  <data name="SystemSettings_Label_Theme" xml:space="preserve"><value>Theme</value></data>
+  <data name="SystemSettings_Label_UiLanguage" xml:space="preserve"><value>UI Language</value></data>
+  <data name="SystemSettings_Label_VramBudgetProfile" xml:space="preserve"><value>VRAM budget profile</value></data>
+  <data name="SystemSettings_PerformanceTitle" xml:space="preserve"><value>Performance</value></data>
+  <data name="SystemSettings_ResetAllSettings" xml:space="preserve"><value>Reset All Settings</value></data>
+  <data name="SystemSettings_ResetNote" xml:space="preserve"><value>NOTE: Resets all saved settings to the first-run defaults after confirmation.</value></data>
+  <data name="SystemSettings_ResourceBudget_Balanced" xml:space="preserve"><value>Balanced</value></data>
+  <data name="SystemSettings_ResourceBudget_HighVram" xml:space="preserve"><value>High VRAM</value></data>
+  <data name="SystemSettings_ResourceBudget_LowVram" xml:space="preserve"><value>Low VRAM</value></data>
+  <data name="SystemSettings_ResourceBudget_UltraVram" xml:space="preserve"><value>Ultra VRAM</value></data>
+  <data name="SystemSettings_SettingsManagementTitle" xml:space="preserve"><value>Settings Management</value></data>
+  <data name="SystemSettings_ThemeNote" xml:space="preserve"><value>NOTE: Applies to the app client area and, when Windows supports it, the standard title bar.</value></data>
+  <data name="Translation_Label_BatchSize" xml:space="preserve"><value>Batch size</value></data>
+  <data name="Translation_Label_ContextSize" xml:space="preserve"><value>Context size</value></data>
+  <data name="Translation_Label_DeepLApiKey" xml:space="preserve"><value>DeepL API key</value></data>
+  <data name="Translation_Label_DeepLEndpoint" xml:space="preserve"><value>DeepL endpoint</value></data>
+  <data name="Translation_Label_GeminiApiKey" xml:space="preserve"><value>Gemini API key</value></data>
+  <data name="Translation_Label_GpuLayers" xml:space="preserve"><value>GPU layers</value></data>
+  <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP host</value></data>
+  <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>Max tokens</value></data>
+  <data name="Translation_Label_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Translation_Label_Parallel" xml:space="preserve"><value>Parallel</value></data>
+  <data name="Translation_Label_RepeatPenalty" xml:space="preserve"><value>Repeat penalty</value></data>
+  <data name="Translation_Label_RuntimeControl" xml:space="preserve"><value>Runtime control</value></data>
+  <data name="Translation_Label_Temperature" xml:space="preserve"><value>Temperature</value></data>
+  <data name="Translation_Label_Threads" xml:space="preserve"><value>Threads</value></data>
+  <data name="Translation_Label_TopK" xml:space="preserve"><value>Top K</value></data>
+  <data name="Translation_Label_TopP" xml:space="preserve"><value>Top P</value></data>
+  <data name="Translation_LocalLlamaTitle" xml:space="preserve"><value>Local Llama.cpp (GGUF)</value></data>
+  <data name="Translation_ModelFilesNote" xml:space="preserve"><value>Model files are loaded from TranslationServiceLlama\LlamaCpp\Models</value></data>
+  <data name="Translation_PriorityTitle" xml:space="preserve"><value>Translation priority</value></data>
+  <data name="Translation_RestartLlama" xml:space="preserve"><value>Restart Llama.cpp</value></data>
+  <data name="Translation_RestartNote" xml:space="preserve"><value>Resources are released on the next launch. Turn OFF and restart the app to free memory.</value></data>
+  <data name="Translation_StopLlamaServer" xml:space="preserve"><value>Stop llama-server</value></data>
+  <data name="Runtime_ProviderStatus_Disabled" xml:space="preserve"><value>{0}: disabled</value></data>
+  <data name="Runtime_ProviderStatus_Enabled" xml:space="preserve"><value>{0}: enabled</value></data>
+  <data name="Runtime_ProviderStatus_KeyMissing" xml:space="preserve"><value>{0}: key missing</value></data>
+  <data name="Runtime_RoiStatus_Coordinates" xml:space="preserve"><value>ROI ({0}): {1:0.000},{2:0.000} {3:0.000}x{4:0.000}</value></data>
+  <data name="Runtime_RoiStatus_Disabled" xml:space="preserve"><value>ROI: disabled ({0})</value></data>
+  <data name="Runtime_RoiStatus_NotSet" xml:space="preserve"><value>ROI: not set ({0})</value></data>
+  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>Translation status: {0} | {1} | {2} | {3}</value></data>
+  <data name="Runtime_TranslationStatus_Unknown" xml:space="preserve"><value>Translation status: unknown</value></data>
+  <data name="Settings_HotkeyConflictSummary" xml:space="preserve"><value>Conflicting hotkeys are not applied until resolved.</value></data>
+  <data name="Settings_FixedOverlayTarget_Inactive" xml:space="preserve"><value>Fixed overlay target inactive</value></data>
+  <data name="Settings_FixedOverlayTarget_Roi" xml:space="preserve"><value>Using ROI as fixed overlay target</value></data>
+  <data name="Settings_FixedOverlayTarget_SavedUserFrame" xml:space="preserve"><value>Using saved user frame</value></data>
+  <data name="Settings_FixedOverlayTarget_UserFrameFallback" xml:space="preserve"><value>User frame not set; currently using ROI</value></data>
+  <data name="UiLanguage_System" xml:space="preserve"><value>System</value></data>
+  <data name="WinRtPack_BeginInstall_Busy" xml:space="preserve"><value>Installing OCR language pack ({0})...</value></data>
+  <data name="WinRtPack_BeginInstall_Status" xml:space="preserve"><value>Installing WinRT OCR language pack ({0})...</value></data>
+  <data name="WinRtPack_ConfirmInstall_Message" xml:space="preserve"><value>WinRT OCR language pack '{0}' is not installed.
+
+Install it now? This may require administrator permission and network access.</value></data>
+  <data name="WinRtPack_Status_Available" xml:space="preserve"><value>WinRT OCR language pack: available ({0}).</value></data>
+  <data name="WinRtPack_Status_Checking" xml:space="preserve"><value>WinRT OCR language pack: checking...</value></data>
+  <data name="WinRtPack_Status_Missing" xml:space="preserve"><value>WinRT OCR language pack: missing ({0}).</value></data>
+  <data name="WinRtPack_Status_PrecheckFailed" xml:space="preserve"><value>WinRT OCR language pack: precheck failed.</value></data>
+  <data name="WinRtPack_Status_SourceLanguageNotSet" xml:space="preserve"><value>WinRT OCR language pack: source language is not set.</value></data>
+  <data name="OneOcr_HelperMissing_Message" xml:space="preserve"><value>OneOCR helper executable was not found:
+{0}
+
+Build or place the helper before selecting OneOCR.</value></data>
+  <data name="OneOcr_UnknownError" xml:space="preserve"><value>Unknown error.</value></data>
+  <data name="OneOcr_VendorConfirmation_Message" xml:space="preserve"><value>OneOCR requires vendor files that are not present:
+{0}
+
+Target folder:
+{1}
+
+Select OK to copy them from the installed Snipping Tool package now. Select Cancel to keep the previous OCR engine.</value></data>
+  <data name="OneOcr_VendorCopyBusy" xml:space="preserve"><value>Copying OneOCR vendor files from Snipping Tool...</value></data>
+</root>

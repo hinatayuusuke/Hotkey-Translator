@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              mc:Ignorable="d">
     <UserControl.Resources>
         <Style x:Key="OverviewSectionBorderStyle" TargetType="{x:Type Border}">
@@ -65,7 +66,7 @@
                         <ColumnDefinition Width="12" />
                         <ColumnDefinition Width="*" MinWidth="300" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Quick Controls Hotkey" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
+                    <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Overview_QuickControlsTitle}" Style="{StaticResource OverviewBlockTitleStyle}" Margin="0" />
                 </Grid>
                 <Grid>
                     <Grid.ColumnDefinitions>
@@ -81,28 +82,28 @@
 
                     <Border Grid.Row="0" Grid.Column="0" Style="{StaticResource QuickControlCardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="Run OCR / Translate" Style="{StaticResource QuickControlNameStyle}" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_RunOcrTranslate}" Style="{StaticResource QuickControlNameStyle}" />
                             <TextBlock Text="{Binding RunOnceHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Row="0" Grid.Column="2" Style="{StaticResource QuickControlCardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="Toggle overlay" Style="{StaticResource QuickControlNameStyle}" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_ToggleOverlay}" Style="{StaticResource QuickControlNameStyle}" />
                             <TextBlock Text="{Binding ToggleOverlayHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Row="2" Grid.Column="0" Style="{StaticResource QuickControlCardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="Select ROI" Style="{StaticResource QuickControlNameStyle}" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_SelectRoi}" Style="{StaticResource QuickControlNameStyle}" />
                             <TextBlock Text="{Binding SelectRoiHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                         </StackPanel>
                     </Border>
 
                     <Border Grid.Row="2" Grid.Column="2" Style="{StaticResource QuickControlCardBorderStyle}">
                         <StackPanel>
-                            <TextBlock Text="Lock OCR window" Style="{StaticResource QuickControlNameStyle}" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_LockOcrWindow}" Style="{StaticResource QuickControlNameStyle}" />
                             <TextBlock Text="{Binding LockWindowHotkeyGesture}" Style="{StaticResource QuickControlGestureStyle}" />
                         </StackPanel>
                     </Border>
@@ -113,7 +114,7 @@
 
         <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
-                <TextBlock Text="Current Setup" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <TextBlock Text="{uiLoc:Loc Key=Overview_CurrentSetupTitle}" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="340" />
@@ -131,11 +132,11 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Capture" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_Capture}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CaptureModeSummary}" Style="{StaticResource OverviewValueStyle}" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_Provider}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CaptureProviderSummary}" Style="{StaticResource OverviewValueStyle}" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_OcrEngine}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding OcrEngineSummary}" Style="{StaticResource OverviewValueStyle}" />
                     </Grid>
 
@@ -150,11 +151,11 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Translation" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_Translation}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding TranslationRouteSummary}" Style="{StaticResource OverviewValueStyle}" />
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Hook / Fullscreen" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_HookFullscreen}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" />
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="ROI status" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="{uiLoc:Loc Key=Overview_Label_RoiStatus}" Style="{StaticResource OverviewLabelStyle}" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RuntimeStatus.RoiStatusMessage}" Style="{StaticResource OverviewValueStyle}" />
                     </Grid>
                 </Grid>
@@ -163,7 +164,7 @@
 
         <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
-                <TextBlock Text="Language &amp; Actions" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <TextBlock Text="{uiLoc:Loc Key=Overview_LanguageActionsTitle}" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="340" />
@@ -172,7 +173,7 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Source language" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_SourceLanguage}" Style="{StaticResource OverviewLabelStyle}" />
                         <Grid Margin="0,0,0,6" Panel.ZIndex="1" >
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="176" />
@@ -182,12 +183,12 @@
                             <ComboBox Grid.Column="0"
                                       SelectedValuePath="Tag"
                                       SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                <ComboBoxItem Content="English" Tag="en" />
-                                <ComboBoxItem Content="Japanese" Tag="ja" />
-                                <ComboBoxItem Content="Traditional Chinese" Tag="zh-Hant" />
-                                <ComboBoxItem Content="Simplified Chinese" Tag="zh-Hans" />
-                                <ComboBoxItem Content="Russian" Tag="ru" />
-                                <ComboBoxItem Content="Custom..." Tag="custom" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_English}" Tag="en" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Japanese}" Tag="ja" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseTraditional}" Tag="zh-Hant" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseSimplified}" Tag="zh-Hans" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Custom}" Tag="custom" />
                             </ComboBox>
                             <Button Grid.Column="1"
                                     Width="38"
@@ -196,7 +197,7 @@
                                     HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
                                     Command="{Binding SwapLanguagesCommand}"
-                                    ToolTip="Swap languages">
+                                    ToolTip="{uiLoc:Loc Key=Overview_SwapLanguagesToolTip}">
                                 <Button.RenderTransform>
                                     <TranslateTransform Y="32" />
                                 </Button.RenderTransform>
@@ -246,7 +247,7 @@
                             </TextBox>
                         </Grid>
 
-                        <TextBlock Text="Target language" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_TargetLanguage}" Style="{StaticResource OverviewLabelStyle}" />
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="176" />
@@ -255,12 +256,12 @@
                             <ComboBox Grid.Column="0"
                                       SelectedValuePath="Tag"
                                       SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                <ComboBoxItem Content="English" Tag="en" />
-                                <ComboBoxItem Content="Japanese" Tag="ja" />
-                                <ComboBoxItem Content="Traditional Chinese" Tag="zh-Hant" />
-                                <ComboBoxItem Content="Simplified Chinese" Tag="zh-Hans" />
-                                <ComboBoxItem Content="Russian" Tag="ru" />
-                                <ComboBoxItem Content="Custom..." Tag="custom" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_English}" Tag="en" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Japanese}" Tag="ja" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseTraditional}" Tag="zh-Hant" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseSimplified}" Tag="zh-Hans" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Custom}" Tag="custom" />
                             </ComboBox>
                             <TextBox Grid.Column="1"
                                      Margin="8,0,0,0"
@@ -278,7 +279,7 @@
                             </TextBox>
                         </Grid>
 
-                        <TextBlock Text="OCR engine" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_OcrEngine}" Style="{StaticResource OverviewLabelStyle}" />
                         <ComboBox Width="320"
                                   Margin="0,0,0,6"
                                   HorizontalAlignment="Left"
@@ -298,7 +299,7 @@
                                        Style="{StaticResource OverviewMutedTextStyle}"
                                        Visibility="Collapsed" />
                             <Button x:Name="InstallWinRtLanguagePackButton"
-                                    Content="Install"
+                                    Content="{uiLoc:Loc Key=Common_Install}"
                                     Margin="10,0,0,0"
                                     Padding="10,2"
                                     Visibility="Collapsed"
@@ -307,7 +308,7 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Translation engines" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_TranslationEngines}" Style="{StaticResource OverviewLabelStyle}" />
                         <WrapPanel Margin="0,0,0,8">
                             <CheckBox Content="DeepL"
                                       Margin="0,0,12,6"
@@ -327,7 +328,7 @@
                                       IsChecked="{Binding Settings.EnableLlamaCppTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </WrapPanel>
 
-                        <TextBlock Text="ROI" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_Roi}" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                             <ComboBox Width="120"
                                       HorizontalAlignment="Left"
@@ -335,13 +336,13 @@
                                       ItemsSource="{Binding RoiPresetSlotItemsSource, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                       SelectedIndex="{Binding SelectedRoiPresetSlotIndex, RelativeSource={RelativeSource AncestorType=UserControl}, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                       SelectionChanged="OnOverviewRoiPresetSlotSelectionChanged" />
-                            <CheckBox Content="Enable ROI"
+                            <CheckBox Content="{uiLoc:Loc Key=Overview_EnableRoi}"
                                       Margin="12,0,0,0"
                                       VerticalAlignment="Center"
                                       IsChecked="{Binding Settings.EnableRoi, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         </StackPanel>
 
-                        <TextBlock Text="Actions" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Actions}" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal">
                             <Button Width="144"
                                     Margin="0,0,12,0"
@@ -349,7 +350,7 @@
                                     Command="{Binding RunOnceCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE768;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                    <TextBlock Text="Run test" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=Overview_RunTest}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <Button Width="144"
@@ -357,7 +358,7 @@
                                     Command="{Binding SelectRoiCommand}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                    <TextBlock Text="Select ROI" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=Overview_SelectRoi}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -368,7 +369,7 @@
 
         <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
-                <TextBlock Text="Quick Display Settings" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <TextBlock Text="{uiLoc:Loc Key=Overview_QuickDisplaySettingsTitle}" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="340" />
@@ -377,7 +378,7 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="Overlay font size" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_OverlayFontSize}" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Slider Width="{StaticResource SliderStandardWidth}"
                                     Minimum="8"
@@ -390,7 +391,7 @@
                             <TextBlock Style="{StaticResource SliderValueDecimalTextStyle}"
                                        Text="{Binding Settings.OverlayFontSize, StringFormat={}{0:F1}}" />
                         </StackPanel>
-                        <TextBlock Text="Overlay opacity" Style="{StaticResource OverviewLabelStyle}" />
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_OverlayOpacity}" Style="{StaticResource OverviewLabelStyle}" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                             <Slider Width="{StaticResource SliderStandardWidth}"
                                     Minimum="0"
@@ -406,22 +407,25 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <CheckBox Content="Fixed ROI overlay mode"
+                        <CheckBox Content="{uiLoc:Loc Key=Overview_FixedOverlayMode}"
                                   IsChecked="{Binding Settings.EnableFixedRoiOverlay, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <StackPanel Margin="0,8,0,0">
-                            <TextBlock Text="Fixed overlay target" Style="{StaticResource OverviewLabelStyle}" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_FixedOverlayTarget}" Style="{StaticResource OverviewLabelStyle}" />
                             <ComboBox Width="180"
-                                      Margin="0,0,0,6"
-                                      HorizontalAlignment="Left"
-                                      ItemsSource="{Binding Settings.FixedOverlayPlacementModeOptions}"
-                                      SelectedItem="{Binding Settings.FixedOverlayPlacementModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                       Margin="0,0,0,6"
+                                       HorizontalAlignment="Left"
+                                       SelectedValuePath="Tag"
+                                       SelectedValue="{Binding Settings.FixedOverlayPlacementModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Overview_FixedOverlayTarget_Roi}" Tag="ROI" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Overview_FixedOverlayTarget_UserFrame}" Tag="User frame" />
+                            </ComboBox>
                             <Button Width="180"
                                     HorizontalAlignment="Left"
                                     Click="OnSelectFixedOverlayFrameClicked"
                                     IsEnabled="{Binding Settings.IsFixedOverlayCustomFrameSelected}">
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
                                     <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE7C2;" Margin="0,0,6,0" VerticalAlignment="Center" />
-                                    <TextBlock Text="Select user frame" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=Overview_SelectUserFrame}" VerticalAlignment="Center" />
                                 </StackPanel>
                             </Button>
                             <TextBlock Margin="0,6,0,0"
@@ -429,7 +433,7 @@
                                        Text="{Binding Settings.FixedOverlayFrameStatusText}" />
                             <TextBlock Margin="0,2,0,0"
                                        Style="{StaticResource HelpTextStyle}"
-                                       Text="NOTE: This changes translation display position only, not the OCR ROI." />
+                                       Text="{uiLoc:Loc Key=Overview_FixedOverlayNote}" />
                         </StackPanel>
                     </StackPanel>
                 </Grid>
@@ -438,7 +442,7 @@
 
         <Border Style="{StaticResource OverviewSectionBorderStyle}">
             <StackPanel>
-                <TextBlock Text="Hook / Fullscreen" Style="{StaticResource OverviewBlockTitleStyle}" />
+                <TextBlock Text="{uiLoc:Loc Key=Overview_HookFullscreenTitle}" Style="{StaticResource OverviewBlockTitleStyle}" />
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" MinWidth="340" />
@@ -452,20 +456,20 @@
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Text="Mode summary" Style="{StaticResource OverviewLabelStyle}" Margin="0,0,8,0" />
+                            <TextBlock Text="{uiLoc:Loc Key=Overview_Label_ModeSummary}" Style="{StaticResource OverviewLabelStyle}" Margin="0,0,8,0" />
                             <TextBlock Grid.Column="1" Text="{Binding HookStatusSummary}" Style="{StaticResource OverviewValueStyle}" Margin="0" VerticalAlignment="Center" />
                         </Grid>
-                        <CheckBox Content="Enable Graphics Hook pipeline"
+                        <CheckBox Content="{uiLoc:Loc Key=Overview_EnableGraphicsHookPipeline}"
                                   Margin="0,0,0,4"
                                   IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        <CheckBox Content="Enable hook overlay rendering"
+                        <CheckBox Content="{uiLoc:Loc Key=Overview_EnableHookOverlayRendering}"
                                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                                   IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Mirror mode" Style="{StaticResource OverviewLabelStyle}" />
-                        <CheckBox Content="Enable mirror fullscreen mode"
+                        <TextBlock Text="{uiLoc:Loc Key=Overview_Label_MirrorMode}" Style="{StaticResource OverviewLabelStyle}" />
+                        <CheckBox Content="{uiLoc:Loc Key=Overview_EnableMirrorFullscreenMode}"
                                   Margin="0,0,0,10"
                                   IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                         <Grid>
@@ -475,7 +479,7 @@
                                 <ColumnDefinition Width="200" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0"
-                                       Text="Hook API"
+                                       Text="{uiLoc:Loc Key=Overview_HookApi}"
                                        Style="{StaticResource OverviewLabelStyle}"
                                        Margin="0" />
                             <ComboBox Grid.Column="2"

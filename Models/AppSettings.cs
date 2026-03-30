@@ -58,6 +58,7 @@ public sealed class AppSettings
 {
     public List<RoiPreset> RoiPresets { get; set; } = new();
     public int ActiveRoiPresetIndex { get; set; }
+    public string UiLanguage { get; set; } = "system";
     public AppThemeMode ThemeMode { get; set; } = AppThemeMode.Dark;
     public CaptureMode CaptureMode { get; set; } = CaptureMode.ActiveWindow;
     public SerializableRect? Roi { get; set; }

@@ -170,10 +170,10 @@ internal sealed class ResourceHostFacade : IDisposable
                 IsRunning = () => _paddleGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _paddleGrpcHost.StartAsync(settings, token),
                 Stop = () => _paddleGrpcHost.Stop(),
-                BusyMessage = _ => "Loading PaddleOCR...",
+                BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_Paddle"),
                 DisableOnFailure = DisablePaddleOcr,
                 FailureLogMessage = "Paddle gRPC host failed to start.",
-                FailureUserMessage = "Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details."
+                FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_Paddle")
             },
             new()
             {
@@ -182,10 +182,10 @@ internal sealed class ResourceHostFacade : IDisposable
                 IsRunning = () => _paddleVlGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _paddleVlGrpcHost.StartAsync(settings, token),
                 Stop = () => _paddleVlGrpcHost.Stop(),
-                BusyMessage = _ => "Loading PaddleOCR-VL...",
+                BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_PaddleVl"),
                 DisableOnFailure = DisablePaddleVlOcr,
                 FailureLogMessage = "PaddleOCR-VL gRPC host failed to start.",
-                FailureUserMessage = "Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details."
+                FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_PaddleVl")
             },
             new()
             {
@@ -194,10 +194,10 @@ internal sealed class ResourceHostFacade : IDisposable
                 IsRunning = () => _ndlGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _ndlGrpcHost.StartAsync(settings, token),
                 Stop = () => _ndlGrpcHost.Stop(),
-                BusyMessage = _ => "Loading NDLOCR-Lite...",
+                BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_Ndl"),
                 DisableOnFailure = DisableNdlOcr,
                 FailureLogMessage = "NDLOCR gRPC host failed to start.",
-                FailureUserMessage = "Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details."
+                FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_Ndl")
             },
             new()
             {
@@ -206,10 +206,10 @@ internal sealed class ResourceHostFacade : IDisposable
                 IsRunning = () => _visionLlmGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _visionLlmGrpcHost.StartAsync(settings, token),
                 Stop = () => _visionLlmGrpcHost.Stop(),
-                BusyMessage = _ => "Loading VisionLLM OCR...",
+                BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_VisionLlm"),
                 DisableOnFailure = DisableVisionLlmOcr,
                 FailureLogMessage = "VisionLLM gRPC host failed to start.",
-                FailureUserMessage = "Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details."
+                FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_VisionLlm")
             },
             new()
             {
@@ -218,10 +218,10 @@ internal sealed class ResourceHostFacade : IDisposable
                 IsRunning = () => _llamaGrpcHost.IsRunning,
                 StartAsync = (settings, token) => _llamaGrpcHost.StartAsync(settings, token),
                 Stop = () => _llamaGrpcHost.Stop(),
-                BusyMessage = _ => "Loading Llama.cpp...",
+                BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_Llama"),
                 DisableOnFailure = DisableLlamaTranslation,
                 FailureLogMessage = "Llama gRPC host failed to start.",
-                FailureUserMessage = "Failed to load Llama.cpp. The setting has been turned OFF. See the logs for details.",
+                FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_Llama"),
                 HasDeferredConfigChange = settings =>
                     _llamaHostConfig.HasValue && !_llamaHostConfig.Value.Equals(BuildLlamaHostConfig(settings)),
                 OnDeferredConfigDetected = () =>

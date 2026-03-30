@@ -39,6 +39,7 @@ public sealed class SettingsService
     public string SettingsPath { get; }
     public string CachePath { get; }
     public string UserGlossaryDirectoryPath { get; }
+    public bool IsLoaded { get; private set; }
     public AppSettings Settings { get; private set; } = CreateDefaultSettings();
 
     public async Task LoadAsync()
@@ -48,6 +49,7 @@ public sealed class SettingsService
         if (loaded is null)
         {
             Settings = CreateDefaultSettings();
+            IsLoaded = true;
             return;
         }
 
@@ -62,6 +64,7 @@ public sealed class SettingsService
         }
 
         Settings = loaded;
+        IsLoaded = true;
     }
 
     public static AppSettings CreateDefaultSettings()

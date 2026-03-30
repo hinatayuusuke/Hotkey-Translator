@@ -12,6 +12,7 @@ internal sealed class AppSettingsValidator
     {
         _rules = new ISettingsRule[]
         {
+            new UiLanguageSettingsRule(),
             new ResourceHostBudgetSettingsRule(),
             new RoiPresetSettingsRule(),
             new SceneSemanticSettingsRule(),

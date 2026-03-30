@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <data name="App_Title" xml:space="preserve"><value>Hotkey Translator</value></data>
+  <data name="Common_Cancel" xml:space="preserve"><value>キャンセル</value></data>
+  <data name="Common_Dark" xml:space="preserve"><value>ダーク</value></data>
+  <data name="Common_Down" xml:space="preserve"><value>下へ</value></data>
+  <data name="Common_English" xml:space="preserve"><value>English</value></data>
+  <data name="Common_Install" xml:space="preserve"><value>インストール</value></data>
+  <data name="Common_Japanese" xml:space="preserve"><value>日本語</value></data>
+  <data name="Common_Light" xml:space="preserve"><value>ライト</value></data>
+  <data name="Common_Log" xml:space="preserve"><value>ログ</value></data>
+  <data name="Common_Pinned" xml:space="preserve"><value>固定</value></data>
+  <data name="Common_Port" xml:space="preserve"><value>ポート</value></data>
+  <data name="Common_Preview" xml:space="preserve"><value>プレビュー</value></data>
+  <data name="Common_Reload" xml:space="preserve"><value>再読込</value></data>
+  <data name="Common_System" xml:space="preserve"><value>システム</value></data>
+  <data name="Common_Up" xml:space="preserve"><value>上へ</value></data>
+  <data name="Dialog_ConfigurationRequired_Title" xml:space="preserve"><value>設定が必要です</value></data>
+  <data name="Dialog_DownloadConfirmation_Title" xml:space="preserve"><value>ダウンロード確認</value></data>
+  <data name="Dialog_LoadFailed_Title" xml:space="preserve"><value>読み込み失敗</value></data>
+  <data name="Dialog_OcrLanguagePackRequired_Title" xml:space="preserve"><value>OCR 言語パックが必要です</value></data>
+  <data name="Dialog_OneOcrHelperRequired_Title" xml:space="preserve"><value>OneOCR helper が必要です</value></data>
+  <data name="Dialog_OneOcrVendorFailed_Title" xml:space="preserve"><value>OneOCR vendor セットアップ失敗</value></data>
+  <data name="Dialog_OneOcrVendorRequired_Title" xml:space="preserve"><value>OneOCR vendor ファイルが必要です</value></data>
+  <data name="Dialog_ResetAll_Message" xml:space="preserve"><value>保存済み設定をすべて初回起動時の既定値に戻しますか？
+
+OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定の保存内容を消去します。</value></data>
+  <data name="Dialog_ResetAll_Title" xml:space="preserve"><value>全設定をリセット</value></data>
+  <data name="Language_ChineseSimplified" xml:space="preserve"><value>中国語（簡体字）</value></data>
+  <data name="Language_ChineseTraditional" xml:space="preserve"><value>中国語（繁体字）</value></data>
+  <data name="Language_Custom" xml:space="preserve"><value>カスタム</value></data>
+  <data name="Language_Custom_WithValue" xml:space="preserve"><value>カスタム ({0})</value></data>
+  <data name="Language_English" xml:space="preserve"><value>英語</value></data>
+  <data name="Language_Japanese" xml:space="preserve"><value>日本語</value></data>
+  <data name="Language_Russian" xml:space="preserve"><value>ロシア語</value></data>
+  <data name="Overview_Actions" xml:space="preserve"><value>操作</value></data>
+  <data name="Overview_CurrentSetupTitle" xml:space="preserve"><value>現在の構成</value></data>
+  <data name="Overview_EnableGraphicsHookPipeline" xml:space="preserve"><value>Graphics Hook パイプラインを有効化</value></data>
+  <data name="Overview_EnableHookOverlayRendering" xml:space="preserve"><value>hook overlay 描画を有効化</value></data>
+  <data name="Overview_EnableMirrorFullscreenMode" xml:space="preserve"><value>ミラーフルスクリーンモードを有効化</value></data>
+  <data name="Overview_EnableRoi" xml:space="preserve"><value>ROI を有効化</value></data>
+  <data name="Overview_FixedOverlayMode" xml:space="preserve"><value>固定 ROI オーバーレイモード</value></data>
+  <data name="Overview_FixedOverlayNote" xml:space="preserve"><value>NOTE: これは翻訳表示位置だけを変更し、OCR ROI は変更しません。</value></data>
+  <data name="Overview_FixedOverlayTarget" xml:space="preserve"><value>固定オーバーレイ対象</value></data>
+  <data name="Overview_FixedOverlayTarget_Roi" xml:space="preserve"><value>ROI</value></data>
+  <data name="Overview_FixedOverlayTarget_UserFrame" xml:space="preserve"><value>ユーザーフレーム</value></data>
+  <data name="Overview_HookFullscreenTitle" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Overview_Label_Capture" xml:space="preserve"><value>キャプチャ</value></data>
+  <data name="Overview_Label_HookFullscreen" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Overview_Label_MirrorMode" xml:space="preserve"><value>ミラーモード</value></data>
+  <data name="Overview_Label_ModeSummary" xml:space="preserve"><value>モード概要</value></data>
+  <data name="Overview_Label_OcrEngine" xml:space="preserve"><value>OCR エンジン</value></data>
+  <data name="Overview_Label_OverlayFontSize" xml:space="preserve"><value>オーバーレイ文字サイズ</value></data>
+  <data name="Overview_Label_OverlayOpacity" xml:space="preserve"><value>オーバーレイ不透明度</value></data>
+  <data name="Overview_Label_Provider" xml:space="preserve"><value>プロバイダー</value></data>
+  <data name="Overview_Label_Roi" xml:space="preserve"><value>ROI</value></data>
+  <data name="Overview_Label_RoiStatus" xml:space="preserve"><value>ROI 状態</value></data>
+  <data name="Overview_Label_SourceLanguage" xml:space="preserve"><value>原文言語</value></data>
+  <data name="Overview_Label_TargetLanguage" xml:space="preserve"><value>翻訳先言語</value></data>
+  <data name="Overview_Label_Translation" xml:space="preserve"><value>翻訳</value></data>
+  <data name="Overview_Label_TranslationEngines" xml:space="preserve"><value>翻訳エンジン</value></data>
+  <data name="Overview_LanguageActionsTitle" xml:space="preserve"><value>言語と操作</value></data>
+  <data name="Overview_LockOcrWindow" xml:space="preserve"><value>OCR 対象ウィンドウを固定</value></data>
+  <data name="Overview_QuickControlsTitle" xml:space="preserve"><value>クイック操作ホットキー</value></data>
+  <data name="Overview_QuickDisplaySettingsTitle" xml:space="preserve"><value>表示のクイック設定</value></data>
+  <data name="Overview_RunOcrTranslate" xml:space="preserve"><value>OCR / 翻訳を実行</value></data>
+  <data name="Overview_RunTest" xml:space="preserve"><value>テスト実行</value></data>
+  <data name="Overview_SelectRoi" xml:space="preserve"><value>ROI を選択</value></data>
+  <data name="Overview_SelectUserFrame" xml:space="preserve"><value>ユーザーフレームを選択</value></data>
+  <data name="Overview_SwapLanguagesToolTip" xml:space="preserve"><value>言語を入れ替え</value></data>
+  <data name="Overview_ToggleOverlay" xml:space="preserve"><value>オーバーレイ切替</value></data>
+  <data name="ResourceBootstrap_AppLoadTail" xml:space="preserve"><value>OK を選ぶと続行します。キャンセルを選ぶと、今回はこれらのリソースホストを起動しません。</value></data>
+  <data name="ResourceBootstrap_Intro" xml:space="preserve"><value>選択された OCR / 翻訳リソースを起動するには、セットアップまたはモデルのダウンロードが必要です。</value></data>
+  <data name="ResourceBootstrap_KnownModelDownload" xml:space="preserve"><value>既知のモデルダウンロード量: {0}。</value></data>
+  <data name="ResourceBootstrap_MayRun" xml:space="preserve"><value>起動する可能性あり</value></data>
+  <data name="ResourceBootstrap_Prerequisite_DeepLMissing" xml:space="preserve"><value>DeepL は有効ですが、DeepL API キーが空です。
+設定で DeepL API キーを設定するか、DeepL を無効にしてください。</value></data>
+  <data name="ResourceBootstrap_Prerequisite_GeminiMissing" xml:space="preserve"><value>Gemini は有効ですが、Gemini API キーが空です。
+設定で Gemini API キーを設定するか、Gemini を無効にしてください。</value></data>
+  <data name="ResourceBootstrap_Prerequisite_MissingFile" xml:space="preserve"><value>{0} に必要なファイルが見つかりません:
+{1}
+
+このパスにファイルを配置するか、{0} を無効にしてください。</value></data>
+  <data name="ResourceBootstrap_SettingsSaveTail" xml:space="preserve"><value>OK を選ぶと続行します。キャンセルを選ぶと今回の設定変更を取り消し、以前の設定に戻します。</value></data>
+  <data name="ResourceBootstrap_WillRun" xml:space="preserve"><value>起動予定</value></data>
+  <data name="ResourceHost_Failed_Llama" xml:space="preserve"><value>Llama.cpp の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Failed_Ndl" xml:space="preserve"><value>NDLOCR-Lite の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Failed_Paddle" xml:space="preserve"><value>PaddleOCR の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Failed_PaddleVl" xml:space="preserve"><value>PaddleOCR-VL の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>VisionLLM OCR の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Loading_Llama" xml:space="preserve"><value>Llama.cpp を読み込み中...</value></data>
+  <data name="ResourceHost_Loading_Ndl" xml:space="preserve"><value>NDLOCR-Lite を読み込み中...</value></data>
+  <data name="ResourceHost_Loading_Paddle" xml:space="preserve"><value>PaddleOCR を読み込み中...</value></data>
+  <data name="ResourceHost_Loading_PaddleVl" xml:space="preserve"><value>PaddleOCR-VL を読み込み中...</value></data>
+  <data name="ResourceHost_Loading_VisionLlm" xml:space="preserve"><value>VisionLLM OCR を読み込み中...</value></data>
+  <data name="RuntimeLogs_Hint_NoFixedTarget" xml:space="preserve"><value>固定ターゲットなし</value></data>
+  <data name="RuntimeLogs_Hint_RunOcrToUpdatePreview" xml:space="preserve"><value>OCR を実行するとプレビューが更新されます。</value></data>
+  <data name="RuntimeLogs_LogTitle" xml:space="preserve"><value>ログ</value></data>
+  <data name="RuntimeLogs_PreviewTitle" xml:space="preserve"><value>プレビュー</value></data>
+  <data name="RuntimeLogs_Tab_Ocr" xml:space="preserve"><value>OCR</value></data>
+  <data name="Sidebar_AutoTranslate" xml:space="preserve"><value>自動翻訳</value></data>
+  <data name="Sidebar_Capture" xml:space="preserve"><value>キャプチャ</value></data>
+  <data name="Sidebar_Hook" xml:space="preserve"><value>Hook</value></data>
+  <data name="Sidebar_Hotkey" xml:space="preserve"><value>ホットキー</value></data>
+  <data name="Sidebar_OcrEngines" xml:space="preserve"><value>OCR エンジン</value></data>
+  <data name="Sidebar_OcrSettings" xml:space="preserve"><value>OCR 設定</value></data>
+  <data name="Sidebar_Overview" xml:space="preserve"><value>概要</value></data>
+  <data name="Sidebar_Overlay" xml:space="preserve"><value>オーバーレイ</value></data>
+  <data name="Sidebar_System" xml:space="preserve"><value>システム</value></data>
+  <data name="Sidebar_Translation" xml:space="preserve"><value>翻訳</value></data>
+  <data name="Summary_CaptureMode_ActiveWindow" xml:space="preserve"><value>アクティブウィンドウをキャプチャ</value></data>
+  <data name="Summary_CaptureMode_Screen" xml:space="preserve"><value>画面全体をキャプチャ</value></data>
+  <data name="Summary_CaptureProvider_FixedOnly" xml:space="preserve"><value>{0}（固定のみ）</value></data>
+  <data name="Summary_Hook_GraphicsHook" xml:space="preserve"><value>Graphics Hook ({0}, {1})</value></data>
+  <data name="Summary_Hook_MirrorFullscreen" xml:space="preserve"><value>ミラーフルスクリーン (Magpie)</value></data>
+  <data name="Summary_Hook_Off" xml:space="preserve"><value>OFF</value></data>
+  <data name="Summary_Hook_OverlayOff" xml:space="preserve"><value>overlay OFF</value></data>
+  <data name="Summary_Hook_OverlayOn" xml:space="preserve"><value>overlay ON</value></data>
+  <data name="Summary_Translation_NoEngine" xml:space="preserve"><value>翻訳エンジンが有効ではありません</value></data>
+  <data name="SystemSettings_AppearanceTitle" xml:space="preserve"><value>外観</value></data>
+  <data name="SystemSettings_BudgetNote" xml:space="preserve"><value>NOTE: 同時に常駐させる OCR / 翻訳ホスト数を制御します。</value></data>
+  <data name="SystemSettings_EnableLogging" xml:space="preserve"><value>ログを有効化</value></data>
+  <data name="SystemSettings_EnableOcrPerfLog" xml:space="preserve"><value>OCR perf log を有効化</value></data>
+  <data name="SystemSettings_Label_LogThresholdMs" xml:space="preserve"><value>ログ閾値 (ms)</value></data>
+  <data name="SystemSettings_Label_Theme" xml:space="preserve"><value>テーマ</value></data>
+  <data name="SystemSettings_Label_UiLanguage" xml:space="preserve"><value>UI 言語</value></data>
+  <data name="SystemSettings_Label_VramBudgetProfile" xml:space="preserve"><value>VRAM 予算プロファイル</value></data>
+  <data name="SystemSettings_PerformanceTitle" xml:space="preserve"><value>性能</value></data>
+  <data name="SystemSettings_ResetAllSettings" xml:space="preserve"><value>全設定をリセット</value></data>
+  <data name="SystemSettings_ResetNote" xml:space="preserve"><value>NOTE: 確認後、保存済み設定をすべて初回起動時の既定値に戻します。</value></data>
+  <data name="SystemSettings_ResourceBudget_Balanced" xml:space="preserve"><value>標準</value></data>
+  <data name="SystemSettings_ResourceBudget_HighVram" xml:space="preserve"><value>高 VRAM</value></data>
+  <data name="SystemSettings_ResourceBudget_LowVram" xml:space="preserve"><value>低 VRAM</value></data>
+  <data name="SystemSettings_ResourceBudget_UltraVram" xml:space="preserve"><value>超高 VRAM</value></data>
+  <data name="SystemSettings_SettingsManagementTitle" xml:space="preserve"><value>設定管理</value></data>
+  <data name="SystemSettings_ThemeNote" xml:space="preserve"><value>NOTE: アプリのクライアント領域と、Windows が対応していれば標準タイトルバーにも適用します。</value></data>
+  <data name="Translation_Label_BatchSize" xml:space="preserve"><value>バッチサイズ</value></data>
+  <data name="Translation_Label_ContextSize" xml:space="preserve"><value>コンテキストサイズ</value></data>
+  <data name="Translation_Label_DeepLApiKey" xml:space="preserve"><value>DeepL API キー</value></data>
+  <data name="Translation_Label_DeepLEndpoint" xml:space="preserve"><value>DeepL endpoint</value></data>
+  <data name="Translation_Label_GeminiApiKey" xml:space="preserve"><value>Gemini API キー</value></data>
+  <data name="Translation_Label_GpuLayers" xml:space="preserve"><value>GPU layers</value></data>
+  <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP ホスト</value></data>
+  <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>最大トークン数</value></data>
+  <data name="Translation_Label_Model" xml:space="preserve"><value>モデル</value></data>
+  <data name="Translation_Label_Parallel" xml:space="preserve"><value>並列数</value></data>
+  <data name="Translation_Label_RepeatPenalty" xml:space="preserve"><value>repeat penalty</value></data>
+  <data name="Translation_Label_RuntimeControl" xml:space="preserve"><value>ランタイム制御</value></data>
+  <data name="Translation_Label_Temperature" xml:space="preserve"><value>temperature</value></data>
+  <data name="Translation_Label_Threads" xml:space="preserve"><value>スレッド数</value></data>
+  <data name="Translation_Label_TopK" xml:space="preserve"><value>Top K</value></data>
+  <data name="Translation_Label_TopP" xml:space="preserve"><value>Top P</value></data>
+  <data name="Translation_LocalLlamaTitle" xml:space="preserve"><value>ローカル Llama.cpp (GGUF)</value></data>
+  <data name="Translation_ModelFilesNote" xml:space="preserve"><value>モデルファイルは TranslationServiceLlama\LlamaCpp\Models から読み込みます</value></data>
+  <data name="Translation_PriorityTitle" xml:space="preserve"><value>翻訳優先順位</value></data>
+  <data name="Translation_RestartLlama" xml:space="preserve"><value>Llama.cpp を再起動</value></data>
+  <data name="Translation_RestartNote" xml:space="preserve"><value>リソースは次回起動時に解放されます。メモリを解放するには OFF にしてアプリを再起動してください。</value></data>
+  <data name="Translation_StopLlamaServer" xml:space="preserve"><value>llama-server を停止</value></data>
+  <data name="Runtime_ProviderStatus_Disabled" xml:space="preserve"><value>{0}: 無効</value></data>
+  <data name="Runtime_ProviderStatus_Enabled" xml:space="preserve"><value>{0}: 有効</value></data>
+  <data name="Runtime_ProviderStatus_KeyMissing" xml:space="preserve"><value>{0}: キー未設定</value></data>
+  <data name="Runtime_RoiStatus_Coordinates" xml:space="preserve"><value>ROI ({0}): {1:0.000},{2:0.000} {3:0.000}x{4:0.000}</value></data>
+  <data name="Runtime_RoiStatus_Disabled" xml:space="preserve"><value>ROI: 無効 ({0})</value></data>
+  <data name="Runtime_RoiStatus_NotSet" xml:space="preserve"><value>ROI: 未設定 ({0})</value></data>
+  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>翻訳状態: {0} | {1} | {2} | {3}</value></data>
+  <data name="Runtime_TranslationStatus_Unknown" xml:space="preserve"><value>翻訳状態: 不明</value></data>
+  <data name="Settings_HotkeyConflictSummary" xml:space="preserve"><value>ホットキー競合が解消されるまで適用されません。</value></data>
+  <data name="Settings_FixedOverlayTarget_Inactive" xml:space="preserve"><value>固定オーバーレイ対象は無効です</value></data>
+  <data name="Settings_FixedOverlayTarget_Roi" xml:space="preserve"><value>固定オーバーレイ対象に ROI を使用中</value></data>
+  <data name="Settings_FixedOverlayTarget_SavedUserFrame" xml:space="preserve"><value>保存済みユーザーフレームを使用中</value></data>
+  <data name="Settings_FixedOverlayTarget_UserFrameFallback" xml:space="preserve"><value>ユーザーフレーム未設定のため、現在は ROI を使用中</value></data>
+  <data name="UiLanguage_System" xml:space="preserve"><value>システム</value></data>
+  <data name="WinRtPack_BeginInstall_Busy" xml:space="preserve"><value>OCR 言語パックをインストール中 ({0})...</value></data>
+  <data name="WinRtPack_BeginInstall_Status" xml:space="preserve"><value>WinRT OCR 言語パックをインストール中 ({0})...</value></data>
+  <data name="WinRtPack_ConfirmInstall_Message" xml:space="preserve"><value>WinRT OCR 言語パック '{0}' がインストールされていません。
+
+今すぐインストールしますか？ 管理者権限とネットワーク接続が必要になる場合があります。</value></data>
+  <data name="WinRtPack_Status_Available" xml:space="preserve"><value>WinRT OCR 言語パック: 利用可能 ({0})。</value></data>
+  <data name="WinRtPack_Status_Checking" xml:space="preserve"><value>WinRT OCR 言語パックを確認中...</value></data>
+  <data name="WinRtPack_Status_Missing" xml:space="preserve"><value>WinRT OCR 言語パック: 未導入 ({0})。</value></data>
+  <data name="WinRtPack_Status_PrecheckFailed" xml:space="preserve"><value>WinRT OCR 言語パックの事前確認に失敗しました。</value></data>
+  <data name="WinRtPack_Status_SourceLanguageNotSet" xml:space="preserve"><value>WinRT OCR 言語パック: 原文言語が未設定です。</value></data>
+  <data name="OneOcr_HelperMissing_Message" xml:space="preserve"><value>OneOCR helper 実行ファイルが見つかりません:
+{0}
+
+OneOCR を選択する前に helper をビルドするか配置してください。</value></data>
+  <data name="OneOcr_UnknownError" xml:space="preserve"><value>不明なエラーです。</value></data>
+  <data name="OneOcr_VendorConfirmation_Message" xml:space="preserve"><value>OneOCR に必要な vendor ファイルが不足しています:
+{0}
+
+配置先フォルダー:
+{1}
+
+OK を選ぶと、インストール済み Snipping Tool パッケージから今すぐコピーします。キャンセルを選ぶと以前の OCR エンジンを維持します。</value></data>
+  <data name="OneOcr_VendorCopyBusy" xml:space="preserve"><value>Snipping Tool から OneOCR vendor ファイルをコピー中...</value></data>
+</root>

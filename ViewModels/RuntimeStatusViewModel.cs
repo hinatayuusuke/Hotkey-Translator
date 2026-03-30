@@ -1,9 +1,16 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.ViewModels;
 
 internal sealed partial class RuntimeStatusViewModel : ObservableObject
 {
+    public RuntimeStatusViewModel()
+    {
+        _roiStatusMessage = LocalizationService.Instance.GetString("Runtime_RoiStatus_NotSet", "slot 1");
+        _translationStatusMessage = LocalizationService.Instance.GetString("Runtime_TranslationStatus_Unknown");
+    }
+
     [ObservableProperty]
     private bool _isBusy;
 
@@ -20,8 +27,8 @@ internal sealed partial class RuntimeStatusViewModel : ObservableObject
     private bool _canCancelCurrentRun;
 
     [ObservableProperty]
-    private string _roiStatusMessage = "ROI: not set";
+    private string _roiStatusMessage = string.Empty;
 
     [ObservableProperty]
-    private string _translationStatusMessage = "Translation status: unknown";
+    private string _translationStatusMessage = string.Empty;
 }
