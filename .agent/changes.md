@@ -1870,3 +1870,43 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`
 - `dotnet build .\Hotkey-Translator.csproj` は実行中 `Hotkey-Translator.exe` による `bin\Debug` ロックのため出力コピー段階で失敗
+
+**2026-03-30 10:51 (Asia/Taipei) — Localize remaining side-panel settings**
+
+### Summary
+- サイドパネル内で未移行だった Capture / OCR Settings / OCR Engines / VisionLLM / Overlay / Auto Translate / Hook / Hotkey の文言を `resx` 化した。
+
+### Context / Goal
+- 初回の `resx` 移行後も、設定パネル配下の複数画面に `Text=` / `Content=` 直書きが残っていた。
+- UI 言語切替時にサイドパネル内の設定文言も英語固定にならない状態へ揃えたかった。
+
+### Changes
+- 対象 XAML に `uiLoc:Loc` を追加し、見出し、ラベル、チェックボックス、ボタン、補足文、サイドバー内カテゴリ名をローカライズ参照へ置換した。
+- `Resources/Strings.resx` / `Resources/Strings.ja.resx` に Capture / OCR tuning / PaddleOCR / VisionLLM / Overlay / Auto Translate / Hook / Hotkey 用のキーを追加した。
+- `MainWindow.xaml` の `Overview` / `Settings` タブ見出し、`VisionLLM` サイドバー項目、設定カテゴリ一覧も同じキー系へ寄せた。
+
+### Files Touched
+- `MainWindow.xaml` — タブ見出し、`VisionLLM` を含む設定カテゴリ表示をローカライズ参照へ置換した。
+- `UI/CaptureControl.xaml` — Capture 設定の見出し・モード・プロバイダー補助文言をローカライズ参照へ置換した。
+- `UI/OcrSettingsControl.xaml` — OCR tuning / preprocess / input の各ラベルと補足文をローカライズ参照へ置換した。
+- `UI/OcrEnginesControl.xaml` — PaddleOCR / PaddleOCR-VL の各設定名、モデル選択、実行ボタンをローカライズ参照へ置換した。
+- `UI/VisionLlmSettingsControl.xaml` — VisionLLM 設定、共有翻訳、hybrid OCR 関連文言をローカライズ参照へ置換した。
+- `UI/OverlayControl.xaml` — Overlay readability 設定の文言をローカライズ参照へ置換した。
+- `UI/OverlayBehaviorControl.xaml` — Auto Translate の各設定文言をローカライズ参照へ置換した。
+- `UI/HookFullscreenControl.xaml` — Hook / Launcher / Mirror Fullscreen の各設定文言をローカライズ参照へ置換した。
+- `UI/HotkeysControl.xaml` — Hotkey 行ラベル、RawInput 説明、Win key 注意文をローカライズ参照へ置換した。
+- `Resources/Strings.resx` — 追加したサイドパネル向け英語リソースを定義した。
+- `Resources/Strings.ja.resx` — 追加したサイドパネル向け日本語リソースを定義した。
+
+### Behavioral Impact
+- UI 言語を `English` / `日本語` / `System` へ切り替えた際、サイドパネル配下の設定画面も同じ言語で表示される。
+- `Overview` / `Settings` タブ見出しと設定カテゴリ一覧も切替対象に含まれる。
+
+### Risk & Mitigation
+- Risk: `DX11`、`Vulkan`、`Ctrl` など技術識別子として扱う項目は英字のまま残しているため、完全和訳を期待すると一部英字 UI が残る。
+- Mitigation: 利用者が操作時に参照する説明文と設定名は `resx` 化し、識別子は実際のキー名・API 名との対応を優先して保持した。
+- Risk: 新規キー追加漏れがあると `LocExtension` のキー名がそのまま表示される。
+- Mitigation: 追加後に `artifacts\localization-build` へのビルドでリソース解決を含めて検証した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`

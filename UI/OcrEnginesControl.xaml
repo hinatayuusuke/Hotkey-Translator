@@ -3,41 +3,42 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <StackPanel>
-                                <TextBlock Text="PaddleOCR Core (gRPC)" Style="{StaticResource SectionTitleTextStyle}" />
+                                <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Title_PaddleCore}" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Detection model" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_DetectionModel}" Width="200" VerticalAlignment="Center" />
                                     <ComboBox x:Name="PaddleDetectionModelBox" Width="240"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.PaddleDetectionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <ComboBoxItem Content="Mobile (PP-OCRv5_mobile_det)" Tag="PP-OCRv5_mobile_det" />
-                                        <ComboBoxItem Content="Server (PP-OCRv5_server_det)" Tag="PP-OCRv5_server_det" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_DetectionModel_Mobile}" Tag="PP-OCRv5_mobile_det" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_DetectionModel_Server}" Tag="PP-OCRv5_server_det" />
                                     </ComboBox>
                                 </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Recognition model" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_RecognitionModel}" Width="200" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleRecognitionModelBox" Width="240"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleRecognitionModelName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                          <ComboBoxItem Content="Auto (source language)" Tag="auto" />
-                                          <ComboBoxItem Content="Server (PP-OCRv5_server_rec)" Tag="PP-OCRv5_server_rec" />
-                                        <ComboBoxItem Content="English (en_PP-OCRv5_mobile_rec)" Tag="en_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Latin (latin_PP-OCRv5_mobile_rec)" Tag="latin_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="East Slavic (eslav_PP-OCRv5_mobile_rec)" Tag="eslav_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Korean (korean_PP-OCRv5_mobile_rec)" Tag="korean_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Thai (th_PP-OCRv5_mobile_rec)" Tag="th_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Greek (el_PP-OCRv5_mobile_rec)" Tag="el_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Arabic (arabic_PP-OCRv5_mobile_rec)" Tag="arabic_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Cyrillic (cyrillic_PP-OCRv5_mobile_rec)" Tag="cyrillic_PP-OCRv5_mobile_rec" />
-                                        <ComboBoxItem Content="Devanagari (devanagari_PP-OCRv5_mobile_rec)" Tag="devanagari_PP-OCRv5_mobile_rec" />
-                                          <ComboBoxItem Content="Telugu (te_PP-OCRv5_mobile_rec)" Tag="te_PP-OCRv5_mobile_rec" />
-                                          <ComboBoxItem Content="Tamil (ta_PP-OCRv5_mobile_rec)" Tag="ta_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Auto}" Tag="auto" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Server}" Tag="PP-OCRv5_server_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_English}" Tag="en_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Latin}" Tag="latin_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_EastSlavic}" Tag="eslav_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Korean}" Tag="korean_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Thai}" Tag="th_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Greek}" Tag="el_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Arabic}" Tag="arabic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Cyrillic}" Tag="cyrillic_PP-OCRv5_mobile_rec" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Devanagari}" Tag="devanagari_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Telugu}" Tag="te_PP-OCRv5_mobile_rec" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngines_RecognitionModel_Tamil}" Tag="ta_PP-OCRv5_mobile_rec" />
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_thresh" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_TextDetThresh}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleTextDetThreshBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="3"
@@ -47,7 +48,7 @@
                                                     Value="{Binding Settings.PaddleTextDetThreshValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_box_thresh" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_TextDetBoxThresh}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleTextDetBoxThreshBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="3"
@@ -57,7 +58,7 @@
                                                     Value="{Binding Settings.PaddleTextDetBoxThreshValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_det_unclip_ratio" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_TextDetUnclipRatio}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleTextDetUnclipRatioBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="3"
@@ -67,7 +68,7 @@
                                                     Value="{Binding Settings.PaddleTextDetUnclipRatioValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="text_rec_score_thresh" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_TextRecScoreThresh}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleTextRecScoreThreshBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="3"
@@ -77,12 +78,12 @@
                                                     Value="{Binding Settings.PaddleTextRecScoreThreshValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <CheckBox x:Name="EnablePaddleConfidenceFilterCheck"
-                                            Content="Filter low-confidence lines (Paddle only)"
+                                            Content="{uiLoc:Loc Key=OcrEngines_EnableConfidenceFilter}"
                                             Margin="0,8,0,0"
                                             Visibility="Collapsed"
                                             IsChecked="{Binding Settings.EnablePaddleConfidenceFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0" Visibility="Collapsed">
-                                      <TextBlock Text="Confidence threshold" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_ConfidenceThreshold}" Width="200" VerticalAlignment="Center" />
                                       <Slider x:Name="PaddleConfidenceThresholdSlider"
                                               Width="{StaticResource SliderStandardWidth}"
                                               Minimum="0"
@@ -96,14 +97,14 @@
                                                  Style="{StaticResource SliderValueDecimalTextStyle}"
                                                  Text="{Binding ElementName=PaddleConfidenceThresholdSlider, Path=Value, StringFormat={}{0:F2}}" />
                                   </StackPanel>
-                                  <TextBlock Text="Language follows Main settings."
+                                  <TextBlock Text="{uiLoc:Loc Key=OcrEngines_LanguageFollowsMain}"
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,6,0,0" />
                                   <Separator Margin="0,10,0,8" />
 
-                                  <TextBlock Text="PaddleOCR-VL (gRPC)" Style="{StaticResource SectionTitleTextStyle}" />
+                                  <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Title_PaddleVl}" Style="{StaticResource SectionTitleTextStyle}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Pipeline version" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_PipelineVersion}" Width="200" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlPipelineVersionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlPipelineVersion, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -112,7 +113,7 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max pixels" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_MaxPixels}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleVlMaxPixelsBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="0"
@@ -122,7 +123,7 @@
                                                     Value="{Binding Settings.PaddleVlMaxPixelsValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Layout threshold" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_LayoutThreshold}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleVlLayoutThresholdBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="3"
@@ -132,7 +133,7 @@
                                                     Value="{Binding Settings.PaddleVlLayoutThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max new tokens" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_MaxNewTokens}" Width="200" VerticalAlignment="Center" />
                                       <ui:NumberBox x:Name="PaddleVlMaxNewTokensBox"
                                                     Width="152"
                                                     MaxDecimalPlaces="0"
@@ -140,23 +141,23 @@
                                                     LargeChange="32"
                                                     SpinButtonPlacementMode="Compact"
                                                     Value="{Binding Settings.PaddleVlMaxNewTokensValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <TextBlock Text="AUTO=blank"
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_AutoBlankNote}"
                                                  Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                  Margin="8,0,0,0"
                                                  VerticalAlignment="Center" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Layout detection" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_LayoutDetection}" Width="200" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlUseLayoutDetectionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlUseLayoutDetectionModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                          <ComboBoxItem Content="Auto" Tag="auto" />
-                                          <ComboBoxItem Content="Enable" Tag="true" />
-                                          <ComboBoxItem Content="Disable" Tag="false" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=Common_Auto}" Tag="auto" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=Common_Enable}" Tag="true" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=Common_Disable}" Tag="false" />
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Precision" Width="200" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=OcrEngines_Label_Precision}" Width="200" VerticalAlignment="Center" />
                                       <ComboBox x:Name="PaddleVlPrecisionBox" Width="120"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.PaddleVlPrecisionTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
@@ -165,9 +166,9 @@
                                       </ComboBox>
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
-                                      <TextBlock Text="Runtime control" Width="200" VerticalAlignment="Center" />
-                                      <Button Content="Apply &amp; Restart" Width="176" Command="{Binding RestartPaddleOcrHostsCommand}" />
-                                      <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_RuntimeControl}" Width="200" VerticalAlignment="Center" />
+                                      <Button Content="{uiLoc:Loc Key=Common_ApplyAndRestart}" Width="176" Command="{Binding RestartPaddleOcrHostsCommand}" />
+                                      <Button Content="{uiLoc:Loc Key=Common_Stop}" Width="80" Margin="8,0,0,0" Command="{Binding StopPaddleVlHostCommand}" />
                                   </StackPanel>
     </StackPanel>
 </UserControl>

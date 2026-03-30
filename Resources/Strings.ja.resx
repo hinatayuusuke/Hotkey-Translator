@@ -197,4 +197,147 @@ OneOCR を選択する前に helper をビルドするか配置してくださ�
 
 OK を選ぶと、インストール済み Snipping Tool パッケージから今すぐコピーします。キャンセルを選ぶと以前の OCR エンジンを維持します。</value></data>
   <data name="OneOcr_VendorCopyBusy" xml:space="preserve"><value>Snipping Tool から OneOCR vendor ファイルをコピー中...</value></data>
+  <data name="MainWindow_Tab_Overview" xml:space="preserve"><value>概要</value></data>
+  <data name="MainWindow_Tab_Settings" xml:space="preserve"><value>設定</value></data>
+  <data name="Sidebar_VisionLlm" xml:space="preserve"><value>VisionLLM</value></data>
+  <data name="Common_ApplyAndRestart" xml:space="preserve"><value>適用して再起動</value></data>
+  <data name="Common_Auto" xml:space="preserve"><value>自動</value></data>
+  <data name="Common_Browse" xml:space="preserve"><value>参照...</value></data>
+  <data name="Common_Copy" xml:space="preserve"><value>コピー</value></data>
+  <data name="Common_Disable" xml:space="preserve"><value>無効</value></data>
+  <data name="Common_Enable" xml:space="preserve"><value>有効</value></data>
+  <data name="Common_Stop" xml:space="preserve"><value>停止</value></data>
+  <data name="Capture_FixedOnly" xml:space="preserve"><value>固定のみ</value></data>
+  <data name="Capture_Label_Mode" xml:space="preserve"><value>モード</value></data>
+  <data name="Capture_Label_Provider" xml:space="preserve"><value>プロバイダー</value></data>
+  <data name="Capture_Mode_ActiveWindow" xml:space="preserve"><value>アクティブウィンドウ</value></data>
+  <data name="Capture_Mode_Screen" xml:space="preserve"><value>画面</value></data>
+  <data name="Capture_Title" xml:space="preserve"><value>キャプチャ</value></data>
+  <data name="OcrSettings_Title_Tuning" xml:space="preserve"><value>OCR チューニング</value></data>
+  <data name="OcrSettings_Label_PhashThreshold" xml:space="preserve"><value>pHash しきい値</value></data>
+  <data name="OcrSettings_Label_IouThreshold" xml:space="preserve"><value>IoU しきい値</value></data>
+  <data name="OcrSettings_Label_WritingMode" xml:space="preserve"><value>書字方向</value></data>
+  <data name="OcrSettings_WritingMode_Auto" xml:space="preserve"><value>自動</value></data>
+  <data name="OcrSettings_WritingMode_VerticalForced" xml:space="preserve"><value>縦書き (強制)</value></data>
+  <data name="OcrSettings_WritingMode_HorizontalForced" xml:space="preserve"><value>横書き (強制)</value></data>
+  <data name="OcrSettings_EnableSimpleMergeTuning" xml:space="preserve"><value>簡易マージ調整を使う</value></data>
+  <data name="OcrSettings_Label_HorizontalWritingMerge" xml:space="preserve"><value>横書きマージ</value></data>
+  <data name="OcrSettings_Label_VerticalWritingMerge" xml:space="preserve"><value>縦書きマージ</value></data>
+  <data name="OcrSettings_MergeThresholdNote" xml:space="preserve"><value>NOTE: 強度スライダーは内部のマージしきい値へマッピングされます。</value></data>
+  <data name="OcrSettings_Title_PreprocessBinarization" xml:space="preserve"><value>OCR 前処理 (二値化)</value></data>
+  <data name="OcrSettings_EnableBinarization" xml:space="preserve"><value>二値化を有効化</value></data>
+  <data name="OcrSettings_EnableAutoThreshold" xml:space="preserve"><value>自動しきい値 (大津法)</value></data>
+  <data name="OcrSettings_EnableGammaCorrection" xml:space="preserve"><value>ガンマ補正を有効化</value></data>
+  <data name="OcrSettings_EnableGrayscale" xml:space="preserve"><value>グレースケール変換を有効化</value></data>
+  <data name="OcrSettings_EnableContrastAdjustment" xml:space="preserve"><value>コントラスト調整を有効化</value></data>
+  <data name="OcrSettings_EnableTwoPass" xml:space="preserve"><value>2段階 OCR (low/high)</value></data>
+  <data name="OcrSettings_PreferAutoThreshold" xml:space="preserve"><value>有効時は自動しきい値を優先</value></data>
+  <data name="OcrSettings_Label_LowThreshold" xml:space="preserve"><value>低しきい値</value></data>
+  <data name="OcrSettings_Label_HighThreshold" xml:space="preserve"><value>高しきい値</value></data>
+  <data name="OcrSettings_Label_Threshold" xml:space="preserve"><value>しきい値</value></data>
+  <data name="OcrSettings_Label_Gamma" xml:space="preserve"><value>ガンマ</value></data>
+  <data name="OcrSettings_Label_Contrast" xml:space="preserve"><value>コントラスト</value></data>
+  <data name="OcrSettings_Title_Input" xml:space="preserve"><value>OCR 入力</value></data>
+  <data name="OcrSettings_EnableDownsampleInput" xml:space="preserve"><value>OCR 入力をダウンサンプル</value></data>
+  <data name="OcrSettings_Label_DownsampleScale" xml:space="preserve"><value>ダウンサンプル倍率</value></data>
+  <data name="OcrSettings_InputPreviewNote" xml:space="preserve"><value>OCR 入力プレビューは下部ドロワーで確認できます。</value></data>
+  <data name="OcrEngines_Title_PaddleCore" xml:space="preserve"><value>PaddleOCR Core (gRPC)</value></data>
+  <data name="OcrEngines_Label_DetectionModel" xml:space="preserve"><value>検出モデル</value></data>
+  <data name="OcrEngines_DetectionModel_Mobile" xml:space="preserve"><value>Mobile (PP-OCRv5_mobile_det)</value></data>
+  <data name="OcrEngines_DetectionModel_Server" xml:space="preserve"><value>Server (PP-OCRv5_server_det)</value></data>
+  <data name="OcrEngines_Label_RecognitionModel" xml:space="preserve"><value>認識モデル</value></data>
+  <data name="OcrEngines_RecognitionModel_Auto" xml:space="preserve"><value>自動 (原文言語)</value></data>
+  <data name="OcrEngines_RecognitionModel_Server" xml:space="preserve"><value>Server (PP-OCRv5_server_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_English" xml:space="preserve"><value>英語 (en_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Latin" xml:space="preserve"><value>ラテン (latin_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_EastSlavic" xml:space="preserve"><value>東スラブ (eslav_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Korean" xml:space="preserve"><value>韓国語 (korean_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Thai" xml:space="preserve"><value>タイ語 (th_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Greek" xml:space="preserve"><value>ギリシャ語 (el_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Arabic" xml:space="preserve"><value>アラビア語 (arabic_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Cyrillic" xml:space="preserve"><value>キリル (cyrillic_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Devanagari" xml:space="preserve"><value>デーヴァナーガリー (devanagari_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Telugu" xml:space="preserve"><value>テルグ語 (te_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Tamil" xml:space="preserve"><value>タミル語 (ta_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_Label_TextDetThresh" xml:space="preserve"><value>text_det_thresh</value></data>
+  <data name="OcrEngines_Label_TextDetBoxThresh" xml:space="preserve"><value>text_det_box_thresh</value></data>
+  <data name="OcrEngines_Label_TextDetUnclipRatio" xml:space="preserve"><value>text_det_unclip_ratio</value></data>
+  <data name="OcrEngines_Label_TextRecScoreThresh" xml:space="preserve"><value>text_rec_score_thresh</value></data>
+  <data name="OcrEngines_EnableConfidenceFilter" xml:space="preserve"><value>低信頼度の行を除外 (Paddle のみ)</value></data>
+  <data name="OcrEngines_Label_ConfidenceThreshold" xml:space="preserve"><value>信頼度しきい値</value></data>
+  <data name="OcrEngines_LanguageFollowsMain" xml:space="preserve"><value>言語は Main 設定に従います。</value></data>
+  <data name="OcrEngines_Title_PaddleVl" xml:space="preserve"><value>PaddleOCR-VL (gRPC)</value></data>
+  <data name="OcrEngines_Label_PipelineVersion" xml:space="preserve"><value>パイプライン版</value></data>
+  <data name="OcrEngines_Label_MaxPixels" xml:space="preserve"><value>最大ピクセル数</value></data>
+  <data name="OcrEngines_Label_LayoutThreshold" xml:space="preserve"><value>レイアウトしきい値</value></data>
+  <data name="OcrEngines_Label_MaxNewTokens" xml:space="preserve"><value>最大新規トークン数</value></data>
+  <data name="OcrEngines_AutoBlankNote" xml:space="preserve"><value>AUTO=空欄</value></data>
+  <data name="OcrEngines_Label_LayoutDetection" xml:space="preserve"><value>レイアウト検出</value></data>
+  <data name="OcrEngines_Label_Precision" xml:space="preserve"><value>精度</value></data>
+  <data name="VisionLlm_Title" xml:space="preserve"><value>VisionLLM (Local VLM)</value></data>
+  <data name="VisionLlm_AutoStartNote" xml:space="preserve"><value>OCR エンジンが VisionLLM のとき、VisionLLM は自動起動します。</value></data>
+  <data name="VisionLlm_ModelPathNote" xml:space="preserve"><value>モデルファイルは TranslationServiceLlama\LlamaCpp\Models から読み込みます</value></data>
+  <data name="VisionLlm_Label_Mmproj" xml:space="preserve"><value>MMProj</value></data>
+  <data name="VisionLlm_Label_MaxImageSide" xml:space="preserve"><value>最大画像辺長</value></data>
+  <data name="VisionLlm_EnableSharedLocalTranslation" xml:space="preserve"><value>翻訳にも VisionLLM を使う</value></data>
+  <data name="VisionLlm_SharedLocalTranslationNote" xml:space="preserve"><value>NOTE: ON では OCR とローカル翻訳で VisionLLM モデルを共有します。OFF では OCR は VisionLLM のまま、翻訳は通常パイプラインを使います。</value></data>
+  <data name="VisionLlm_EnableGeometryAssistHybridOcr" xml:space="preserve"><value>geometry assist hybrid OCR を有効化</value></data>
+  <data name="VisionLlm_Label_HybridBaseOcr" xml:space="preserve"><value>Hybrid base OCR</value></data>
+  <data name="VisionLlm_GeometryAssistNote" xml:space="preserve"><value>NOTE: VisionLLM のテキストが主系です。選択した OCR エンジンは overlay 配置用の geometry ヒントだけに使われます。</value></data>
+  <data name="OcrEngine_WinRt" xml:space="preserve"><value>WinRT</value></data>
+  <data name="OcrEngine_Ndl" xml:space="preserve"><value>NDL</value></data>
+  <data name="OcrEngine_Paddle" xml:space="preserve"><value>PaddleOCR</value></data>
+  <data name="OcrEngine_OneOcrNativeHelper" xml:space="preserve"><value>OneOCR (native helper)</value></data>
+  <data name="Overlay_Title_Readability" xml:space="preserve"><value>オーバーレイ可読性</value></data>
+  <data name="Overlay_EnableFontStabilization" xml:space="preserve"><value>オーバーレイ文字サイズを安定化</value></data>
+  <data name="Overlay_EnableSmallBoxReadabilityBoost" xml:space="preserve"><value>小さい OCR ボックスの可読性を強化</value></data>
+  <data name="Overlay_Label_SmallTextSensitivity" xml:space="preserve"><value>小さい文字の感度</value></data>
+  <data name="AutoTranslate_Title" xml:space="preserve"><value>自動翻訳</value></data>
+  <data name="AutoTranslate_EnableAutoHideOnSceneChange" xml:space="preserve"><value>シーン変化時の自動非表示を有効化</value></data>
+  <data name="AutoTranslate_EnableAutoTranslateOnSceneChange" xml:space="preserve"><value>シーン変化時の自動翻訳を有効化</value></data>
+  <data name="AutoTranslate_ShowBadgeIcon" xml:space="preserve"><value>自動翻訳バッジアイコンを表示</value></data>
+  <data name="AutoTranslate_EnableQuietWindow" xml:space="preserve"><value>自動翻訳の quiet window を有効化</value></data>
+  <data name="AutoTranslate_Label_QuietWindowMs" xml:space="preserve"><value>quiet window (ms)</value></data>
+  <data name="AutoTranslate_UseTextWeightedScoring" xml:space="preserve"><value>テキスト重み付きスコアリングを使う</value></data>
+  <data name="AutoTranslate_Label_WatchIntervalMs" xml:space="preserve"><value>監視間隔 (ms)</value></data>
+  <data name="AutoTranslate_Label_WatcherPhashThreshold" xml:space="preserve"><value>監視 pHash しきい値</value></data>
+  <data name="Hook_Title" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Hook_Title_GraphicsHook" xml:space="preserve"><value>Graphics Hook</value></data>
+  <data name="Hook_EnableGraphicsHookPipeline" xml:space="preserve"><value>Graphics Hook パイプラインを有効化</value></data>
+  <data name="Hook_Label_Api" xml:space="preserve"><value>Hook API</value></data>
+  <data name="Hook_Api_Dx9CaptureOnlyPlanned" xml:space="preserve"><value>DX9 (capture-only planned)</value></data>
+  <data name="Hook_EnableOverlayRendering" xml:space="preserve"><value>hook overlay 描画を有効化</value></data>
+  <data name="Hook_FallbackToLegacyCaptureOnError" xml:space="preserve"><value>hook エラー時に legacy capture へフォールバック</value></data>
+  <data name="Hook_Label_CaptureFpsLimit" xml:space="preserve"><value>キャプチャ FPS 上限</value></data>
+  <data name="Hook_Diagnostics" xml:space="preserve"><value>診断</value></data>
+  <data name="Hook_EnablePerfDiagnosticLog" xml:space="preserve"><value>hook perf diagnostic log (Vulkan) を有効化</value></data>
+  <data name="Hook_EnableDiagnosticFileSink" xml:space="preserve"><value>hook diagnostic file sink を有効化</value></data>
+  <data name="Hook_Title_Launcher" xml:space="preserve"><value>Launcher</value></data>
+  <data name="Hook_EnableLauncher" xml:space="preserve"><value>Graphics Hook launcher を有効化</value></data>
+  <data name="Hook_Label_LauncherExe" xml:space="preserve"><value>Launcher EXE</value></data>
+  <data name="Hook_Label_LauncherArgs" xml:space="preserve"><value>Launcher 引数</value></data>
+  <data name="Hook_Launch" xml:space="preserve"><value>Hook 起動</value></data>
+  <data name="Hook_Label_SteamLaunch" xml:space="preserve"><value>Steam 起動</value></data>
+  <data name="Hook_Title_MirrorFullscreen" xml:space="preserve"><value>ミラーフルスクリーン</value></data>
+  <data name="Hook_EnableMirrorFullscreenMode" xml:space="preserve"><value>ミラーフルスクリーンモードを有効化</value></data>
+  <data name="Hook_Label_MagpieProfileIndex" xml:space="preserve"><value>Magpie プロファイル index</value></data>
+  <data name="Hotkey_Title" xml:space="preserve"><value>ホットキー</value></data>
+  <data name="Hotkey_EnableRawInputExperimental" xml:space="preserve"><value>RawInput ホットキーバックエンドを使う (experimental)</value></data>
+  <data name="Hotkey_RawInputNote" xml:space="preserve"><value>NOTE: 一部アプリが標準 RegisterHotKey を無視する場合に使ってください。</value></data>
+  <data name="Hotkey_Action_RunOnce" xml:space="preserve"><value>1回実行</value></data>
+  <data name="Hotkey_Action_RunNextRoi" xml:space="preserve"><value>次の ROI スロットを実行</value></data>
+  <data name="Hotkey_Action_RunNextNextRoi" xml:space="preserve"><value>次の次の ROI スロットを実行</value></data>
+  <data name="Hotkey_Action_ToggleOverlay" xml:space="preserve"><value>オーバーレイ切替</value></data>
+  <data name="Hotkey_Action_ForceRun" xml:space="preserve"><value>強制実行</value></data>
+  <data name="Hotkey_Action_ForceRunNextRoi" xml:space="preserve"><value>次の ROI スロットを強制実行</value></data>
+  <data name="Hotkey_Action_ForceRunNextNextRoi" xml:space="preserve"><value>次の次の ROI スロットを強制実行</value></data>
+  <data name="Hotkey_Action_GeminiImageTranslate" xml:space="preserve"><value>Gemini 画像翻訳</value></data>
+  <data name="Hotkey_Action_OverlayText" xml:space="preserve"><value>オーバーレイテキスト</value></data>
+  <data name="Hotkey_Action_SceneAutoTranslate" xml:space="preserve"><value>シーン自動翻訳</value></data>
+  <data name="Hotkey_Action_SelectRoi" xml:space="preserve"><value>ROI を選択</value></data>
+  <data name="Hotkey_Action_SelectUserFrame" xml:space="preserve"><value>ユーザーフレームを選択</value></data>
+  <data name="Hotkey_Action_LockWindow" xml:space="preserve"><value>ウィンドウ固定</value></data>
+  <data name="Hotkey_Action_UnlockWindow" xml:space="preserve"><value>ウィンドウ固定解除</value></data>
+  <data name="Hotkey_Action_ToggleMirrorFullscreen" xml:space="preserve"><value>ミラーフルスクリーン切替</value></data>
+  <data name="Hotkey_Note_WinKeyUnsupported" xml:space="preserve"><value>Note: Win キーは未対応です。</value></data>
 </root>

@@ -3,9 +3,10 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              mc:Ignorable="d">
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Capture" Style="{StaticResource SectionTitleTextStyle}" />
+        <TextBlock Text="{uiLoc:Loc Key=Capture_Title}" Style="{StaticResource SectionTitleTextStyle}" />
         <Grid Margin="0,6,0,0" HorizontalAlignment="Left">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="140" />
@@ -17,17 +18,17 @@
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Mode" VerticalAlignment="Center" />
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="{uiLoc:Loc Key=Capture_Label_Mode}" VerticalAlignment="Center" />
             <ComboBox Grid.Row="0" Grid.Column="1"
                       Width="220"
                       HorizontalAlignment="Left"
                       SelectedValuePath="Tag"
                       SelectedValue="{Binding Settings.CaptureModeTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                <ComboBoxItem Content="Screen" Tag="Screen" />
-                <ComboBoxItem Content="Active Window" Tag="ActiveWindow" />
+                <ComboBoxItem Content="{uiLoc:Loc Key=Capture_Mode_Screen}" Tag="Screen" />
+                <ComboBoxItem Content="{uiLoc:Loc Key=Capture_Mode_ActiveWindow}" Tag="ActiveWindow" />
             </ComboBox>
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Provider" VerticalAlignment="Center" Margin="0,6,0,0" />
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="{uiLoc:Loc Key=Capture_Label_Provider}" VerticalAlignment="Center" Margin="0,6,0,0" />
             <StackPanel Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Orientation="Horizontal" Margin="0,6,0,0">
                 <ComboBox Width="220"
                           HorizontalAlignment="Left"
@@ -37,9 +38,9 @@
                     <ComboBoxItem Content="DXGI" Tag="Dxgi" />
                     <ComboBoxItem Content="GDI" Tag="Gdi" />
                 </ComboBox>
-                <CheckBox Content="Fixed only"
-                          VerticalAlignment="Center"
-                          Margin="10,0,0,0"
+                <CheckBox Content="{uiLoc:Loc Key=Capture_FixedOnly}"
+                           VerticalAlignment="Center"
+                           Margin="10,0,0,0"
                           IsChecked="{Binding Settings.IsCaptureProviderFixed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </Grid>

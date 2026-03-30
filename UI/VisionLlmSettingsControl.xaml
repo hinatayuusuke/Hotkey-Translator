@@ -3,17 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              mc:Ignorable="d">
     <StackPanel>
-                                  <TextBlock Text="VisionLLM (Local VLM)" Style="{StaticResource SectionTitleTextStyle}" />
-                                  <TextBlock Text="VisionLLM starts automatically when OCR engine is set to VisionLLM."
+                                  <TextBlock Text="{uiLoc:Loc Key=VisionLlm_Title}" Style="{StaticResource SectionTitleTextStyle}" />
+                                  <TextBlock Text="{uiLoc:Loc Key=VisionLlm_AutoStartNote}"
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,4,0,0" />
-                                  <TextBlock Text="Model files are loaded from TranslationServiceLlama\LlamaCpp\Models"
+                                  <TextBlock Text="{uiLoc:Loc Key=VisionLlm_ModelPathNote}"
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,6,0,0" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Model" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_Model}" Width="140" VerticalAlignment="Center" />
                                       <ComboBox x:Name="VisionLlmModelBox" Width="360"
                                                 ItemsSource="{Binding VisionLlmModelOptions}"
                                                 DisplayMemberPath="Display"
@@ -21,81 +22,81 @@
                                                 SelectedValue="{Binding Settings.VisionLlmSelectedModelFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="MMProj" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=VisionLlm_Label_Mmproj}" Width="140" VerticalAlignment="Center" />
                                       <ComboBox x:Name="VisionLlmMmprojBox" Width="360"
                                                 ItemsSource="{Binding VisionLlmMmprojOptions}"
                                                 DisplayMemberPath="Display"
                                                 SelectedValuePath="Value"
                                                 SelectedValue="{Binding Settings.VisionLlmSelectedMmprojFileName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                      <Button Content="Reload" Width="70" Margin="8,0,0,0" Command="{Binding ReloadVisionLlmModelsCommand}" />
+                                      <Button Content="{uiLoc:Loc Key=Common_Reload}" Width="70" Margin="8,0,0,0" Command="{Binding ReloadVisionLlmModelsCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Runtime control" Width="140" VerticalAlignment="Center" />
-                                      <Button Content="Apply &amp; Restart" Width="150" Command="{Binding RestartVisionLlmCommand}" />
-                                      <Button Content="Stop" Width="80" Margin="8,0,0,0" Command="{Binding StopVisionLlmCommand}" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_RuntimeControl}" Width="140" VerticalAlignment="Center" />
+                                      <Button Content="{uiLoc:Loc Key=Common_ApplyAndRestart}" Width="150" Command="{Binding RestartVisionLlmCommand}" />
+                                      <Button Content="{uiLoc:Loc Key=Common_Stop}" Width="80" Margin="8,0,0,0" Command="{Binding StopVisionLlmCommand}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="HTTP host" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_HttpHost}" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmHostBox" Width="120"
                                                Text="{Binding Settings.VisionLlmHostText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Port" Width="52" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Common_Port}" Width="52" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmPortBox" Width="80"
                                                Text="{Binding Settings.VisionLlmPortText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Context size" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_ContextSize}" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmContextSizeBox" Width="80"
                                                Text="{Binding Settings.VisionLlmContextSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="GPU layers" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_GpuLayers}" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmGpuLayersBox" Width="80"
                                                Text="{Binding Settings.VisionLlmGpuLayersText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Threads" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_Threads}" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmThreadsBox" Width="80"
                                                Text="{Binding Settings.VisionLlmThreadsText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Parallel" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_Parallel}" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmParallelBox" Width="80"
                                                Text="{Binding Settings.VisionLlmParallelText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Batch size" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_BatchSize}" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmBatchSizeBox" Width="80"
                                                Text="{Binding Settings.VisionLlmBatchSizeText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
-                                      <TextBlock Text="Max tokens" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=Translation_Label_MaxTokens}" Width="92" Margin="8,0,0,0" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmMaxTokensBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Max image side" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=VisionLlm_Label_MaxImageSide}" Width="140" VerticalAlignment="Center" />
                                       <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
                                   <CheckBox x:Name="EnableVisionLlmSharedLocalTranslationCheck"
-                                            Content="Use VisionLLM for translation"
+                                            Content="{uiLoc:Loc Key=VisionLlm_EnableSharedLocalTranslation}"
                                             Margin="0,8,0,0"
                                             IsChecked="{Binding Settings.EnableVisionLlmSharedLocalTranslation, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                  <TextBlock Text="NOTE: ON shares the VisionLLM model for OCR and local translation. OFF keeps OCR on VisionLLM and uses the normal translation pipeline."
+                                  <TextBlock Text="{uiLoc:Loc Key=VisionLlm_SharedLocalTranslationNote}"
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,4,0,0" />
                                   <CheckBox x:Name="EnableVisionGeometryHybridOcrCheck"
-                                            Content="Enable geometry assist hybrid OCR"
+                                            Content="{uiLoc:Loc Key=VisionLlm_EnableGeometryAssistHybridOcr}"
                                             Margin="0,8,0,0"
                                             IsChecked="{Binding Settings.EnableVisionGeometryHybridOcr, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                   <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                      <TextBlock Text="Hybrid base OCR" Width="140" VerticalAlignment="Center" />
+                                      <TextBlock Text="{uiLoc:Loc Key=VisionLlm_Label_HybridBaseOcr}" Width="140" VerticalAlignment="Center" />
                                       <ComboBox x:Name="VisionGeometryHybridBaseEngineBox"
                                                 Width="160"
                                                 SelectedValuePath="Tag"
                                                 SelectedValue="{Binding Settings.VisionGeometryHybridBaseEngineTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                 IsEnabled="{Binding Settings.EnableVisionGeometryHybridOcr}">
-                                          <ComboBoxItem Content="WinRT" Tag="WinRt" />
-                                          <ComboBoxItem Content="NDL" Tag="Ndl" />
-                                          <ComboBoxItem Content="PaddleOCR" Tag="Paddle" />
-                                          <ComboBoxItem Content="OneOCR (native helper)" Tag="OneOcr" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngine_WinRt}" Tag="WinRt" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngine_Ndl}" Tag="Ndl" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngine_Paddle}" Tag="Paddle" />
+                                          <ComboBoxItem Content="{uiLoc:Loc Key=OcrEngine_OneOcrNativeHelper}" Tag="OneOcr" />
                                       </ComboBox>
                                   </StackPanel>
-                                  <TextBlock Text="NOTE: VisionLLM text stays primary. The selected OCR engine is used only to provide geometry hints for overlay placement."
+                                  <TextBlock Text="{uiLoc:Loc Key=VisionLlm_GeometryAssistNote}"
                                              Style="{StaticResource HelpTextStyle}"
                                              Margin="0,4,0,0" />
     </StackPanel>

@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
@@ -18,9 +19,9 @@
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
 
-                                <TextBlock Text="OCR Tuning" Style="{StaticResource SectionTitleTextStyle}" />
+                                <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Title_Tuning}" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="pHash threshold" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_PhashThreshold}" Width="170" VerticalAlignment="Center" />
                                     <ui:NumberBox x:Name="PhashThresholdBox"
                                                   Width="100"
                                                   MaxDecimalPlaces="0"
@@ -30,7 +31,7 @@
                                                   Value="{Binding Settings.PhashThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="IoU threshold" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_IouThreshold}" Width="170" VerticalAlignment="Center" />
                                     <ui:NumberBox x:Name="IouThresholdBox"
                                                   Width="100"
                                                   MaxDecimalPlaces="2"
@@ -40,21 +41,21 @@
                                                   Value="{Binding Settings.IouThresholdValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Writing mode" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_WritingMode}" Width="170" VerticalAlignment="Center" />
                                     <ComboBox x:Name="VerticalModeOverrideBox" Width="200"
                                               SelectedValuePath="Tag"
                                               SelectedValue="{Binding Settings.VerticalModeOverrideTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                        <ComboBoxItem Content="Auto" Tag="Auto" />
-                                        <ComboBoxItem Content="Vertical (forced)" Tag="Vertical" />
-                                        <ComboBoxItem Content="Horizontal (forced)" Tag="Horizontal" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrSettings_WritingMode_Auto}" Tag="Auto" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrSettings_WritingMode_VerticalForced}" Tag="Vertical" />
+                                        <ComboBoxItem Content="{uiLoc:Loc Key=OcrSettings_WritingMode_HorizontalForced}" Tag="Horizontal" />
                                     </ComboBox>
                                 </StackPanel>
                                 <CheckBox x:Name="EnableSimpleMergeTuningCheck"
-                                          Content="Use simple merge tuning"
+                                          Content="{uiLoc:Loc Key=OcrSettings_EnableSimpleMergeTuning}"
                                           Margin="0,8,0,0"
                                           IsChecked="{Binding Settings.EnableSimpleMergeTuning, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Horizontal writing merge" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_HorizontalWritingMerge}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="HorizontalMergeStrengthSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -69,7 +70,7 @@
                                                Text="{Binding ElementName=HorizontalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Vertical writing merge" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_VerticalWritingMerge}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="VerticalMergeStrengthSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -83,26 +84,26 @@
                                     <TextBlock Style="{StaticResource SliderValueIntTextStyle}"
                                                Text="{Binding ElementName=VerticalMergeStrengthSlider, Path=Value, StringFormat={}{0:F0}}" />
                                 </StackPanel>
-                                <TextBlock Text="NOTE: Strength controls are mapped to internal merge thresholds."
+                                <TextBlock Text="{uiLoc:Loc Key=OcrSettings_MergeThresholdNote}"
                                            Style="{StaticResource HelpTextStyle}"
                                            Margin="0,4,0,0" />
                                 <Separator Margin="0,10,0,8" />
-                                <TextBlock Text="OCR Preprocess (Binarization)" Style="{StaticResource SectionTitleTextStyle}" />
-                                <CheckBox x:Name="EnableOcrBinarizationCheck" Content="Enable binarization" Margin="0,6,0,0"
+                                <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Title_PreprocessBinarization}" Style="{StaticResource SectionTitleTextStyle}" />
+                                <CheckBox x:Name="EnableOcrBinarizationCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableBinarization}" Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableOcrBinarization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="Auto threshold (Otsu)" Margin="0,4,0,0"
+                                <CheckBox x:Name="EnableOcrAutoThresholdCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableAutoThreshold}" Margin="0,4,0,0"
                                           IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrAutoThreshold, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrGammaCheck" Content="Enable gamma correction" Margin="0,4,0,0"
+                                <CheckBox x:Name="EnableOcrGammaCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableGammaCorrection}" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrGamma, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrGrayscaleCheck" Content="Enable grayscale conversion" Margin="0,4,0,0"
+                                <CheckBox x:Name="EnableOcrGrayscaleCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableGrayscale}" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrGrayscale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrContrastCheck" Content="Enable contrast adjustment" Margin="0,4,0,0"
+                                <CheckBox x:Name="EnableOcrContrastCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableContrastAdjustment}" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.EnableOcrContrast, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="EnableOcrTwoPassCheck" Content="Two-pass OCR (low/high)" Margin="0,6,0,0"
+                                <CheckBox x:Name="EnableOcrTwoPassCheck" Content="{uiLoc:Loc Key=OcrSettings_EnableTwoPass}" Margin="0,6,0,0"
                                           IsEnabled="{Binding Settings.EnableOcrBinarization}"
                                           IsChecked="{Binding Settings.EnableOcrTwoPass, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="Prefer auto threshold when enabled" Margin="0,4,0,0"
+                                <CheckBox x:Name="OcrTwoPassPreferAutoCheck" Content="{uiLoc:Loc Key=OcrSettings_PreferAutoThreshold}" Margin="0,4,0,0"
                                           IsChecked="{Binding Settings.OcrTwoPassPreferAuto, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                     <CheckBox.IsEnabled>
                                         <MultiBinding Converter="{StaticResource BooleanAndMultiConverter}">
@@ -113,7 +114,7 @@
                                     </CheckBox.IsEnabled>
                                 </CheckBox>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Low threshold" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_LowThreshold}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassLowThresholdSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -145,7 +146,7 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="High threshold" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_HighThreshold}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrTwoPassHighThresholdSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -177,7 +178,7 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Threshold" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_Threshold}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrBinarizationThresholdSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0"
@@ -218,7 +219,7 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Gamma" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_Gamma}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrGammaSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.6"
@@ -244,7 +245,7 @@
                                     </TextBlock>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Contrast" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_Contrast}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrContrastSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.5"
@@ -271,13 +272,13 @@
                                 </StackPanel>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                <TextBlock Text="OCR Input" Style="{StaticResource SectionTitleTextStyle}" />
+                                <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Title_Input}" Style="{StaticResource SectionTitleTextStyle}" />
                                 <CheckBox x:Name="EnableOcrDownsamplingCheck"
-                                          Content="Downsample OCR input"
+                                          Content="{uiLoc:Loc Key=OcrSettings_EnableDownsampleInput}"
                                           Margin="0,6,0,0"
                                           IsChecked="{Binding Settings.EnableOcrDownsampling, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-                                    <TextBlock Text="Downsample scale" Width="170" VerticalAlignment="Center" />
+                                    <TextBlock Text="{uiLoc:Loc Key=OcrSettings_Label_DownsampleScale}" Width="170" VerticalAlignment="Center" />
                                     <Slider x:Name="OcrDownsampleScaleSlider"
                                             Width="{StaticResource SliderStandardWidth}"
                                             Minimum="0.3"
@@ -302,7 +303,7 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
-                                <TextBlock Text="OCR input preview is available in the bottom drawer."
+                                <TextBlock Text="{uiLoc:Loc Key=OcrSettings_InputPreviewNote}"
                                            Style="{StaticResource HelpTextStyle}"
                                            Margin="0,10,0,4" />
                                     </StackPanel>

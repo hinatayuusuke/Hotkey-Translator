@@ -3,17 +3,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              mc:Ignorable="d">
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Overlay readability" Style="{StaticResource SectionTitleTextStyle}" />
-        <CheckBox Content="Stabilize overlay font size"
+        <TextBlock Text="{uiLoc:Loc Key=Overlay_Title_Readability}" Style="{StaticResource SectionTitleTextStyle}" />
+        <CheckBox Content="{uiLoc:Loc Key=Overlay_EnableFontStabilization}"
                   Margin="0,6,0,0"
                   IsChecked="{Binding Settings.EnableOverlayFontStabilization, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Boost readability for small OCR boxes"
+        <CheckBox Content="{uiLoc:Loc Key=Overlay_EnableSmallBoxReadabilityBoost}"
                   Margin="0,4,0,0"
                   IsChecked="{Binding Settings.EnableSmallBoxReadabilityBoost, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Small text sensitivity" Width="170" VerticalAlignment="Center" />
+            <TextBlock Text="{uiLoc:Loc Key=Overlay_Label_SmallTextSensitivity}" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SmallTextThresholdSlider"
                     Width="{StaticResource SliderStandardWidth}"
                     Minimum="8"

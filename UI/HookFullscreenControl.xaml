@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              mc:Ignorable="d">
     <UserControl.Resources>
         <Style x:Key="SectionTitleStyle" TargetType="TextBlock" BasedOn="{StaticResource SectionTitleTextStyle}" />
@@ -13,10 +14,10 @@
     </UserControl.Resources>
 
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Hook / Fullscreen" Style="{StaticResource SectionTitleStyle}" />
+        <TextBlock Text="{uiLoc:Loc Key=Hook_Title}" Style="{StaticResource SectionTitleStyle}" />
 
-        <TextBlock Text="Graphics Hook" Style="{StaticResource SectionTitleStyle}" />
-        <CheckBox Content="Enable Graphics hook pipeline"
+        <TextBlock Text="{uiLoc:Loc Key=Hook_Title_GraphicsHook}" Style="{StaticResource SectionTitleStyle}" />
+        <CheckBox Content="{uiLoc:Loc Key=Hook_EnableGraphicsHookPipeline}"
                   Margin="0,0,0,8"
                   IsChecked="{Binding Settings.EnableGraphicsHookPipeline, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
@@ -25,7 +26,7 @@
                 <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Hook API" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_Api}" Style="{StaticResource FieldLabelStyle}" />
             <ComboBox Grid.Column="1"
                       Width="240"
                       HorizontalAlignment="Left"
@@ -33,16 +34,16 @@
                       SelectedValuePath="Tag"
                       SelectedValue="{Binding Settings.GraphicsHookApiTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                 <ComboBoxItem Content="DX11" Tag="Dx11" />
-                <ComboBoxItem Content="DX9 (capture-only planned)" Tag="Dx9" />
+                <ComboBoxItem Content="{uiLoc:Loc Key=Hook_Api_Dx9CaptureOnlyPlanned}" Tag="Dx9" />
                 <ComboBoxItem Content="Vulkan" Tag="Vulkan" />
             </ComboBox>
         </Grid>
 
-        <CheckBox Content="Enable hook overlay rendering"
+        <CheckBox Content="{uiLoc:Loc Key=Hook_EnableOverlayRendering}"
                   Margin="0,0,0,6"
                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                   IsChecked="{Binding Settings.GraphicsHookOverlayEnabled, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Fallback to legacy capture on hook error"
+        <CheckBox Content="{uiLoc:Loc Key=Hook_FallbackToLegacyCaptureOnError}"
                   Margin="0,0,0,6"
                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                   IsChecked="{Binding Settings.GraphicsHookFallbackOnError, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -53,7 +54,7 @@
                 <ColumnDefinition Width="160" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Capture FPS limit" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_CaptureFpsLimit}" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
                      Width="80"
                      HorizontalAlignment="Left"
@@ -61,20 +62,20 @@
                      Text="{Binding Settings.GraphicsHookCaptureFpsLimitText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
         </Grid>
 
-        <Expander Header="Diagnostics"
+        <Expander Header="{uiLoc:Loc Key=Hook_Diagnostics}"
                   Margin="0,6,0,12"
                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}">
             <StackPanel Margin="0,8,0,0">
-                <CheckBox Content="Enable hook perf diagnostic log (Vulkan)"
+                <CheckBox Content="{uiLoc:Loc Key=Hook_EnablePerfDiagnosticLog}"
                           Margin="0,0,0,6"
                           IsChecked="{Binding Settings.GraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                <CheckBox Content="Enable hook diagnostic file sink"
+                <CheckBox Content="{uiLoc:Loc Key=Hook_EnableDiagnosticFileSink}"
                           IsChecked="{Binding Settings.GraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </Expander>
 
-        <TextBlock Text="Launcher" Style="{StaticResource SectionTitleStyle}" />
-        <CheckBox Content="Enable Graphics Hook launcher"
+        <TextBlock Text="{uiLoc:Loc Key=Hook_Title_Launcher}" Style="{StaticResource SectionTitleStyle}" />
+        <CheckBox Content="{uiLoc:Loc Key=Hook_EnableLauncher}"
                   Margin="0,0,0,8"
                   IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                   IsChecked="{Binding Settings.EnableGraphicsHookLauncher, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -85,14 +86,14 @@
                 <ColumnDefinition Width="430" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Launcher EXE" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_LauncherExe}" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
                      Width="420"
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
                      Text="{Binding Settings.GraphicsHookLauncherExePath, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <Button Grid.Column="2"
-                    Content="Browse..."
+                    Content="{uiLoc:Loc Key=Common_Browse}"
                     Width="80"
                     Margin="8,0,0,0"
                     IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
@@ -105,14 +106,14 @@
                 <ColumnDefinition Width="430" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Launcher args" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_LauncherArgs}" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
                      Width="420"
                      HorizontalAlignment="Left"
                      IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
                      Text="{Binding Settings.GraphicsHookLauncherArgs, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             <Button Grid.Column="2"
-                    Content="Hook Launch"
+                    Content="{uiLoc:Loc Key=Hook_Launch}"
                     Width="100"
                     Margin="8,0,0,0"
                     IsEnabled="{Binding Settings.EnableGraphicsHookLauncher}"
@@ -124,16 +125,16 @@
                 <ColumnDefinition Width="170" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Steam launch" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_SteamLaunch}" Style="{StaticResource FieldLabelStyle}" />
             <Button Grid.Column="1"
-                    Content="Copy"
+                    Content="{uiLoc:Loc Key=Common_Copy}"
                     Width="80"
                     IsEnabled="{Binding Settings.EnableGraphicsHookPipeline}"
                     Click="OnCopySteamLaunchOptionsClicked" />
         </Grid>
 
-        <TextBlock Text="Mirror Fullscreen" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,4" />
-        <CheckBox Content="Enable mirror fullscreen mode"
+        <TextBlock Text="{uiLoc:Loc Key=Hook_Title_MirrorFullscreen}" Style="{StaticResource SectionTitleStyle}" Margin="0,12,0,4" />
+        <CheckBox Content="{uiLoc:Loc Key=Hook_EnableMirrorFullscreenMode}"
                   Margin="0,0,0,8"
                   IsChecked="{Binding Settings.EnableMirrorFullscreenMode, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
 
@@ -143,7 +144,7 @@
                 <ColumnDefinition Width="160" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Magpie profile index" Style="{StaticResource FieldLabelStyle}" />
+            <TextBlock Grid.Column="0" Text="{uiLoc:Loc Key=Hook_Label_MagpieProfileIndex}" Style="{StaticResource FieldLabelStyle}" />
             <TextBox Grid.Column="1"
                      Width="80"
                      HorizontalAlignment="Left"

@@ -4,6 +4,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:Hotkey_Translator"
+             xmlns:uiLoc="clr-namespace:Hotkey_Translator.UI.Localization"
              xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
              mc:Ignorable="d">
     <UserControl.Resources>
@@ -11,23 +12,23 @@
         <local:BooleanOrMultiConverter x:Key="BooleanOrMultiConverter" />
     </UserControl.Resources>
     <StackPanel Margin="0,12,0,0">
-        <TextBlock Text="Auto Translate" Style="{StaticResource SectionTitleTextStyle}" />
-        <CheckBox Content="Enable auto-hide on scene change"
+        <TextBlock Text="{uiLoc:Loc Key=AutoTranslate_Title}" Style="{StaticResource SectionTitleTextStyle}" />
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_EnableAutoHideOnSceneChange}"
                   Margin="0,6,0,0"
                   IsChecked="{Binding Settings.EnableSceneChangeAutoHide, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Enable auto-translate on scene change"
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_EnableAutoTranslateOnSceneChange}"
                   Margin="0,4,0,0"
                   IsChecked="{Binding Settings.EnableSceneChangeAutoTranslate, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Show auto-translate badge icon"
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_ShowBadgeIcon}"
                   Margin="0,4,0,0"
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
                   IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-        <CheckBox Content="Enable quiet window for auto-translate"
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_EnableQuietWindow}"
                   Margin="0,4,0,0"
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
                   IsChecked="{Binding Settings.EnableSceneChangeQuietWindow, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Quiet window (ms)" Width="170" VerticalAlignment="Center" />
+            <TextBlock Text="{uiLoc:Loc Key=AutoTranslate_Label_QuietWindowMs}" Width="170" VerticalAlignment="Center" />
             <ui:NumberBox x:Name="SceneChangeQuietWindowMsBox"
                           Width="100"
                           MaxDecimalPlaces="0"
@@ -53,12 +54,12 @@
                 </ui:NumberBox.Style>
             </ui:NumberBox>
         </StackPanel>
-        <CheckBox Content="Use text-weighted scoring"
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_UseTextWeightedScoring}"
                   Margin="0,4,0,0"
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoHide}"
                   IsChecked="{Binding Settings.EnableSceneChangeTextWeighted, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Watch interval (ms)" Width="170" VerticalAlignment="Center" />
+            <TextBlock Text="{uiLoc:Loc Key=AutoTranslate_Label_WatchIntervalMs}" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeWatchIntervalSlider"
                     Width="{StaticResource SliderStandardWidth}"
                     Minimum="200"
@@ -90,7 +91,7 @@
             </TextBlock>
         </StackPanel>
         <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
-            <TextBlock Text="Watcher pHash threshold" Width="170" VerticalAlignment="Center" />
+            <TextBlock Text="{uiLoc:Loc Key=AutoTranslate_Label_WatcherPhashThreshold}" Width="170" VerticalAlignment="Center" />
             <Slider x:Name="SceneChangeWatchPhashSlider"
                     Width="{StaticResource SliderStandardWidth}"
                     Minimum="0"

@@ -64,7 +64,7 @@
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Capture}" />
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrSettings}" />
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrEngines}" />
-                    <ListBoxItem Content="VisionLLM" />
+                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_VisionLlm}" />
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Overlay}" />
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_AutoTranslate}" />
                     <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Hook}" />
@@ -80,7 +80,7 @@
                     Background="Transparent"
                     Style="{StaticResource HeaderlessTabControlStyle}"
                     SelectedIndex="{Binding SelectedRootTabIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-            <TabItem Header="Overview">
+            <TabItem Header="{uiLoc:Loc Key=MainWindow_Tab_Overview}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="0,6,0,0">
                         <ui:OverviewControl x:Name="OverviewControl"
@@ -90,7 +90,7 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-            <TabItem Header="Settings">
+            <TabItem Header="{uiLoc:Loc Key=MainWindow_Tab_Settings}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <Grid Margin="0,6,0,0">
                         <Grid.ColumnDefinitions>
@@ -101,16 +101,16 @@
                         <Border Grid.Column="0" BorderBrush="#33000000" BorderThickness="0,0,1,0" Padding="0,0,8,0" Visibility="Collapsed">
                                 <ListBox x:Name="SettingsCategoryList"
                                          SelectedIndex="{Binding SelectedSettingsCategoryIndex, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
-                                    <ListBoxItem Content="Capture" />
-                                    <ListBoxItem Content="OCR Settings" />
-                                    <ListBoxItem Content="OCREngines" />
-                                    <ListBoxItem Content="VisionLLM" />
-                                    <ListBoxItem Content="Overlay" />
-                                    <ListBoxItem Content="Auto Translate" />
-                                    <ListBoxItem Content="Hook" />
-                                    <ListBoxItem Content="Translation" />
-                                    <ListBoxItem Content="Hotkey" />
-                                    <ListBoxItem Content="System" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Capture}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrSettings}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_OcrEngines}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_VisionLlm}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Overlay}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_AutoTranslate}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Hook}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Translation}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_Hotkey}" />
+                                    <ListBoxItem Content="{uiLoc:Loc Key=Sidebar_System}" />
                                 </ListBox>
                             </Border>
 

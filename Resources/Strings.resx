@@ -205,4 +205,147 @@ Target folder:
 
 Select OK to copy them from the installed Snipping Tool package now. Select Cancel to keep the previous OCR engine.</value></data>
   <data name="OneOcr_VendorCopyBusy" xml:space="preserve"><value>Copying OneOCR vendor files from Snipping Tool...</value></data>
+  <data name="MainWindow_Tab_Overview" xml:space="preserve"><value>Overview</value></data>
+  <data name="MainWindow_Tab_Settings" xml:space="preserve"><value>Settings</value></data>
+  <data name="Sidebar_VisionLlm" xml:space="preserve"><value>VisionLLM</value></data>
+  <data name="Common_ApplyAndRestart" xml:space="preserve"><value>Apply &amp; Restart</value></data>
+  <data name="Common_Auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="Common_Browse" xml:space="preserve"><value>Browse...</value></data>
+  <data name="Common_Copy" xml:space="preserve"><value>Copy</value></data>
+  <data name="Common_Disable" xml:space="preserve"><value>Disable</value></data>
+  <data name="Common_Enable" xml:space="preserve"><value>Enable</value></data>
+  <data name="Common_Stop" xml:space="preserve"><value>Stop</value></data>
+  <data name="Capture_FixedOnly" xml:space="preserve"><value>Fixed only</value></data>
+  <data name="Capture_Label_Mode" xml:space="preserve"><value>Mode</value></data>
+  <data name="Capture_Label_Provider" xml:space="preserve"><value>Provider</value></data>
+  <data name="Capture_Mode_ActiveWindow" xml:space="preserve"><value>Active Window</value></data>
+  <data name="Capture_Mode_Screen" xml:space="preserve"><value>Screen</value></data>
+  <data name="Capture_Title" xml:space="preserve"><value>Capture</value></data>
+  <data name="OcrSettings_Title_Tuning" xml:space="preserve"><value>OCR Tuning</value></data>
+  <data name="OcrSettings_Label_PhashThreshold" xml:space="preserve"><value>pHash threshold</value></data>
+  <data name="OcrSettings_Label_IouThreshold" xml:space="preserve"><value>IoU threshold</value></data>
+  <data name="OcrSettings_Label_WritingMode" xml:space="preserve"><value>Writing mode</value></data>
+  <data name="OcrSettings_WritingMode_Auto" xml:space="preserve"><value>Auto</value></data>
+  <data name="OcrSettings_WritingMode_VerticalForced" xml:space="preserve"><value>Vertical (forced)</value></data>
+  <data name="OcrSettings_WritingMode_HorizontalForced" xml:space="preserve"><value>Horizontal (forced)</value></data>
+  <data name="OcrSettings_EnableSimpleMergeTuning" xml:space="preserve"><value>Use simple merge tuning</value></data>
+  <data name="OcrSettings_Label_HorizontalWritingMerge" xml:space="preserve"><value>Horizontal writing merge</value></data>
+  <data name="OcrSettings_Label_VerticalWritingMerge" xml:space="preserve"><value>Vertical writing merge</value></data>
+  <data name="OcrSettings_MergeThresholdNote" xml:space="preserve"><value>NOTE: Strength controls are mapped to internal merge thresholds.</value></data>
+  <data name="OcrSettings_Title_PreprocessBinarization" xml:space="preserve"><value>OCR Preprocess (Binarization)</value></data>
+  <data name="OcrSettings_EnableBinarization" xml:space="preserve"><value>Enable binarization</value></data>
+  <data name="OcrSettings_EnableAutoThreshold" xml:space="preserve"><value>Auto threshold (Otsu)</value></data>
+  <data name="OcrSettings_EnableGammaCorrection" xml:space="preserve"><value>Enable gamma correction</value></data>
+  <data name="OcrSettings_EnableGrayscale" xml:space="preserve"><value>Enable grayscale conversion</value></data>
+  <data name="OcrSettings_EnableContrastAdjustment" xml:space="preserve"><value>Enable contrast adjustment</value></data>
+  <data name="OcrSettings_EnableTwoPass" xml:space="preserve"><value>Two-pass OCR (low/high)</value></data>
+  <data name="OcrSettings_PreferAutoThreshold" xml:space="preserve"><value>Prefer auto threshold when enabled</value></data>
+  <data name="OcrSettings_Label_LowThreshold" xml:space="preserve"><value>Low threshold</value></data>
+  <data name="OcrSettings_Label_HighThreshold" xml:space="preserve"><value>High threshold</value></data>
+  <data name="OcrSettings_Label_Threshold" xml:space="preserve"><value>Threshold</value></data>
+  <data name="OcrSettings_Label_Gamma" xml:space="preserve"><value>Gamma</value></data>
+  <data name="OcrSettings_Label_Contrast" xml:space="preserve"><value>Contrast</value></data>
+  <data name="OcrSettings_Title_Input" xml:space="preserve"><value>OCR Input</value></data>
+  <data name="OcrSettings_EnableDownsampleInput" xml:space="preserve"><value>Downsample OCR input</value></data>
+  <data name="OcrSettings_Label_DownsampleScale" xml:space="preserve"><value>Downsample scale</value></data>
+  <data name="OcrSettings_InputPreviewNote" xml:space="preserve"><value>OCR input preview is available in the bottom drawer.</value></data>
+  <data name="OcrEngines_Title_PaddleCore" xml:space="preserve"><value>PaddleOCR Core (gRPC)</value></data>
+  <data name="OcrEngines_Label_DetectionModel" xml:space="preserve"><value>Detection model</value></data>
+  <data name="OcrEngines_DetectionModel_Mobile" xml:space="preserve"><value>Mobile (PP-OCRv5_mobile_det)</value></data>
+  <data name="OcrEngines_DetectionModel_Server" xml:space="preserve"><value>Server (PP-OCRv5_server_det)</value></data>
+  <data name="OcrEngines_Label_RecognitionModel" xml:space="preserve"><value>Recognition model</value></data>
+  <data name="OcrEngines_RecognitionModel_Auto" xml:space="preserve"><value>Auto (source language)</value></data>
+  <data name="OcrEngines_RecognitionModel_Server" xml:space="preserve"><value>Server (PP-OCRv5_server_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_English" xml:space="preserve"><value>English (en_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Latin" xml:space="preserve"><value>Latin (latin_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_EastSlavic" xml:space="preserve"><value>East Slavic (eslav_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Korean" xml:space="preserve"><value>Korean (korean_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Thai" xml:space="preserve"><value>Thai (th_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Greek" xml:space="preserve"><value>Greek (el_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Arabic" xml:space="preserve"><value>Arabic (arabic_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Cyrillic" xml:space="preserve"><value>Cyrillic (cyrillic_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Devanagari" xml:space="preserve"><value>Devanagari (devanagari_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Telugu" xml:space="preserve"><value>Telugu (te_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_RecognitionModel_Tamil" xml:space="preserve"><value>Tamil (ta_PP-OCRv5_mobile_rec)</value></data>
+  <data name="OcrEngines_Label_TextDetThresh" xml:space="preserve"><value>text_det_thresh</value></data>
+  <data name="OcrEngines_Label_TextDetBoxThresh" xml:space="preserve"><value>text_det_box_thresh</value></data>
+  <data name="OcrEngines_Label_TextDetUnclipRatio" xml:space="preserve"><value>text_det_unclip_ratio</value></data>
+  <data name="OcrEngines_Label_TextRecScoreThresh" xml:space="preserve"><value>text_rec_score_thresh</value></data>
+  <data name="OcrEngines_EnableConfidenceFilter" xml:space="preserve"><value>Filter low-confidence lines (Paddle only)</value></data>
+  <data name="OcrEngines_Label_ConfidenceThreshold" xml:space="preserve"><value>Confidence threshold</value></data>
+  <data name="OcrEngines_LanguageFollowsMain" xml:space="preserve"><value>Language follows Main settings.</value></data>
+  <data name="OcrEngines_Title_PaddleVl" xml:space="preserve"><value>PaddleOCR-VL (gRPC)</value></data>
+  <data name="OcrEngines_Label_PipelineVersion" xml:space="preserve"><value>Pipeline version</value></data>
+  <data name="OcrEngines_Label_MaxPixels" xml:space="preserve"><value>Max pixels</value></data>
+  <data name="OcrEngines_Label_LayoutThreshold" xml:space="preserve"><value>Layout threshold</value></data>
+  <data name="OcrEngines_Label_MaxNewTokens" xml:space="preserve"><value>Max new tokens</value></data>
+  <data name="OcrEngines_AutoBlankNote" xml:space="preserve"><value>AUTO=blank</value></data>
+  <data name="OcrEngines_Label_LayoutDetection" xml:space="preserve"><value>Layout detection</value></data>
+  <data name="OcrEngines_Label_Precision" xml:space="preserve"><value>Precision</value></data>
+  <data name="VisionLlm_Title" xml:space="preserve"><value>VisionLLM (Local VLM)</value></data>
+  <data name="VisionLlm_AutoStartNote" xml:space="preserve"><value>VisionLLM starts automatically when OCR engine is set to VisionLLM.</value></data>
+  <data name="VisionLlm_ModelPathNote" xml:space="preserve"><value>Model files are loaded from TranslationServiceLlama\LlamaCpp\Models</value></data>
+  <data name="VisionLlm_Label_Mmproj" xml:space="preserve"><value>MMProj</value></data>
+  <data name="VisionLlm_Label_MaxImageSide" xml:space="preserve"><value>Max image side</value></data>
+  <data name="VisionLlm_EnableSharedLocalTranslation" xml:space="preserve"><value>Use VisionLLM for translation</value></data>
+  <data name="VisionLlm_SharedLocalTranslationNote" xml:space="preserve"><value>NOTE: ON shares the VisionLLM model for OCR and local translation. OFF keeps OCR on VisionLLM and uses the normal translation pipeline.</value></data>
+  <data name="VisionLlm_EnableGeometryAssistHybridOcr" xml:space="preserve"><value>Enable geometry assist hybrid OCR</value></data>
+  <data name="VisionLlm_Label_HybridBaseOcr" xml:space="preserve"><value>Hybrid base OCR</value></data>
+  <data name="VisionLlm_GeometryAssistNote" xml:space="preserve"><value>NOTE: VisionLLM text stays primary. The selected OCR engine is used only to provide geometry hints for overlay placement.</value></data>
+  <data name="OcrEngine_WinRt" xml:space="preserve"><value>WinRT</value></data>
+  <data name="OcrEngine_Ndl" xml:space="preserve"><value>NDL</value></data>
+  <data name="OcrEngine_Paddle" xml:space="preserve"><value>PaddleOCR</value></data>
+  <data name="OcrEngine_OneOcrNativeHelper" xml:space="preserve"><value>OneOCR (native helper)</value></data>
+  <data name="Overlay_Title_Readability" xml:space="preserve"><value>Overlay readability</value></data>
+  <data name="Overlay_EnableFontStabilization" xml:space="preserve"><value>Stabilize overlay font size</value></data>
+  <data name="Overlay_EnableSmallBoxReadabilityBoost" xml:space="preserve"><value>Boost readability for small OCR boxes</value></data>
+  <data name="Overlay_Label_SmallTextSensitivity" xml:space="preserve"><value>Small text sensitivity</value></data>
+  <data name="AutoTranslate_Title" xml:space="preserve"><value>Auto Translate</value></data>
+  <data name="AutoTranslate_EnableAutoHideOnSceneChange" xml:space="preserve"><value>Enable auto-hide on scene change</value></data>
+  <data name="AutoTranslate_EnableAutoTranslateOnSceneChange" xml:space="preserve"><value>Enable auto-translate on scene change</value></data>
+  <data name="AutoTranslate_ShowBadgeIcon" xml:space="preserve"><value>Show auto-translate badge icon</value></data>
+  <data name="AutoTranslate_EnableQuietWindow" xml:space="preserve"><value>Enable quiet window for auto-translate</value></data>
+  <data name="AutoTranslate_Label_QuietWindowMs" xml:space="preserve"><value>Quiet window (ms)</value></data>
+  <data name="AutoTranslate_UseTextWeightedScoring" xml:space="preserve"><value>Use text-weighted scoring</value></data>
+  <data name="AutoTranslate_Label_WatchIntervalMs" xml:space="preserve"><value>Watch interval (ms)</value></data>
+  <data name="AutoTranslate_Label_WatcherPhashThreshold" xml:space="preserve"><value>Watcher pHash threshold</value></data>
+  <data name="Hook_Title" xml:space="preserve"><value>Hook / Fullscreen</value></data>
+  <data name="Hook_Title_GraphicsHook" xml:space="preserve"><value>Graphics Hook</value></data>
+  <data name="Hook_EnableGraphicsHookPipeline" xml:space="preserve"><value>Enable Graphics hook pipeline</value></data>
+  <data name="Hook_Label_Api" xml:space="preserve"><value>Hook API</value></data>
+  <data name="Hook_Api_Dx9CaptureOnlyPlanned" xml:space="preserve"><value>DX9 (capture-only planned)</value></data>
+  <data name="Hook_EnableOverlayRendering" xml:space="preserve"><value>Enable hook overlay rendering</value></data>
+  <data name="Hook_FallbackToLegacyCaptureOnError" xml:space="preserve"><value>Fallback to legacy capture on hook error</value></data>
+  <data name="Hook_Label_CaptureFpsLimit" xml:space="preserve"><value>Capture FPS limit</value></data>
+  <data name="Hook_Diagnostics" xml:space="preserve"><value>Diagnostics</value></data>
+  <data name="Hook_EnablePerfDiagnosticLog" xml:space="preserve"><value>Enable hook perf diagnostic log (Vulkan)</value></data>
+  <data name="Hook_EnableDiagnosticFileSink" xml:space="preserve"><value>Enable hook diagnostic file sink</value></data>
+  <data name="Hook_Title_Launcher" xml:space="preserve"><value>Launcher</value></data>
+  <data name="Hook_EnableLauncher" xml:space="preserve"><value>Enable Graphics Hook launcher</value></data>
+  <data name="Hook_Label_LauncherExe" xml:space="preserve"><value>Launcher EXE</value></data>
+  <data name="Hook_Label_LauncherArgs" xml:space="preserve"><value>Launcher args</value></data>
+  <data name="Hook_Launch" xml:space="preserve"><value>Hook Launch</value></data>
+  <data name="Hook_Label_SteamLaunch" xml:space="preserve"><value>Steam launch</value></data>
+  <data name="Hook_Title_MirrorFullscreen" xml:space="preserve"><value>Mirror Fullscreen</value></data>
+  <data name="Hook_EnableMirrorFullscreenMode" xml:space="preserve"><value>Enable mirror fullscreen mode</value></data>
+  <data name="Hook_Label_MagpieProfileIndex" xml:space="preserve"><value>Magpie profile index</value></data>
+  <data name="Hotkey_Title" xml:space="preserve"><value>Hotkey</value></data>
+  <data name="Hotkey_EnableRawInputExperimental" xml:space="preserve"><value>Use RawInput hotkey backend (experimental)</value></data>
+  <data name="Hotkey_RawInputNote" xml:space="preserve"><value>NOTE: Use this when some apps ignore standard RegisterHotKey.</value></data>
+  <data name="Hotkey_Action_RunOnce" xml:space="preserve"><value>Run once</value></data>
+  <data name="Hotkey_Action_RunNextRoi" xml:space="preserve"><value>Run next ROI slot</value></data>
+  <data name="Hotkey_Action_RunNextNextRoi" xml:space="preserve"><value>Run next+1 ROI slot</value></data>
+  <data name="Hotkey_Action_ToggleOverlay" xml:space="preserve"><value>Toggle overlay</value></data>
+  <data name="Hotkey_Action_ForceRun" xml:space="preserve"><value>Force run</value></data>
+  <data name="Hotkey_Action_ForceRunNextRoi" xml:space="preserve"><value>Force run next ROI slot</value></data>
+  <data name="Hotkey_Action_ForceRunNextNextRoi" xml:space="preserve"><value>Force run next+1 ROI slot</value></data>
+  <data name="Hotkey_Action_GeminiImageTranslate" xml:space="preserve"><value>Gemini Image Translate</value></data>
+  <data name="Hotkey_Action_OverlayText" xml:space="preserve"><value>Overlay text</value></data>
+  <data name="Hotkey_Action_SceneAutoTranslate" xml:space="preserve"><value>Scene auto-translate</value></data>
+  <data name="Hotkey_Action_SelectRoi" xml:space="preserve"><value>Select ROI</value></data>
+  <data name="Hotkey_Action_SelectUserFrame" xml:space="preserve"><value>Select user frame</value></data>
+  <data name="Hotkey_Action_LockWindow" xml:space="preserve"><value>Lock window</value></data>
+  <data name="Hotkey_Action_UnlockWindow" xml:space="preserve"><value>Unlock window</value></data>
+  <data name="Hotkey_Action_ToggleMirrorFullscreen" xml:space="preserve"><value>Mirror fullscreen toggle</value></data>
+  <data name="Hotkey_Note_WinKeyUnsupported" xml:space="preserve"><value>Note: Win key is not supported.</value></data>
 </root>
