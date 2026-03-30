@@ -26,4 +26,4 @@ rem ===== Delayed readback diagnostics =====
 rem set HT_HOOK_DISABLE_DELAYED_READBACK=1
 rem set HT_HOOK_CAPTURE_RING_SIZE=3
 
-"G:\APP Local\Hotkey-Translator\bin\Debug\net8.0-windows10.0.22621.0\Hotkey-Translator.exe" --hook-launch -- %*
+
