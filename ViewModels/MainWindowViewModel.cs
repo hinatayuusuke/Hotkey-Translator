@@ -179,11 +179,6 @@ internal sealed partial class MainWindowViewModel : ObservableObject
                 routes.Add("DeepL");
             }
 
-            if (Settings.EnableGoogleWeb)
-            {
-                routes.Add("GoogleWeb");
-            }
-
             if (Settings.EnableGemini)
             {
                 routes.Add("Gemini");

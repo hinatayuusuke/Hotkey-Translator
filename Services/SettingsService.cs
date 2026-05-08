@@ -70,7 +70,6 @@ public sealed class SettingsService
     public static AppSettings CreateDefaultSettings()
     {
         var settings = new AppSettings();
-        settings.EnableGoogleWeb = true;
 
         // WHY: keep first-run PaddleOCR-VL behavior aligned with current recommended operational profile.
         settings.PaddleVlMaxPixels = 500000;

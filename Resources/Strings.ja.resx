@@ -166,7 +166,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Runtime_RoiStatus_Coordinates" xml:space="preserve"><value>ROI ({0}): {1:0.000},{2:0.000} {3:0.000}x{4:0.000}</value></data>
   <data name="Runtime_RoiStatus_Disabled" xml:space="preserve"><value>ROI: 無効 ({0})</value></data>
   <data name="Runtime_RoiStatus_NotSet" xml:space="preserve"><value>ROI: 未設定 ({0})</value></data>
-  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>翻訳状態: {0} | {1} | {2} | {3}</value></data>
+  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>翻訳状態: {0} | {1} | {2}</value></data>
   <data name="Runtime_TranslationStatus_Unknown" xml:space="preserve"><value>翻訳状態: 不明</value></data>
   <data name="Settings_HotkeyConflictSummary" xml:space="preserve"><value>ホットキー競合が解消されるまで適用されません。</value></data>
   <data name="Settings_FixedOverlayTarget_Inactive" xml:space="preserve"><value>固定オーバーレイ対象は無効です</value></data>

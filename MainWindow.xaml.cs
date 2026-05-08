@@ -326,7 +326,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             new LlamaGrpcTranslationProvider(_logger),
             new DeepLTranslationProvider(_httpClient, _logger),
-            new GoogleWebTranslationProvider(_httpClient, _logger),
             new GeminiTranslationProvider(geminiClient)
         };
         _registeredTranslationProviderNames = translationProviders.Select(provider => provider.Name).ToList();
@@ -2140,11 +2139,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 ? Localizer.GetString("Runtime_ProviderStatus_KeyMissing", "DeepL")
                 : Localizer.GetString("Runtime_ProviderStatus_Enabled", "DeepL"))
             : Localizer.GetString("Runtime_ProviderStatus_Disabled", "DeepL");
-        var googleWebStatus = settings.EnableGoogleWeb
-            ? Localizer.GetString("Runtime_ProviderStatus_Enabled", "GoogleWeb")
-            : Localizer.GetString("Runtime_ProviderStatus_Disabled", "GoogleWeb");
         _mainWindowViewModel.RuntimeStatus.TranslationStatusMessage =
-            Localizer.GetString("Runtime_TranslationStatus_Summary", llamaStatus, geminiStatus, deepLStatus, googleWebStatus);
+            Localizer.GetString("Runtime_TranslationStatus_Summary", llamaStatus, geminiStatus, deepLStatus);
     }
 
     private void OnLocalizationLanguageChanged(object? sender, EventArgs e)

@@ -1910,3 +1910,98 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`
+
+**2026-04-09 14:29 (Asia/Taipei) — Add VisionLLM llama.cpp image recognition reference**
+
+### Summary
+- VisionLLM の `llama.cpp` 画像認識実装を追いやすい参照ドキュメントを `Doc/` に追加した。
+
+### Context / Goal
+- リポジトリ内の VisionLLM OCR 実装は C# host、Python gRPC、`llama-server`、shared translation に分かれており、後から類似実装を作るとき参照しづらかった。
+- 将来の再実装時に、起動順、payload 形、戻り値、制約点を 1 ファイルで確認できる状態にしたかった。
+
+### Changes
+- `Services/VisionLlmGrpcHost.cs`、`Services/VisionLlmGrpcOcrProvider.cs`、`Services/LlamaGrpcTranslationProvider.cs`、`Services/Application/ResourceHostFacade.cs`、`OcrServiceVisionLlm/*.py` の実装を確認し、構成・データフロー・注意点を整理した。
+- `Doc/` に VisionLLM + `llama.cpp` OCR の実装リファレンスを新規追加した。
+
+### Files Touched
+- `Doc/VisionLlm_LlamaCpp_ImageRecognition_Reference.md` — VisionLLM OCR の全体構成、起動シーケンス、OpenAI 互換 payload、shared translation、再実装時の注意点をまとめた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動や設定値は変わらない。
+- 将来 VisionLLM 系の OCR/翻訳実装を追加・改修するとき、既存構造をドキュメントから参照できるようになった。
+
+### Risk & Mitigation
+- Risk: 実装が今後変わるとドキュメントが古くなる。
+- Mitigation: ドキュメントには現行ファイル名と責務の対応を明記し、更新時に差分確認しやすくした。
+
+### Tests / Verification
+- 未実施。ドキュメント追加のみのため、今回は実行テストを行っていない。
+
+**2026-04-09 14:35 (Asia/Taipei) — Add Qwen3.5 BF16 projector implementation memo**
+
+### Summary
+- Qwen3.5 Vision の BF16 projector (`mmproj`) 取り扱いに絞った実装注意メモを `Doc/` に追加した。
+
+### Context / Goal
+- Qwen3.5 の画像認識は量子化済み本体 GGUF だけでなく BF16 projector も必要で、upstream 名とローカル alias 名の差分が実装時の落とし穴になりやすい。
+- 将来類似実装を作るとき、`mmproj-BF16.gguf` 周辺の命名、保存、検証、互換処理だけを短く確認できるメモが必要だった。
+
+### Changes
+- 既存の VisionLLM 実装、manifest、settings 正規化、UI 選択ロジックを確認し、BF16 projector に関する注意点を整理した。
+- `Doc/` に Qwen3.5 Vision BF16 projector の実装注意メモを新規追加した。
+
+### Files Touched
+- `Doc/Qwen35_Vision_BF16_Mmproj_Implementation_Notes.md` — BF16 projector の必要性、alias 命名、4B/9B 衝突、起動前検証、互換 migration の注意点をまとめた。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 実行時挙動や設定値は変わらない。
+- Qwen3.5 Vision の model/mmproj ペア管理に関する参照メモが増え、将来の実装時に generic 名衝突や設定不整合を避けやすくなった。
+
+### Risk & Mitigation
+- Risk: 将来 upstream の配布名や projector 命名方針が変わると、メモの具体例が古くなる。
+- Mitigation: 実装上の原則を alias 分離、pair 管理、fail fast に寄せ、具体例が変わっても考え方は流用できる形にした。
+
+### Tests / Verification
+- 未実施。ドキュメント追加のみのため、今回は実行テストを行っていない。
+
+**2026-05-08 11:35 (Asia/Taipei) — Hide GoogleWeb from normal translation UI**
+
+### Summary
+- Google Web 翻訳を通常 UI と通常翻訳実行経路から外した。
+
+### Context / Goal
+- Google Web 翻訳は非公式 endpoint 依存のため、通常ユーザー向け UI から非表示にしたかった。
+- 旧設定互換のため `EnableGoogleWeb` と provider 実装は残しつつ、通常経路では選択・実行されない状態にする。
+
+### Changes
+- Overview の翻訳エンジン選択から `GoogleWeb` チェックボックスを削除した。
+- 初期設定で `EnableGoogleWeb` を true にする処理を削除した。
+- provider 登録から `GoogleWebTranslationProvider` を外し、翻訳優先度リストへ入らないようにした。
+- 翻訳ルート要約と runtime translation status から `GoogleWeb` 表示を削除した。
+- 翻訳状態のローカライズ文字列を 3 provider 表示に合わせた。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — `GoogleWeb` のチェックボックスを削除した。
+- `Services/SettingsService.cs` — default settings の `EnableGoogleWeb = true` を削除した。
+- `MainWindow.xaml.cs` — `GoogleWebTranslationProvider` の登録と runtime status 表示を削除した。
+- `ViewModels/MainWindowViewModel.cs` — 翻訳ルート要約から `GoogleWeb` を削除した。
+- `Resources/Strings.resx` — 翻訳状態 summary の placeholder を 3 要素に変更した。
+- `Resources/Strings.ja.resx` — 日本語翻訳状態 summary の placeholder を 3 要素に変更した。
+- `.agent/changes.md` — 本タスクの変更記録を追記した。
+
+### Behavioral Impact
+- 新規設定では Google Web 翻訳が初期有効化されない。
+- Overview と runtime status に `GoogleWeb` は表示されない。
+- 旧設定に `EnableGoogleWeb: true` が残っていても、provider 登録から外れているため通常の翻訳優先度・実行経路では使われない。
+
+### Risk & Mitigation
+- Risk: Google Web を使っていた既存ユーザーは UI から選択できなくなる。
+- Mitigation: provider 実装と設定プロパティは残しており、必要なら後続タスクで明示的な legacy/hidden 設定として復帰しやすい。
+
+### Tests / Verification
+- `rg -n "GoogleWeb|EnableGoogleWeb|GoogleWebTranslationProvider|Runtime_TranslationStatus_Summary" .\MainWindow.xaml.cs .\UI .\ViewModels .\Services .\Models .\Resources` で通常 UI・登録・表示から `GoogleWeb` が消えていることを確認した。残存は旧設定互換と未登録 provider 実装のみ。
+- `dotnet build .\Hotkey-Translator.sln` は実行中の `Hotkey-Translator (3756)` が既存出力 exe/dll をロックして失敗した。
+- `dotnet build .\Hotkey-Translator.csproj -o $env:TEMP\hotkey-translator-build-check` は成功した（0 warnings, 0 errors）。

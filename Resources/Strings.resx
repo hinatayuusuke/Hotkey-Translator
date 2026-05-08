@@ -174,7 +174,7 @@ Place the file at this path or disable {0}.</value></data>
   <data name="Runtime_RoiStatus_Coordinates" xml:space="preserve"><value>ROI ({0}): {1:0.000},{2:0.000} {3:0.000}x{4:0.000}</value></data>
   <data name="Runtime_RoiStatus_Disabled" xml:space="preserve"><value>ROI: disabled ({0})</value></data>
   <data name="Runtime_RoiStatus_NotSet" xml:space="preserve"><value>ROI: not set ({0})</value></data>
-  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>Translation status: {0} | {1} | {2} | {3}</value></data>
+  <data name="Runtime_TranslationStatus_Summary" xml:space="preserve"><value>Translation status: {0} | {1} | {2}</value></data>
   <data name="Runtime_TranslationStatus_Unknown" xml:space="preserve"><value>Translation status: unknown</value></data>
   <data name="Settings_HotkeyConflictSummary" xml:space="preserve"><value>Conflicting hotkeys are not applied until resolved.</value></data>
   <data name="Settings_FixedOverlayTarget_Inactive" xml:space="preserve"><value>Fixed overlay target inactive</value></data>
