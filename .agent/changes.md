@@ -1869,6 +1869,32 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`
+
+**2026-05-13 01:27 (Asia/Taipei) — Geminiモデル選択実装案の追加**
+
+### Summary
+- Gemini API のモデル一覧取得と ComboBox 選択化に向けた実装方針を `Doc/` に追加した。
+
+### Context / Goal
+- Gemini 翻訳モデルが設定値としては存在するが、UI から選べず実質固定になっている。
+- Gemini API から安定版候補を取得し、ユーザが設定画面で選択できる設計を先に整理したい。
+
+### Changes
+- 現状仕様、ゴール/非ゴール、API 取得方針、stable フィルタ、UI/ViewModel 接続、検証項目を整理した。
+- 既存の `AppSettings.GeminiModel` と `GeminiClient.BuildEndpoint()` を活かす前提で実装ステップを分割した。
+
+### Files Touched
+- `Doc/Gemini_ModelSelection_Implementation_Plan.md` — Gemini モデル一覧取得と ComboBox 選択化の新規実装案を追加した。
+
+### Behavioral Impact
+- ドキュメント追加のみのため、アプリ実行時の挙動変更はない。
+
+### Risk & Mitigation
+- Risk: 実装前の設計書のため、実際の API レスポンス差分により調整が必要になる可能性がある。
+- Mitigation: 実装時は Google の models list レスポンスを実データで確認し、保存済みモデルを維持する方針で破壊的変更を避ける。
+
+### Tests / Verification
+- 未実施。ドキュメント追加のみのためビルドは実行していない。
 - `dotnet build .\Hotkey-Translator.csproj` は実行中 `Hotkey-Translator.exe` による `bin\Debug` ロックのため出力コピー段階で失敗
 
 **2026-03-30 10:51 (Asia/Taipei) — Localize remaining side-panel settings**
@@ -1910,3 +1936,43 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\localization-build`
+
+**2026-05-13 01:38 (Asia/Taipei) — Geminiモデル選択UIの実装**
+
+### Summary
+- Gemini API のモデル一覧から stable な `generateContent` 対応モデルを取得し、翻訳設定 UI で選択保存できるようにした。
+
+### Context / Goal
+- `AppSettings.GeminiModel` は存在していたが、UI から変更できず実質固定だった。
+- Gemini API から利用可能な安定版候補を取得し、ユーザがモデルを選べる設定にしたい。
+
+### Changes
+- `GeminiClient` に `models.list` 呼び出し、ページング、`generateContent` 対応判定、preview/experimental/latest/deprecated 除外、`models/` prefix 正規化を追加した。
+- `SettingsViewModel` / `MainWindowViewModel` に Gemini モデル選択値、候補リスト、再読み込みコマンドを追加した。
+- 翻訳設定 UI に Gemini モデル ComboBox と更新ボタンを追加した。
+- 保存済みモデルが API 候補から消えても現在値として候補に残すようにした。
+
+### Files Touched
+- `Services/GeminiClient.cs` — Gemini モデル一覧取得とモデル名正規化を追加した。
+- `Models/GeminiModelOption.cs` — UI 表示用の Gemini モデル候補 DTO を追加した。
+- `Models/AppSettings.cs` — Gemini 既定モデル定数を追加し、既定値参照へ変更した。
+- `ViewModels/SettingsViewModel.cs` — `GeminiModel` の読み込み・保存・自動保存通知を追加した。
+- `ViewModels/MainWindowViewModel.cs` — Gemini モデル候補リストと再読み込みコマンドを追加した。
+- `MainWindow.xaml.cs` — Gemini モデル候補の初期化と API 再読み込み処理を追加した。
+- `UI/TranslationControl.xaml` — Gemini モデル ComboBox と更新ボタンを追加した。
+- `Resources/Strings.resx` — Gemini モデルラベルの英語リソースを追加した。
+- `Resources/Strings.ja.resx` — Gemini モデルラベルの日本語リソースを追加した。
+
+### Behavioral Impact
+- Gemini 翻訳と ForceGemini 画像翻訳は、設定画面で選択した `GeminiModel` を使う。
+- Gemini API key が空、一覧取得失敗、候補0件の場合も保存済みモデルは維持される。
+- `models/gemini-...` 形式の API 名は保存・実行時に `gemini-...` へ正規化される。
+
+### Risk & Mitigation
+- Risk: Google 側のモデル命名変更により stable フィルタが候補を過剰除外する可能性がある。
+- Mitigation: 候補が空でも保存済みモデルを ComboBox に残し、自動で別モデルへ切り替えない。
+- Risk: models.list がページングされると候補漏れが起きる可能性がある。
+- Mitigation: `pageSize=1000` と `nextPageToken` 追跡で全ページを取得する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\gemini-model-selection-build`

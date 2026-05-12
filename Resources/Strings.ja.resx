@@ -143,6 +143,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Translation_Label_DeepLApiKey" xml:space="preserve"><value>DeepL API キー</value></data>
   <data name="Translation_Label_DeepLEndpoint" xml:space="preserve"><value>DeepL endpoint</value></data>
   <data name="Translation_Label_GeminiApiKey" xml:space="preserve"><value>Gemini API キー</value></data>
+  <data name="Translation_Label_GeminiModel" xml:space="preserve"><value>Gemini モデル</value></data>
   <data name="Translation_Label_GpuLayers" xml:space="preserve"><value>GPU layers</value></data>
   <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP ホスト</value></data>
   <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>最大トークン数</value></data>

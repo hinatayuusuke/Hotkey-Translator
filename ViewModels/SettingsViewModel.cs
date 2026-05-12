@@ -171,6 +171,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _deepLEndpointText = string.Empty;
     [ObservableProperty] private string _deepLApiKeyText = string.Empty;
     [ObservableProperty] private string _apiKeyText = string.Empty;
+    [ObservableProperty] private string _geminiModel = AppSettings.DefaultGeminiModel;
     [ObservableProperty] private string _hotkeyRunOnceKey = HotkeyDefaults.RunOnceKey;
     [ObservableProperty] private bool _hotkeyRunOnceCtrl;
     [ObservableProperty] private bool _hotkeyRunOnceAlt;
@@ -407,6 +408,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             DeepLEndpointText = settings.DeepLEndpoint;
             DeepLApiKeyText = settings.DeepLApiKey ?? string.Empty;
             ApiKeyText = settings.ApiKey ?? string.Empty;
+            GeminiModel = GeminiClient.NormalizeModelName(settings.GeminiModel);
             PaddleConfidenceThreshold = settings.PaddleConfidenceThreshold;
             OcrBinarizationThreshold = settings.OcrBinarizationThreshold;
             OcrGamma = settings.OcrGamma;
@@ -726,6 +728,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.DeepLEndpoint = (DeepLEndpointText ?? string.Empty).Trim();
         settings.DeepLApiKey = DeepLApiKeyText ?? string.Empty;
         settings.ApiKey = ApiKeyText ?? string.Empty;
+        settings.GeminiModel = GeminiClient.NormalizeModelName(GeminiModel);
         ApplyHotkeySettings(settings);
         settings.PaddleConfidenceThreshold = Math.Round(PaddleConfidenceThreshold, 2);
         settings.OcrBinarizationThreshold = (int)Math.Round(OcrBinarizationThreshold);
@@ -1016,6 +1019,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnDeepLEndpointTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnDeepLApiKeyTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnApiKeyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnGeminiModelChanged(string value) => RequestSaveOnValueChange();
     partial void OnHotkeyRunOnceKeyChanged(string value) => HandleHotkeyValueChanged();
     partial void OnHotkeyRunOnceCtrlChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnHotkeyRunOnceAltChanged(bool value) => HandleHotkeyValueChanged();

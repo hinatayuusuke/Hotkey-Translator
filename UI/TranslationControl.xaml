@@ -107,5 +107,14 @@
                                                   Width="200"
                                                   local:PasswordBoxAssistant.BoundPassword="{Binding Settings.ApiKeyText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                 </StackPanel>
+                                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                    <TextBlock Text="{uiLoc:Loc Key=Translation_Label_GeminiModel}" Width="140" VerticalAlignment="Center" />
+                                    <ComboBox x:Name="GeminiModelBox" Width="360"
+                                              ItemsSource="{Binding GeminiModelOptions}"
+                                              DisplayMemberPath="Display"
+                                              SelectedValuePath="Value"
+                                              SelectedValue="{Binding Settings.GeminiModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Content="{uiLoc:Loc Key=Common_Reload}" Width="70" Margin="8,0,0,0" Command="{Binding ReloadGeminiModelsCommand}" />
+                                </StackPanel>
     </StackPanel>
 </UserControl>

@@ -151,6 +151,7 @@ Place the file at this path or disable {0}.</value></data>
   <data name="Translation_Label_DeepLApiKey" xml:space="preserve"><value>DeepL API key</value></data>
   <data name="Translation_Label_DeepLEndpoint" xml:space="preserve"><value>DeepL endpoint</value></data>
   <data name="Translation_Label_GeminiApiKey" xml:space="preserve"><value>Gemini API key</value></data>
+  <data name="Translation_Label_GeminiModel" xml:space="preserve"><value>Gemini model</value></data>
   <data name="Translation_Label_GpuLayers" xml:space="preserve"><value>GPU layers</value></data>
   <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP host</value></data>
   <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>Max tokens</value></data>

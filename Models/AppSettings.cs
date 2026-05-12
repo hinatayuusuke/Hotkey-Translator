@@ -56,6 +56,8 @@ public enum FixedOverlayPlacementMode
 
 public sealed class AppSettings
 {
+    public const string DefaultGeminiModel = "gemini-3.1-flash-lite";
+
     public List<RoiPreset> RoiPresets { get; set; } = new();
     public int ActiveRoiPresetIndex { get; set; }
     public string UiLanguage { get; set; } = "system";
@@ -302,7 +304,7 @@ public sealed class AppSettings
     public string StyleId { get; set; } = "default";
     public string GlossaryVersion { get; set; } = "v1";
     public bool EnableGemini { get; set; } = false;
-    public string GeminiModel { get; set; } = "gemini-3.1-flash-lite-preview";
+    public string GeminiModel { get; set; } = DefaultGeminiModel;
     public string GeminiEndpoint { get; set; } = "https://generativelanguage.googleapis.com/v1beta/models";
     public bool EnableDeepL { get; set; } = false;
     public string DeepLEndpoint { get; set; } = "https://api-free.deepl.com/v2/translate";

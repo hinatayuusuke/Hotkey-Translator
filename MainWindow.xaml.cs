@@ -154,6 +154,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SwapLanguages,
             RequestSettingsSave,
             ReloadLlamaModelsAsync,
+            ReloadGeminiModelsAsync,
             RestartLlamaCppAsync,
             StopLlamaServerAsync,
             ReloadVisionLlmModelsAsync,
@@ -2096,6 +2097,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ApplyTranslationPriority(settings);
         UpdateTranslationStatus(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
+        ResetGeminiModelOptions(settings.GeminiModel, Array.Empty<GeminiModelOption>());
         SyncRoiPresetSlotUi(settings);
         UpdateLoggingState(settings.EnableLogging);
         UpdateRoiStatus(settings);
@@ -2294,6 +2296,29 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
+    private void ResetGeminiModelOptions(
+        string? selectedModel,
+        IEnumerable<GeminiModelOption> models)
+    {
+        var normalizedSelection = GeminiClient.NormalizeModelName(selectedModel);
+        var modelOptions = models.ToList();
+        if (!modelOptions.Any(option => string.Equals(option.Value, normalizedSelection, StringComparison.OrdinalIgnoreCase)))
+        {
+            // WHY: A saved model may disappear from Google's list; keep it selectable so settings are not silently rewritten.
+            modelOptions.Insert(
+                0,
+                new GeminiModelOption(
+                    normalizedSelection,
+                    $"{normalizedSelection} (current)",
+                    string.Empty,
+                    null,
+                    null));
+        }
+
+        _mainWindowViewModel.ResetGeminiModelOptions(modelOptions);
+        _mainWindowViewModel.Settings.GeminiModel = normalizedSelection;
+    }
+
     private void SwapLanguages()
     {
         var settingsViewModel = _mainWindowViewModel.Settings;
@@ -2324,6 +2349,32 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         var settings = _settingsService.Settings;
         ReloadLlamaModelOptions(settings);
         await SaveSettingsImmediatelyAsync().ConfigureAwait(true);
+    }
+
+    private async Task ReloadGeminiModelsAsync()
+    {
+        var currentModel = GeminiClient.NormalizeModelName(_mainWindowViewModel.Settings.GeminiModel);
+        var apiKey = _mainWindowViewModel.Settings.ApiKeyText ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            ResetGeminiModelOptions(currentModel, Array.Empty<GeminiModelOption>());
+            AppendLog("Gemini model list skipped: API key is empty.");
+            return;
+        }
+
+        var requestSettings = new AppSettings
+        {
+            ApiKey = apiKey,
+            GeminiEndpoint = _settingsService.Settings.GeminiEndpoint,
+            GeminiModel = currentModel
+        };
+
+        var geminiClient = new GeminiClient(_httpClient, _logger);
+        var models = await geminiClient.ListModelsAsync(requestSettings, CancellationToken.None).ConfigureAwait(true);
+        ResetGeminiModelOptions(currentModel, models);
+        AppendLog(models.Count > 0
+            ? $"Gemini model list loaded: {models.Count} stable models."
+            : "Gemini model list loaded no stable models; current model was kept.");
     }
 
     private Task RestartLlamaCppAsync() => _resourceHostCommandController.RestartLlamaCppAsync();

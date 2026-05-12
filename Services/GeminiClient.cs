@@ -35,6 +35,42 @@ public sealed class GeminiClient
         _logger = logger;
     }
 
+    public async Task<IReadOnlyList<GeminiModelOption>> ListModelsAsync(
+        AppSettings settings,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        {
+            _logger?.Info("Gemini model list skipped: API key missing.");
+            return Array.Empty<GeminiModelOption>();
+        }
+
+        var models = new List<GeminiModelOption>();
+        var pageToken = string.Empty;
+        do
+        {
+            var endpoint = BuildModelsListEndpoint(settings, pageToken);
+            using var response = await _httpClient.GetAsync(endpoint, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger?.Info($"Gemini model list failed: status={(int)response.StatusCode}.");
+                return Array.Empty<GeminiModelOption>();
+            }
+
+            models.AddRange(ParseStableGenerationModels(body));
+            pageToken = ExtractNextPageToken(body);
+        }
+        while (!string.IsNullOrWhiteSpace(pageToken));
+
+        var distinctModels = models
+            .GroupBy(model => model.Value, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        _logger?.Info($"Gemini model list loaded: stable_generate_content_models={distinctModels.Count}.");
+        return distinctModels;
+    }
+
     public async Task<IReadOnlyDictionary<string, string>> TranslateAsync(
         IReadOnlyList<string> texts,
         AppSettings settings,
@@ -331,7 +367,134 @@ public sealed class GeminiClient
 
     private static string BuildEndpoint(AppSettings settings)
     {
-        return $"{settings.GeminiEndpoint}/{settings.GeminiModel}:generateContent?key={settings.ApiKey}";
+        var model = NormalizeModelName(settings.GeminiModel);
+        return $"{settings.GeminiEndpoint.TrimEnd('/')}/{Uri.EscapeDataString(model)}:generateContent?key={Uri.EscapeDataString(settings.ApiKey ?? string.Empty)}";
+    }
+
+    private static string BuildModelsListEndpoint(AppSettings settings, string pageToken)
+    {
+        var endpoint = $"{settings.GeminiEndpoint.TrimEnd('/')}?key={Uri.EscapeDataString(settings.ApiKey ?? string.Empty)}&pageSize=1000";
+        return string.IsNullOrWhiteSpace(pageToken)
+            ? endpoint
+            : $"{endpoint}&pageToken={Uri.EscapeDataString(pageToken)}";
+    }
+
+    public static string NormalizeModelName(string? modelName)
+    {
+        var normalized = (modelName ?? string.Empty).Trim();
+        if (normalized.StartsWith("models/", StringComparison.OrdinalIgnoreCase))
+        {
+            normalized = normalized["models/".Length..];
+        }
+
+        return string.IsNullOrWhiteSpace(normalized)
+            ? AppSettings.DefaultGeminiModel
+            : normalized;
+    }
+
+    private static IReadOnlyList<GeminiModelOption> ParseStableGenerationModels(string rawResponse)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawResponse);
+            if (!doc.RootElement.TryGetProperty("models", out var modelsElement) ||
+                modelsElement.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<GeminiModelOption>();
+            }
+
+            var models = new List<GeminiModelOption>();
+            foreach (var modelElement in modelsElement.EnumerateArray())
+            {
+                var rawName = GetStringProperty(modelElement, "name");
+                var value = NormalizeModelName(rawName);
+                var displayName = GetStringProperty(modelElement, "displayName");
+                if (!value.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase) ||
+                    !SupportsGenerateContent(modelElement) ||
+                    !IsStableGeminiModel(value, displayName))
+                {
+                    continue;
+                }
+
+                var display = string.IsNullOrWhiteSpace(displayName)
+                    ? value
+                    : $"{displayName} ({value})";
+                models.Add(new GeminiModelOption(
+                    value,
+                    display,
+                    GetStringProperty(modelElement, "description"),
+                    GetIntProperty(modelElement, "inputTokenLimit"),
+                    GetIntProperty(modelElement, "outputTokenLimit")));
+            }
+
+            return models;
+        }
+        catch
+        {
+            return Array.Empty<GeminiModelOption>();
+        }
+    }
+
+    private static string ExtractNextPageToken(string rawResponse)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(rawResponse);
+            return GetStringProperty(doc.RootElement, "nextPageToken");
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    private static bool SupportsGenerateContent(JsonElement modelElement)
+    {
+        if (!modelElement.TryGetProperty("supportedGenerationMethods", out var methodsElement) ||
+            methodsElement.ValueKind != JsonValueKind.Array)
+        {
+            return false;
+        }
+
+        return methodsElement
+            .EnumerateArray()
+            .Any(method => string.Equals(method.GetString(), "generateContent", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsStableGeminiModel(string modelName, string displayName)
+    {
+        var text = $"{modelName} {displayName}";
+        return !ContainsAnyOrdinalIgnoreCase(
+            text,
+            "preview",
+            "experimental",
+            "exp",
+            "latest",
+            "deprecated");
+    }
+
+    private static bool ContainsAnyOrdinalIgnoreCase(string text, params string[] values)
+    {
+        return values.Any(value => text.Contains(value, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetStringProperty(JsonElement element, string propertyName)
+    {
+        return element.TryGetProperty(propertyName, out var valueElement) &&
+               valueElement.ValueKind == JsonValueKind.String
+            ? valueElement.GetString() ?? string.Empty
+            : string.Empty;
+    }
+
+    private static int? GetIntProperty(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var valueElement) ||
+            valueElement.ValueKind != JsonValueKind.Number)
+        {
+            return null;
+        }
+
+        return valueElement.TryGetInt32(out var value) ? value : null;
     }
 
     private static string BuildPrompt(IReadOnlyList<string> texts, AppSettings settings)

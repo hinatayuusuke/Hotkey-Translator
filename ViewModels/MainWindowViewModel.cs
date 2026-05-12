@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 
 namespace Hotkey_Translator.ViewModels;
@@ -48,6 +49,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         Action swapLanguages,
         Action requestSettingsSave,
         Func<Task> reloadLlamaModelsAsync,
+        Func<Task> reloadGeminiModelsAsync,
         Func<Task> restartLlamaCppAsync,
         Func<Task> stopLlamaServerAsync,
         Func<Task> reloadVisionLlmModelsAsync,
@@ -64,6 +66,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         RuntimeStatus.PropertyChanged += OnOverviewDependencyChanged;
         LocalizationService.Instance.LanguageChanged += OnLocalizationLanguageChanged;
         LlamaModelOptions = new ObservableCollection<LlamaModelOption>();
+        GeminiModelOptions = new ObservableCollection<GeminiModelOption>();
         VisionLlmModelOptions = new ObservableCollection<LlamaModelOption>();
         VisionLlmMmprojOptions = new ObservableCollection<LlamaModelOption>();
         TranslationPriority = new ObservableCollection<string>();
@@ -74,6 +77,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         TranslationPriorityUpCommand = new RelayCommand(MoveTranslationPriorityUp);
         TranslationPriorityDownCommand = new RelayCommand(MoveTranslationPriorityDown);
         ReloadLlamaModelsCommand = new AsyncRelayCommand(reloadLlamaModelsAsync);
+        ReloadGeminiModelsCommand = new AsyncRelayCommand(reloadGeminiModelsAsync);
         RestartLlamaCppCommand = new AsyncRelayCommand(restartLlamaCppAsync);
         StopLlamaServerCommand = new AsyncRelayCommand(stopLlamaServerAsync);
         ReloadVisionLlmModelsCommand = new AsyncRelayCommand(reloadVisionLlmModelsAsync);
@@ -95,6 +99,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
 
     public ObservableCollection<LlamaModelOption> LlamaModelOptions { get; }
 
+    public ObservableCollection<GeminiModelOption> GeminiModelOptions { get; }
+
     public ObservableCollection<LlamaModelOption> VisionLlmModelOptions { get; }
 
     public ObservableCollection<LlamaModelOption> VisionLlmMmprojOptions { get; }
@@ -114,6 +120,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     public IRelayCommand TranslationPriorityDownCommand { get; }
 
     public IAsyncRelayCommand ReloadLlamaModelsCommand { get; }
+
+    public IAsyncRelayCommand ReloadGeminiModelsCommand { get; }
 
     public IAsyncRelayCommand RestartLlamaCppCommand { get; }
 
@@ -308,6 +316,15 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         foreach (var value in values)
         {
             LlamaModelOptions.Add(value);
+        }
+    }
+
+    public void ResetGeminiModelOptions(IEnumerable<GeminiModelOption> values)
+    {
+        GeminiModelOptions.Clear();
+        foreach (var value in values)
+        {
+            GeminiModelOptions.Add(value);
         }
     }
 
