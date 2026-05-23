@@ -290,6 +290,16 @@ $serviceExcludedFiles = @(
     "test*.bmp"
 )
 
+$llamaCppRuntimeFiles = @(
+    "llama-server.exe",
+    "llama.dll",
+    "ggml.dll",
+    "ggml-base.dll",
+    "ggml-cpu.dll",
+    "ggml-cuda.dll",
+    "mtmd.dll"
+)
+
 Write-Step "Checking required tooling"
 Get-Command dotnet -ErrorAction Stop | Out-Null
 Get-Command cmake -ErrorAction Stop | Out-Null
@@ -439,9 +449,14 @@ Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceNDL") -Destination (Jo
 Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceVL") -Destination (Join-Path $distributionRoot "OcrServiceVL") -ExcludedDirectoryNames $serviceExcludedDirectories -ExcludedFilePatterns $serviceExcludedFiles
 Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceVisionLlm") -Destination (Join-Path $distributionRoot "OcrServiceVisionLlm") -ExcludedDirectoryNames $serviceExcludedDirectories -ExcludedFilePatterns $serviceExcludedFiles
 
-# WHY: Online distribution intentionally excludes GGUF payloads while keeping llama.cpp runtime layout stable.
-Copy-FilteredTree -Source (Join-Path $repoRoot "TranslationServiceLlama") -Destination (Join-Path $distributionRoot "TranslationServiceLlama") -ExcludedDirectoryNames $serviceExcludedDirectories -ExcludedFilePatterns $serviceExcludedFiles -ExcludedRelativeDirectoryPatterns @("LlamaCpp\Models")
-Ensure-Directory -Path (Join-Path $distributionRoot "TranslationServiceLlama\LlamaCpp\Models")
+# WHY: Only files required by LlamaGrpcHost are packaged; other llama.cpp tools are not used at runtime.
+Copy-FilteredTree -Source (Join-Path $repoRoot "TranslationServiceLlama") -Destination (Join-Path $distributionRoot "TranslationServiceLlama") -ExcludedDirectoryNames ($serviceExcludedDirectories + @("LlamaCpp")) -ExcludedFilePatterns $serviceExcludedFiles
+$distLlamaCppDir = Join-Path $distributionRoot "TranslationServiceLlama\LlamaCpp"
+Ensure-Directory -Path $distLlamaCppDir
+Ensure-Directory -Path (Join-Path $distLlamaCppDir "Models")
+foreach ($fileName in $llamaCppRuntimeFiles) {
+    Copy-File -Source (Join-Path $repoRoot "TranslationServiceLlama\LlamaCpp\$fileName") -Destination (Join-Path $distLlamaCppDir $fileName)
+}
 
 Write-Step "Writing distribution manifest"
 $notesPath = Join-Path $distributionRoot "DIST-NOTES.txt"
@@ -456,7 +471,7 @@ $notesPath = Join-Path $distributionRoot "DIST-NOTES.txt"
     "- uv runtime bootstrapper",
     "- Magpie runtime files",
     "- OCR/translation Python service sources",
-    "- llama.cpp runtime binaries without GGUF model payloads",
+    "- selected llama.cpp runtime binaries without GGUF model payloads",
     "",
     "Not included:",
     "- TranslationService directory",

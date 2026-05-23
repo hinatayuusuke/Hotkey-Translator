@@ -2007,3 +2007,34 @@
 
 ### Tests / Verification
 - `python -m py_compile TranslationServiceLlama\llama_engine.py`
+
+**2026-05-23 17:37 (Asia/Taipei) — build-distのllama.cpp同梱ファイル絞り込み**
+
+### Summary
+- online 配布に含める llama.cpp runtime を、LlamaGrpcHost が必要とするファイルだけに限定した。
+
+### Context / Goal
+- `TranslationServiceLlama\LlamaCpp` をほぼ丸ごと配布しており、未使用の llama.cpp CLI/bench/tool 類や CPU variant DLL が含まれていた。
+- 配布サイズと混入ファイルを抑えるため、起動時検証に必要な runtime ファイルだけを同梱したい。
+
+### Changes
+- `build-dist.ps1` に llama.cpp runtime の明示的な同梱ファイルリストを追加した。
+- `TranslationServiceLlama` コピー時に `LlamaCpp` ディレクトリ全体を除外し、必要な7ファイルだけを個別コピーするようにした。
+- `LlamaCpp\Models` は従来通り空ディレクトリとして作成する。
+- 配布 notes の llama.cpp 説明を、選択された runtime binaries の同梱に合わせて更新した。
+
+### Files Touched
+- `build-dist.ps1` — llama.cpp runtime の同梱対象を明示リスト化し、不要ファイルを配布から除外した。
+
+### Behavioral Impact
+- online 配布物の `TranslationServiceLlama\LlamaCpp` には `llama-server.exe`、`llama.dll`、`ggml.dll`、`ggml-base.dll`、`ggml-cpu.dll`、`ggml-cuda.dll`、`mtmd.dll` のみが入る。
+- llama.cpp の追加 CLI や bench ツール、CPU variant DLL は配布されなくなる。
+- アプリの LlamaCpp 翻訳起動前チェックで要求しているファイルは維持される。
+
+### Risk & Mitigation
+- Risk: 実行時に llama.cpp が暗黙依存する追加 DLL がある場合、配布環境で起動に失敗する可能性がある。
+- Mitigation: 現行 `LlamaGrpcHost` の必須ファイル一覧に合わせ、配布後の LlamaCpp 起動 smoke test で不足があればリストへ追加できる形にした。
+
+### Tests / Verification
+- `[scriptblock]::Create((Get-Content -Path .\build-dist.ps1 -Raw -Encoding UTF8)) | Out-Null`
+- 未実施: `build-dist.ps1` 全体実行。publish/native build 成果物を作る重い処理を伴うため。
