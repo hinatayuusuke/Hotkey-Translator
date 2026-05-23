@@ -49,8 +49,8 @@ class LlamaRequestConfig:
 
 
 DEFAULT_SYSTEM_PROMPT = "Translate the following segment into {target}. Output translation only."
-STRUCTURE_SPLIT_MAX_ITEM_CHARS = 400
-STRUCTURE_SPLIT_TOTAL_CHARS = 800
+STRUCTURE_SPLIT_MAX_ITEM_CHARS = 200
+STRUCTURE_SPLIT_TOTAL_CHARS = 400
 
 
 def build_chat_template_kwargs(disable_thinking: bool) -> dict[str, bool] | None:
