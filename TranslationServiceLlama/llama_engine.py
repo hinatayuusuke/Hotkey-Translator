@@ -49,6 +49,8 @@ class LlamaRequestConfig:
 
 
 DEFAULT_SYSTEM_PROMPT = "Translate the following segment into {target}. Output translation only."
+STRUCTURE_SPLIT_MAX_ITEM_CHARS = 400
+STRUCTURE_SPLIT_TOTAL_CHARS = 800
 
 
 def build_chat_template_kwargs(disable_thinking: bool) -> dict[str, bool] | None:
@@ -412,6 +414,15 @@ class LlamaTranslator:
     def _resolve_split_reason(self, texts: List[str], source_lang: str, target_lang: str) -> str | None:
         if len(texts) <= 1:
             return None
+
+        max_item_chars = max(len(text) for text in texts)
+        total_chars = sum(len(text) for text in texts)
+        if max_item_chars >= STRUCTURE_SPLIT_MAX_ITEM_CHARS or total_chars >= STRUCTURE_SPLIT_TOTAL_CHARS:
+            # WHY: Long multi-item JSON prompts make small local models more likely to break the response schema.
+            return (
+                f"long_multi_block(max_item_chars={max_item_chars}, total_chars={total_chars}, "
+                f"thresholds={STRUCTURE_SPLIT_MAX_ITEM_CHARS}/{STRUCTURE_SPLIT_TOTAL_CHARS})"
+            )
 
         system_prompt = build_batch_system_prompt(source_lang, target_lang)
         user_prompt = build_batch_user_prompt(texts)

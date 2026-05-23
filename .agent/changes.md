@@ -1976,3 +1976,34 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -o .\artifacts\gemini-model-selection-build`
+
+**2026-05-23 13:50 (Asia/Taipei) — LlamaCpp長文複数ブロック分割の追加**
+
+### Summary
+- LlamaCpp 翻訳で長文を含む複数ブロックを事前分割し、JSON 応答構造の崩れを抑えるようにした。
+
+### Context / Goal
+- 複数ブロックを一括で LlamaCpp に渡すと、ブロック内文字数が多い場合に JSON 構造や件数対応が崩れやすい。
+- 長文複数ブロックでは速度より構造安定性を優先したい。
+
+### Changes
+- Llama 翻訳エンジンに構造安定性用の分割閾値を追加した。
+- 複数 item で最大 600 文字以上、または合計 1200 文字以上の場合に既存 adaptive split を使って小バッチ化するようにした。
+- 分割理由に最大文字数・合計文字数・閾値を含め、ログから調整しやすくした。
+
+### Files Touched
+- `TranslationServiceLlama/llama_engine.py` — 長文複数ブロックの事前分割条件を追加した。
+
+### Behavioral Impact
+- LlamaCpp 翻訳で長文を含む複数ブロックは、1回の JSON バッチではなく小さなバッチに分割される場合がある。
+- 短い複数ブロックと単一ブロックの翻訳挙動は従来通り。
+- 長文複数ブロックでは HTTP 呼び出し回数が増え、翻訳完了までの時間が延びる可能性がある。
+
+### Risk & Mitigation
+- Risk: 閾値が低すぎると過剰に分割され、翻訳速度が低下する。
+- Mitigation: 閾値を定数化し、split reason に実測値を出すことでログから調整可能にした。
+- Risk: ブロック間文脈が分割により弱くなる可能性がある。
+- Mitigation: 短文複数ブロックは従来通りまとめ、長文時のみ構造安定性を優先する条件にした。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama\llama_engine.py`
