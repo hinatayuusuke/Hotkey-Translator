@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using Grpc.Net.Client;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services.GrpcHost;
+using Hotkey_Translator.Services.Settings;
 using Hotkey_Translator.TranslationGrpc;
 
 namespace Hotkey_Translator.Services;
@@ -23,7 +24,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
     private const string FixedLlamaServerRelativePath = "LlamaCpp\\llama-server.exe";
     private const string FixedLlamaModelsRelativePath = "LlamaCpp\\Models";
-    private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
+    private const string DefaultLlamaModelFileName = "Hy-MT2-1.8B-Q4_K_M.gguf";
     private const string ManifestFileName = "model_manifest.json";
     private const string UvSyncStateFileName = ".uv-sync.state";
     private static readonly string[] RequiredCudaDllNames =
@@ -37,7 +38,6 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         PropertyNameCaseInsensitive = true
     };
 
-    private readonly LlamaModelCatalog _modelCatalog = new();
     private readonly object _lock = new();
     private int? _trackedLlamaServerPid;
     private string? _trackedLlamaServerPath;
@@ -67,9 +67,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         var uvPath = ResolveUvExecutablePath();
         var host = string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim();
         var port = settings.LlamaGrpcPort <= 0 ? 50071 : settings.LlamaGrpcPort;
-        var selectedModelFileName = _modelCatalog.NormalizeModelFileName(
-            settings.LlamaSelectedModelFileName,
-            DefaultLlamaModelFileName);
+        var selectedModelFileName = SettingsHostNormalizer.NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
         var paths = ResolveFixedLlamaPaths(projectDir, selectedModelFileName);
 
         await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);

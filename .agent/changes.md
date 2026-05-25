@@ -2080,3 +2080,44 @@
 - runtime 必須ファイル一覧と `LlamaCpp` root の余剰ファイルなしを PowerShell で確認
 - 整理後の root から `llama-server.exe` を翻訳モデルで起動し、`/health` が ready になることを確認
 - 整理後の root から `llama-server.exe --mmproj` を VisionLLM OCR モデルで起動し、`/health` が ready になることを確認
+
+**2026-05-25 17:42 (Asia/Taipei) — LlamaCPP翻訳デフォルトモデルをHy-MT2へ変更**
+
+### Summary
+- LlamaCPP翻訳の組み込みデフォルトモデルを `Hy-MT2-1.8B-Q4_K_M.gguf` に変更した。
+
+### Context / Goal
+- 翻訳デフォルトを旧 `HY-MT1.5-1.8B-Q8_0.gguf` から Hugging Face の `tencent/Hy-MT2-1.8B-GGUF` Q4_K_M へ切り替えたい。
+- 既存ユーザーの旧デフォルト設定は新デフォルトへ移行し、任意の別 `.gguf` 選択は維持したい。
+
+### Changes
+- AppSettings と LlamaGrpcHost のデフォルトモデル名を `Hy-MT2-1.8B-Q4_K_M.gguf` に変更した。
+- Llama 設定正規化で、旧組み込みデフォルト `HY-MT1.5-1.8B-Q8_0.gguf` のみ新デフォルトへ互換移行するようにした。
+- ResourceHost のモデルダウンロード判定でも同じ正規化を使い、旧デフォルト設定から新 manifest の自動ダウンロードへ進めるようにした。
+- `TranslationServiceLlama/model_manifest.json` を Hy-MT2 の download URL / SHA256 / size に更新した。
+- `test_translation_engine.py` の既定モデルパスを Hy-MT2 に更新した。
+
+### Files Touched
+- `Models/AppSettings.cs` — 新規設定の Llama 選択モデル既定値を Hy-MT2 に変更した。
+- `Services/LlamaGrpcHost.cs` — 起動時のデフォルトモデル名と選択モデル正規化を Hy-MT2 に合わせた。
+- `Services/Settings/SettingsHostNormalizer.cs` — 旧デフォルトのみを新デフォルトへ移行する互換正規化を追加した。
+- `Services/Application/ResourceHostFacade.cs` — Llama モデルの bootstrap 判定で共通正規化を使うようにした。
+- `TranslationServiceLlama/model_manifest.json` — Hy-MT2 Q4_K_M の manifest に更新した。
+- `TranslationServiceLlama/test_translation_engine.py` — smoke test の既定モデルを Hy-MT2 に変更した。
+
+### Behavioral Impact
+- 新規設定または旧デフォルト設定の環境では、LlamaCPP翻訳の既定モデルが `Hy-MT2-1.8B-Q4_K_M.gguf` になる。
+- 旧デフォルト以外の `.gguf` を指定している環境は、その選択を維持する。
+- Hy-MT2 が未配置の場合、manifest に基づいて約 1.13GB のモデルを自動ダウンロード対象として扱う。
+
+### Risk & Mitigation
+- Risk: 旧デフォルト名を意図的に使い続けたい環境でも、設定正規化により新デフォルトへ置換される。
+- Mitigation: 移行対象を旧組み込みデフォルトの完全一致に限定し、その他のカスタム `.gguf` は維持する。
+- Risk: upstream の Hugging Face ファイルが差し替えられるとダウンロード後の SHA256 検証に失敗する。
+- Mitigation: manifest に確認済み SHA256 と size を固定し、不一致時は fail fast で検出する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj`
+- `python -m py_compile TranslationServiceLlama\test_translation_engine.py`
+- `TranslationServiceLlama\model_manifest.json` の size/SHA256 がローカル `Hy-MT2-1.8B-Q4_K_M.gguf` と一致することを確認
+- 整理済み LlamaCpp runtime root から `Hy-MT2-1.8B-Q4_K_M.gguf` で `llama-server.exe` を起動し、`/health` が ready になることを確認

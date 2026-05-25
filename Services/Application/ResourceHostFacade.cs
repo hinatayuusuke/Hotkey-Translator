@@ -541,9 +541,7 @@ internal sealed class ResourceHostFacade : IDisposable
             return;
         }
 
-        var selectedModelFileName = new LlamaModelCatalog().NormalizeModelFileName(
-            settings.LlamaSelectedModelFileName,
-            manifest.Filename);
+        var selectedModelFileName = SettingsHostNormalizer.NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
         var isDefaultSelection = string.Equals(selectedModelFileName, manifest.Filename, StringComparison.OrdinalIgnoreCase);
         var modelPath = Path.Combine(ResolveAppRelativePath(SharedModelsRelativePath), selectedModelFileName);
         var needsModelDownload = isDefaultSelection &&

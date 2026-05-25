@@ -1,12 +1,17 @@
 using System;
 using System.IO;
+using System.Linq;
 using Hotkey_Translator.Models;
 
 namespace Hotkey_Translator.Services.Settings;
 
 internal static class SettingsHostNormalizer
 {
-    private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
+    private const string DefaultLlamaModelFileName = "Hy-MT2-1.8B-Q4_K_M.gguf";
+    private static readonly string[] LegacyDefaultLlamaModelFileNames =
+    {
+        "HY-MT1.5-1.8B-Q8_0.gguf"
+    };
     private const string DefaultVisionLlmModelFileName = "Qwen3.5-4B-Q4_K_M.gguf";
     private const string DefaultVisionLlmMmprojFileName = "mmproj-Qwen3.5-4B-BF16.gguf";
     private static readonly string[] LegacyDefaultVisionLlmMmprojFileNames =
@@ -53,8 +58,15 @@ internal static class SettingsHostNormalizer
     public static string NormalizeLlamaModelFileName(string? value)
     {
         var fileName = Path.GetFileName((value ?? string.Empty).Trim());
-        return string.IsNullOrWhiteSpace(fileName) ||
-               !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            !fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase))
+        {
+            return DefaultLlamaModelFileName;
+        }
+
+        // COMPAT: Existing settings may still contain the previous built-in default.
+        // Only migrate that exact default so user-selected custom GGUF files remain stable.
+        return LegacyDefaultLlamaModelFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase)
             ? DefaultLlamaModelFileName
             : fileName;
     }

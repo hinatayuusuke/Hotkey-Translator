@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llama-server", default=r"LlamaCpp\llama-server.exe", help="llama-server path")
     parser.add_argument(
         "--model",
-        default=r"LlamaCpp\Models\HY-MT1.5-1.8B-Q8_0.gguf",
+        default=r"LlamaCpp\Models\Hy-MT2-1.8B-Q4_K_M.gguf",
         help="GGUF model path",
     )
     parser.add_argument("--llama-host", default="127.0.0.1", help="llama-server HTTP host")

@@ -328,7 +328,7 @@ public sealed class AppSettings
     public double LlamaTopP { get; set; } = 0.6;
     public int LlamaTopK { get; set; } = 20;
     public double LlamaRepeatPenalty { get; set; } = 1.05;
-    public string LlamaSelectedModelFileName { get; set; } = "HY-MT1.5-1.8B-Q8_0.gguf";
+    public string LlamaSelectedModelFileName { get; set; } = "Hy-MT2-1.8B-Q4_K_M.gguf";
     public List<string> TranslationPriority { get; set; } = new();
     public double OverlayFontSize { get; set; } = 48;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";

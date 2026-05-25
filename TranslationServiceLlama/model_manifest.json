@@ -1,6 +1,6 @@
 {
-  "filename": "HY-MT1.5-1.8B-Q8_0.gguf",
-  "download_url": "https://huggingface.co/tencent/HY-MT1.5-1.8B-GGUF/resolve/main/HY-MT1.5-1.8B-Q8_0.gguf?download=true",
-  "sha256": "6789b06d0902f2f5312c0e1703d56ccbddfcfb6c653d22519b7c720f7db9a98e",
-  "size_bytes": 1908528288
+  "filename": "Hy-MT2-1.8B-Q4_K_M.gguf",
+  "download_url": "https://huggingface.co/tencent/Hy-MT2-1.8B-GGUF/resolve/main/Hy-MT2-1.8B-Q4_K_M.gguf?download=true",
+  "sha256": "dc5f44fcf1fa496ee7ad725982c0c8c553a4de00259b53af84c4b89fb0c06699",
+  "size_bytes": 1133080448
 }
