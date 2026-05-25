@@ -26,16 +26,6 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const string ManifestFileName = "model_manifest.json";
     private const string UvSyncStateFileName = ".uv-sync.state";
-    private static readonly string[] RequiredNativeFiles =
-    {
-        "llama-server.exe",
-        "llama.dll",
-        "ggml.dll",
-        "ggml-base.dll",
-        "ggml-cpu.dll",
-        "ggml-cuda.dll",
-        "mtmd.dll",
-    };
     private static readonly string[] RequiredCudaDllNames =
     {
         "cudart64_12.dll",
@@ -83,7 +73,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         var paths = ResolveFixedLlamaPaths(projectDir, selectedModelFileName);
 
         await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
-        ValidateLlamaNativeFiles(paths.LlamaCppDirectory);
+        LlamaCppRuntimeLayout.ValidateRequiredRuntimeFiles(paths.LlamaCppDirectory, "Llama translation");
         await EnsureLlamaModelAsync(
             paths.ManifestPath,
             paths.ModelPath,
@@ -272,25 +262,6 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
             Path.Combine(projectDir, FixedLlamaModelsRelativePath, safeModelFileName),
             llamaCppDir,
             Path.Combine(projectDir, ManifestFileName));
-    }
-
-    private void ValidateLlamaNativeFiles(string llamaCppDir)
-    {
-        var missing = new List<string>();
-        foreach (var fileName in RequiredNativeFiles)
-        {
-            var path = Path.Combine(llamaCppDir, fileName);
-            if (!File.Exists(path))
-            {
-                missing.Add(path);
-            }
-        }
-
-        if (missing.Count > 0)
-        {
-            throw new FileNotFoundException(
-                $"Required llama.cpp native files are missing:{Environment.NewLine}{string.Join(Environment.NewLine, missing)}");
-        }
     }
 
     private static IReadOnlyList<string> CollectNvidiaDllBinPaths(string projectDir)

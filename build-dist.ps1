@@ -292,12 +292,28 @@ $serviceExcludedFiles = @(
 
 $llamaCppRuntimeFiles = @(
     "llama-server.exe",
+    "llama-server-impl.dll",
+    "llama-common.dll",
     "llama.dll",
+    "mtmd.dll",
     "ggml.dll",
     "ggml-base.dll",
-    "ggml-cpu.dll",
     "ggml-cuda.dll",
-    "mtmd.dll"
+    "libomp140.x86_64.dll",
+    "ggml-cpu-alderlake.dll",
+    "ggml-cpu-cannonlake.dll",
+    "ggml-cpu-cascadelake.dll",
+    "ggml-cpu-cooperlake.dll",
+    "ggml-cpu-haswell.dll",
+    "ggml-cpu-icelake.dll",
+    "ggml-cpu-ivybridge.dll",
+    "ggml-cpu-piledriver.dll",
+    "ggml-cpu-sandybridge.dll",
+    "ggml-cpu-sapphirerapids.dll",
+    "ggml-cpu-skylakex.dll",
+    "ggml-cpu-sse42.dll",
+    "ggml-cpu-x64.dll",
+    "ggml-cpu-zen4.dll"
 )
 
 Write-Step "Checking required tooling"
@@ -449,7 +465,7 @@ Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceNDL") -Destination (Jo
 Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceVL") -Destination (Join-Path $distributionRoot "OcrServiceVL") -ExcludedDirectoryNames $serviceExcludedDirectories -ExcludedFilePatterns $serviceExcludedFiles
 Copy-FilteredTree -Source (Join-Path $repoRoot "OcrServiceVisionLlm") -Destination (Join-Path $distributionRoot "OcrServiceVisionLlm") -ExcludedDirectoryNames $serviceExcludedDirectories -ExcludedFilePatterns $serviceExcludedFiles
 
-# WHY: Only files required by LlamaGrpcHost are packaged; other llama.cpp tools are not used at runtime.
+# WHY: Translation and VisionLLM OCR share llama-server; package only runtime DLLs, not llama.cpp CLI/bench tools.
 Copy-FilteredTree -Source (Join-Path $repoRoot "TranslationServiceLlama") -Destination (Join-Path $distributionRoot "TranslationServiceLlama") -ExcludedDirectoryNames ($serviceExcludedDirectories + @("LlamaCpp")) -ExcludedFilePatterns $serviceExcludedFiles
 $distLlamaCppDir = Join-Path $distributionRoot "TranslationServiceLlama\LlamaCpp"
 Ensure-Directory -Path $distLlamaCppDir

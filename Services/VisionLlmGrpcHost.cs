@@ -69,6 +69,10 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
             throw new FileNotFoundException($"VisionLLM llama-server not found: {llamaServerPath}");
         }
 
+        var llamaCppDir = Path.GetDirectoryName(llamaServerPath)
+            ?? throw new DirectoryNotFoundException($"VisionLLM llama.cpp directory not found: {llamaServerPath}");
+        LlamaCppRuntimeLayout.ValidateRequiredRuntimeFiles(llamaCppDir, "VisionLLM OCR");
+
         lock (_lock)
         {
             _trackedLlamaServerPath = Path.GetFullPath(llamaServerPath);

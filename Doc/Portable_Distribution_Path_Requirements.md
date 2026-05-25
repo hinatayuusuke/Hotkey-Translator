@@ -52,12 +52,15 @@
     .venv/
     LlamaCpp/
       llama-server.exe
+      llama-server-impl.dll
+      llama-common.dll
       llama.dll
+      mtmd.dll
       ggml.dll
       ggml-base.dll
-      ggml-cpu.dll
       ggml-cuda.dll
-      mtmd.dll
+      libomp140.x86_64.dll
+      ggml-cpu-*.dll
       Models/
         <selected-model>.gguf
 ```

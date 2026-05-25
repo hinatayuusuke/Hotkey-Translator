@@ -2038,3 +2038,45 @@
 ### Tests / Verification
 - `[scriptblock]::Create((Get-Content -Path .\build-dist.ps1 -Raw -Encoding UTF8)) | Out-Null`
 - 未実施: `build-dist.ps1` 全体実行。publish/native build 成果物を作る重い処理を伴うため。
+
+**2026-05-25 16:53 (Asia/Taipei) — LlamaCPP runtimeバイナリ整理**
+
+### Summary
+- 翻訳と VisionLLM OCR が共有する llama-server runtime の必須ファイルを明示し、LlamaCpp 直下を runtime 起動に必要なファイル中心に整理した。
+
+### Context / Goal
+- `TranslationServiceLlama\LlamaCpp` 直下に llama.cpp の CLI/bench/tool 類を含む全バイナリが混在していた。
+- 翻訳と OCR の llama-server 起動に必要な DLL/EXE を明確化し、配布物と起動前チェックの不足を防ぎたい。
+
+### Changes
+- `llama-server.exe` の launcher 形式に必要な `llama-server-impl.dll` / `llama-common.dll` を runtime 必須ファイルへ追加した。
+- 実モデルロードに必要な `ggml-cpu-*.dll` と、それらの依存である `libomp140.x86_64.dll` を runtime 必須ファイルへ追加した。
+- 古い `ggml-cpu.dll` と llama.cpp の CLI/bench/quantize/rpc など non-runtime バイナリを `TranslationServiceLlama\LlamaCpp\NonRuntime` に退避した。
+- 翻訳ホストと VisionLLM OCR ホストで共有する runtime 検証クラスを追加し、OCR 側も不足ファイルを起動前に検出するようにした。
+- online 配布スクリプトとポータブル配布ドキュメントの LlamaCpp 同梱ファイル一覧を更新した。
+
+### Files Touched
+- `Services/LlamaCppRuntimeLayout.cs` — 共有 llama.cpp runtime 必須ファイル一覧と検証処理を追加した。
+- `Services/LlamaGrpcHost.cs` — 翻訳ホストの起動前検証を共有 runtime 検証へ変更した。
+- `Services/VisionLlmGrpcHost.cs` — VisionLLM OCR ホストでも共有 llama.cpp runtime を起動前検証するようにした。
+- `build-dist.ps1` — 配布に含める llama.cpp runtime ファイルを実起動に必要な一覧へ更新した。
+- `Doc/Portable_Distribution_Path_Requirements.md` — ポータブル配布の LlamaCpp 構成例を更新した。
+- `TranslationServiceLlama/LlamaCpp/NonRuntime/` — 起動に不要な llama.cpp tool/bench/rpc 類と旧 `ggml-cpu.dll` を退避した。
+
+### Behavioral Impact
+- 翻訳と VisionLLM OCR は、同じ `TranslationServiceLlama\LlamaCpp` root に runtime 必須ファイルが不足している場合、llama-server 起動前に明示エラーで停止する。
+- online 配布物には llama-server 起動に必要な runtime DLL/EXE と CPU backend variants が含まれ、CLI/bench/tool 類は含まれない。
+- ローカルの `LlamaCpp` root は runtime 専用に近い構成になり、non-runtime tool 類は `NonRuntime` 配下へ移動した。
+
+### Risk & Mitigation
+- Risk: 将来の llama.cpp build で runtime DLL 名が変わると検証や配布コピーで不足扱いになる。
+- Mitigation: 必須ファイル一覧を `LlamaCppRuntimeLayout` と `build-dist.ps1` に明示し、不足時は fail fast で検出できるようにした。
+- Risk: `NonRuntime` 配下へ移動した llama.cpp CLI/bench/tool 類を直接実行する運用がある場合、従来の root 直下パスでは起動できない。
+- Mitigation: アプリ runtime では使用していないファイルのみ退避し、必要なら `NonRuntime` から戻せる形にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj`
+- `[scriptblock]::Create((Get-Content -Path .\build-dist.ps1 -Raw -Encoding UTF8)) | Out-Null`
+- runtime 必須ファイル一覧と `LlamaCpp` root の余剰ファイルなしを PowerShell で確認
+- 整理後の root から `llama-server.exe` を翻訳モデルで起動し、`/health` が ready になることを確認
+- 整理後の root から `llama-server.exe --mmproj` を VisionLLM OCR モデルで起動し、`/health` が ready になることを確認
