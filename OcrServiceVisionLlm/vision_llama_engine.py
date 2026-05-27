@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import threading
 import time
@@ -190,10 +191,10 @@ class LlamaServerHost:
         if config.disable_thinking:
             args.extend(
                 [
+                    "--reasoning",
+                    "off",
                     "--reasoning-budget",
                     "0",
-                    "--reasoning-format",
-                    "none",
                     "--chat-template-kwargs",
                     json.dumps(build_chat_template_kwargs(True), ensure_ascii=True, separators=(",", ":")),
                 ]
@@ -540,12 +541,20 @@ def extract_message_content(payload: dict) -> str:
 
     content = message.get("content")
     if isinstance(content, str):
-        return content
+        return strip_thinking_content(content)
     if isinstance(content, list):
-        return "".join(
+        return strip_thinking_content("".join(
             item.get("text", "") for item in content if isinstance(item, dict)
-        )
+        ))
     raise VisionLlamaError("Unsupported llama-server content format.")
+
+
+def strip_thinking_content(text: str) -> str:
+    # WHY: llama.cpp/model template changes can still leak <think> blocks even when reasoning is disabled.
+    # OCR and JSON translation outputs must never expose or parse those blocks.
+    without_closed_blocks = re.sub(r"(?is)<think\b[^>]*>.*?</think\s*>", "", text)
+    without_unclosed_block = re.sub(r"(?is)<think\b[^>]*>.*$", "", without_closed_blocks)
+    return re.sub(r"(?is)^.*?</think\s*>", "", without_unclosed_block)
 
 
 def parse_json_object_from_text_resilient(content: str) -> tuple[dict | None, bool]:

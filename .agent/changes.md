@@ -2121,3 +2121,36 @@
 - `python -m py_compile TranslationServiceLlama\test_translation_engine.py`
 - `TranslationServiceLlama\model_manifest.json` の size/SHA256 がローカル `Hy-MT2-1.8B-Q4_K_M.gguf` と一致することを確認
 - 整理済み LlamaCpp runtime root から `Hy-MT2-1.8B-Q4_K_M.gguf` で `llama-server.exe` を起動し、`/health` が ready になることを確認
+
+**2026-05-27 10:30 (Asia/Taipei) — VisionLLM Thinking無効化の強化**
+
+### Summary
+- VisionLLM の llama-server 起動を `--reasoning off` に変更し、応答に混入した `<think>` ブロックを出力前に除去するようにした。
+
+### Context / Goal
+- VisionLLM OCR/翻訳は Thinking なしで動作させ、Think 内容を OCR/翻訳結果へ出力させないようにしたい。
+- 既存の `--reasoning-format none` は think を content に残す可能性があり、OCR のプレーンテキストや翻訳 JSON に混入すると不正な出力になり得る。
+
+### Changes
+- VisionLLM llama-server の disable-thinking 起動引数に `--reasoning off` を追加した。
+- `--reasoning-format none` を削除し、think 内容を content に残す方向の指定をやめた。
+- `extract_message_content()` の戻り値に `<think>...</think>` / 未閉じ `<think>` / 先頭 orphan `</think>` の除去処理を追加した。
+
+### Files Touched
+- `OcrServiceVisionLlm/vision_llama_engine.py` — Thinking 無効化の起動引数を見直し、応答テキスト sanitizer を追加した。
+
+### Behavioral Impact
+- VisionLLM OCR/翻訳では、llama-server 側で reasoning/thinking を明示的に OFF にする。
+- モデルや chat template の差分で `<think>` が content に混入しても、アプリへ返す OCR/翻訳テキストからは除去される。
+- `--enable-thinking` を使う診断実行でも、アプリが消費する message content から `<think>` ブロックは除去される。
+
+### Risk & Mitigation
+- Risk: 実際の画面文字列にリテラルの `<think>...</think>` が含まれる場合、それも除去される。
+- Mitigation: OCR/翻訳の通常用途では think tag 混入防止を優先し、除去対象を `<think>` タグ形式に限定した。
+- Risk: llama.cpp の将来バージョンで reasoning 引数の意味が変わる可能性がある。
+- Mitigation: 起動確認で `thinking = 0` と `/health` ready を確認し、応答後 sanitizer も併用した。
+
+### Tests / Verification
+- `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py OcrServiceVisionLlm\server.py OcrServiceVisionLlm\test_vision_llama_engine.py`
+- `uv run python -c "from vision_llama_engine import strip_thinking_content; ..."` による `<think>` 除去ケース確認
+- `llama-server.exe` を `--reasoning off --reasoning-budget 0 --chat-template-kwargs {"enable_thinking":false}` 付きで起動し、`/health` ready とログ上の `thinking = 0` を確認
