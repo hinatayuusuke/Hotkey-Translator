@@ -138,6 +138,12 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         startInfo.ArgumentList.Add(settings.LlamaTopK.ToString());
         startInfo.ArgumentList.Add("--repeat-penalty");
         startInfo.ArgumentList.Add(settings.LlamaRepeatPenalty.ToString("0.###"));
+        if (settings.EnableLlamaMtp)
+        {
+            startInfo.ArgumentList.Add("--enable-mtp");
+            startInfo.ArgumentList.Add("--mtp-draft-tokens");
+            startInfo.ArgumentList.Add(Math.Clamp(settings.LlamaMtpDraftTokens, 1, 16).ToString());
+        }
         var process = StartProcessWithLogging(startInfo, "LlamaGrpc");
         return process;
     }

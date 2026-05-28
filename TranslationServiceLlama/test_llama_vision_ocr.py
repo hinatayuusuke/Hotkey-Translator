@@ -96,6 +96,12 @@ def parse_args() -> argparse.Namespace:
         action="store_false",
         help="Allow model reasoning/think mode for diagnostics.",
     )
+    parser.add_argument(
+        "--enable-mtp",
+        action="store_true",
+        help="Enable llama.cpp draft-mtp speculative decoding. Requires an MTP-capable GGUF model.",
+    )
+    parser.add_argument("--mtp-draft-tokens", type=int, default=3, help="Maximum draft tokens for MTP speculative decoding.")
     parser.add_argument("--json-out", default=None, help="Optional path to write raw JSON response")
     parser.add_argument("--text-out", default=None, help="Optional path to write extracted text")
     parser.add_argument("--boxes-out", default=None, help="Optional path to write parsed OCR boxes JSON")
@@ -234,18 +240,21 @@ def start_local_server(args: argparse.Namespace) -> subprocess.Popen[str]:
     if args.disable_thinking:
         cmd.extend(
             [
+                "--reasoning",
+                "off",
                 "--reasoning-budget",
                 "0",
-                "--reasoning-format",
-                "none",
                 "--chat-template-kwargs",
                 json.dumps({"enable_thinking": False}, ensure_ascii=True, separators=(",", ":")),
             ]
         )
+    if args.enable_mtp:
+        cmd.extend(["--spec-type", "draft-mtp", "--spec-draft-n-max", str(max(1, min(16, args.mtp_draft_tokens)))])
 
     print(
         "Starting local llama-server "
-        f"(device={args.device}, gpu_layers={resolve_gpu_layers(args)}, batch_size={args.batch_size})"
+        f"(device={args.device}, gpu_layers={resolve_gpu_layers(args)}, batch_size={args.batch_size}, "
+        f"mtp={'on' if args.enable_mtp else 'off'}, mtp_draft_tokens={args.mtp_draft_tokens})"
     )
     env = os.environ.copy()
     if nvidia_bin_paths:
@@ -427,8 +436,6 @@ def build_common_generation_args(args: argparse.Namespace) -> dict[str, object]:
     }
     if args.disable_thinking:
         body["reasoning_budget"] = 0
-        body["reasoning_format"] = "none"
-        body["chat_template_kwargs"] = {"enable_thinking": False}
     return body
 
 

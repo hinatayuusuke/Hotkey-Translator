@@ -69,6 +69,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--llama-host", default="127.0.0.1", help="llama-server HTTP host")
     parser.add_argument("--llama-port", type=int, default=8088, help="llama-server HTTP port")
     parser.add_argument(
+        "--enable-mtp",
+        action="store_true",
+        help="Enable llama.cpp draft-mtp speculative decoding for the local test server.",
+    )
+    parser.add_argument("--mtp-draft-tokens", type=int, default=3, help="Maximum draft tokens for MTP speculative decoding.")
+    parser.add_argument(
         "--disable-thinking",
         dest="disable_thinking",
         action="store_true",
@@ -205,11 +211,14 @@ def start_local_server(args: argparse.Namespace) -> subprocess.Popen[str]:
         cmd.append("--disable-thinking")
     else:
         cmd.append("--enable-thinking")
+    if args.enable_mtp:
+        cmd.extend(["--enable-mtp", "--mtp-draft-tokens", str(args.mtp_draft_tokens)])
 
     print(
         "Starting local server "
         f"(device={args.device or 'default'}, batch_size={batch_size}, "
-        f"max_tokens={max_tokens}, gpu_layers={gpu_layers})"
+        f"max_tokens={max_tokens}, gpu_layers={gpu_layers}, "
+        f"mtp={'on' if args.enable_mtp else 'off'}, mtp_draft_tokens={args.mtp_draft_tokens})"
     )
     env = os.environ.copy()
     if nvidia_bin_paths:
@@ -384,8 +393,6 @@ def translate_via_llama_json_batch(
     }
     if disable_thinking:
         body["reasoning_budget"] = 0
-        body["reasoning_format"] = "none"
-        body["chat_template_kwargs"] = {"enable_thinking": False}
 
     response = http_client.post("/v1/chat/completions", json=body)
     response.raise_for_status()

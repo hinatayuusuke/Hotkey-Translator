@@ -156,6 +156,7 @@ Place the file at this path or disable {0}.</value></data>
   <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP host</value></data>
   <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>Max tokens</value></data>
   <data name="Translation_Label_Model" xml:space="preserve"><value>Model</value></data>
+  <data name="Translation_Label_MtpDraftTokens" xml:space="preserve"><value>MTP draft tokens</value></data>
   <data name="Translation_Label_Parallel" xml:space="preserve"><value>Parallel</value></data>
   <data name="Translation_Label_RepeatPenalty" xml:space="preserve"><value>Repeat penalty</value></data>
   <data name="Translation_Label_RuntimeControl" xml:space="preserve"><value>Runtime control</value></data>
@@ -164,6 +165,9 @@ Place the file at this path or disable {0}.</value></data>
   <data name="Translation_Label_TopK" xml:space="preserve"><value>Top K</value></data>
   <data name="Translation_Label_TopP" xml:space="preserve"><value>Top P</value></data>
   <data name="Translation_LocalLlamaTitle" xml:space="preserve"><value>Local Llama.cpp (GGUF)</value></data>
+  <data name="Translation_MtpAdvancedHeader" xml:space="preserve"><value>Advanced: MTP speculative decoding</value></data>
+  <data name="Translation_EnableMtp" xml:space="preserve"><value>Enable MTP</value></data>
+  <data name="Translation_MtpNote" xml:space="preserve"><value>Requires an MTP-capable GGUF model. Non-MTP models fail startup when this is enabled.</value></data>
   <data name="Translation_ModelFilesNote" xml:space="preserve"><value>Model files are loaded from TranslationServiceLlama\LlamaCpp\Models</value></data>
   <data name="Translation_PriorityTitle" xml:space="preserve"><value>Translation priority</value></data>
   <data name="Translation_RestartLlama" xml:space="preserve"><value>Restart Llama.cpp</value></data>

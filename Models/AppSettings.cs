@@ -213,6 +213,8 @@ public sealed class AppSettings
     public string VisionLlmSelectedModelFileName { get; set; } = "Qwen3.5-4B-Q4_K_M.gguf";
     public string VisionLlmSelectedMmprojFileName { get; set; } = "mmproj-Qwen3.5-4B-BF16.gguf";
     public int VisionLlmMaxImageSide { get; set; } = 768;
+    public bool EnableVisionLlmMtp { get; set; } = false;
+    public int VisionLlmMtpDraftTokens { get; set; } = 3;
     public bool EnableVisionLlmSharedLocalTranslation { get; set; } = true;
     public bool EnableVisionGeometryHybridOcr { get; set; } = false;
     public VisionGeometryHybridBaseEngineKind VisionGeometryHybridBaseEngine { get; set; } = VisionGeometryHybridBaseEngineKind.WinRt;
@@ -329,6 +331,8 @@ public sealed class AppSettings
     public int LlamaTopK { get; set; } = 20;
     public double LlamaRepeatPenalty { get; set; } = 1.05;
     public string LlamaSelectedModelFileName { get; set; } = "Hy-MT2-1.8B-Q4_K_M.gguf";
+    public bool EnableLlamaMtp { get; set; } = false;
+    public int LlamaMtpDraftTokens { get; set; } = 3;
     public List<string> TranslationPriority { get; set; } = new();
     public double OverlayFontSize { get; set; } = 48;
     public string OverlayForeground { get; set; } = "#FFFFFFFF";

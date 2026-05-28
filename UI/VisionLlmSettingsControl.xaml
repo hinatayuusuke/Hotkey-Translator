@@ -72,6 +72,24 @@
                                       <TextBox x:Name="VisionLlmMaxImageSideBox" Width="80"
                                                Text="{Binding Settings.VisionLlmMaxImageSideText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
+                                  <Expander Header="{uiLoc:Loc Key=Translation_MtpAdvancedHeader}"
+                                            Margin="0,8,0,0"
+                                            IsExpanded="False">
+                                      <StackPanel Margin="0,6,0,0">
+                                          <CheckBox x:Name="EnableVisionLlmMtpCheck"
+                                                    Content="{uiLoc:Loc Key=Translation_EnableMtp}"
+                                                    IsChecked="{Binding Settings.EnableVisionLlmMtp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                          <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                                      IsEnabled="{Binding Settings.EnableVisionLlmMtp}">
+                                              <TextBlock Text="{uiLoc:Loc Key=Translation_Label_MtpDraftTokens}" Width="140" VerticalAlignment="Center" />
+                                              <TextBox x:Name="VisionLlmMtpDraftTokensBox" Width="80"
+                                                       Text="{Binding Settings.VisionLlmMtpDraftTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                          </StackPanel>
+                                          <TextBlock Text="{uiLoc:Loc Key=Translation_MtpNote}"
+                                                     Style="{StaticResource HelpTextStyle}"
+                                                     Margin="0,4,0,0" />
+                                      </StackPanel>
+                                  </Expander>
                                   <CheckBox x:Name="EnableVisionLlmSharedLocalTranslationCheck"
                                             Content="{uiLoc:Loc Key=VisionLlm_EnableSharedLocalTranslation}"
                                             Margin="0,8,0,0"

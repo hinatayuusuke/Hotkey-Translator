@@ -120,6 +120,12 @@ def main() -> int:
     parser.add_argument("--restart-max", type=int, default=3)
     parser.add_argument("--restart-window-seconds", type=int, default=30)
     parser.add_argument(
+        "--enable-mtp",
+        action="store_true",
+        help="Enable llama.cpp draft-mtp speculative decoding. Requires an MTP-capable GGUF model.",
+    )
+    parser.add_argument("--mtp-draft-tokens", type=int, default=3, help="Maximum draft tokens for MTP speculative decoding.")
+    parser.add_argument(
         "--disable-thinking",
         dest="disable_thinking",
         action="store_true",
@@ -156,6 +162,8 @@ def main() -> int:
         restart_max=args.restart_max,
         restart_window_seconds=args.restart_window_seconds,
         disable_thinking=args.disable_thinking,
+        enable_mtp=args.enable_mtp,
+        mtp_draft_tokens=args.mtp_draft_tokens,
     )
 
     request_config = LlamaRequestConfig(

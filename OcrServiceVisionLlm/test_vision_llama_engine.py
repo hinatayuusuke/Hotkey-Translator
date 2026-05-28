@@ -52,6 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=0, help="Warmup OCR runs before timing")
     parser.add_argument("--repeat", type=int, default=1, help="Measured OCR runs")
     parser.add_argument(
+        "--enable-mtp",
+        action="store_true",
+        help="Enable llama.cpp draft-mtp speculative decoding. Requires an MTP-capable GGUF model.",
+    )
+    parser.add_argument("--mtp-draft-tokens", type=int, default=3, help="Maximum draft tokens for MTP speculative decoding.")
+    parser.add_argument(
         "--disable-thinking",
         dest="disable_thinking",
         action="store_true",
@@ -290,6 +296,8 @@ def main() -> int:
         restart_window_seconds=args.restart_window_seconds,
         max_image_side=args.max_image_side,
         disable_thinking=args.disable_thinking,
+        enable_mtp=args.enable_mtp,
+        mtp_draft_tokens=args.mtp_draft_tokens,
     )
     request_config = VisionLlamaRequestConfig(
         max_tokens=args.max_tokens,
@@ -406,6 +414,8 @@ def main() -> int:
             "gpu_layers": resolve_gpu_layers(args),
             "max_image_side": args.max_image_side,
             "disable_thinking": args.disable_thinking,
+            "enable_mtp": args.enable_mtp,
+            "mtp_draft_tokens": args.mtp_draft_tokens,
             "language": args.language,
             "source_lang": args.source_lang,
             "target_lang": args.target_lang,

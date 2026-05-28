@@ -89,6 +89,24 @@
                                       <TextBox x:Name="LlamaRepeatPenaltyBox" Width="80"
                                                Text="{Binding Settings.LlamaRepeatPenaltyText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
                                   </StackPanel>
+                                  <Expander Header="{uiLoc:Loc Key=Translation_MtpAdvancedHeader}"
+                                            Margin="0,8,0,0"
+                                            IsExpanded="False">
+                                      <StackPanel Margin="0,6,0,0">
+                                          <CheckBox x:Name="EnableLlamaMtpCheck"
+                                                    Content="{uiLoc:Loc Key=Translation_EnableMtp}"
+                                                    IsChecked="{Binding Settings.EnableLlamaMtp, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                          <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
+                                                      IsEnabled="{Binding Settings.EnableLlamaMtp}">
+                                              <TextBlock Text="{uiLoc:Loc Key=Translation_Label_MtpDraftTokens}" Width="140" VerticalAlignment="Center" />
+                                              <TextBox x:Name="LlamaMtpDraftTokensBox" Width="80"
+                                                       Text="{Binding Settings.LlamaMtpDraftTokensText, Mode=TwoWay, UpdateSourceTrigger=LostFocus}" />
+                                          </StackPanel>
+                                          <TextBlock Text="{uiLoc:Loc Key=Translation_MtpNote}"
+                                                     Style="{StaticResource HelpTextStyle}"
+                                                     Margin="0,4,0,0" />
+                                      </StackPanel>
+                                  </Expander>
                                   <Separator Margin="0,10,0,8" />
                                   <StackPanel Orientation="Horizontal">
                                       <TextBlock Text="{uiLoc:Loc Key=Translation_Label_DeepLApiKey}" Width="140" VerticalAlignment="Center" />

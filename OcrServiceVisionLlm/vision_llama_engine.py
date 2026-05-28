@@ -41,12 +41,6 @@ DEFAULT_TRANSLATE_PROMPT = (
 )
 
 
-def build_chat_template_kwargs(disable_thinking: bool) -> dict[str, bool] | None:
-    if not disable_thinking:
-        return None
-    return {"enable_thinking": False}
-
-
 @dataclass
 class VisionLlamaServerConfig:
     llama_server_path: str
@@ -64,6 +58,8 @@ class VisionLlamaServerConfig:
     restart_window_seconds: int
     max_image_side: int
     disable_thinking: bool
+    enable_mtp: bool
+    mtp_draft_tokens: int
 
 
 @dataclass
@@ -195,8 +191,15 @@ class LlamaServerHost:
                     "off",
                     "--reasoning-budget",
                     "0",
-                    "--chat-template-kwargs",
-                    json.dumps(build_chat_template_kwargs(True), ensure_ascii=True, separators=(",", ":")),
+                ]
+            )
+        if config.enable_mtp:
+            args.extend(
+                [
+                    "--spec-type",
+                    "draft-mtp",
+                    "--spec-draft-n-max",
+                    str(max(1, min(16, config.mtp_draft_tokens))),
                 ]
             )
 
@@ -468,9 +471,6 @@ class VisionLlamaEngine:
         }
         if self._request.disable_thinking:
             payload["reasoning_budget"] = 0
-            kwargs = build_chat_template_kwargs(True)
-            if kwargs is not None:
-                payload["chat_template_kwargs"] = kwargs
         if response_format is not None:
             payload["response_format"] = response_format
         return payload

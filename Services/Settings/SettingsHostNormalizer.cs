@@ -42,6 +42,7 @@ internal static class SettingsHostNormalizer
         changed |= SetIfDifferent(Math.Clamp(settings.LlamaTopP, 0.0, 1.0), settings.LlamaTopP, value => settings.LlamaTopP = value);
         changed |= SetIfDifferent(Math.Max(0, settings.LlamaTopK), settings.LlamaTopK, value => settings.LlamaTopK = value);
         changed |= SetIfDifferent(Math.Clamp(settings.LlamaRepeatPenalty, 0.5, 2.0), settings.LlamaRepeatPenalty, value => settings.LlamaRepeatPenalty = value);
+        changed |= SetIfDifferent(Math.Clamp(settings.LlamaMtpDraftTokens, 1, 16), settings.LlamaMtpDraftTokens, value => settings.LlamaMtpDraftTokens = value);
         changed |= SetIfDifferent(
             string.IsNullOrWhiteSpace(settings.LlamaGrpcHost) ? "127.0.0.1" : settings.LlamaGrpcHost.Trim(),
             settings.LlamaGrpcHost,
@@ -89,6 +90,7 @@ internal static class SettingsHostNormalizer
         changed |= SetIfDifferent(Math.Max(1, settings.VisionLlmBatchSize), settings.VisionLlmBatchSize, value => settings.VisionLlmBatchSize = value);
         changed |= SetIfDifferent(Math.Max(1, settings.VisionLlmMaxTokens), settings.VisionLlmMaxTokens, value => settings.VisionLlmMaxTokens = value);
         changed |= SetIfDifferent(Math.Max(256, settings.VisionLlmMaxImageSide), settings.VisionLlmMaxImageSide, value => settings.VisionLlmMaxImageSide = value);
+        changed |= SetIfDifferent(Math.Clamp(settings.VisionLlmMtpDraftTokens, 1, 16), settings.VisionLlmMtpDraftTokens, value => settings.VisionLlmMtpDraftTokens = value);
         changed |= SetIfDifferent(
             string.IsNullOrWhiteSpace(settings.VisionLlmGrpcHost) ? "127.0.0.1" : settings.VisionLlmGrpcHost.Trim(),
             settings.VisionLlmGrpcHost,

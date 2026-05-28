@@ -148,6 +148,12 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         startInfo.ArgumentList.Add("--repeat-penalty");
         startInfo.ArgumentList.Add(settings.LlamaRepeatPenalty.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
         startInfo.ArgumentList.Add("--disable-thinking");
+        if (settings.EnableVisionLlmMtp)
+        {
+            startInfo.ArgumentList.Add("--enable-mtp");
+            startInfo.ArgumentList.Add("--mtp-draft-tokens");
+            startInfo.ArgumentList.Add(Math.Clamp(settings.VisionLlmMtpDraftTokens, 1, 16).ToString());
+        }
         if (settings.EnableVisionLlmDiagFileLog)
         {
             startInfo.ArgumentList.Add("--diag-log-file");

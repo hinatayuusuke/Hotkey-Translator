@@ -2,6 +2,7 @@
 import logging
 import math
 import os
+import re
 import subprocess
 import threading
 import time
@@ -35,6 +36,8 @@ class LlamaServerConfig:
     restart_max: int
     restart_window_seconds: int
     disable_thinking: bool
+    enable_mtp: bool
+    mtp_draft_tokens: int
 
 
 @dataclass
@@ -51,13 +54,6 @@ class LlamaRequestConfig:
 DEFAULT_SYSTEM_PROMPT = "Translate the following segment into {target}. Output translation only."
 STRUCTURE_SPLIT_MAX_ITEM_CHARS = 200
 STRUCTURE_SPLIT_TOTAL_CHARS = 400
-
-
-def build_chat_template_kwargs(disable_thinking: bool) -> dict[str, bool] | None:
-    if not disable_thinking:
-        return None
-    # WHY: Qwen-family templates may emit internal reasoning unless the template flag is disabled explicitly.
-    return {"enable_thinking": False}
 
 
 class LlamaServerHost:
@@ -126,12 +122,19 @@ class LlamaServerHost:
             # WHY: Startup-side disable keeps the server in terse translation mode even before the first request arrives.
             args.extend(
                 [
+                    "--reasoning",
+                    "off",
                     "--reasoning-budget",
                     "0",
-                    "--reasoning-format",
-                    "none",
-                    "--chat-template-kwargs",
-                    json.dumps(build_chat_template_kwargs(True), ensure_ascii=True, separators=(",", ":")),
+                ]
+            )
+        if config.enable_mtp:
+            args.extend(
+                [
+                    "--spec-type",
+                    "draft-mtp",
+                    "--spec-draft-n-max",
+                    str(max(1, min(16, config.mtp_draft_tokens))),
                 ]
             )
 
@@ -347,8 +350,6 @@ class LlamaTranslator:
         }
         if self._request.disable_thinking:
             base_payload["reasoning_budget"] = 0
-            base_payload["reasoning_format"] = "none"
-            base_payload["chat_template_kwargs"] = build_chat_template_kwargs(True)
         schema_error: Exception | None = None
         schema_payload = {
             **base_payload,
@@ -398,8 +399,6 @@ class LlamaTranslator:
         }
         if self._request.disable_thinking:
             payload["reasoning_budget"] = 0
-            payload["reasoning_format"] = "none"
-            payload["chat_template_kwargs"] = build_chat_template_kwargs(True)
         content = self._post_chat_completion(payload, stats)
         logging.info("plain_single_success: chars=%d", len(content))
         return [content]
@@ -747,6 +746,14 @@ def extract_response_text(data: dict) -> str:
         content = message.get("content")
         if content is None:
             return ""
-        return str(content).strip()
+        return strip_thinking_content(str(content)).strip()
     except Exception:
         return ""
+
+
+def strip_thinking_content(text: str) -> str:
+    # WHY: Some llama.cpp/model-template combinations can still emit <think> tags even with reasoning disabled.
+    # Translation output is user-visible, so strip leaked reasoning defensively at the response boundary.
+    without_closed_blocks = re.sub(r"(?is)<think\b[^>]*>.*?</think\s*>", "", text)
+    without_unclosed_block = re.sub(r"(?is)<think\b[^>]*>.*$", "", without_closed_blocks)
+    return re.sub(r"(?is)^.*?</think\s*>", "", without_unclosed_block)

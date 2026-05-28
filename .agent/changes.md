@@ -2154,3 +2154,61 @@
 - `python -m py_compile OcrServiceVisionLlm\vision_llama_engine.py OcrServiceVisionLlm\server.py OcrServiceVisionLlm\test_vision_llama_engine.py`
 - `uv run python -c "from vision_llama_engine import strip_thinking_content; ..."` による `<think>` 除去ケース確認
 - `llama-server.exe` を `--reasoning off --reasoning-budget 0 --chat-template-kwargs {"enable_thinking":false}` 付きで起動し、`/health` ready とログ上の `thinking = 0` を確認
+
+**2026-05-28 10:36 (Asia/Taipei) — LlamaCPP/VisionLLM MTP対応**
+
+### Summary
+- LlamaCPP翻訳とVisionLLMに、advanced UIから有効化できるMTP speculative decoding設定を追加した。
+
+### Context / Goal
+- MTP対応GGUFモデルで `llama-server` の `draft-mtp` を使えるようにしたい。
+- 既存モデルへの影響を避けるため、MTPは既定OFFとし、詳細設定から明示的に有効化する。
+
+### Changes
+- アプリ設定にLlamaCPP翻訳/VisionLLMそれぞれのMTP有効化フラグとdraft token数を追加した。
+- 設定正規化でdraft token数を1-16へクランプするようにした。
+- C# hostからPython gRPCサービスへ `--enable-mtp` / `--mtp-draft-tokens` を渡すようにした。
+- Python側でMTP有効時に `llama-server` へ `--spec-type draft-mtp` / `--spec-draft-n-max` を渡すようにした。
+- 翻訳設定UIとVisionLLM設定UIへadvanced MTP設定を追加した。
+- MTP検証用スクリプトにMTP引数を追加した。
+- Thinking無効化は `--reasoning off` / `--reasoning-budget 0` に整理し、非推奨の `chat_template_kwargs` / `reasoning_format` 指定を外した。
+- LlamaCPP翻訳の応答境界にも `<think>` 除去処理を追加した。
+
+### Files Touched
+- `Models/AppSettings.cs` — MTP設定値を追加した。
+- `Services/Settings/SettingsHostNormalizer.cs` — MTP draft token数の正規化を追加した。
+- `ViewModels/SettingsViewModel.cs` — MTP設定の読み書きと保存通知を追加した。
+- `Services/Application/ResourceHostFacade.cs` — LlamaCPP host configへMTP設定を渡すようにした。
+- `Services/LlamaGrpcHost.cs` — 翻訳gRPCサービス起動引数へMTP設定を追加した。
+- `Services/VisionLlmGrpcHost.cs` — VisionLLM gRPCサービス起動引数へMTP設定を追加した。
+- `TranslationServiceLlama/llama_engine.py` — `draft-mtp`起動引数、Thinking抑止整理、thinkタグ除去を追加した。
+- `TranslationServiceLlama/server.py` — MTP CLI引数を追加した。
+- `TranslationServiceLlama/test_translation_engine.py` — MTP検証引数を追加し、旧Thinking payload指定を整理した。
+- `TranslationServiceLlama/test_llama_vision_ocr.py` — 直接llama-server検証用のMTP引数を追加し、旧Thinking payload指定を整理した。
+- `OcrServiceVisionLlm/vision_llama_engine.py` — `draft-mtp`起動引数とThinking抑止整理を追加した。
+- `OcrServiceVisionLlm/server.py` — MTP CLI引数を追加した。
+- `OcrServiceVisionLlm/test_vision_llama_engine.py` — MTP検証引数を追加した。
+- `Resources/Strings.resx` — MTP UI文言を追加した。
+- `Resources/Strings.ja.resx` — MTP UI文言を追加した。
+- `UI/TranslationControl.xaml` — LlamaCPP翻訳のadvanced MTP UIを追加した。
+- `UI/VisionLlmSettingsControl.xaml` — VisionLLMのadvanced MTP UIを追加した。
+
+### Behavioral Impact
+- 既定ではMTPは無効のため、既存モデルの起動引数はThinking整理を除き変わらない。
+- MTPを有効化した場合のみ、対応モデルで追加のMTP contextを作成し speculative decoding を使う。
+- MTP非対応モデルで有効化した場合は、`llama-server` 起動時に明示的に失敗する可能性がある。
+- Thinking無効時は非推奨payloadを送らず、翻訳/VisionLLMとも `--reasoning off` を使う。
+
+### Risk & Mitigation
+- Risk: MTP有効時は追加メモリを消費し、非対応モデルでは起動失敗する。
+- Mitigation: 既定OFF、advanced UI配置、draft token数を1-16へクランプ。
+- Risk: llama.cppのMTP引数仕様が将来変わる可能性がある。
+- Mitigation: 現在同梱/配置バイナリの `--spec-type draft-mtp` / `--spec-draft-n-max` で起動検証済み。
+- Risk: 実文字列にリテラルの `<think>` タグが含まれる場合、翻訳結果から除去される。
+- Mitigation: ユーザー可視のThinking漏れ防止を優先し、除去対象をタグ形式に限定した。
+
+### Tests / Verification
+- `python -m py_compile TranslationServiceLlama\llama_engine.py TranslationServiceLlama\server.py TranslationServiceLlama\test_translation_engine.py TranslationServiceLlama\test_llama_vision_ocr.py OcrServiceVisionLlm\vision_llama_engine.py OcrServiceVisionLlm\server.py OcrServiceVisionLlm\test_vision_llama_engine.py`
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="<temp>"` — 成功。通常出力先は実行中の `Hotkey-Translator.exe` / `.dll` ロック回避のため未使用。
+- `uv run python test_translation_engine.py --auto-start-server ... --model ".\LlamaCpp\Models\Qwen3.5-4B-UD-MTP-Q4_K_XL.gguf" --enable-mtp --mtp-draft-tokens 3 --disable-thinking` — `draft-mtp` 初期化、draft acceptance統計、翻訳出力を確認。
+- `uv run python test_vision_llama_engine.py --mode translate ... --model "..\TranslationServiceLlama\LlamaCpp\Models\Qwen3.5-4B-UD-MTP-Q4_K_XL.gguf" --mmproj "..\TranslationServiceLlama\LlamaCpp\Models\mmproj-Qwen3.5-4B-BF16.gguf" --enable-mtp --mtp-draft-tokens 3 --disable-thinking` — VisionLLM経路でMTP有効の翻訳出力を確認。

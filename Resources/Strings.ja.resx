@@ -148,6 +148,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Translation_Label_HttpHost" xml:space="preserve"><value>HTTP ホスト</value></data>
   <data name="Translation_Label_MaxTokens" xml:space="preserve"><value>最大トークン数</value></data>
   <data name="Translation_Label_Model" xml:space="preserve"><value>モデル</value></data>
+  <data name="Translation_Label_MtpDraftTokens" xml:space="preserve"><value>MTP draft tokens</value></data>
   <data name="Translation_Label_Parallel" xml:space="preserve"><value>並列数</value></data>
   <data name="Translation_Label_RepeatPenalty" xml:space="preserve"><value>repeat penalty</value></data>
   <data name="Translation_Label_RuntimeControl" xml:space="preserve"><value>ランタイム制御</value></data>
@@ -156,6 +157,9 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Translation_Label_TopK" xml:space="preserve"><value>Top K</value></data>
   <data name="Translation_Label_TopP" xml:space="preserve"><value>Top P</value></data>
   <data name="Translation_LocalLlamaTitle" xml:space="preserve"><value>ローカル Llama.cpp (GGUF)</value></data>
+  <data name="Translation_MtpAdvancedHeader" xml:space="preserve"><value>詳細: MTP speculative decoding</value></data>
+  <data name="Translation_EnableMtp" xml:space="preserve"><value>MTP を有効化</value></data>
+  <data name="Translation_MtpNote" xml:space="preserve"><value>MTP 対応 GGUF モデルが必要です。非対応モデルで有効にすると起動に失敗します。</value></data>
   <data name="Translation_ModelFilesNote" xml:space="preserve"><value>モデルファイルは TranslationServiceLlama\LlamaCpp\Models から読み込みます</value></data>
   <data name="Translation_PriorityTitle" xml:space="preserve"><value>翻訳優先順位</value></data>
   <data name="Translation_RestartLlama" xml:space="preserve"><value>Llama.cpp を再起動</value></data>

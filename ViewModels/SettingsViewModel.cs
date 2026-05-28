@@ -89,8 +89,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enablePaddleConfidenceFilter;
     [ObservableProperty] private bool _enableLlamaCppTranslation;
     [ObservableProperty] private string _llamaSelectedModelFileName = string.Empty;
+    [ObservableProperty] private bool _enableLlamaMtp;
     [ObservableProperty] private string _visionLlmSelectedModelFileName = string.Empty;
     [ObservableProperty] private string _visionLlmSelectedMmprojFileName = string.Empty;
+    [ObservableProperty] private bool _enableVisionLlmMtp;
     [ObservableProperty] private bool _enableVisionLlmSharedLocalTranslation;
     [ObservableProperty] private bool _enableVisionGeometryHybridOcr;
     [ObservableProperty] private string _visionGeometryHybridBaseEngineTag = "WinRt";
@@ -159,6 +161,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _llamaTopPText = string.Empty;
     [ObservableProperty] private string _llamaTopKText = string.Empty;
     [ObservableProperty] private string _llamaRepeatPenaltyText = string.Empty;
+    [ObservableProperty] private string _llamaMtpDraftTokensText = string.Empty;
     [ObservableProperty] private string _visionLlmHostText = string.Empty;
     [ObservableProperty] private string _visionLlmPortText = string.Empty;
     [ObservableProperty] private string _visionLlmContextSizeText = string.Empty;
@@ -168,6 +171,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _visionLlmBatchSizeText = string.Empty;
     [ObservableProperty] private string _visionLlmMaxTokensText = string.Empty;
     [ObservableProperty] private string _visionLlmMaxImageSideText = string.Empty;
+    [ObservableProperty] private string _visionLlmMtpDraftTokensText = string.Empty;
     [ObservableProperty] private string _deepLEndpointText = string.Empty;
     [ObservableProperty] private string _deepLApiKeyText = string.Empty;
     [ObservableProperty] private string _apiKeyText = string.Empty;
@@ -292,8 +296,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnablePaddleConfidenceFilter = settings.EnablePaddleConfidenceFilter;
             EnableLlamaCppTranslation = settings.EnableLlamaCppTranslation;
             LlamaSelectedModelFileName = settings.LlamaSelectedModelFileName;
+            EnableLlamaMtp = settings.EnableLlamaMtp;
             VisionLlmSelectedModelFileName = settings.VisionLlmSelectedModelFileName;
             VisionLlmSelectedMmprojFileName = settings.VisionLlmSelectedMmprojFileName;
+            EnableVisionLlmMtp = settings.EnableVisionLlmMtp;
             EnableVisionLlmSharedLocalTranslation = settings.EnableVisionLlmSharedLocalTranslation;
             EnableVisionGeometryHybridOcr = settings.EnableVisionGeometryHybridOcr;
             VisionGeometryHybridBaseEngineTag = settings.VisionGeometryHybridBaseEngine switch
@@ -396,6 +402,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             LlamaTopPText = settings.LlamaTopP.ToString("0.###");
             LlamaTopKText = settings.LlamaTopK.ToString();
             LlamaRepeatPenaltyText = settings.LlamaRepeatPenalty.ToString("0.###");
+            LlamaMtpDraftTokensText = settings.LlamaMtpDraftTokens.ToString();
             VisionLlmHostText = settings.VisionLlmHost;
             VisionLlmPortText = settings.VisionLlmPort.ToString();
             VisionLlmContextSizeText = settings.VisionLlmContextSize.ToString();
@@ -405,6 +412,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             VisionLlmBatchSizeText = settings.VisionLlmBatchSize.ToString();
             VisionLlmMaxTokensText = settings.VisionLlmMaxTokens.ToString();
             VisionLlmMaxImageSideText = settings.VisionLlmMaxImageSide.ToString();
+            VisionLlmMtpDraftTokensText = settings.VisionLlmMtpDraftTokens.ToString();
             DeepLEndpointText = settings.DeepLEndpoint;
             DeepLApiKeyText = settings.DeepLApiKey ?? string.Empty;
             ApiKeyText = settings.ApiKey ?? string.Empty;
@@ -675,6 +683,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
             settings.LlamaRepeatPenalty = llamaRepeatPenalty;
         }
 
+        settings.EnableLlamaMtp = EnableLlamaMtp;
+        if (int.TryParse(LlamaMtpDraftTokensText.Trim(), out var llamaMtpDraftTokens))
+        {
+            settings.LlamaMtpDraftTokens = llamaMtpDraftTokens;
+        }
+
         settings.VisionLlmHost = (VisionLlmHostText ?? string.Empty).Trim();
         if (int.TryParse(VisionLlmPortText.Trim(), out var visionLlmPort))
         {
@@ -714,6 +728,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
         if (int.TryParse(VisionLlmMaxImageSideText.Trim(), out var visionLlmMaxImageSide))
         {
             settings.VisionLlmMaxImageSide = visionLlmMaxImageSide;
+        }
+
+        settings.EnableVisionLlmMtp = EnableVisionLlmMtp;
+        if (int.TryParse(VisionLlmMtpDraftTokensText.Trim(), out var visionLlmMtpDraftTokens))
+        {
+            settings.VisionLlmMtpDraftTokens = visionLlmMtpDraftTokens;
         }
 
         settings.EnableVisionGeometryHybridOcr = EnableVisionGeometryHybridOcr;
@@ -1004,6 +1024,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnLlamaTopPTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaTopKTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnLlamaRepeatPenaltyTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableLlamaMtpChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnLlamaMtpDraftTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmHostTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmPortTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmContextSizeTextChanged(string value) => RequestSaveOnValueChange();
@@ -1013,6 +1035,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnVisionLlmBatchSizeTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnVisionLlmMaxImageSideTextChanged(string value) => RequestSaveOnValueChange();
+    partial void OnEnableVisionLlmMtpChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnVisionLlmMtpDraftTokensTextChanged(string value) => RequestSaveOnValueChange();
     partial void OnEnableVisionLlmSharedLocalTranslationChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableVisionGeometryHybridOcrChanged(bool value) => RequestSaveOnValueChange();
     partial void OnVisionGeometryHybridBaseEngineTagChanged(string value) => RequestSaveOnValueChange();
