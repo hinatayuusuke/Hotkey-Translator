@@ -2212,3 +2212,36 @@
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="<temp>"` — 成功。通常出力先は実行中の `Hotkey-Translator.exe` / `.dll` ロック回避のため未使用。
 - `uv run python test_translation_engine.py --auto-start-server ... --model ".\LlamaCpp\Models\Qwen3.5-4B-UD-MTP-Q4_K_XL.gguf" --enable-mtp --mtp-draft-tokens 3 --disable-thinking` — `draft-mtp` 初期化、draft acceptance統計、翻訳出力を確認。
 - `uv run python test_vision_llama_engine.py --mode translate ... --model "..\TranslationServiceLlama\LlamaCpp\Models\Qwen3.5-4B-UD-MTP-Q4_K_XL.gguf" --mmproj "..\TranslationServiceLlama\LlamaCpp\Models\mmproj-Qwen3.5-4B-BF16.gguf" --enable-mtp --mtp-draft-tokens 3 --disable-thinking` — VisionLLM経路でMTP有効の翻訳出力を確認。
+
+**2026-06-16 14:28 (Asia/Taipei) — 通常オーバーレイのtopmost再同期**
+
+### Summary
+- 通常WPFオーバーレイ表示中もMagpie mirror同等のtopmost再同期を行うようにした。
+
+### Context / Goal
+- 一部ゲームで画面取得、翻訳、overlay描画データは正常だが、WPF overlayがゲーム画面の下に回る可能性がある。
+- まずZ-order負けかどうかを低コストに確認できる暫定対策を入れる。
+
+### Changes
+- Magpie専用だったtopmost再同期timerを通常WPF overlay兼用に変更した。
+- 通常overlayは表示内容がある間だけ `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE)` を再投入するようにした。
+- overlay表示/更新時に即時topmost昇格し、表示内容が消えたらtimerを停止するようにした。
+- `OverlayPresenter` に表示内容有無を判定する読み取り状態を追加した。
+
+### Files Touched
+- `MainWindow.xaml.cs` — topmost再同期timerと昇格処理をMagpie専用から通常overlay兼用へ変更した。
+- `Services/OverlayPresenter.cs` — overlay有効状態と表示内容有無を外部から参照できる状態を追加した。
+
+### Behavioral Impact
+- 通常WPF overlayに翻訳テキストが表示されている間、500ms間隔でtopmost再同期する。
+- 空の常駐overlay windowでは再同期しないため、他のtopmost UIとの不要な競合を抑える。
+- Graphics Hook overlayでWPF overlayがclearされる経路では、通常overlay用timerは停止する。
+
+### Risk & Mitigation
+- Risk: 他アプリのtopmost UIとZ-order競合する可能性がある。
+- Mitigation: `SWP_NOACTIVATE` を維持し、表示内容がある場合のみtimerを有効化する。
+- Risk: exclusive fullscreenやindependent flipではWPF overlay自体が前面に出ない可能性が残る。
+- Mitigation: 本変更で改善しない場合はhook overlayまたは表示モード側の調査へ切り分ける。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。

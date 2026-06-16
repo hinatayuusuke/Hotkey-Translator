@@ -76,7 +76,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private readonly DrawerLayoutController _drawerLayoutController;
     private readonly PreviewZoomCoordinator _previewZoomCoordinator;
     private readonly PreviewFrameDispatcher _previewFrameDispatcher;
-    private readonly DispatcherTimer _mirrorOverlayTopmostTimer;
+    private readonly DispatcherTimer _overlayTopmostTimer;
     private readonly DispatcherTimer _roiPresetPreviewClearTimer;
     private readonly Queue<string> _pendingUiLogMessages = new();
     private HwndSource? _mainHwndSource;
@@ -99,7 +99,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private const string DefaultLlamaModelFileName = "HY-MT1.5-1.8B-Q8_0.gguf";
     private const string DefaultVisionLlmModelFileName = "Qwen3.5-4B-Q4_K_M.gguf";
     private const string DefaultVisionLlmMmprojFileName = "mmproj-Qwen3.5-4B-BF16.gguf";
-    private const int MirrorOverlayTopmostResyncIntervalMs = 500;
+    private const int OverlayTopmostResyncIntervalMs = 500;
     private const int RoiPresetSlotCount = 10;
     private const int RoiPresetPreviewDurationMs = 1000;
     private const string FixedUvRelativePath = "Tools\\uv\\uv.exe";
@@ -135,11 +135,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _appThemeController.Apply(_settingsService.Settings, this);
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
-        _mirrorOverlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
+        _overlayTopmostTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
-            Interval = TimeSpan.FromMilliseconds(MirrorOverlayTopmostResyncIntervalMs)
+            Interval = TimeSpan.FromMilliseconds(OverlayTopmostResyncIntervalMs)
         };
-        _mirrorOverlayTopmostTimer.Tick += OnMirrorOverlayTopmostTimerTick;
+        _overlayTopmostTimer.Tick += OnOverlayTopmostTimerTick;
         _roiPresetPreviewClearTimer = new DispatcherTimer(DispatcherPriority.Background, Dispatcher)
         {
             Interval = TimeSpan.FromMilliseconds(RoiPresetPreviewDurationMs)
@@ -418,51 +418,67 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             {
                 if (_magpieSessionController.TrySyncExternalStop("magpie_message", payload))
                 {
-                    EnsureMirrorOverlayTopmostTimerActive(false);
+                    RefreshOverlayTopmostTimerActive();
                 }
             }
             else if (_magpieSessionController.IsActive)
             {
-                EnsureMirrorOverlayTopMost("magpie_message");
-                EnsureMirrorOverlayTopmostTimerActive(true);
+                EnsureOverlayTopMost("magpie_message");
+                EnsureOverlayTopmostTimerActive(true);
             }
         }
 
         return IntPtr.Zero;
     }
 
-    private void OnMirrorOverlayTopmostTimerTick(object? sender, EventArgs e)
+    private void OnOverlayTopmostTimerTick(object? sender, EventArgs e)
     {
-        if (!_magpieSessionController.IsActive)
+        if (!ShouldKeepOverlayTopmostTimerActive())
         {
-            EnsureMirrorOverlayTopmostTimerActive(false);
+            EnsureOverlayTopmostTimerActive(false);
             return;
         }
 
-        EnsureMirrorOverlayTopMost("timer");
+        EnsureOverlayTopMost("timer");
     }
 
-    private void EnsureMirrorOverlayTopmostTimerActive(bool active)
+    private void EnsureOverlayTopmostTimerActive(bool active)
     {
         if (active)
         {
-            if (!_mirrorOverlayTopmostTimer.IsEnabled)
+            if (!_overlayTopmostTimer.IsEnabled)
             {
-                _mirrorOverlayTopmostTimer.Start();
+                _overlayTopmostTimer.Start();
             }
 
             return;
         }
 
-        if (_mirrorOverlayTopmostTimer.IsEnabled)
+        if (_overlayTopmostTimer.IsEnabled)
         {
-            _mirrorOverlayTopmostTimer.Stop();
+            _overlayTopmostTimer.Stop();
         }
     }
 
-    private void EnsureMirrorOverlayTopMost(string source)
+    private void RefreshOverlayTopmostTimerActive()
     {
-        if (!_magpieSessionController.IsActive || _overlayWindow == null)
+        EnsureOverlayTopmostTimerActive(ShouldKeepOverlayTopmostTimerActive());
+    }
+
+    private bool ShouldKeepOverlayTopmostTimerActive()
+    {
+        if (_magpieSessionController.IsActive)
+        {
+            return true;
+        }
+
+        // WHY: Re-promoting an empty resident WPF window can fight unrelated topmost UI.
+        return _overlayPresenter is { IsEnabled: true, HasVisibleContent: true };
+    }
+
+    private void EnsureOverlayTopMost(string source)
+    {
+        if (_overlayWindow == null)
         {
             return;
         }
@@ -479,8 +495,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _isClosing = true;
         _launcherSessionTargetState.Clear("window_closed");
-        EnsureMirrorOverlayTopmostTimerActive(false);
-        _mirrorOverlayTopmostTimer.Tick -= OnMirrorOverlayTopmostTimerTick;
+        EnsureOverlayTopmostTimerActive(false);
+        _overlayTopmostTimer.Tick -= OnOverlayTopmostTimerTick;
         _roiPresetPreviewClearTimer.Stop();
         _roiPresetPreviewClearTimer.Tick -= OnRoiPresetPreviewClearTimerTick;
         if (_mainHwndSource != null)
@@ -2803,22 +2819,22 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     {
         _sceneChangeController.OnOverlayShown();
         UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
-        if (_magpieSessionController.IsActive)
-        {
-            EnsureMirrorOverlayTopMost("overlay_shown");
-        }
+        EnsureOverlayTopMost("overlay_shown");
+        RefreshOverlayTopmostTimerActive();
     }
 
-    private void OnOverlayHidden() => _sceneChangeController.OnOverlayHidden();
+    private void OnOverlayHidden()
+    {
+        _sceneChangeController.OnOverlayHidden();
+        RefreshOverlayTopmostTimerActive();
+    }
 
     private void OnOverlayUpdated()
     {
         _sceneChangeController.OnOverlayUpdated();
         UpdateAutoTranslateBadgeVisibility(_settingsService.Settings);
-        if (_magpieSessionController.IsActive)
-        {
-            EnsureMirrorOverlayTopMost("overlay_updated");
-        }
+        EnsureOverlayTopMost("overlay_updated");
+        RefreshOverlayTopmostTimerActive();
     }
 
     private void OnMirrorSessionActiveStateChanged(bool isActive)
@@ -2830,10 +2846,10 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         ApplyMirrorOverlayMapper();
-        EnsureMirrorOverlayTopmostTimerActive(isActive);
+        RefreshOverlayTopmostTimerActive();
         if (isActive)
         {
-            EnsureMirrorOverlayTopMost("mirror_state_changed");
+            EnsureOverlayTopMost("mirror_state_changed");
         }
         else
         {

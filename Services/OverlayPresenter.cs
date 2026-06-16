@@ -26,6 +26,10 @@ public sealed class OverlayPresenter
     public event Action? Hidden;
     public event Action? Updated;
 
+    public bool IsEnabled => _isEnabled;
+
+    public bool HasVisibleContent { get; private set; }
+
     public OverlayPresenter(OverlayWindow window, AppLogger? logger = null)
     {
         _window = window;
@@ -57,6 +61,7 @@ public sealed class OverlayPresenter
         InvokeOnUi("OverlayHide", measureRender: false, () =>
         {
             // WHY: Keep the window resident to avoid DWM flash; only toggle overlay visibility.
+            HasVisibleContent = false;
             _window.UpdateItems(Array.Empty<OverlayItem>());
             _window.HideLoadingSpinner();
             _window.SetAutoTranslateBadgeVisible(false, Rect.Empty);
@@ -80,6 +85,7 @@ public sealed class OverlayPresenter
             var mappedClip = MapScreenRect(_lastSmallBoxClipScreenRect, fallbackToOriginal: false);
             _window.SetSmallBoxClipBounds(ToWindowDipRect(mappedClip));
             var converted = ConvertToDip(MapItemsForPresentation(_lastItems));
+            HasVisibleContent = converted.Count > 0;
             _window.UpdateItems(converted);
             Updated?.Invoke();
         });
@@ -102,6 +108,7 @@ public sealed class OverlayPresenter
             var mappedClip = MapScreenRect(_lastSmallBoxClipScreenRect, fallbackToOriginal: false);
             _window.SetSmallBoxClipBounds(ToWindowDipRect(mappedClip));
             var converted = ConvertToDip(MapItemsForPresentation(_lastItems));
+            HasVisibleContent = converted.Count > 0;
             _window.UpdateItems(converted);
             Updated?.Invoke();
         });
@@ -117,6 +124,7 @@ public sealed class OverlayPresenter
 
         InvokeOnUi("OverlayClear", measureRender: false, () =>
         {
+            HasVisibleContent = false;
             _window.UpdateItems(Array.Empty<OverlayItem>());
             Updated?.Invoke();
         });
