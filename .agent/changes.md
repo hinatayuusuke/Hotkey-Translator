@@ -2246,6 +2246,37 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 
+**2026-06-22 13:56 (Asia/Taipei) — 自動clipboardコピー設定のSystemタブ移動**
+
+### Summary
+- 自動clipboardコピーのチェック項目をAuto TranslateタブからSystemタブへ移動した。
+
+### Context / Goal
+- `Copy OCR and translation to clipboard after overlay update` は翻訳条件ではなくOS clipboardへ副作用を持つ全体設定である。
+- Systemタブ内のClipboard設定として見えるようにする。
+
+### Changes
+- Auto Translateタブから自動clipboardコピーのチェックボックスを削除した。
+- Systemタブに `Clipboard` セクションを追加し、同じ設定バインディングのチェックボックスを配置した。
+- UI文言キーを `AutoTranslate_*` から `SystemSettings_*` へ移した。
+
+### Files Touched
+- `UI/OverlayBehaviorControl.xaml` — 自動clipboardコピーのチェックボックスを削除した。
+- `UI/SystemSettingsControl.xaml` — Clipboardセクションとチェックボックスを追加した。
+- `Resources/Strings.resx` — 英語UI文言キーをSystemSettings配下へ移した。
+- `Resources/Strings.ja.resx` — 日本語UI文言キーをSystemSettings配下へ移した。
+
+### Behavioral Impact
+- 設定の保存先と実行挙動は変わらない。
+- ユーザーが設定を変更する場所がAuto TranslateタブからSystemタブへ変わる。
+
+### Risk & Mitigation
+- Risk: 既存のAuto Translateタブ内に設定が見つからなくなる。
+- Mitigation: 機能の副作用に合わせてSystem > Clipboardへ移動し、表示文言は同じ意味を維持した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 1回目はWPF一時生成 `.g.cs` 欠落で失敗、同一コマンド再実行で成功。警告0、エラー0。
+
 **2026-06-22 13:41 (Asia/Taipei) — OCR翻訳結果の自動clipboardコピー**
 
 ### Summary

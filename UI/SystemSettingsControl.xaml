@@ -35,6 +35,11 @@
                                     </ComboBox>
                                 </StackPanel>
                                 <Separator Margin="0,10,0,8" />
+                                <TextBlock Text="{uiLoc:Loc Key=SystemSettings_ClipboardTitle}" Style="{StaticResource SectionTitleTextStyle}" />
+                                <CheckBox Content="{uiLoc:Loc Key=SystemSettings_CopyOcrTranslationToClipboard}"
+                                          Margin="0,6,0,0"
+                                          IsChecked="{Binding Settings.AutoCopyOcrTranslationToClipboard, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <Separator Margin="0,10,0,8" />
                                 <TextBlock Text="{uiLoc:Loc Key=SystemSettings_PerformanceTitle}" Style="{StaticResource SectionTitleTextStyle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
                                     <TextBlock Text="{uiLoc:Loc Key=SystemSettings_Label_VramBudgetProfile}" Width="170" VerticalAlignment="Center" />
