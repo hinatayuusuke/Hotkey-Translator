@@ -309,6 +309,7 @@ Select OK to copy them from the installed Snipping Tool package now. Select Canc
   <data name="AutoTranslate_EnableAutoHideOnSceneChange" xml:space="preserve"><value>Enable auto-hide on scene change</value></data>
   <data name="AutoTranslate_EnableAutoTranslateOnSceneChange" xml:space="preserve"><value>Enable auto-translate on scene change</value></data>
   <data name="AutoTranslate_ShowBadgeIcon" xml:space="preserve"><value>Show auto-translate badge icon</value></data>
+  <data name="AutoTranslate_CopyOcrTranslationToClipboard" xml:space="preserve"><value>Copy OCR and translation to clipboard after overlay update</value></data>
   <data name="AutoTranslate_EnableQuietWindow" xml:space="preserve"><value>Enable quiet window for auto-translate</value></data>
   <data name="AutoTranslate_Label_QuietWindowMs" xml:space="preserve"><value>Quiet window (ms)</value></data>
   <data name="AutoTranslate_UseTextWeightedScoring" xml:space="preserve"><value>Use text-weighted scoring</value></data>

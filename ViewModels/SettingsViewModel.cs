@@ -121,6 +121,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _enableSceneChangeAutoHide;
     [ObservableProperty] private bool _enableSceneChangeAutoTranslate;
     [ObservableProperty] private bool _showAutoTranslateBadgeIcon;
+    [ObservableProperty] private bool _autoCopyOcrTranslationToClipboard;
     [ObservableProperty] private bool _enableGraphicsHookPipeline;
     [ObservableProperty] private string _graphicsHookApiTag = "Dx11";
     [ObservableProperty] private bool _enableMirrorFullscreenMode;
@@ -341,6 +342,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
             EnableSceneChangeAutoHide = settings.EnableSceneChangeAutoHide;
             EnableSceneChangeAutoTranslate = settings.EnableSceneChangeAutoTranslate;
             ShowAutoTranslateBadgeIcon = settings.ShowAutoTranslateBadgeIcon;
+            AutoCopyOcrTranslationToClipboard = settings.AutoCopyOcrTranslationToClipboard;
             EnableGraphicsHookPipeline = settings.EnableGraphicsHookPipeline;
             GraphicsHookApiTag = settings.GraphicsHookApi switch
             {
@@ -508,6 +510,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
         settings.EnableSceneChangeAutoHide = EnableSceneChangeAutoHide;
         settings.EnableSceneChangeAutoTranslate = EnableSceneChangeAutoTranslate;
         settings.ShowAutoTranslateBadgeIcon = ShowAutoTranslateBadgeIcon;
+        settings.AutoCopyOcrTranslationToClipboard = AutoCopyOcrTranslationToClipboard;
         settings.EnableGraphicsHookPipeline = EnableGraphicsHookPipeline;
         settings.GraphicsHookApi = GraphicsHookApiTag switch
         {
@@ -1106,6 +1109,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeyToggleMirrorFullscreenShiftChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnEnableRawInputHotkeysChanged(bool value) => RequestSaveOnValueChange();
     partial void OnShowAutoTranslateBadgeIconChanged(bool value) => RequestSaveOnValueChange();
+    partial void OnAutoCopyOcrTranslationToClipboardChanged(bool value) => RequestSaveOnValueChange();
     partial void OnEnableGraphicsHookPipelineChanged(bool value)
     {
         if (_suspendMirrorModeSync)

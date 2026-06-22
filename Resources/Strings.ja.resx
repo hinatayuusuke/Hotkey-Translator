@@ -301,6 +301,7 @@ OK を選ぶと、インストール済み Snipping Tool パッケージから�
   <data name="AutoTranslate_EnableAutoHideOnSceneChange" xml:space="preserve"><value>シーン変化時の自動非表示を有効化</value></data>
   <data name="AutoTranslate_EnableAutoTranslateOnSceneChange" xml:space="preserve"><value>シーン変化時の自動翻訳を有効化</value></data>
   <data name="AutoTranslate_ShowBadgeIcon" xml:space="preserve"><value>自動翻訳バッジアイコンを表示</value></data>
+  <data name="AutoTranslate_CopyOcrTranslationToClipboard" xml:space="preserve"><value>オーバーレイ更新後にOCR原文と翻訳文をクリップボードへコピー</value></data>
   <data name="AutoTranslate_EnableQuietWindow" xml:space="preserve"><value>自動翻訳の quiet window を有効化</value></data>
   <data name="AutoTranslate_Label_QuietWindowMs" xml:space="preserve"><value>quiet window (ms)</value></data>
   <data name="AutoTranslate_UseTextWeightedScoring" xml:space="preserve"><value>テキスト重み付きスコアリングを使う</value></data>

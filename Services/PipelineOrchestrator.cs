@@ -81,6 +81,7 @@ public sealed class PipelineOrchestrator
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action? TranslationStarted;
     public event Action? TranslationCompleted;
+    public event Action<TextExportSnapshot>? AutoClipboardSnapshotReady;
 
     public bool TryGetLastRoiHash(out ulong hash)
     {
@@ -376,6 +377,7 @@ public sealed class PipelineOrchestrator
                 UpdateWpfOverlayRouting(overlayItems, overlayClipScreen, suppressWpfOverlay);
                 // WHY: V1 rectangle command publishing is paused during phased removal. Keep HookAgent reader for compatibility.
                 TryUpdateGraphicsHookOverlayV2(frame, overlayItems, settings);
+                NotifyAutoClipboardSnapshotReady(readingUnits, translations, settings);
                 context.FinalStageResult = PipelineStageResult.ContinueExecution();
                 perfProbe.RecordOverlay(overlayStopwatch);
             }
@@ -781,6 +783,7 @@ public sealed class PipelineOrchestrator
             context.OverlayItems = overlayItems;
             CommitOverlayState(readingUnits, translations, roiScreen, overlayClipScreen);
             _overlayStage.Update(overlayItems, overlayClipScreen);
+            NotifyAutoClipboardSnapshotReady(readingUnits, translations, settings);
             context.FinalStageResult = PipelineStageResult.ContinueExecution();
         }
         catch (OperationCanceledException)
@@ -947,6 +950,37 @@ public sealed class PipelineOrchestrator
         _lastOverlayTranslations = new Dictionary<int, string>(translations);
         _lastOverlayRoiScreen = roiScreen;
         _lastOverlayClipScreen = overlayClipScreen;
+    }
+
+    private void NotifyAutoClipboardSnapshotReady(
+        IReadOnlyList<ReadingUnit> readingUnits,
+        IReadOnlyDictionary<int, string> translations,
+        AppSettings settings)
+    {
+        if (!settings.AutoCopyOcrTranslationToClipboard)
+        {
+            return;
+        }
+
+        var snapshot = TextExportSnapshot.Create(
+            readingUnits,
+            translations,
+            DateTimeOffset.UtcNow,
+            settings.SourceLanguage,
+            settings.TargetLanguage);
+        if (!snapshot.HasContent)
+        {
+            return;
+        }
+
+        try
+        {
+            AutoClipboardSnapshotReady?.Invoke(snapshot);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to notify auto clipboard snapshot.");
+        }
     }
 
     private static Rect? ResolveOverlayClipScreenRect(AppSettings settings, Rect captureBounds)

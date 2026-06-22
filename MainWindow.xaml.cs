@@ -395,6 +395,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         _pipeline.OcrPreprocessPreviewReady += OnOcrPreprocessPreviewReady;
         _pipeline.TranslationStarted += OnTranslationStarted;
         _pipeline.TranslationCompleted += OnTranslationCompleted;
+        _pipeline.AutoClipboardSnapshotReady += OnAutoClipboardSnapshotReady;
 
         InitializeHotkeys(settings);
         InitializeAutoHideWatcher(settings);
@@ -543,6 +544,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _pipeline.OcrPreprocessPreviewReady -= OnOcrPreprocessPreviewReady;
             _pipeline.TranslationStarted -= OnTranslationStarted;
             _pipeline.TranslationCompleted -= OnTranslationCompleted;
+            _pipeline.AutoClipboardSnapshotReady -= OnAutoClipboardSnapshotReady;
         }
         if (_overlayPresenter != null)
         {
@@ -3012,6 +3014,41 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
 
         SetBusyOverlay(true, "OCR running...");
+    }
+
+    private void OnAutoClipboardSnapshotReady(TextExportSnapshot snapshot)
+    {
+        if (!_settingsService.Settings.AutoCopyOcrTranslationToClipboard)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(() => CopyTextExportSnapshotToClipboard(snapshot));
+    }
+
+    private void CopyTextExportSnapshotToClipboard(TextExportSnapshot snapshot)
+    {
+        if (!_settingsService.Settings.AutoCopyOcrTranslationToClipboard)
+        {
+            return;
+        }
+
+        var text = TextExportService.BuildPairedText(snapshot);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(text);
+            AppendLog($"Copied OCR/translation text to clipboard ({snapshot.Items.Count} items).");
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error(ex, "Failed to copy OCR/translation text to clipboard.");
+            AppendLog("Failed to copy OCR/translation text to clipboard.");
+        }
     }
 
     private readonly record struct HotkeyConfig(

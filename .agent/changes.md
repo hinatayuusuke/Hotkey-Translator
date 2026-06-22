@@ -2245,3 +2245,48 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+
+**2026-06-22 13:41 (Asia/Taipei) — OCR翻訳結果の自動clipboardコピー**
+
+### Summary
+- OCR原文と翻訳文をoverlay更新後にclipboardへ自動コピーするopt-in機能を追加した。
+
+### Context / Goal
+- OCR、翻訳完了、overlay表示のタイミングで、原文内容と翻訳文の内容をclipboardへ保存したい。
+- overlay表示用textではなく、pipelineで確定した原文/翻訳の対応を出力元にする。
+
+### Changes
+- 自動clipboardコピー設定を追加し、既定OFFにした。
+- pipelineの通常OCR/翻訳経路とprecomputed reading units経路で、overlay publish後に確定snapshotを通知するようにした。
+- MainWindow側でUI Dispatcher経由のclipboard書き込みを行い、失敗時はログだけ残すようにした。
+- paired text formatterとsnapshot modelを追加した。
+- Auto Translate設定画面に自動コピー用チェックボックスを追加した。
+
+### Files Touched
+- `Models/AppSettings.cs` — `AutoCopyOcrTranslationToClipboard` 設定を追加し、clipboard上書きのopt-in理由をコメントした。
+- `Models/TextExportItem.cs` — clipboard出力1単位の原文/翻訳pair modelを追加した。
+- `Models/TextExportSnapshot.cs` — pipeline確定結果のclipboard出力snapshotを追加した。
+- `Services/TextExportService.cs` — paired text formatterを追加した。
+- `Services/PipelineOrchestrator.cs` — overlay publish後に自動clipboard snapshotイベントを発火する処理を追加した。
+- `MainWindow.xaml.cs` — snapshotイベント購読とUIスレッドでのclipboard書き込みを追加した。
+- `ViewModels/SettingsViewModel.cs` — 新設定の読み込み、保存、変更時保存を追加した。
+- `UI/OverlayBehaviorControl.xaml` — 自動clipboardコピーのチェックボックスを追加した。
+- `Resources/Strings.resx` — 英語UI文言を追加した。
+- `Resources/Strings.ja.resx` — 日本語UI文言を追加した。
+- `Doc/AutoClipboard_OCR_Translation_Implementation_Plan.md` — 実装方針ドキュメントを追加した。
+
+### Behavioral Impact
+- 設定ON時、通常OCR/翻訳pipelineまたはprecomputed payloadのoverlay更新後に、clipboardへ `[n] Original / Translation` 形式のtextが入る。
+- 設定OFF時は既存どおりclipboardを変更しない。
+- clipboard書き込みに失敗してもOCR/翻訳pipelineは失敗扱いにしない。
+
+### Risk & Mitigation
+- Risk: 自動コピーによりユーザーのclipboard内容を上書きする。
+- Mitigation: 既定OFFの明示opt-in設定にし、設定コメントにも理由を残した。
+- Risk: WPF clipboard APIをpipelineスレッドから呼ぶとSTA制約で失敗する。
+- Mitigation: MainWindow Dispatcher経由でUIスレッドから `Clipboard.SetText` を呼ぶ。
+- Risk: overlay用整形textを使うと原文/翻訳の対応が崩れる。
+- Mitigation: `ReadingUnit` と `translations` から作る確定snapshotのみを出力元にした。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。

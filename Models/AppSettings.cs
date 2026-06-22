@@ -113,6 +113,8 @@ public sealed class AppSettings
     public bool EnableSceneChangeAutoHide { get; set; } = true;
     public bool EnableSceneChangeAutoTranslate { get; set; } = false;
     public bool ShowAutoTranslateBadgeIcon { get; set; } = true;
+    // WHY: Auto-copy overwrites the user's clipboard, so this must stay opt-in by default.
+    public bool AutoCopyOcrTranslationToClipboard { get; set; } = false;
     public bool EnableGraphicsHookPipeline { get; set; } = false;
     public GraphicsHookApiKind GraphicsHookApi { get; set; } = GraphicsHookApiKind.Dx11;
     public int GraphicsHookCaptureFpsLimit { get; set; } = 1;

@@ -23,6 +23,9 @@
                   Margin="0,4,0,0"
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
                   IsChecked="{Binding Settings.ShowAutoTranslateBadgeIcon, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+        <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_CopyOcrTranslationToClipboard}"
+                  Margin="0,4,0,0"
+                  IsChecked="{Binding Settings.AutoCopyOcrTranslationToClipboard, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
         <CheckBox Content="{uiLoc:Loc Key=AutoTranslate_EnableQuietWindow}"
                   Margin="0,4,0,0"
                   IsEnabled="{Binding Settings.EnableSceneChangeAutoTranslate}"
