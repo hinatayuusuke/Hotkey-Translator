@@ -2321,3 +2321,29 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+
+**2026-06-28 18:00 (Asia/Taipei) — OCR訂正実装案ドキュメント追加**
+
+### Summary
+- SymSpell候補生成と自前OcrWeightedEditDistanceによるOCR訂正導入案をDocへ追加した。
+
+### Context / Goal
+- このリポの共通OCR pipelineへOCR訂正仕組みを導入する方向性を、実装前に設計として整理する。
+- SymSpellと自前weighted edit distanceの責務、差し込み位置、安全な自動採用条件を明確にする。
+
+### Changes
+- OCR訂正を各OCRエンジンではなくC#本体の共通 `OcrLine` 後段へ入れる実装案を作成した。
+- SymSpell候補生成、辞書ロード、tokenizer、weighted edit distance、自動採用条件、ログ、UI、テスト方針を整理した。
+
+### Files Touched
+- `Doc/OcrCorrection_SymSpell_WeightedEditDistance_Implementation_Plan.md` — OCR訂正導入の実装案を新規追加した。
+
+### Behavioral Impact
+- ドキュメント追加のみ。アプリの実行時挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 実装案と実装時の既存pipelineがずれる。
+- Mitigation: 現行の `OcrAndGroupStage` / `ReadingUnit` / `TranslateStage` の流れに合わせて差し込み位置と影響範囲を明記した。
+
+### Tests / Verification
+- ドキュメント追加のみのためビルドは未実施。
