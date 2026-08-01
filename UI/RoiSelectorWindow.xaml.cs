@@ -219,13 +219,12 @@ public partial class RoiSelectorWindow : Window
         }
 
         var rect = NormalizeRect(_start.Value, end);
-        // WHY: Convert window-local ROI to screen coordinates before DPI/device conversion.
+        // WHY: Downstream capture and overlay code share absolute screen coordinates here.
         var screenTopLeft = PointToScreen(new Point(rect.X, rect.Y));
         var screenBottomRight = PointToScreen(new Point(rect.Right, rect.Bottom));
         var screenRect = new Rect(screenTopLeft, screenBottomRight);
-        var deviceRect = DpiHelper.DipRectToDevice(this, screenRect);
 
-        SelectedRect = deviceRect.Width <= 0 || deviceRect.Height <= 0 ? null : deviceRect;
+        SelectedRect = screenRect.Width <= 0 || screenRect.Height <= 0 ? null : screenRect;
         if (SelectedRect.HasValue && _frameBounds.Width > 0 && _frameBounds.Height > 0)
         {
             SelectedNormalizedRect = NormalizedRect.FromAbsolute(SelectedRect.Value, _frameBounds);
@@ -243,11 +242,10 @@ public partial class RoiSelectorWindow : Window
             return;
         }
 
-        // WHY: Hook ROI preview uses the same absolute device-space coordinates as persisted ROI.
+        // WHY: Hook ROI preview uses the same absolute screen coordinates as persisted ROI.
         var screenTopLeft = PointToScreen(new Point(localRect.X, localRect.Y));
         var screenBottomRight = PointToScreen(new Point(localRect.Right, localRect.Bottom));
         var screenRect = new Rect(screenTopLeft, screenBottomRight);
-        var deviceRect = DpiHelper.DipRectToDevice(this, screenRect);
-        PreviewRectChanged?.Invoke(deviceRect.Width > 0 && deviceRect.Height > 0 ? deviceRect : null);
+        PreviewRectChanged?.Invoke(screenRect.Width > 0 && screenRect.Height > 0 ? screenRect : null);
     }
 }

@@ -2347,3 +2347,31 @@
 
 ### Tests / Verification
 - ドキュメント追加のみのためビルドは未実施。
+
+**2026-08-01 10:38 (Asia/Taipei) — ROI選択のDPI二重変換修正**
+
+### Summary
+- ROI選択結果とHookプレビュー矩形で、`PointToScreen()` 後にDPI変換を二重適用していた処理を削除した。
+
+### Context / Goal
+- Windowsの表示倍率が100%以外のとき、ROI選択位置と実際のキャプチャ/オーバーレイ位置がズレる。
+- ROI選択ウィンドウから返す矩形を、下流のキャプチャ/オーバーレイが期待する絶対スクリーン座標に統一する。
+
+### Changes
+- ROI確定時の `DpiHelper.DipRectToDevice()` 呼び出しを削除し、`PointToScreen()` で得たスクリーン矩形をそのまま保存対象にした。
+- ROIドラッグ中のHookプレビュー通知も同じスクリーン矩形をそのまま渡すようにした。
+- コメントを現在の座標契約に合わせて更新した。
+
+### Files Touched
+- `UI/RoiSelectorWindow.xaml.cs` — ROI選択結果とプレビュー通知のDPI二重変換を削除した。
+
+### Behavioral Impact
+- Windows表示倍率が100%以外でも、ROI選択位置がキャプチャ範囲とオーバーレイ表示に一致しやすくなる。
+- 既存のキャプチャ/オーバーレイ側のスクリーン座標契約は変更しない。
+
+### Risk & Mitigation
+- Risk: `PointToScreen()` の戻り値を期待する座標系が環境依存の場合、別DPI環境で差が出る可能性がある。
+- Mitigation: 下流経路の `ScreenRectToWindowDip()` / `TryBuildHookCanvasRect()` / `CopyFromScreen()` がスクリーン座標前提であることを確認し、二重変換のみを削除した。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
