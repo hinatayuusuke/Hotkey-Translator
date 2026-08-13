@@ -283,6 +283,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _windowBindingService,
             () => _settingsService.SaveAsync(),
             SelectRoiAsync,
+            () => SelectRoiAsync(runAfterSelection: true),
             SelectFixedOverlayFrameAsync,
             () => ChangeRoiPresetByOffsetAsync(1, "hotkey"),
             () => ChangeRoiPresetByOffsetAsync(-1, "hotkey"),
@@ -1344,6 +1345,11 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         await _hotkeyCommandController.HandleSelectRoiHotkeyAsync().ConfigureAwait(true);
     }
 
+    private async void OnSelectRoiAndTranslateHotkeyPressed(object? sender, EventArgs e)
+    {
+        await _hotkeyCommandController.HandleSelectRoiAndTranslateHotkeyAsync().ConfigureAwait(true);
+    }
+
     private async void OnSelectFixedOverlayFrameHotkeyPressed(object? sender, EventArgs e)
     {
         await _hotkeyCommandController.HandleSelectFixedOverlayFrameHotkeyAsync().ConfigureAwait(true);
@@ -1972,7 +1978,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         }
     }
 
-    private async Task SelectRoiAsync()
+    private Task SelectRoiAsync()
+    {
+        return SelectRoiAsync(runAfterSelection: false);
+    }
+
+    private async Task SelectRoiAsync(bool runAfterSelection)
     {
         if (_isSelectingRoi)
         {
@@ -2017,6 +2028,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                 }
 
                 AppendLog($"ROI updated and saved to slot {activeSlotIndex + 1}.");
+                if (runAfterSelection)
+                {
+                    // WHY: A newly selected region is an explicit request, so stale frame/OCR comparisons must not suppress its first translation.
+                    var options = new ForceRunOptions(
+                        SkipPhash: true,
+                        SkipOcrDiff: true,
+                        SkipTranslationCache: false,
+                        SkipTranslation: false);
+                    AppendLog("ROI selected. Starting translation.");
+                    CheckAndShowPrerequisiteDialogs(settings);
+                    await _runCoordinator.RunOnceAsync(options).ConfigureAwait(true);
+                }
                 return;
             }
 
@@ -2669,6 +2692,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
                       $"OcrOnly={FormatHotkey(config.OcrOnlyKey, config.OcrOnlyModifiers)}, " +
                       $"SceneAutoTranslate={FormatHotkey(config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers)}, " +
                       $"Roi={FormatHotkey(config.SelectRoiKey, config.SelectRoiModifiers)}, " +
+                      $"RoiAndTranslate={FormatHotkey(config.SelectRoiAndTranslateKey, config.SelectRoiAndTranslateModifiers)}, " +
                       $"FixedOverlayFrame={FormatHotkey(config.SelectFixedOverlayFrameKey, config.SelectFixedOverlayFrameModifiers)}, " +
                       $"RoiNext={FormatHotkey(config.NextRoiPresetKey, config.NextRoiPresetModifiers)}, " +
                       $"RoiPrev={FormatHotkey(config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers)}, " +
@@ -2714,6 +2738,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         AddIfEnabled("OverlayText", config.OcrOnlyKey, config.OcrOnlyModifiers, 5, OnOcrOnlyHotkeyPressed);
         AddIfEnabled("SceneAutoTranslate", config.ToggleSceneAutoTranslateKey, config.ToggleSceneAutoTranslateModifiers, 9, OnToggleSceneAutoTranslateHotkeyPressed);
         AddIfEnabled("SelectRoi", config.SelectRoiKey, config.SelectRoiModifiers, 6, OnSelectRoiHotkeyPressed);
+        AddIfEnabled("SelectRoiAndTranslate", config.SelectRoiAndTranslateKey, config.SelectRoiAndTranslateModifiers, 18, OnSelectRoiAndTranslateHotkeyPressed);
         AddIfEnabled("SelectFixedOverlayFrame", config.SelectFixedOverlayFrameKey, config.SelectFixedOverlayFrameModifiers, 17, OnSelectFixedOverlayFrameHotkeyPressed);
         AddIfEnabled("NextRoiPreset", config.NextRoiPresetKey, config.NextRoiPresetModifiers, 11, OnNextRoiPresetHotkeyPressed);
         AddIfEnabled("PreviousRoiPreset", config.PreviousRoiPresetKey, config.PreviousRoiPresetModifiers, 12, OnPreviousRoiPresetHotkeyPressed);
@@ -2749,6 +2774,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             ParseModifiers(settings.HotkeyToggleSceneAutoTranslateModifiers),
             ParseKey(settings.HotkeySelectRoiKey),
             ParseModifiers(settings.HotkeySelectRoiModifiers),
+            ParseKey(settings.HotkeySelectRoiAndTranslateKey),
+            ParseModifiers(settings.HotkeySelectRoiAndTranslateModifiers),
             ParseKey(settings.HotkeySelectFixedOverlayFrameKey),
             ParseModifiers(settings.HotkeySelectFixedOverlayFrameModifiers),
             ParseKey(settings.HotkeyNextRoiPresetKey),
@@ -3074,6 +3101,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ModifierKeys ToggleSceneAutoTranslateModifiers,
         Key SelectRoiKey,
         ModifierKeys SelectRoiModifiers,
+        Key SelectRoiAndTranslateKey,
+        ModifierKeys SelectRoiAndTranslateModifiers,
         Key SelectFixedOverlayFrameKey,
         ModifierKeys SelectFixedOverlayFrameModifiers,
         Key NextRoiPresetKey,
@@ -3100,6 +3129,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             yield return ("Overlay text", OcrOnlyKey, OcrOnlyModifiers);
             yield return ("Scene auto-translate", ToggleSceneAutoTranslateKey, ToggleSceneAutoTranslateModifiers);
             yield return ("Select ROI", SelectRoiKey, SelectRoiModifiers);
+            yield return ("Select ROI and translate", SelectRoiAndTranslateKey, SelectRoiAndTranslateModifiers);
             yield return ("Select user frame", SelectFixedOverlayFrameKey, SelectFixedOverlayFrameModifiers);
             yield return ("Next ROI slot", NextRoiPresetKey, NextRoiPresetModifiers);
             yield return ("Previous ROI slot", PreviousRoiPresetKey, PreviousRoiPresetModifiers);

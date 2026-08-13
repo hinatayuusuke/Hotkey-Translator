@@ -340,6 +340,7 @@ OK を選ぶと、インストール済み Snipping Tool パッケージから�
   <data name="Hotkey_Action_OverlayText" xml:space="preserve"><value>オーバーレイテキスト</value></data>
   <data name="Hotkey_Action_SceneAutoTranslate" xml:space="preserve"><value>シーン自動翻訳</value></data>
   <data name="Hotkey_Action_SelectRoi" xml:space="preserve"><value>ROI を選択</value></data>
+  <data name="Hotkey_Action_SelectRoiAndTranslate" xml:space="preserve"><value>ROI を選択して翻訳</value></data>
   <data name="Hotkey_Action_SelectUserFrame" xml:space="preserve"><value>ユーザーフレームを選択</value></data>
   <data name="Hotkey_Action_LockWindow" xml:space="preserve"><value>ウィンドウ固定</value></data>
   <data name="Hotkey_Action_UnlockWindow" xml:space="preserve"><value>ウィンドウ固定解除</value></data>

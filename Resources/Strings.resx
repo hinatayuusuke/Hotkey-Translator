@@ -348,6 +348,7 @@ Select OK to copy them from the installed Snipping Tool package now. Select Canc
   <data name="Hotkey_Action_OverlayText" xml:space="preserve"><value>Overlay text</value></data>
   <data name="Hotkey_Action_SceneAutoTranslate" xml:space="preserve"><value>Scene auto-translate</value></data>
   <data name="Hotkey_Action_SelectRoi" xml:space="preserve"><value>Select ROI</value></data>
+  <data name="Hotkey_Action_SelectRoiAndTranslate" xml:space="preserve"><value>Select ROI and translate</value></data>
   <data name="Hotkey_Action_SelectUserFrame" xml:space="preserve"><value>Select user frame</value></data>
   <data name="Hotkey_Action_LockWindow" xml:space="preserve"><value>Lock window</value></data>
   <data name="Hotkey_Action_UnlockWindow" xml:space="preserve"><value>Unlock window</value></data>

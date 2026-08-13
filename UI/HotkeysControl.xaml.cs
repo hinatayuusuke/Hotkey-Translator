@@ -23,7 +23,7 @@ public partial class HotkeysControl : UserControl
     public HotkeysControl()
     {
         InitializeComponent();
-        _hotkeyRows = new Dictionary<string, HotkeyRowVisual>(15, System.StringComparer.Ordinal)
+        _hotkeyRows = new Dictionary<string, HotkeyRowVisual>(16, System.StringComparer.Ordinal)
         {
             [SettingsViewModel.HotkeyIdRunOnce] = new(HotkeyRunOnceRowBorder, HotkeyRunOnceLabel, HotkeyRunOnceConflictHint),
             [SettingsViewModel.HotkeyIdRunNextRoi] = new(HotkeyRunNextRoiRowBorder, HotkeyRunNextRoiLabel, HotkeyRunNextRoiConflictHint),
@@ -36,6 +36,7 @@ public partial class HotkeysControl : UserControl
             [SettingsViewModel.HotkeyIdOverlayText] = new(HotkeyOcrOnlyRowBorder, HotkeyOcrOnlyLabel, HotkeyOcrOnlyConflictHint),
             [SettingsViewModel.HotkeyIdSceneAutoTranslate] = new(HotkeyToggleSceneAutoTranslateRowBorder, HotkeyToggleSceneAutoTranslateLabel, HotkeyToggleSceneAutoTranslateConflictHint),
             [SettingsViewModel.HotkeyIdSelectRoi] = new(HotkeySelectRoiRowBorder, HotkeySelectRoiLabel, HotkeySelectRoiConflictHint),
+            [SettingsViewModel.HotkeyIdSelectRoiAndTranslate] = new(HotkeySelectRoiAndTranslateRowBorder, HotkeySelectRoiAndTranslateLabel, HotkeySelectRoiAndTranslateConflictHint),
             [SettingsViewModel.HotkeyIdSelectUserFrame] = new(HotkeySelectFixedOverlayFrameRowBorder, HotkeySelectFixedOverlayFrameLabel, HotkeySelectFixedOverlayFrameConflictHint),
             [SettingsViewModel.HotkeyIdLockWindow] = new(HotkeyLockCaptureWindowRowBorder, HotkeyLockCaptureWindowLabel, HotkeyLockCaptureWindowConflictHint),
             [SettingsViewModel.HotkeyIdUnlockWindow] = new(HotkeyUnlockCaptureWindowRowBorder, HotkeyUnlockCaptureWindowLabel, HotkeyUnlockCaptureWindowConflictHint),
@@ -70,6 +71,7 @@ public partial class HotkeysControl : UserControl
         HotkeyOcrOnlyKeyBox.ItemsSource = options;
         HotkeyToggleSceneAutoTranslateKeyBox.ItemsSource = options;
         HotkeySelectRoiKeyBox.ItemsSource = options;
+        HotkeySelectRoiAndTranslateKeyBox.ItemsSource = options;
         HotkeySelectFixedOverlayFrameKeyBox.ItemsSource = options;
         HotkeyLockCaptureWindowKeyBox.ItemsSource = options;
         HotkeyUnlockCaptureWindowKeyBox.ItemsSource = options;

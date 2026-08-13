@@ -20,6 +20,7 @@ internal sealed class HotkeyCommandController
     private readonly WindowBindingService _windowBindingService;
     private readonly Func<Task> _saveSettingsAsync;
     private readonly Func<Task> _selectRoiAsync;
+    private readonly Func<Task> _selectRoiAndTranslateAsync;
     private readonly Func<Task> _selectFixedOverlayFrameAsync;
     private readonly Func<Task> _selectNextRoiPresetAsync;
     private readonly Func<Task> _selectPreviousRoiPresetAsync;
@@ -44,6 +45,7 @@ internal sealed class HotkeyCommandController
         WindowBindingService windowBindingService,
         Func<Task> saveSettingsAsync,
         Func<Task> selectRoiAsync,
+        Func<Task> selectRoiAndTranslateAsync,
         Func<Task> selectFixedOverlayFrameAsync,
         Func<Task> selectNextRoiPresetAsync,
         Func<Task> selectPreviousRoiPresetAsync,
@@ -67,6 +69,7 @@ internal sealed class HotkeyCommandController
         _windowBindingService = windowBindingService;
         _saveSettingsAsync = saveSettingsAsync;
         _selectRoiAsync = selectRoiAsync;
+        _selectRoiAndTranslateAsync = selectRoiAndTranslateAsync;
         _selectFixedOverlayFrameAsync = selectFixedOverlayFrameAsync;
         _selectNextRoiPresetAsync = selectNextRoiPresetAsync;
         _selectPreviousRoiPresetAsync = selectPreviousRoiPresetAsync;
@@ -204,6 +207,12 @@ internal sealed class HotkeyCommandController
     public Task HandleSelectRoiHotkeyAsync()
     {
         return _selectRoiAsync();
+    }
+
+    public Task HandleSelectRoiAndTranslateHotkeyAsync()
+    {
+        EnsureTranslatedOverlayForRunHotkeys();
+        return _selectRoiAndTranslateAsync();
     }
 
     public Task HandleSelectFixedOverlayFrameHotkeyAsync()

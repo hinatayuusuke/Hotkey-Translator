@@ -290,6 +290,8 @@ public sealed class AppSettings
     public string HotkeyToggleSceneAutoTranslateModifiers { get; set; } = HotkeyDefaults.ToggleSceneAutoTranslateModifiers;
     public string HotkeySelectRoiKey { get; set; } = HotkeyDefaults.SelectRoiKey;
     public string HotkeySelectRoiModifiers { get; set; } = HotkeyDefaults.SelectRoiModifiers;
+    public string HotkeySelectRoiAndTranslateKey { get; set; } = HotkeyDefaults.SelectRoiAndTranslateKey;
+    public string HotkeySelectRoiAndTranslateModifiers { get; set; } = HotkeyDefaults.SelectRoiAndTranslateModifiers;
     public string HotkeySelectFixedOverlayFrameKey { get; set; } = HotkeyDefaults.SelectFixedOverlayFrameKey;
     public string HotkeySelectFixedOverlayFrameModifiers { get; set; } = HotkeyDefaults.SelectFixedOverlayFrameModifiers;
     public string HotkeyNextRoiPresetKey { get; set; } = HotkeyDefaults.NextRoiPresetKey;

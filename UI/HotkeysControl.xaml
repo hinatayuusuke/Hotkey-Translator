@@ -65,6 +65,7 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
 
             <Border x:Name="HotkeyRunOnceRowBorder" Grid.Row="0" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
@@ -331,7 +332,31 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="HotkeySelectFixedOverlayFrameRowBorder" Grid.Row="11" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+            <Border x:Name="HotkeySelectRoiAndTranslateRowBorder" Grid.Row="11" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" MinWidth="210" />
+                            <ColumnDefinition Width="96" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock x:Name="HotkeySelectRoiAndTranslateLabel" Grid.Column="0" Text="{uiLoc:Loc Key=Hotkey_Action_SelectRoiAndTranslate}" Style="{StaticResource HotkeyRowLabelStyle}" />
+                        <ComboBox Grid.Column="1" x:Name="HotkeySelectRoiAndTranslateKeyBox" Width="88"
+                                  SelectedItem="{Binding Settings.HotkeySelectRoiAndTranslateKey, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="8,0,0,0">
+                            <CheckBox x:Name="HotkeySelectRoiAndTranslateCtrl" Content="Ctrl"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiAndTranslateCtrl, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectRoiAndTranslateAlt" Content="Alt" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiAndTranslateAlt, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                            <CheckBox x:Name="HotkeySelectRoiAndTranslateShift" Content="Shift" Margin="6,0,0,0"
+                                      IsChecked="{Binding Settings.HotkeySelectRoiAndTranslateShift, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                    </Grid>
+                    <TextBlock x:Name="HotkeySelectRoiAndTranslateConflictHint" Style="{StaticResource HotkeyConflictHintStyle}" />
+                </StackPanel>
+            </Border>
+
+            <Border x:Name="HotkeySelectFixedOverlayFrameRowBorder" Grid.Row="12" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -355,7 +380,7 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="HotkeyLockCaptureWindowRowBorder" Grid.Row="12" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+            <Border x:Name="HotkeyLockCaptureWindowRowBorder" Grid.Row="13" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -379,7 +404,7 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="HotkeyUnlockCaptureWindowRowBorder" Grid.Row="13" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+            <Border x:Name="HotkeyUnlockCaptureWindowRowBorder" Grid.Row="14" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -403,7 +428,7 @@
                 </StackPanel>
             </Border>
 
-            <Border x:Name="HotkeyToggleMirrorFullscreenRowBorder" Grid.Row="14" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
+            <Border x:Name="HotkeyToggleMirrorFullscreenRowBorder" Grid.Row="15" Grid.ColumnSpan="3" Style="{StaticResource HotkeyRowBorderStyle}">
                 <StackPanel>
                     <Grid>
                         <Grid.ColumnDefinitions>

@@ -2375,3 +2375,40 @@
 
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+
+**2026-08-13 10:04 (Asia/Taipei) — ROI選択後の即時翻訳ホットキー追加**
+
+### Summary
+- ROIを選択・保存した直後にOCRと翻訳を実行する、設定可能な追加ホットキーを実装した。
+
+### Context / Goal
+- ROI選択後に別の実行ホットキーを押す手間をなくす。
+- 既存のF6によるROI選択のみの挙動は維持する。
+
+### Changes
+- 既定無効の「ROIを選択して翻訳」ホットキー設定と競合検出を追加した。
+- ROI確定後にpHashとOCR差分判定をスキップし、翻訳キャッシュを利用して即時翻訳する経路を追加した。
+- ホットキー設定画面と日本語・英語の表示文言を追加した。
+
+### Files Touched
+- `Models/AppSettings.cs` — 新ホットキーの永続化項目を追加した。
+- `Models/HotkeyDefaults.cs` — 既定無効の初期値を追加した。
+- `ViewModels/SettingsViewModel.cs` — 設定同期、保存、競合検出を追加した。
+- `UI/HotkeysControl.xaml` — 新ホットキーの設定行を追加した。
+- `UI/HotkeysControl.xaml.cs` — 設定候補と競合表示の接続を追加した。
+- `Services/Application/HotkeyCommandController.cs` — ROI選択・翻訳コマンドを追加した。
+- `MainWindow.xaml.cs` — ホットキー登録とROI確定後の翻訳実行を追加した。
+- `Resources/Strings.resx` — 英語表示名を追加した。
+- `Resources/Strings.ja.resx` — 日本語表示名を追加した。
+
+### Behavioral Impact
+- 新ホットキーを割り当てると、ROI確定後に範囲を保存して一度だけ翻訳表示する。キャンセル時は翻訳しない。
+- 既存のROI選択ホットキーと既定割り当ては変更しない。
+
+### Risk & Mitigation
+- Risk: ROI変更直後でも過去の画像・OCR差分により翻訳が抑止される可能性がある。
+- Mitigation: 新ホットキー経路だけpHashとOCR差分をスキップし、翻訳キャッシュは維持して応答時間を抑える。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- `git diff --check` — エラーなし。

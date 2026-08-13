@@ -22,6 +22,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
     public const string HotkeyIdOverlayText = "OverlayText";
     public const string HotkeyIdSceneAutoTranslate = "SceneAutoTranslate";
     public const string HotkeyIdSelectRoi = "SelectRoi";
+    public const string HotkeyIdSelectRoiAndTranslate = "SelectRoiAndTranslate";
     public const string HotkeyIdSelectUserFrame = "SelectUserFrame";
     public const string HotkeyIdLockWindow = "LockWindow";
     public const string HotkeyIdUnlockWindow = "UnlockWindow";
@@ -221,6 +222,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _hotkeySelectRoiCtrl;
     [ObservableProperty] private bool _hotkeySelectRoiAlt;
     [ObservableProperty] private bool _hotkeySelectRoiShift;
+    [ObservableProperty] private string _hotkeySelectRoiAndTranslateKey = HotkeyDefaults.SelectRoiAndTranslateKey;
+    [ObservableProperty] private bool _hotkeySelectRoiAndTranslateCtrl;
+    [ObservableProperty] private bool _hotkeySelectRoiAndTranslateAlt;
+    [ObservableProperty] private bool _hotkeySelectRoiAndTranslateShift;
     [ObservableProperty] private string _hotkeySelectFixedOverlayFrameKey = HotkeyDefaults.SelectFixedOverlayFrameKey;
     [ObservableProperty] private bool _hotkeySelectFixedOverlayFrameCtrl;
     [ObservableProperty] private bool _hotkeySelectFixedOverlayFrameAlt;
@@ -1091,6 +1096,10 @@ internal sealed partial class SettingsViewModel : ObservableObject
     partial void OnHotkeySelectRoiCtrlChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnHotkeySelectRoiAltChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnHotkeySelectRoiShiftChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiAndTranslateKeyChanged(string value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiAndTranslateCtrlChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiAndTranslateAltChanged(bool value) => HandleHotkeyValueChanged();
+    partial void OnHotkeySelectRoiAndTranslateShiftChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnHotkeySelectFixedOverlayFrameKeyChanged(string value) => HandleHotkeyValueChanged();
     partial void OnHotkeySelectFixedOverlayFrameCtrlChanged(bool value) => HandleHotkeyValueChanged();
     partial void OnHotkeySelectFixedOverlayFrameAltChanged(bool value) => HandleHotkeyValueChanged();
@@ -1307,6 +1316,17 @@ internal sealed partial class SettingsViewModel : ObservableObject
         HotkeySelectRoiAlt = selectRoiAlt;
         HotkeySelectRoiShift = selectRoiShift;
 
+        HotkeySelectRoiAndTranslateKey = NormalizeHotkeyKey(settings.HotkeySelectRoiAndTranslateKey);
+        AssignHotkeyModifiers(
+            settings.HotkeySelectRoiAndTranslateKey,
+            settings.HotkeySelectRoiAndTranslateModifiers,
+            out var selectRoiAndTranslateCtrl,
+            out var selectRoiAndTranslateAlt,
+            out var selectRoiAndTranslateShift);
+        HotkeySelectRoiAndTranslateCtrl = selectRoiAndTranslateCtrl;
+        HotkeySelectRoiAndTranslateAlt = selectRoiAndTranslateAlt;
+        HotkeySelectRoiAndTranslateShift = selectRoiAndTranslateShift;
+
         HotkeySelectFixedOverlayFrameKey = NormalizeHotkeyKey(settings.HotkeySelectFixedOverlayFrameKey);
         AssignHotkeyModifiers(
             settings.HotkeySelectFixedOverlayFrameKey,
@@ -1370,6 +1390,12 @@ internal sealed partial class SettingsViewModel : ObservableObject
                 HotkeyToggleSceneAutoTranslateShift);
         settings.HotkeySelectRoiKey = NormalizeHotkeyKey(HotkeySelectRoiKey);
         settings.HotkeySelectRoiModifiers = BuildHotkeyModifiers(settings.HotkeySelectRoiKey, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        settings.HotkeySelectRoiAndTranslateKey = NormalizeHotkeyKey(HotkeySelectRoiAndTranslateKey);
+        settings.HotkeySelectRoiAndTranslateModifiers = BuildHotkeyModifiers(
+            settings.HotkeySelectRoiAndTranslateKey,
+            HotkeySelectRoiAndTranslateCtrl,
+            HotkeySelectRoiAndTranslateAlt,
+            HotkeySelectRoiAndTranslateShift);
         settings.HotkeySelectFixedOverlayFrameKey = NormalizeHotkeyKey(HotkeySelectFixedOverlayFrameKey);
         settings.HotkeySelectFixedOverlayFrameModifiers =
             BuildHotkeyModifiers(
@@ -1538,7 +1564,7 @@ internal sealed partial class SettingsViewModel : ObservableObject
 
     private List<HotkeyBindingDraft> BuildHotkeyBindings()
     {
-        var bindings = new List<HotkeyBindingDraft>(15);
+        var bindings = new List<HotkeyBindingDraft>(16);
         AddHotkeyBinding(bindings, HotkeyIdRunOnce, "Run once", HotkeyRunOnceKey, HotkeyRunOnceCtrl, HotkeyRunOnceAlt, HotkeyRunOnceShift);
         AddHotkeyBinding(bindings, HotkeyIdRunNextRoi, "Run next ROI slot", HotkeyRunNextRoiKey, HotkeyRunNextRoiCtrl, HotkeyRunNextRoiAlt, HotkeyRunNextRoiShift);
         AddHotkeyBinding(bindings, HotkeyIdRunNextNextRoi, "Run next+1 ROI slot", HotkeyRunNextNextRoiKey, HotkeyRunNextNextRoiCtrl, HotkeyRunNextNextRoiAlt, HotkeyRunNextNextRoiShift);
@@ -1550,6 +1576,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
         AddHotkeyBinding(bindings, HotkeyIdOverlayText, "Overlay text", HotkeyOcrOnlyKey, HotkeyOcrOnlyCtrl, HotkeyOcrOnlyAlt, HotkeyOcrOnlyShift);
         AddHotkeyBinding(bindings, HotkeyIdSceneAutoTranslate, "Scene auto-translate", HotkeyToggleSceneAutoTranslateKey, HotkeyToggleSceneAutoTranslateCtrl, HotkeyToggleSceneAutoTranslateAlt, HotkeyToggleSceneAutoTranslateShift);
         AddHotkeyBinding(bindings, HotkeyIdSelectRoi, "Select ROI", HotkeySelectRoiKey, HotkeySelectRoiCtrl, HotkeySelectRoiAlt, HotkeySelectRoiShift);
+        AddHotkeyBinding(bindings, HotkeyIdSelectRoiAndTranslate, "Select ROI and translate", HotkeySelectRoiAndTranslateKey, HotkeySelectRoiAndTranslateCtrl,
+            HotkeySelectRoiAndTranslateAlt, HotkeySelectRoiAndTranslateShift);
         AddHotkeyBinding(bindings, HotkeyIdSelectUserFrame, "Select user frame", HotkeySelectFixedOverlayFrameKey, HotkeySelectFixedOverlayFrameCtrl, HotkeySelectFixedOverlayFrameAlt,
             HotkeySelectFixedOverlayFrameShift);
         AddHotkeyBinding(bindings, HotkeyIdLockWindow, "Lock window", HotkeyLockCaptureWindowKey, HotkeyLockCaptureWindowCtrl, HotkeyLockCaptureWindowAlt, HotkeyLockCaptureWindowShift);
