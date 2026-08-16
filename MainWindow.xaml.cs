@@ -132,6 +132,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             TimeSpan.FromMilliseconds(SettingsSaveDebounceMs),
             ex => _logger?.Error(ex, "Failed to save settings from debounce scheduler."));
         InitializeComponent();
+        UpdateWindowTitle();
         _appThemeController.Apply(_settingsService.Settings, this);
         var roiPresetSlotOptions = BuildRoiPresetSlotOptions();
         OverviewControl.RoiPresetSlotItemsSource = roiPresetSlotOptions;
@@ -2192,9 +2193,18 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnLocalizationLanguageChanged(object? sender, EventArgs e)
     {
+        UpdateWindowTitle();
         UpdateTranslationStatus(_settingsService.Settings);
         UpdateRoiStatus(_settingsService.Settings);
         _winRtLanguagePackUiController.SchedulePrecheck();
+    }
+
+    private void UpdateWindowTitle()
+    {
+        var version = typeof(MainWindow).Assembly.GetName().Version
+            ?? throw new InvalidOperationException("Application assembly version is unavailable.");
+        // WHY: Assembly metadata is the release version source of truth and keeps the localized title in sync.
+        Title = $"{Localizer["App_Title"]} v{version.ToString(3)}";
     }
 
     private void UpdateAutoTranslateBadgeVisibility(AppSettings settings)

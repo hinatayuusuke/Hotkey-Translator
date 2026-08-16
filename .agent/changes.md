@@ -2441,3 +2441,34 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - `git diff --check` — エラーなし（改行コード変換に関する Git 警告のみ）。
+
+**2026-08-17 00:21 (Asia/Taipei) — ウィンドウタイトルへバージョン表示を追加**
+
+### Summary
+- メインウィンドウのアプリ名の後ろに、プロジェクト設定を参照した `v1.0.10` を表示するようにした。
+
+### Context / Goal
+- 実行中のアプリバージョンをタイトルバーから確認できるようにする。
+- 表示用の固定値を別管理せず、ビルド成果物のバージョンと同期させる。
+
+### Changes
+- プロジェクトの `Version` を `1.0.10` に設定した。
+- 実行アセンブリの3桁バージョンをローカライズ済みアプリ名へ付加するタイトル更新処理を追加した。
+- UI言語変更後もバージョン付きタイトルを再構成するようにした。
+
+### Files Touched
+- `Hotkey-Translator.csproj` — アプリケーションバージョン `1.0.10` を定義した。
+- `MainWindow.xaml.cs` — 起動時およびUI言語変更時にバージョン付きタイトルを設定するようにした。
+
+### Behavioral Impact
+- メインウィンドウのタイトルが `Hotkey Translator v1.0.10` と表示される。
+- アセンブリバージョンは `1.0.10.0` となり、タイトルでは3桁の `1.0.10` を使用する。
+
+### Risk & Mitigation
+- Risk: コードからタイトルを設定すると、既存のローカライズバインディングが直接更新されなくなる。
+- Mitigation: UI言語変更イベントでもローカライズ済み名称からタイトルを再構成する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- 生成DLLを確認し、AssemblyVersion=`1.0.10.0`、タイトル用表示=`1.0.10` となることを確認した。
+- `git diff --check` — エラーなし（改行コード変換に関する Git 警告のみ）。
