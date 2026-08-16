@@ -54,6 +54,7 @@ internal sealed class TranslateStage
         var translations = new Dictionary<int, string>();
         var pending = new List<PendingTranslation>();
         var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
+        var unitIdsByProtectedSourceText = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         var glossaryScope = _userGlossaryService.BuildGlossaryScope(settings);
 
         foreach (var unit in units)
@@ -65,6 +66,14 @@ internal sealed class TranslateStage
             {
                 continue;
             }
+
+            if (!unitIdsByProtectedSourceText.TryGetValue(glossaryPrepared.ProtectedSourceText, out var matchingUnitIds))
+            {
+                matchingUnitIds = new List<int>();
+                unitIdsByProtectedSourceText[glossaryPrepared.ProtectedSourceText] = matchingUnitIds;
+            }
+
+            matchingUnitIds.Add(unit.Id);
 
             var normalizedKey = BuildLastTranslationKey(glossaryScope, normalized);
             var key = _cacheKeyBuilder.Build(settings, normalized);
@@ -136,7 +145,12 @@ internal sealed class TranslateStage
 
             await _cacheRepository.SaveAsync(item.CacheKey, restoreResult.Text, cancellationToken).ConfigureAwait(false);
             _lastTranslations[item.NormalizedKey] = restoreResult.Text;
-            translations[item.UnitId] = restoreResult.Text;
+            // WHY: Cache-bypassing runs return before the cache fan-out below, so the current result
+            // must be applied to every occurrence without merging normalization-only collisions.
+            foreach (var unitId in unitIdsByProtectedSourceText[item.Prepared.ProtectedSourceText])
+            {
+                translations[unitId] = restoreResult.Text;
+            }
         }
 
         if (options.SkipTranslationCache)

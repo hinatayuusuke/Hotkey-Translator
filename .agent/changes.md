@@ -2412,3 +2412,32 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - `git diff --check` — エラーなし。
+
+**2026-08-17 00:02 (Asia/Taipei) — 重複文字列への翻訳結果配布を修正**
+
+### Summary
+- キャッシュを無視する強制翻訳でも、完全一致する重複文字列の全表示箇所へ翻訳結果を反映するよう修正した。
+
+### Context / Goal
+- 同じOCR文字列が複数箇所にある場合、強制翻訳では最初の1箇所だけが翻訳され、残りが原文表示になる問題があった。
+- 翻訳APIへの重複送信を増やさず、今回成功した結果を安全に全該当箇所へ配布する。
+
+### Changes
+- 用語集保護後の翻訳入力が完全一致する単位ごとに、対応する Unit ID を収集するようにした。
+- 今回取得・復元した翻訳結果を、同じ翻訳入力を持つすべての Unit ID に設定するようにした。
+- 正規化だけが一致する異なる文字列や、過去の翻訳結果は配布対象にしない。
+
+### Files Touched
+- `Services/Orchestration/Stages/TranslateStage.cs` — 現在の翻訳結果を完全一致する重複単位へ配布する処理を追加した。
+
+### Behavioral Impact
+- 通常実行と強制実行のどちらでも、同じ翻訳入力が複数箇所にあれば全箇所に同じ翻訳文が表示される。
+- キャッシュ判定、翻訳APIへの送信件数、正規化だけが一致する文字列の扱いは変更しない。
+
+### Risk & Mitigation
+- Risk: 正規化キーで結果を配布すると、句読点や記号だけが異なる文字列へ誤って同じ翻訳を適用する可能性がある。
+- Mitigation: 配布キーを用語集保護後の翻訳入力の完全一致に限定し、今回成功した結果だけを使用する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- `git diff --check` — エラーなし（改行コード変換に関する Git 警告のみ）。
