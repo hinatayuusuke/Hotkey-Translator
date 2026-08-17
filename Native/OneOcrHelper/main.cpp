@@ -87,6 +87,8 @@ namespace
         std::uint32_t width = 0;
         std::uint32_t height = 0;
         std::uint32_t stride = 0;
+        std::uint32_t originalWidth = 0;
+        std::uint32_t originalHeight = 0;
     };
 
     struct PolygonData
@@ -423,9 +425,7 @@ namespace
             Throw("GetSize failed.");
         }
 
-        if (width < static_cast<UINT>(kMinImageDimension) ||
-            width > static_cast<UINT>(kMaxImageDimension) ||
-            height < static_cast<UINT>(kMinImageDimension) ||
+        if (width > static_cast<UINT>(kMaxImageDimension) ||
             height > static_cast<UINT>(kMaxImageDimension))
         {
             Throw("Unsupported image size.");
@@ -450,20 +450,56 @@ namespace
             Throw("WIC format conversion to BGRA failed.");
         }
 
-        const auto stride = width * 4;
-        std::vector<std::uint8_t> pixels(static_cast<std::size_t>(stride) * height);
-        hr = converter->CopyPixels(nullptr, stride, static_cast<UINT>(pixels.size()), pixels.data());
+        const auto sourceStride = width * 4;
+        std::vector<std::uint8_t> sourcePixels(static_cast<std::size_t>(sourceStride) * height);
+        hr = converter->CopyPixels(nullptr, sourceStride, static_cast<UINT>(sourcePixels.size()), sourcePixels.data());
         if (FAILED(hr))
         {
             Throw("CopyPixels failed.");
         }
 
+        const auto paddedWidth = std::max<UINT>(width, kMinImageDimension);
+        const auto paddedHeight = std::max<UINT>(height, kMinImageDimension);
+        const auto paddedStride = paddedWidth * 4;
+
         DecodedImage image;
-        image.pixels = std::move(pixels);
-        image.width = width;
-        image.height = height;
-        image.stride = stride;
+        image.originalWidth = width;
+        image.originalHeight = height;
+        image.width = paddedWidth;
+        image.height = paddedHeight;
+        image.stride = paddedStride;
+
+        if (paddedWidth == width && paddedHeight == height)
+        {
+            image.pixels = std::move(sourcePixels);
+        }
+        else
+        {
+            // WHY: OneOCR rejects either dimension below 50 px. Padding only the right and
+            // bottom keeps the source origin and every valid OCR coordinate unchanged.
+            image.pixels.assign(static_cast<std::size_t>(paddedStride) * paddedHeight, 255);
+            for (UINT row = 0; row < height; row += 1)
+            {
+                std::memcpy(
+                    image.pixels.data() + static_cast<std::size_t>(row) * paddedStride,
+                    sourcePixels.data() + static_cast<std::size_t>(row) * sourceStride,
+                    sourceStride);
+            }
+
+            std::cerr << "Padded OneOCR image from " << width << 'x' << height
+                      << " to " << paddedWidth << 'x' << paddedHeight << '.' << std::endl;
+        }
+
         return image;
+    }
+
+    void ClipPolygon(PolygonData& polygon, std::uint32_t width, std::uint32_t height)
+    {
+        for (auto& [x, y] : polygon.points)
+        {
+            x = std::clamp(x, 0.0, static_cast<double>(width));
+            y = std::clamp(y, 0.0, static_cast<double>(height));
+        }
     }
 
     JsonBounds ComputeBounds(const PolygonData& polygon)
@@ -716,8 +752,8 @@ namespace
 
             OcrOutput output;
             output.durationMs = duration;
-            output.imageWidth = image.width;
-            output.imageHeight = image.height;
+            output.imageWidth = image.originalWidth;
+            output.imageHeight = image.originalHeight;
 
             float imageAngle = 0.0f;
             if (getImageAngle_(resultHandle, &imageAngle) == 0)
@@ -731,7 +767,13 @@ namespace
 
             for (std::int64_t lineIndex = 0; lineIndex < lineCount; lineIndex += 1)
             {
-                output.lines.push_back(ReadLine(resultHandle, lineIndex));
+                auto line = ReadLine(resultHandle, lineIndex);
+                ClipPolygon(line.polygon, image.originalWidth, image.originalHeight);
+                for (auto& word : line.words)
+                {
+                    ClipPolygon(word.polygon, image.originalWidth, image.originalHeight);
+                }
+                output.lines.push_back(std::move(line));
             }
 
             return output;

@@ -2472,3 +2472,35 @@
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - 生成DLLを確認し、AssemblyVersion=`1.0.10.0`、タイトル用表示=`1.0.10` となることを確認した。
 - `git diff --check` — エラーなし（改行コード変換に関する Git 警告のみ）。
+
+**2026-08-17 16:02 (Asia/Taipei) — OneOCRの最小画像サイズを余白補正**
+
+### Summary
+- 50px未満の辺を持つ画像へ右・下の白色余白を追加し、OneOCRで認識できるようにした。
+
+### Context / Goal
+- OneOCR本体は幅・高さの各辺に50pxの最小サイズ制限がある。
+- 小さいキャプチャを拡大せず、元画像基準のOCR座標を維持して処理したい。
+
+### Changes
+- OneOCR helperの画像デコード時に、50px未満の辺を50pxまで白色でパディングするようにした。
+- パディングを右端・下端だけに追加し、OCR結果のline/word polygonを元画像範囲へクリップした。
+- 応答の画像サイズは元サイズを維持し、補正時は元サイズと補正後サイズを標準エラーへ記録するようにした。
+- 10000pxを超える入力は従来どおり明示的に失敗させる。
+
+### Files Touched
+- `Native/OneOcrHelper/main.cpp` — 最小サイズ補正、元サイズ保持、座標クリップ、補正ログを追加した。
+
+### Behavioral Impact
+- 幅または高さが50px未満の画像でも、OneOCR helperが再起動エラーにならずOCRを実行できる。
+- OCR応答の画像サイズと座標原点は元画像基準のまま変わらない。
+
+### Risk & Mitigation
+- Risk: 追加した余白をOneOCRが文字領域として検出し、元画像外の座標を返す可能性がある。
+- Mitigation: 余白を白色にし、返却する全polygonを元画像範囲へクリップする。
+
+### Tests / Verification
+- `cmake --build . --config Release --target OneOcrHelper` — 成功。
+- Named Pipe経由の実DLLテストで `49x100`、`100x49`、`50x50` が成功し、応答サイズが各入力の元サイズと一致することを確認した。
+- `49x100 -> 50x100` と `100x49 -> 100x50` の補正ログが出力されることを確認した。
+- `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
