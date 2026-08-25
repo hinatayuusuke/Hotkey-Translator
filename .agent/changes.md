@@ -2504,3 +2504,35 @@
 - Named Pipe経由の実DLLテストで `49x100`、`100x49`、`50x50` が成功し、応答サイズが各入力の元サイズと一致することを確認した。
 - `49x100 -> 50x100` と `100x49 -> 100x50` の補正ログが出力されることを確認した。
 - `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
+
+**2026-08-25 10:19 (Asia/Taipei) — 翻訳言語変更時のキャッシュ分離と再翻訳**
+
+### Summary
+- 翻訳先言語などの翻訳スコープ変更時に旧言語の直近訳を再利用せず、同一画面でも再翻訳するようにした。
+
+### Context / Goal
+- 実行中の直近訳キャッシュが翻訳言語をキーに含まず、同じ原文へ前回言語の訳を返していた。
+- 同一画面ではpHashとOCR差分により、翻訳設定変更後の再翻訳が抑止されていた。
+
+### Changes
+- 永続キャッシュと直近訳キャッシュで、翻訳元・翻訳先言語、スタイル、用語集スコープを含む共通キーを使用するようにした。
+- 翻訳スコープ変更後の通常翻訳では、1回だけpHashとOCR差分を無効化して全ReadingUnitを処理するようにした。
+- 全ReadingUnitの翻訳が揃った場合だけスコープを確定し、部分成功時は次回再試行できるようにした。
+- OCR専用実行とForce Gemini strict実行では通常翻訳スコープを確定しないようにした。
+
+### Files Touched
+- `Services/CacheKeyBuilder.cs` — 翻訳スコープ生成を分離し、キャッシュキー生成と共用した。
+- `Services/Orchestration/Stages/TranslateStage.cs` — 直近訳のキーを永続キャッシュと同じ設定スコープへ変更した。
+- `Services/PipelineOrchestrator.cs` — 翻訳スコープ変更検知、pHash/OCR差分の一時無効化、成功時のスコープ確定を追加した。
+
+### Behavioral Impact
+- 翻訳言語、スタイル、または用語集スコープを変更すると、画面の原文が同じでも新しい設定の訳が表示される。
+- 翻訳設定が同一の場合は従来どおりキャッシュを再利用する。
+
+### Risk & Mitigation
+- Risk: 設定変更直後は同一画面でもOCRとキャッシュ照会または翻訳API呼び出しが1回増える。
+- Mitigation: 翻訳結果に影響するスコープが変わった場合だけ再処理し、全件成功後は通常の差分判定へ戻す。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。

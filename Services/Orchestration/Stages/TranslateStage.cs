@@ -55,7 +55,6 @@ internal sealed class TranslateStage
         var pending = new List<PendingTranslation>();
         var pendingNormalized = new HashSet<string>(StringComparer.Ordinal);
         var unitIdsByProtectedSourceText = new Dictionary<string, List<int>>(StringComparer.Ordinal);
-        var glossaryScope = _userGlossaryService.BuildGlossaryScope(settings);
 
         foreach (var unit in units)
         {
@@ -75,8 +74,8 @@ internal sealed class TranslateStage
 
             matchingUnitIds.Add(unit.Id);
 
-            var normalizedKey = BuildLastTranslationKey(glossaryScope, normalized);
             var key = _cacheKeyBuilder.Build(settings, normalized);
+            var normalizedKey = key;
             if (!options.SkipTranslationCache)
             {
                 var cached = await _cacheRepository.TryGetAsync(key, cancellationToken).ConfigureAwait(false);
@@ -162,7 +161,7 @@ internal sealed class TranslateStage
         {
             var translationSourceText = _translationTextNormalizer.NormalizeForTranslation(unit.Text, settings.SourceLanguage);
             var normalized = _normalizationService.Normalize(translationSourceText);
-            var normalizedKey = BuildLastTranslationKey(glossaryScope, normalized);
+            var normalizedKey = _cacheKeyBuilder.Build(settings, normalized);
             if (_lastTranslations.TryGetValue(normalizedKey, out var translated))
             {
                 translations[unit.Id] = translated;
@@ -170,6 +169,11 @@ internal sealed class TranslateStage
         }
 
         return translations;
+    }
+
+    public string BuildCacheScope(AppSettings settings)
+    {
+        return _cacheKeyBuilder.BuildScope(settings);
     }
 
     private static string BuildTranslationPayloadLog(IReadOnlyList<PendingTranslation> pending)
@@ -272,11 +276,6 @@ internal sealed class TranslateStage
 
         truncated = true;
         return escaped[..maxChars];
-    }
-
-    private static string BuildLastTranslationKey(string glossaryScope, string normalized)
-    {
-        return $"{glossaryScope}_{normalized}";
     }
 
     private sealed record PendingTranslation(

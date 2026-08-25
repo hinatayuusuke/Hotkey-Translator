@@ -77,6 +77,7 @@ public sealed class PipelineOrchestrator
     private Rect? _hookRoiPreviewRectScreen;
     private string? _lastHookRoiSkipReason;
     private bool? _lastWpfOverlaySuppressed;
+    private string? _lastCompletedTranslationScope;
 
     public event Action<Bitmap>? OcrPreprocessPreviewReady;
     public event Action? TranslationStarted;
@@ -153,6 +154,12 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
+            var translationScope = _translateStage.BuildCacheScope(settings);
+            var translationScopeChanged = !string.Equals(
+                _lastCompletedTranslationScope,
+                translationScope,
+                StringComparison.Ordinal);
+            var refreshForTranslationScope = translationScopeChanged && !options.SkipTranslation && !options.ForceGeminiStrict;
             var ocrFeatureSettings = _featureSettingsProvider.GetOcr(settings);
             var context = new PipelineExecutionContext(settings, options, DateTimeOffset.UtcNow);
             context.FinalStageResult = PipelineStageResult.ContinueExecution();
@@ -162,6 +169,12 @@ public sealed class PipelineOrchestrator
                 $"Run context: trigger={options.Trigger}, suppress transient UI={options.SuppressTransientUiFeedback}.");
             perfProbe.RecordQueueWait(waitStopwatch);
             _ocrDiffService.IouThreshold = settings.OcrIouThreshold;
+            if (refreshForTranslationScope)
+            {
+                // WHY: Translation settings can change while the pixels and OCR text stay identical;
+                // both early-out layers must be bypassed once so the new scoped cache is applied.
+                _logger.Info("Translation scope changed; bypassing pHash and OCR diff for this run.");
+            }
 
             if (options.IsEnabled)
             {
@@ -241,7 +254,7 @@ public sealed class PipelineOrchestrator
             if (settings.PhashThreshold >= 0)
             {
                 var hash = _phashService.ComputeHash(roiBitmap);
-                if (!options.SkipPhash && _lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
+                if (!options.SkipPhash && !refreshForTranslationScope && _lastHash.HasValue && _phashService.IsSimilar(hash, _lastHash.Value, settings.PhashThreshold))
                 {
                     _logger.Info("pHash unchanged; keeping last overlay.");
                     if (ApplyStopResult(
@@ -346,7 +359,7 @@ public sealed class PipelineOrchestrator
                     }
                 }
 
-                var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff);
+                var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff || refreshForTranslationScope);
                 context.ChangedUnitIds = diffOutput.ChangedUnitIds;
                 context.IsDiffUnchanged = diffOutput.ChangedUnitIds.Count == 0;
                 if (perfProbe.Enabled)
@@ -364,6 +377,11 @@ public sealed class PipelineOrchestrator
                         () => TranslationStarted?.Invoke(),
                         () => TranslationCompleted?.Invoke())
                     .ConfigureAwait(false);
+                if (translations.Count == readingUnits.Count && !options.SkipTranslation)
+                {
+                    // WHY: A partial provider result must keep the scope dirty so missing units are retried.
+                    _lastCompletedTranslationScope = translationScope;
+                }
                 context.Translations.Clear();
                 foreach (var pair in translations)
                 {
@@ -724,6 +742,12 @@ public sealed class PipelineOrchestrator
         try
         {
             var settings = _settingsService.Settings;
+            var translationScope = _translateStage.BuildCacheScope(settings);
+            var translationScopeChanged = !string.Equals(
+                _lastCompletedTranslationScope,
+                translationScope,
+                StringComparison.Ordinal);
+            var refreshForTranslationScope = translationScopeChanged && !options.SkipTranslation && !options.ForceGeminiStrict;
             var context = new PipelineExecutionContext(settings, options, DateTimeOffset.UtcNow)
             {
                 RoiScreen = roiScreen,
@@ -751,7 +775,7 @@ public sealed class PipelineOrchestrator
             var groupedLines = readingUnits
                 .Select(unit => new OcrLine(unit.Text, unit.Rect, 1.0f, Math.Max(1, unit.LineCount), unit.LineHeight))
                 .ToList();
-            var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff);
+            var diffOutput = _diffStage.Execute(readingUnits, groupedLines, options.SkipOcrDiff || refreshForTranslationScope);
             context.GroupedLines = groupedLines;
             context.ReadingUnits = readingUnits;
             context.ChangedUnitIds = diffOutput.ChangedUnitIds;
@@ -768,6 +792,11 @@ public sealed class PipelineOrchestrator
                     () => TranslationStarted?.Invoke(),
                     () => TranslationCompleted?.Invoke())
                 .ConfigureAwait(false);
+            if (translations.Count == readingUnits.Count && !options.SkipTranslation)
+            {
+                // WHY: A partial provider result must keep the scope dirty so missing units are retried.
+                _lastCompletedTranslationScope = translationScope;
+            }
             foreach (var pair in translations)
             {
                 context.Translations[pair.Key] = pair.Value;

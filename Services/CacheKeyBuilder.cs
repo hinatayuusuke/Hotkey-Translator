@@ -13,7 +13,12 @@ public sealed class CacheKeyBuilder
 
     public string Build(AppSettings settings, string normalizedText)
     {
+        return $"{BuildScope(settings)}_{normalizedText}";
+    }
+
+    public string BuildScope(AppSettings settings)
+    {
         var glossaryScope = _userGlossaryService.BuildGlossaryScope(settings);
-        return $"{settings.SourceLanguage}_{settings.TargetLanguage}_{settings.StyleId}_{glossaryScope}_{normalizedText}";
+        return $"{settings.SourceLanguage}_{settings.TargetLanguage}_{settings.StyleId}_{glossaryScope}";
     }
 }
