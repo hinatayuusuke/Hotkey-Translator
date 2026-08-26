@@ -2564,3 +2564,30 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
+
+**2026-08-26 10:25 (Asia/Taipei) — Custom入力文字の垂直中央揃え**
+
+### Summary
+- Source/TargetのCustom入力文字とカーソルを入力欄内で垂直中央に揃えた。
+
+### Context / Goal
+- Custom入力欄の文字が上寄りに表示され、言語選択欄との視覚的な整列が崩れていた。
+- テーマ既定のサイズと余白を維持しながら、入力内容の縦位置を調整する。
+
+### Changes
+- Source/TargetのCustom用TextBoxへ`VerticalContentAlignment="Center"`を追加した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — Custom入力欄の垂直コンテンツ配置を中央へ変更した。
+
+### Behavioral Impact
+- Custom入力時の文字とカーソルが入力欄内の垂直中央に表示される。
+- 入力値、保存、翻訳処理の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 適用中のTextBoxテーマによって中央位置の見え方にわずかな差が生じる可能性がある。
+- Mitigation: 固定Paddingを使わず、WPFのコンテンツ配置プロパティだけを指定する。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。

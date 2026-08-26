@@ -237,6 +237,7 @@
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
                                         <Setter Property="Visibility" Value="Collapsed" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Settings.SourceLanguageTag}" Value="custom">
                                                 <Setter Property="Visibility" Value="Visible" />
@@ -270,6 +271,7 @@
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
                                         <Setter Property="Visibility" Value="Collapsed" />
+                                        <Setter Property="VerticalContentAlignment" Value="Center" />
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding Settings.TargetLanguageTag}" Value="custom">
                                                 <Setter Property="Visibility" Value="Visible" />
