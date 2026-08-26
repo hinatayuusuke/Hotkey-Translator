@@ -251,6 +251,7 @@
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="176" />
+                                <ColumnDefinition Width="44" />
                                 <ColumnDefinition Width="140" />
                             </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0"
@@ -263,7 +264,7 @@
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Custom}" Tag="custom" />
                             </ComboBox>
-                            <TextBox Grid.Column="1"
+                            <TextBox Grid.Column="2"
                                      Margin="8,0,0,0"
                                      Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                 <TextBox.Style>

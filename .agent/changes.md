@@ -2536,3 +2536,31 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
+
+**2026-08-26 10:21 (Asia/Taipei) — Custom翻訳先入力欄の位置調整**
+
+### Summary
+- Custom選択時の翻訳先入力欄を翻訳元入力欄と同じ横位置に揃えた。
+
+### Context / Goal
+- 翻訳元の行には言語入替ボタン用の列がある一方、翻訳先の行にはなく、Custom入力欄の開始位置がずれていた。
+- Source/TargetのCustom入力欄を縦に整列させる。
+
+### Changes
+- 翻訳先グリッドへ入替ボタン相当の空き列を追加した。
+- 翻訳先のCustom入力欄を3列目へ移動した。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 翻訳先言語行の列構成とCustom入力欄の配置を調整した。
+
+### Behavioral Impact
+- Source/Targetの両方でCustomを選択した際、各入力欄の左端が同じ位置に揃う。
+- 言語選択、入力値、翻訳処理の挙動は変わらない。
+
+### Risk & Mitigation
+- Risk: 言語設定領域の横幅が狭い場合に、翻訳先入力欄が収まりにくくなる可能性がある。
+- Mitigation: 翻訳元と同一の既存列幅を使用し、セクションの既存最小幅内に収める。
+
+### Tests / Verification
+- `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
+- `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
