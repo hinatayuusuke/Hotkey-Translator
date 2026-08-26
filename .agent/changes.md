@@ -2591,3 +2591,32 @@
 ### Tests / Verification
 - `dotnet build .\Hotkey-Translator.csproj -p:OutputPath="artifacts\agent-build\"` — 成功。警告0、エラー0。
 - `git diff --check` — エラーなし（改行コード変換に関するGit警告のみ）。
+
+**2026-08-26 11:00 (Asia/Taipei) — ユーザー操作ガイド作成**
+
+### Summary
+- 現在の操作UIに基づく文字のみのユーザー向け操作ガイドを作成した。
+
+### Context / Goal
+- 画面内の各操作と設定の用途を、既存ドキュメントに依存せず利用者が確認できるようにする。
+- 初回設定、日常操作、詳細設定、トラブル時の確認手順を1つのMarkdownへまとめる。
+
+### Changes
+- 基本的なOCR／翻訳手順と既定ホットキーを記載した。
+- 全サイドバーメニュー、下部プレビュー／ログ、ROIスロット、Hook、各エンジン設定の操作を記載した。
+- よくある問題の確認手順を追加した。
+
+### Files Touched
+- `Doc/UserGuide.md` — 現行UIに対応するユーザー操作ガイドを新規作成した。
+- `.agent/changes.md` — 本タスクの変更内容を追記した。
+
+### Behavioral Impact
+- アプリの実行挙動に変更はない。利用者向けドキュメントのみ追加される。
+
+### Risk & Mitigation
+- Risk: UI変更後にドキュメントの記載が古くなる可能性がある。
+- Mitigation: 現在のXAML、ローカライズ文字列、操作処理、既定ホットキーを照合して記載した。
+
+### Tests / Verification
+- 既存の `Doc/` 内ファイルを参照せず、現行UIソースとの項目照合を実施した。
+- アプリコードは変更していないためビルドは未実施。
