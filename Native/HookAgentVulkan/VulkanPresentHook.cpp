@@ -84,8 +84,8 @@ namespace ht::hook::vulkan
         {
             Free = 0,
             Pending,
-            ReadyToPublish,
-            Publishing
+            Publishing,
+            Failed
         };
 
         struct CaptureSlot
@@ -117,6 +117,8 @@ namespace ht::hook::vulkan
             DWORD pid = 0;
             std::uint64_t frameId = 0;
             std::uint64_t publishQpc = 0;
+            std::uint64_t captureSubmitQpc = 0;
+            bool measurePerf = false;
             std::uint32_t width = 0;
             std::uint32_t height = 0;
             std::uint32_t stride = 0;
@@ -135,6 +137,12 @@ namespace ht::hook::vulkan
             std::uint32_t height = 0;
             std::size_t bytes = 0;
             bool writeSucceeded = false;
+            std::uint64_t queueQpc = 0;
+            std::uint64_t copyQpc = 0;
+            std::uint64_t writerLockQpc = 0;
+            std::uint64_t writeQpc = 0;
+            std::uint64_t captureAgeQpc = 0;
+            bool measurePerf = false;
         };
 
         struct DeviceInfo
@@ -179,6 +187,10 @@ namespace ht::hook::vulkan
             std::uint64_t captureFrameSeq = 0;
             std::uint64_t lastCaptureIssueQpc = 0;
             std::uint64_t publishGeneration = 0;
+            bool submitPending = false;
+            // NOTE: A failed submit/wait disables capture on this queue until resource recreation.
+            // Retrying by resetting the same command pool could overwrite still-pending GPU work.
+            bool failed = false;
         };
 
         struct OverlaySwapchainState
@@ -192,10 +204,35 @@ namespace ht::hook::vulkan
             std::uint32_t imageCount = 0;
         };
 
+        struct PerfSamples
+        {
+            // PERF: Bound storage independently of game FPS. Quantiles describe the most recent
+            // retained samples; count and maximum cover the entire reporting interval.
+            std::array<std::uint64_t, 2048> values{};
+            std::uint64_t count = 0;
+            std::uint64_t maximum = 0;
+
+            void Add(std::uint64_t qpc)
+            {
+                values[count++ % values.size()] = qpc;
+                maximum = std::max(maximum, qpc);
+            }
+        };
+
+        enum class PerfMetric : std::size_t
+        {
+            HookPrepare, RuntimeLock, OriginalPresent, HookTotal,
+            WorkerQueue, WorkerCopy, WriterLock, WorkerWrite, CaptureAge,
+            GpuObserved, WorkerDrain, GpuRetire, Count
+        };
+
         struct VulkanRuntime
         {
             std::mutex mutex;
             std::mutex frameWriterMutex;
+            std::mutex perfMutex;
+            std::array<PerfSamples, static_cast<std::size_t>(PerfMetric::Count)> perfSamples{};
+            std::uint64_t perfWindowQpc = 0;
             std::atomic_bool installed{false};
 
             ipc::SharedFrameWriter frameWriter;
@@ -236,7 +273,7 @@ namespace ht::hook::vulkan
             std::uint64_t lastFrameWriteQpc = 0;
             std::uint32_t configuredFpsLimit = kDefaultCaptureFps;
             bool overlayEnabled = false;
-            bool perfDiagLogEnabled = false;
+            std::atomic_bool perfDiagLogEnabled{false};
 
             std::uint64_t lastOverlayV2Seq = 0;
             std::uint64_t lastOverlayV2Qpc = 0;
@@ -267,6 +304,7 @@ namespace ht::hook::vulkan
             std::array<std::uint32_t, static_cast<std::size_t>(CaptureSkipReason::Count)> captureSkipPendingCount{};
             std::uint64_t lastPresentSummaryLogQpc = 0;
             std::uint64_t lastPresentPerfLogQpc = 0;
+            std::uint64_t lastPipelineStatsQpc = 0;
             std::uint64_t lastSwapchainEnsureFailQpc = 0;
             std::uint64_t lastGpuStateFailQpc = 0;
             std::uint64_t lastWriteFrameOkQpc = 0;
@@ -285,6 +323,7 @@ namespace ht::hook::vulkan
             std::uint64_t capturePublishCount = 0;
             std::uint64_t captureDeferCount = 0;
             std::uint64_t captureBusyCount = 0;
+            std::size_t publishQueuePeak = 0;
 
             CRITICAL_SECTION publishQueueLock{};
             bool publishQueueLockInitialized = false;
@@ -754,6 +793,70 @@ namespace ht::hook::vulkan
                 swapchainCount);
         }
 
+        void RecordPerf(VulkanRuntime& rt, PerfMetric metric, std::uint64_t qpc)
+        {
+            std::lock_guard<std::mutex> lock(rt.perfMutex);
+            rt.perfSamples[static_cast<std::size_t>(metric)].Add(qpc);
+        }
+
+        void EmitPerfWindow(VulkanRuntime& rt, std::uint64_t now, std::uint64_t frequency)
+        {
+            std::lock_guard<std::mutex> lock(rt.perfMutex);
+            if (rt.perfWindowQpc == 0)
+            {
+                rt.perfWindowQpc = now;
+                return;
+            }
+            // WHY: Presents on different queues can acquire this lock out of timestamp order.
+            if (frequency == 0 || now <= rt.perfWindowQpc || now - rt.perfWindowQpc < frequency * 2)
+            {
+                return;
+            }
+            constexpr const char* names[] = {
+                "hook_prepare", "runtime_lock", "original_present", "hook_total",
+                "worker_queue", "worker_copy", "writer_lock", "worker_write", "capture_age",
+                "gpu_observed", "worker_drain", "gpu_retire"};
+            for (std::size_t i = 0; i < rt.perfSamples.size(); ++i)
+            {
+                auto& samples = rt.perfSamples[i];
+                const auto retained = static_cast<std::size_t>(std::min<std::uint64_t>(samples.count, samples.values.size()));
+                if (retained == 0)
+                {
+                    continue;
+                }
+                std::sort(samples.values.begin(), samples.values.begin() + retained);
+                const auto quantile = [&](std::size_t percent)
+                {
+                    return QpcDeltaToMs(samples.values[(retained * percent + 99) / 100 - 1], frequency);
+                };
+                DebugLog(
+                    "stage=hook_vulkan event=perf_window metric=%s intervalMs=%.2f count=%llu retained=%zu p50Ms=%.3f p95Ms=%.3f p99Ms=%.3f maxMs=%.3f.",
+                    names[i], QpcDeltaToMs(now - rt.perfWindowQpc, frequency),
+                    static_cast<unsigned long long>(samples.count), retained,
+                    quantile(50), quantile(95), quantile(99), QpcDeltaToMs(samples.maximum, frequency));
+                samples.count = 0;
+                samples.maximum = 0;
+            }
+            rt.perfWindowQpc = now;
+        }
+
+        struct ScopedPerf
+        {
+            VulkanRuntime& runtime;
+            PerfMetric metric;
+            std::uint64_t begin;
+
+            ScopedPerf(VulkanRuntime& rt, PerfMetric value)
+                : runtime(rt), metric(value), begin(rt.perfDiagLogEnabled ? NowQpc() : 0) {}
+            ~ScopedPerf()
+            {
+                if (begin != 0)
+                {
+                    RecordPerf(runtime, metric, NowQpc() - begin);
+                }
+            }
+        };
+
         ImU32 ArgbToImU32(std::uint32_t argb)
         {
             const std::uint32_t a = (argb >> 24) & 0xFFu;
@@ -799,6 +902,81 @@ namespace ht::hook::vulkan
                 nullptr,
                 1,
                 &barrier);
+        }
+
+        void CmdMakeReadbackVisible(VkCommandBuffer commandBuffer)
+        {
+            // WHY: HOST_COHERENT removes invalidation, but GPU writes still need a host-read
+            // memory dependency before the signaled fence hands the mapping to the CPU worker.
+            VkMemoryBarrier barrier{};
+            barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
+            barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            barrier.dstAccessMask = VK_ACCESS_HOST_READ_BIT;
+            vkCmdPipelineBarrier(commandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_HOST_BIT,
+                0, 1, &barrier, 0, nullptr, 0, nullptr);
+        }
+
+        bool WaitForQueueGpuWorkLocked(VulkanRuntime& rt, QueueGpuState& state)
+        {
+            ScopedPerf timing(rt, PerfMetric::GpuRetire);
+            if (state.device == VK_NULL_HANDLE)
+            {
+                return true;
+            }
+            const auto retireFence = [&](VkFence fence)
+            {
+                // WHY: CPU publish drain cannot retire GPU submissions. Blocking is restricted to
+                // resource replacement/teardown; ordinary capture polls fences with zero waiting.
+                const auto result = vkWaitForFences(state.device, 1, &fence, VK_TRUE, UINT64_MAX);
+                if (result == VK_ERROR_DEVICE_LOST)
+                {
+                    state.failed = true;
+                    return true;
+                }
+                if (result != VK_SUCCESS)
+                {
+                    state.failed = true;
+                    DebugLog("stage=hook_vulkan event=gpu_retire_failed vk=%d.", static_cast<int>(result));
+                    return false;
+                }
+                return true;
+            };
+            if (state.submitPending)
+            {
+                if (!retireFence(state.fence))
+                {
+                    return false;
+                }
+                state.submitPending = false;
+            }
+            for (auto& slot : state.captureSlots)
+            {
+                if ((slot.state == CaptureSlotState::Pending || slot.state == CaptureSlotState::Failed) &&
+                    slot.submitQpc != 0)
+                {
+                    if (!retireFence(slot.fence))
+                    {
+                        return false;
+                    }
+                    // NOTE: Retired frames are discarded, not published during teardown.
+                    slot.state = CaptureSlotState::Free;
+                    slot.submitQpc = 0;
+                }
+            }
+            return true;
+        }
+
+        bool WaitForDeviceHookWorkLocked(VulkanRuntime& rt, VkDevice device)
+        {
+            for (auto& entry : rt.queueGpuStates)
+            {
+                if ((device == VK_NULL_HANDLE || entry.second.device == device) &&
+                    !WaitForQueueGpuWorkLocked(rt, entry.second))
+                {
+                    return false;
+                }
+            }
+            return true;
         }
 
         void DestroyCaptureSlot(VkDevice device, CaptureSlot& slot)
@@ -910,7 +1088,8 @@ namespace ht::hook::vulkan
 
                 if (waitResult != (WAIT_OBJECT_0 + 1))
                 {
-                    continue;
+                    DebugLog("stage=hook_vulkan event=publish_worker_wait_failed win32=%lu.", GetLastError());
+                    return 1;
                 }
 
                 for (;;)
@@ -939,11 +1118,15 @@ namespace ht::hook::vulkan
                     completion.width = request.width;
                     completion.height = request.height;
                     completion.bytes = request.bytes;
+                    completion.measurePerf = request.measurePerf;
+                    const auto workerStart = request.measurePerf ? NowQpc() : 0;
+                    completion.queueQpc = request.measurePerf ? workerStart - request.publishQpc : 0;
 
                     auto* slot = request.slot;
                     if (slot != nullptr &&
                         slot->stagingMapped != nullptr &&
                         request.bytes > 0 &&
+                        request.bytes <= slot->stagingBytes &&
                         request.width > 0 &&
                         request.height > 0)
                     {
@@ -965,7 +1148,9 @@ namespace ht::hook::vulkan
                             }
                         }
 
+                        const auto copyEnd = request.measurePerf ? NowQpc() : 0;
                         std::lock_guard<std::mutex> writerLock(runtime->frameWriterMutex);
+                        const auto writeStart = request.measurePerf ? NowQpc() : 0;
                         completion.writeSucceeded = runtime->frameWriter.WriteFrame(
                             request.pid,
                             ipc::GraphicsApi::Vulkan,
@@ -976,6 +1161,14 @@ namespace ht::hook::vulkan
                             request.publishQpc,
                             runtime->publishScratch.data(),
                             request.bytes);
+                        if (request.measurePerf)
+                        {
+                            const auto writeEnd = NowQpc();
+                            completion.copyQpc = copyEnd - workerStart;
+                            completion.writerLockQpc = writeStart - copyEnd;
+                            completion.writeQpc = writeEnd - writeStart;
+                            completion.captureAgeQpc = writeEnd - request.captureSubmitQpc;
+                        }
                     }
 
                     EnterCriticalSection(&runtime->publishQueueLock);
@@ -986,12 +1179,13 @@ namespace ht::hook::vulkan
 
                     const LONG activeCount = InterlockedDecrement(&runtime->publishActiveCount);
                     const bool idle = runtime->publishQueue.empty() && activeCount == 0;
-                    LeaveCriticalSection(&runtime->publishQueueLock);
-
+                    // WHY: The idle predicate and its event must change under the same lock as enqueue.
+                    // Otherwise a late Set/Reset can either release a live mapping or lose the idle wakeup.
                     if (idle && runtime->publishIdleEvent != nullptr)
                     {
                         SetEvent(runtime->publishIdleEvent);
                     }
+                    LeaveCriticalSection(&runtime->publishQueueLock);
                 }
             }
 
@@ -1083,6 +1277,14 @@ namespace ht::hook::vulkan
 
             for (const auto& item : completed)
             {
+                if (item.measurePerf)
+                {
+                    RecordPerf(rt, PerfMetric::WorkerQueue, item.queueQpc);
+                    RecordPerf(rt, PerfMetric::WorkerCopy, item.copyQpc);
+                    RecordPerf(rt, PerfMetric::WriterLock, item.writerLockQpc);
+                    RecordPerf(rt, PerfMetric::WorkerWrite, item.writeQpc);
+                    RecordPerf(rt, PerfMetric::CaptureAge, item.captureAgeQpc);
+                }
                 if (item.slot == nullptr)
                 {
                     continue;
@@ -1133,40 +1335,62 @@ namespace ht::hook::vulkan
             }
         }
 
-        void DrainPublishQueueLocked(VulkanRuntime& rt)
+        bool DrainPublishQueueLocked(VulkanRuntime& rt)
         {
+            ScopedPerf timing(rt, PerfMetric::WorkerDrain);
             if (rt.publishThreadHandle == nullptr || rt.publishIdleEvent == nullptr)
             {
                 DrainCompletedPublishesLocked(rt);
-                return;
+                return true;
             }
 
-            (void)WaitForSingleObject(rt.publishIdleEvent, INFINITE);
-            DrainCompletedPublishesLocked(rt);
+            const HANDLE handles[] = {rt.publishIdleEvent, rt.publishThreadHandle};
+            for (;;)
+            {
+                EnterCriticalSection(&rt.publishQueueLock);
+                const bool idle = rt.publishQueue.empty() && rt.publishActiveCount == 0;
+                LeaveCriticalSection(&rt.publishQueueLock);
+                if (idle)
+                {
+                    DrainCompletedPublishesLocked(rt);
+                    return true;
+                }
+                // WHY: A dead worker must be reported, not mistaken for a successful drain.
+                const auto waitResult = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+                if (waitResult != WAIT_OBJECT_0)
+                {
+                    DebugLog("stage=hook_vulkan event=publish_drain_failed wait=%lu win32=%lu.",
+                        waitResult, waitResult == WAIT_FAILED ? GetLastError() : ERROR_SUCCESS);
+                    return false;
+                }
+            }
         }
 
-        void StopPublishWorkerLocked(VulkanRuntime& rt)
+        bool StopPublishWorkerLocked(VulkanRuntime& rt)
         {
             if (rt.publishThreadHandle == nullptr)
             {
                 DrainCompletedPublishesLocked(rt);
                 ClosePublishHandlesLocked(rt);
-                return;
+                return true;
             }
 
-            DrainPublishQueueLocked(rt);
-
-            if (rt.publishStopEvent != nullptr)
+            if (!DrainPublishQueueLocked(rt))
             {
-                SetEvent(rt.publishStopEvent);
+                return false;
             }
 
-            if (rt.publishWakeEvent != nullptr)
+            if (!SetEvent(rt.publishStopEvent))
             {
-                SetEvent(rt.publishWakeEvent);
+                DebugLog("stage=hook_vulkan event=publish_stop_failed win32=%lu.", GetLastError());
+                return false;
             }
 
-            (void)WaitForSingleObject(rt.publishThreadHandle, INFINITE);
+            if (WaitForSingleObject(rt.publishThreadHandle, INFINITE) != WAIT_OBJECT_0)
+            {
+                DebugLog("stage=hook_vulkan event=publish_stop_failed win32=%lu.", GetLastError());
+                return false;
+            }
             DrainCompletedPublishesLocked(rt);
 
             if (rt.publishQueueLockInitialized)
@@ -1179,29 +1403,36 @@ namespace ht::hook::vulkan
             }
 
             ClosePublishHandlesLocked(rt);
+            return true;
         }
 
         bool EnqueuePublishRequestLocked(VulkanRuntime& rt, const VulkanPublishRequest& request)
         {
-            if (rt.publishThreadHandle == nullptr || !rt.publishQueueLockInitialized)
+            if (rt.publishThreadHandle == nullptr || !rt.publishQueueLockInitialized ||
+                WaitForSingleObject(rt.publishThreadHandle, 0) != WAIT_TIMEOUT)
             {
                 return false;
             }
 
             EnterCriticalSection(&rt.publishQueueLock);
+            if (!ResetEvent(rt.publishIdleEvent))
+            {
+                LeaveCriticalSection(&rt.publishQueueLock);
+                return false;
+            }
             rt.publishQueue.push_back(request);
+            rt.publishQueuePeak = std::max(rt.publishQueuePeak, rt.publishQueue.size());
+            if (!SetEvent(rt.publishWakeEvent))
+            {
+                rt.publishQueue.pop_back();
+                if (rt.publishQueue.empty() && rt.publishActiveCount == 0)
+                {
+                    SetEvent(rt.publishIdleEvent);
+                }
+                LeaveCriticalSection(&rt.publishQueueLock);
+                return false;
+            }
             LeaveCriticalSection(&rt.publishQueueLock);
-
-            if (rt.publishIdleEvent != nullptr)
-            {
-                ResetEvent(rt.publishIdleEvent);
-            }
-
-            if (rt.publishWakeEvent != nullptr)
-            {
-                SetEvent(rt.publishWakeEvent);
-            }
-
             return true;
         }
 
@@ -1277,10 +1508,17 @@ namespace ht::hook::vulkan
             rt.imguiDevice = VK_NULL_HANDLE;
         }
 
-        void RemoveDeviceStateLocked(VulkanRuntime& rt, VkDevice device)
+        bool RemoveDeviceStateLocked(VulkanRuntime& rt, VkDevice device)
         {
             // WHY: Queue/device teardown must not race a worker that still reads old staging mappings.
-            DrainPublishQueueLocked(rt);
+            if (!DrainPublishQueueLocked(rt) || !WaitForDeviceHookWorkLocked(rt, device))
+            {
+                return false;
+            }
+            if (rt.imguiDevice == device)
+            {
+                ShutdownImGuiLocked(rt);
+            }
 
             for (auto it = rt.queueGpuStates.begin(); it != rt.queueGpuStates.end();)
             {
@@ -1326,11 +1564,15 @@ namespace ht::hook::vulkan
             }
 
             rt.devices.erase(device);
+            return true;
         }
 
-        void ResetRuntimeLocked(VulkanRuntime& rt)
+        bool ResetRuntimeLocked(VulkanRuntime& rt)
         {
-            StopPublishWorkerLocked(rt);
+            if (!WaitForDeviceHookWorkLocked(rt, VK_NULL_HANDLE) || !StopPublishWorkerLocked(rt))
+            {
+                return false;
+            }
             ShutdownImGuiLocked(rt);
 
             for (auto& entry : rt.overlaySwapchains)
@@ -1365,6 +1607,15 @@ namespace ht::hook::vulkan
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.overlayEnabled = false;
             rt.perfDiagLogEnabled = false;
+            {
+                std::lock_guard<std::mutex> perfLock(rt.perfMutex);
+                for (auto& samples : rt.perfSamples)
+                {
+                    samples.count = 0;
+                    samples.maximum = 0;
+                }
+                rt.perfWindowQpc = 0;
+            }
             g_diagFileSinkEnabled.store(false, std::memory_order_relaxed);
 
             rt.lastOverlayV2Seq = 0;
@@ -1386,6 +1637,7 @@ namespace ht::hook::vulkan
             rt.captureSkipPendingCount.fill(0);
             rt.lastPresentSummaryLogQpc = 0;
             rt.lastPresentPerfLogQpc = 0;
+            rt.lastPipelineStatsQpc = 0;
             rt.lastSwapchainEnsureFailQpc = 0;
             rt.lastGpuStateFailQpc = 0;
             rt.lastWriteFrameOkQpc = 0;
@@ -1403,6 +1655,7 @@ namespace ht::hook::vulkan
             rt.capturePublishCount = 0;
             rt.captureDeferCount = 0;
             rt.captureBusyCount = 0;
+            rt.publishQueuePeak = 0;
             rt.publishScratch.clear();
             g_loggedFirstInstanceProcAddrHit.store(false);
             g_loggedFirstDeviceProcAddrHit.store(false);
@@ -1428,6 +1681,7 @@ namespace ht::hook::vulkan
             rt.originalAcquireNextImage2KHR = nullptr;
             rt.originalGetSwapchainImagesKHR = nullptr;
             rt.originalQueuePresentKHR = nullptr;
+            return true;
         }
 
         bool FindHostVisibleCoherentMemoryType(
@@ -1593,7 +1847,8 @@ namespace ht::hook::vulkan
             }
 
             slot.stagingHostCached = hostCached;
-            slot.stagingBytes = memReq.size;
+            // SECURITY: Allocation alignment bytes are not image data and must never be published.
+            slot.stagingBytes = requiredBytes;
             slot.width = width;
             slot.height = height;
             slot.format = format;
@@ -1664,7 +1919,9 @@ namespace ht::hook::vulkan
             }
 
             stagingHostCached = hostCached;
-            stagingBytes = memReq.size;
+            // WHY: Reuse compares this with width*height*4; allocator padding would recreate every Present.
+            // SECURITY: Only the initialized image payload is readable by the consumer.
+            stagingBytes = requiredBytes;
             return true;
         }
 
@@ -1783,6 +2040,81 @@ namespace ht::hook::vulkan
                 }
             }
             return selected;
+        }
+
+        bool PollCompletedCapturesLocked(VulkanRuntime& rt, VkQueue queue, QueueGpuState& gpu)
+        {
+            if (gpu.failed)
+            {
+                return false;
+            }
+            if (auto* pendingSlot = FindOldestPendingCaptureSlotLocked(gpu))
+            {
+                const auto fenceStatus = vkGetFenceStatus(gpu.device, pendingSlot->fence);
+                if (fenceStatus == VK_SUCCESS)
+                {
+                    if (pendingSlot->stagingMapped == nullptr)
+                    {
+                        char detail[128]{};
+                        (void)_snprintf_s(
+                            detail,
+                            sizeof(detail),
+                            _TRUNCATE,
+                            "persistent_mapped=%d bytes=%llu",
+                            pendingSlot->stagingMapped != nullptr ? 1 : 0,
+                            static_cast<unsigned long long>(pendingSlot->stagingBytes));
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
+                        pendingSlot->state = CaptureSlotState::Free;
+                        pendingSlot->submitQpc = 0;
+                        return false;
+                    }
+
+                    const auto frameId = ++rt.frameId;
+                    VulkanPublishRequest request{};
+                    request.slot = pendingSlot;
+                    request.queue = queue;
+                    request.generation = gpu.publishGeneration;
+                    request.pid = GetCurrentProcessId();
+                    request.frameId = frameId;
+                    request.publishQpc = NowQpc();
+                    request.captureSubmitQpc = pendingSlot->submitQpc;
+                    request.measurePerf = rt.perfDiagLogEnabled;
+                    if (request.measurePerf)
+                    {
+                        // NOTE: Includes the delay until the hook observes the fence, not just GPU execution.
+                        RecordPerf(rt, PerfMetric::GpuObserved, request.publishQpc - pendingSlot->submitQpc);
+                    }
+                    request.width = pendingSlot->width;
+                    request.height = pendingSlot->height;
+                    request.stride = pendingSlot->width * 4u;
+                    request.bytes = static_cast<std::size_t>(pendingSlot->stagingBytes);
+                    request.rgbaNeedsSwap = pendingSlot->rgbaNeedsSwap;
+
+                    pendingSlot->state = CaptureSlotState::Publishing;
+                    if (!EnqueuePublishRequestLocked(rt, request))
+                    {
+                        pendingSlot->state = CaptureSlotState::Free;
+                        pendingSlot->submitQpc = 0;
+                        LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "publish_enqueue_failed");
+                        return false;
+                    }
+                }
+                else if (fenceStatus == VK_NOT_READY)
+                {
+                    rt.captureDeferCount++;
+                }
+                else
+                {
+                    char detail[96]{};
+                    (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(fenceStatus));
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, detail);
+                    pendingSlot->state = CaptureSlotState::Failed;
+                    gpu.failed = true;
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         bool EnsureSwapchainImagesLocked(VulkanRuntime& rt, SwapchainInfo& info, VkSwapchainKHR swapchain)
@@ -1974,7 +2306,10 @@ namespace ht::hook::vulkan
             }
 
             // WHY: Recreate can invalidate slot storage and persistent mappings, so publish must be fully drained first.
-            DrainPublishQueueLocked(rt);
+            if (!DrainPublishQueueLocked(rt) || !WaitForQueueGpuWorkLocked(rt, state))
+            {
+                return false;
+            }
             DestroyQueueGpuState(state);
             state.device = device;
             state.queueFamily = queueInfo.familyIndex;
@@ -2082,6 +2417,10 @@ namespace ht::hook::vulkan
                 return true;
             }
 
+            if (!WaitForDeviceHookWorkLocked(rt, swapInfo.device))
+            {
+                return false;
+            }
             DestroyOverlaySwapchainState(swapInfo.device, ovl);
 
             VkAttachmentDescription attachment{};
@@ -2304,6 +2643,10 @@ namespace ht::hook::vulkan
             }
             else if (rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount)
             {
+                if (!WaitForDeviceHookWorkLocked(rt, rt.imguiDevice))
+                {
+                    return false;
+                }
                 // WHY: swapchain image count change requires backend queued-frame count refresh.
                 ImGui_ImplVulkan_SetMinImageCount(imageCount);
                 rt.imguiBoundSwapchain = swapchain;
@@ -2559,6 +2902,12 @@ namespace ht::hook::vulkan
             }
             auto& gpu = queueStateIt->second;
             DrainCompletedPublishesLocked(rt);
+            // WHY: FPS limits new copies, not retirement of frames already completed by the GPU.
+            // Poll even on overlay-only and no-work presents, before their early returns.
+            if (!PollCompletedCapturesLocked(rt, queue, gpu))
+            {
+                return false;
+            }
             const bool delayedReadbackEnabled = !IsDelayedReadbackDisabled();
             const bool shouldCapture = ShouldCaptureNowLocked(rt, gpu, rt.lastPresentQpc);
             bool useImmediateCapture = shouldCapture;
@@ -2658,66 +3007,6 @@ namespace ht::hook::vulkan
 
             if (delayedReadbackEnabled && shouldCapture)
             {
-                if (auto* pendingSlot = FindOldestPendingCaptureSlotLocked(gpu))
-                {
-                    const auto fenceStatus = vkGetFenceStatus(gpu.device, pendingSlot->fence);
-                    if (fenceStatus == VK_SUCCESS)
-                    {
-                        if (pendingSlot->stagingMapped == nullptr)
-                        {
-                            char detail[128]{};
-                            (void)_snprintf_s(
-                                detail,
-                                sizeof(detail),
-                                _TRUNCATE,
-                                "persistent_mapped=%d bytes=%llu",
-                                pendingSlot->stagingMapped != nullptr ? 1 : 0,
-                                static_cast<unsigned long long>(pendingSlot->stagingBytes));
-                            LogCaptureSkipLocked(rt, CaptureSkipReason::VkMapMemoryFailed, detail);
-                            pendingSlot->state = CaptureSlotState::Free;
-                            pendingSlot->submitQpc = 0;
-                            emitPresentPerfLog("deferred_map_failed");
-                            return false;
-                        }
-
-                        const auto frameId = ++rt.frameId;
-                        VulkanPublishRequest request{};
-                        request.slot = pendingSlot;
-                        request.queue = queue;
-                        request.generation = gpu.publishGeneration;
-                        request.pid = GetCurrentProcessId();
-                        request.frameId = frameId;
-                        request.publishQpc = NowQpc();
-                        request.width = pendingSlot->width;
-                        request.height = pendingSlot->height;
-                        request.stride = pendingSlot->width * 4u;
-                        request.bytes = static_cast<std::size_t>(pendingSlot->stagingBytes);
-                        request.rgbaNeedsSwap = pendingSlot->rgbaNeedsSwap;
-
-                        pendingSlot->state = CaptureSlotState::Publishing;
-                        if (!EnqueuePublishRequestLocked(rt, request))
-                        {
-                            pendingSlot->state = CaptureSlotState::Free;
-                            pendingSlot->submitQpc = 0;
-                            LogCaptureSkipLocked(rt, CaptureSkipReason::WriteFrameFailed, "publish_enqueue_failed");
-                            emitPresentPerfLog("deferred_enqueue_failed");
-                            return false;
-                        }
-                    }
-                    else if (fenceStatus == VK_NOT_READY)
-                    {
-                        rt.captureDeferCount++;
-                    }
-                    else
-                    {
-                        char detail[96]{};
-                        (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(fenceStatus));
-                        LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, detail);
-                        pendingSlot->state = CaptureSlotState::Free;
-                        pendingSlot->submitQpc = 0;
-                    }
-                }
-
                 if (auto* captureSlot = FindFreeCaptureSlotLocked(gpu))
                 {
                     const auto resetCapturePoolResult = vkResetCommandPool(gpu.device, captureSlot->commandPool, 0);
@@ -2780,6 +3069,7 @@ namespace ht::hook::vulkan
                         captureSlot->stagingBuffer,
                         1,
                         &region);
+                    CmdMakeReadbackVisible(captureSlot->commandBuffer);
                     perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
 
                     if (shouldRenderOverlay && ovl != nullptr)
@@ -2850,6 +3140,7 @@ namespace ht::hook::vulkan
                     perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
                     if (captureSubmitResult != VK_SUCCESS)
                     {
+                        gpu.failed = true;
                         char detail[96]{};
                         (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(captureSubmitResult));
                         LogCaptureSkipLocked(rt, CaptureSkipReason::VkQueueSubmitFailed, detail);
@@ -2939,6 +3230,7 @@ namespace ht::hook::vulkan
                     gpu.stagingBuffer,
                     1,
                     &region);
+                CmdMakeReadbackVisible(gpu.commandBuffer);
                 perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
             }
 
@@ -3025,12 +3317,14 @@ namespace ht::hook::vulkan
             perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
             if (submitResult != VK_SUCCESS)
             {
+                gpu.failed = true;
                 char detail[96]{};
                 (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(submitResult));
                 LogCaptureSkipLocked(rt, CaptureSkipReason::VkQueueSubmitFailed, detail);
                 return false;
             }
 
+            gpu.submitPending = true;
             const auto waitBeginQpc = NowQpc();
             const auto waitResult = vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull);
             perfWaitDurationQpc = NowQpc() - waitBeginQpc;
@@ -3039,9 +3333,11 @@ namespace ht::hook::vulkan
                 char detail[96]{};
                 (void)_snprintf_s(detail, sizeof(detail), _TRUNCATE, "vk=%d", static_cast<int>(waitResult));
                 LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, detail);
+                gpu.failed = true;
                 return false;
             }
 
+            gpu.submitPending = false;
             rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
             rt.lastWidth = gpu.width;
             rt.lastHeight = gpu.height;
@@ -3470,7 +3766,11 @@ namespace ht::hook::vulkan
             auto& rt = g_rt;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
-                RemoveDeviceStateLocked(rt, device);
+                if (!RemoveDeviceStateLocked(rt, device))
+                {
+                    // SECURITY: Keep live resources on a reported retirement failure rather than free in-use memory.
+                    return;
+                }
             }
 
             const auto original = rt.originalDestroyDevice;
@@ -3618,6 +3918,10 @@ namespace ht::hook::vulkan
             auto& rt = g_rt;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
+                if (!WaitForDeviceHookWorkLocked(rt, device))
+                {
+                    return;
+                }
                 auto ovlIt = rt.overlaySwapchains.find(swapchain);
                 if (ovlIt != rt.overlaySwapchains.end())
                 {
@@ -3683,10 +3987,16 @@ namespace ht::hook::vulkan
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* presentInfo)
         {
             auto& rt = g_rt;
+            const bool measurePerf = rt.perfDiagLogEnabled.load(std::memory_order_relaxed);
+            const auto hookBegin = measurePerf ? NowQpc() : 0;
+            std::uint64_t lockAcquired = 0;
+            std::uint64_t frequency = 0;
             rt.queuePresentHitCount.fetch_add(1, std::memory_order_relaxed);
             PFN_vkQueuePresentKHR original = nullptr;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
+                lockAcquired = measurePerf ? NowQpc() : 0;
+                frequency = rt.qpcFreq;
                 rt.presentCount++;
                 rt.lastPresentQpc = NowQpc();
                 rt.lastPresentKind = 1;
@@ -3731,6 +4041,28 @@ namespace ht::hook::vulkan
                 DrainCompletedPublishesLocked(rt);
                 PublishStatusLocked(rt);
                 original = rt.originalQueuePresentKHR;
+                if (measurePerf && ShouldEmitDiagLog(NowQpc(), frequency, rt.lastPipelineStatsQpc, kDiagSummaryIntervalMs))
+                {
+                    std::size_t depth = 0;
+                    std::size_t peak = 0;
+                    LONG active = 0;
+                    if (rt.publishQueueLockInitialized)
+                    {
+                        EnterCriticalSection(&rt.publishQueueLock);
+                        depth = rt.publishQueue.size();
+                        peak = rt.publishQueuePeak;
+                        active = rt.publishActiveCount;
+                        rt.publishQueuePeak = depth;
+                        LeaveCriticalSection(&rt.publishQueueLock);
+                    }
+                    DebugLog(
+                        "stage=hook_vulkan event=pipeline_counts issueTotal=%llu publishTotal=%llu deferTotal=%llu busyTotal=%llu queueDepth=%zu queuePeak=%zu active=%ld fps=%u delayed=%d.",
+                        static_cast<unsigned long long>(rt.captureIssueCount),
+                        static_cast<unsigned long long>(rt.capturePublishCount),
+                        static_cast<unsigned long long>(rt.captureDeferCount),
+                        static_cast<unsigned long long>(rt.captureBusyCount),
+                        depth, peak, active, rt.configuredFpsLimit, !IsDelayedReadbackDisabled());
+                }
             }
 
             if (original == nullptr)
@@ -3738,7 +4070,18 @@ namespace ht::hook::vulkan
                 return VK_ERROR_INITIALIZATION_FAILED;
             }
 
-            return original(queue, presentInfo);
+            const auto beforeOriginal = measurePerf ? NowQpc() : 0;
+            const auto result = original(queue, presentInfo);
+            if (measurePerf)
+            {
+                const auto afterOriginal = NowQpc();
+                RecordPerf(rt, PerfMetric::RuntimeLock, lockAcquired - hookBegin);
+                RecordPerf(rt, PerfMetric::HookPrepare, beforeOriginal - hookBegin);
+                RecordPerf(rt, PerfMetric::OriginalPresent, afterOriginal - beforeOriginal);
+                RecordPerf(rt, PerfMetric::HookTotal, afterOriginal - hookBegin);
+                EmitPerfWindow(rt, afterOriginal, frequency);
+            }
+            return result;
         }
     }
 
@@ -3941,12 +4284,21 @@ namespace ht::hook::vulkan
             return;
         }
 
+        if (!WaitForDeviceHookWorkLocked(rt, VK_NULL_HANDLE) || !DrainPublishQueueLocked(rt))
+        {
+            DebugLog("stage=hook_vulkan event=uninstall_hook result=fail reason=retirement_failed.");
+            return;
+        }
         (void)MH_DisableHook(MH_ALL_HOOKS);
         (void)MH_Uninitialize();
         rt.hookSuccessIndicatorArmed = false;
         rt.hookSuccessIndicatorDone = false;
         rt.hookSuccessIndicatorStartQpc = 0;
-        ResetRuntimeLocked(rt);
+        if (!ResetRuntimeLocked(rt))
+        {
+            DebugLog("stage=hook_vulkan event=uninstall_hook result=fail reason=worker_stop_failed.");
+            return;
+        }
         rt.installed.store(false);
         DebugLog(
             "stage=hook_vulkan event=uninstall_hook result=ok pid=%lu.",

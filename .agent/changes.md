@@ -2620,3 +2620,54 @@
 ### Tests / Verification
 - 既存の `Doc/` 内ファイルを参照せず、現行UIソースとの項目照合を実施した。
 - アプリコードは変更していないためビルドは未実施。
+
+**2026-09-09 13:34 (Asia/Taipei) — Vulkan readbackの完了回収・寿命管理・計測を改善**
+
+### Summary
+- Vulkan改善計画のStep 1～3に対応するnative変更と回帰テストを実装し、x64ビルド・実GPUのstaging同期検証を実施した。
+
+### Context / Goal
+- publish idle通知とenqueueの競合、capture FPS gateによる完了回収遅延、GPU未完了resourceの破棄リスクを解消する。
+- workerとPresentの負荷を分けて測定し、後続のoverlay非同期化を判断できるようにする。
+
+### Changes
+- queue lock内でidle eventのReset/Setを行い、drainの述語再確認・worker終了/待機失敗検出を追加した。
+- pending GPU回収をcapture発行判定より前へ移し、低capture FPSでも完了済みslotを回収するようにした。
+- GPU submitの未完了状態と失敗状態を追跡し、再作成・破棄・reset/detach前のGPU retirementとworker drainを分離した。
+- worker/Presentの期間集計、capture age、queue/発行/publish/defer/busy診断を追加した。
+- staging payload bytesを画像サイズに修正し、allocation paddingの読み出しと不要な再作成を防止した。copy後のHOST_READ memory dependencyも追加した。
+- 実コードのworker、Windows event、V2 writerを使う回帰テストと、実GPU/同期検証を使う任意実行モードを追加した。
+- ユーザーの追加指示に従い、x86ビルド・テストを以後スキップした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 完了回収、idle通知、GPU/worker寿命、失敗時の再利用防止、診断とpayloadサイズを修正。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — FPS gate、所有権、画素、世代、失敗、実GPU同期の回帰テストを追加。
+- `Native/HookAgentVulkan/CMakeLists.txt` — 任意のHookAgentVulkanTests targetとCTest登録を追加。
+- `Native/CMakeLists.txt` — HT_VULKAN_BUILD_TESTSオプションを追加（既定OFF）。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 調査時点を保持して実装状況、未実装の後続Step、x64検証手順とログの意味を追記。
+- `.agent/changes.md` — 本タスクの結果を追記。
+
+### Behavioral Impact
+- capture 1/5/15 FPSでもGPU完了回収が次のcapture発行周期を待たない。captureの発行間隔は維持する。
+- FramePipe V2/BGRA8契約は維持する。画像外のallocator paddingはpublishしない。
+- fence/submit失敗時はqueueのresource再作成まで新規capture/hook overlay処理を停止する。GPU未完了のcommand poolを再利用しない。
+- overlay-only/immediateのCPU wait、present semaphore chain、BGRA中間copy、consumer鮮度制御は今回変更していない。
+
+### Risk & Mitigation
+- Risk: teardownでのGPU完了待ちや診断有効時の集計が停止時間に影響し得る。
+- Mitigation: 通常のGPU完了回収は非ブロッキングとし、blocking waitはresource再作成/破棄時に限定。追加計測は既存診断フラグで制御し、サンプル保存数を固定した。
+- Risk: swapchain/ImGuiを含む実ゲーム構成はstaging単体試験で保証できない。
+- Mitigation: 計画書でstaging検証とWSI/ゲーム性能を区別し、未検証のsemaphore再利用・破棄を前提にoverlay waitを削除しない。
+
+### Tests / Verification
+- SDK: G:/Development-Cache/VulkanSdk（Vulkan headers 1.4.341）。
+- x64 Release: HookAgentVulkan、HookAgentVulkanTestsのビルド成功。
+- `ctest --test-dir Native/build -C Release --output-on-failure` — 成功（VulkanReadback）。低FPS、2,000回のidle/enqueue遷移、active writer保持、画素/世代/失敗、GPU retirement、worker終了、計測時刻の順序を検証。
+- `HookAgentVulkanTests.exe --gpu` — GTX 1080で12回の実GPU staging→fence→worker publishと破棄に成功。Validation Layers/synchronization validationのerrorは0。試験プロセスのみimplicit layerを無効化。
+- x86は指示前に公式Khronos Vulkan-Loader v1.4.341のimport libraryでコンパイル・リンク成功。ただし実行はアンチウイルスに阻まれ、ユーザー指示後はビルド/テストをスキップ。セキュリティ設定は未変更。
+- `git diff --check` — 成功（GitのLF/CRLF変換に関する注意のみ）。
+- 実ゲームの1% low、overlay/WSI、Alt+Tab/detachの実動作検証は未実施。性能改善率は未確定。
+
+### Open Questions
+- Step 4のpresent semaphore再利用・破棄とmulti-swapchain/queue familyの検証が残る。
+- Step 5のcopy/backlog改善はworker計測後、Step 6のconsumer鮮度制御は許容ageとtimestamp契約の確定後に実施する。

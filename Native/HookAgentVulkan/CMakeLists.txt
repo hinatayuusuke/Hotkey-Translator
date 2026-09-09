@@ -96,3 +96,17 @@ set_target_properties(HookAgentVulkan PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY_DEBUG   "${HT_VULKAN_AGENT_BIN_DIR}"
     LIBRARY_OUTPUT_DIRECTORY_RELEASE "${HT_VULKAN_AGENT_BIN_DIR}"
 )
+
+if (HT_VULKAN_BUILD_TESTS)
+    # WHY: Exercise the production worker and retirement code with controlled fence results,
+    # without installing hooks in the test runner or requiring a game to reproduce races.
+    get_target_property(HT_VULKAN_TEST_SOURCES HookAgentVulkan SOURCES)
+    list(REMOVE_ITEM HT_VULKAN_TEST_SOURCES HookAgentVulkan.def dllmain.cpp VulkanPresentHook.cpp)
+    add_executable(HookAgentVulkanTests tests/VulkanReadbackTests.cpp ${HT_VULKAN_TEST_SOURCES})
+    get_target_property(HT_VULKAN_TEST_INCLUDES HookAgentVulkan INCLUDE_DIRECTORIES)
+    target_include_directories(HookAgentVulkanTests PRIVATE ${HT_VULKAN_TEST_INCLUDES})
+    target_compile_definitions(HookAgentVulkanTests PRIVATE _UNICODE UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+    target_link_libraries(HookAgentVulkanTests PRIVATE minhook "${HT_VULKAN_LIBRARY}")
+    add_test(NAME VulkanReadback COMMAND HookAgentVulkanTests)
+    set_tests_properties(VulkanReadback PROPERTIES TIMEOUT 45)
+endif()

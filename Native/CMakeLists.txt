@@ -4,6 +4,11 @@ project(HotkeyTranslatorHookNative LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(HT_VULKAN_BUILD_TESTS "Build Vulkan hook lifecycle and readback regression tests" OFF)
+if (HT_VULKAN_BUILD_TESTS)
+    enable_testing()
+endif()
+
 add_subdirectory(ThirdParty/MinHook)
 add_subdirectory(HookHost)
 add_subdirectory(HookAgentDx11)
