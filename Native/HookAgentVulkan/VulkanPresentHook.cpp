@@ -148,6 +148,7 @@ namespace ht::hook::vulkan
         struct DeviceInfo
         {
             VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
+            std::uint32_t singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
         };
 
         struct QueueInfo
@@ -155,6 +156,7 @@ namespace ht::hook::vulkan
             VkDevice device = VK_NULL_HANDLE;
             std::uint32_t familyIndex = std::numeric_limits<std::uint32_t>::max();
             bool valid = false;
+            bool protectedQueue = false;
         };
 
         struct SwapchainInfo
@@ -163,6 +165,10 @@ namespace ht::hook::vulkan
             VkFormat format = VK_FORMAT_UNDEFINED;
             VkExtent2D extent{};
             std::vector<VkImage> images;
+            bool createInfoKnown = false;
+            bool hookUsageSupported = false;
+            VkSharingMode sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+            std::vector<std::uint32_t> sharingFamilies;
         };
 
         struct QueueGpuState
@@ -292,6 +298,10 @@ namespace ht::hook::vulkan
             VkSwapchainKHR imguiBoundSwapchain = VK_NULL_HANDLE;
             std::uint32_t imguiImageCount = 0;
             std::uint64_t lastImGuiQpc = 0;
+            VkFence imguiPendingFence = VK_NULL_HANDLE;
+            VkDevice imguiPendingDevice = VK_NULL_HANDLE;
+            std::uint64_t overlayBusyCount = 0;
+            std::uint64_t lastPresentSyncSkipQpc = 0;
 
             std::uint64_t presentCount = 0;
             std::uint64_t lastPresentQpc = 0;
@@ -963,6 +973,13 @@ namespace ht::hook::vulkan
                     slot.submitQpc = 0;
                 }
             }
+            if (rt.imguiPendingDevice == state.device &&
+                (rt.imguiPendingFence == state.fence || std::any_of(state.captureSlots.begin(), state.captureSlots.end(),
+                    [&](const CaptureSlot& slot) { return slot.fence == rt.imguiPendingFence; })))
+            {
+                rt.imguiPendingFence = VK_NULL_HANDLE;
+                rt.imguiPendingDevice = VK_NULL_HANDLE;
+            }
             return true;
         }
 
@@ -1132,13 +1149,12 @@ namespace ht::hook::vulkan
                     {
                         // WHY: Keep Vulkan object lifetime on the hook thread; the worker only consumes persistent CPU mappings.
                         const auto* mapped = static_cast<const std::uint8_t*>(slot->stagingMapped);
-                        runtime->publishScratch.resize(request.bytes);
-                        if (!request.rgbaNeedsSwap)
+                        // PERF: Publishing retains the slot until this synchronous WriteFrame returns,
+                        // so BGRA can go straight from its GPU-completed mapping to shared memory.
+                        const std::uint8_t* payload = mapped;
+                        if (request.rgbaNeedsSwap)
                         {
-                            std::memcpy(runtime->publishScratch.data(), mapped, request.bytes);
-                        }
-                        else
-                        {
+                            runtime->publishScratch.resize(request.bytes);
                             for (std::size_t i = 0; i + 3 < request.bytes; i += 4)
                             {
                                 runtime->publishScratch[i + 0] = mapped[i + 2];
@@ -1146,6 +1162,7 @@ namespace ht::hook::vulkan
                                 runtime->publishScratch[i + 2] = mapped[i + 0];
                                 runtime->publishScratch[i + 3] = mapped[i + 3];
                             }
+                            payload = runtime->publishScratch.data();
                         }
 
                         const auto copyEnd = request.measurePerf ? NowQpc() : 0;
@@ -1159,7 +1176,7 @@ namespace ht::hook::vulkan
                             request.height,
                             request.stride,
                             request.publishQpc,
-                            runtime->publishScratch.data(),
+                            payload,
                             request.bytes);
                         if (request.measurePerf)
                         {
@@ -1495,6 +1512,8 @@ namespace ht::hook::vulkan
             rt.imguiBoundSwapchain = VK_NULL_HANDLE;
             rt.imguiImageCount = 0;
             rt.lastImGuiQpc = 0;
+            rt.imguiPendingFence = VK_NULL_HANDLE;
+            rt.imguiPendingDevice = VK_NULL_HANDLE;
 
             if (rt.imguiDescriptorPool != VK_NULL_HANDLE)
             {
@@ -1606,6 +1625,8 @@ namespace ht::hook::vulkan
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.overlayEnabled = false;
+            rt.overlayBusyCount = 0;
+            rt.lastPresentSyncSkipQpc = 0;
             rt.perfDiagLogEnabled = false;
             {
                 std::lock_guard<std::mutex> perfLock(rt.perfMutex);
@@ -2207,6 +2228,21 @@ namespace ht::hook::vulkan
             {
                 info.format = createInfo->imageFormat;
                 info.extent = createInfo->imageExtent;
+                info.createInfoKnown = true;
+                info.sharingMode = createInfo->imageSharingMode;
+                info.sharingFamilies.clear();
+                if (createInfo->imageSharingMode == VK_SHARING_MODE_CONCURRENT)
+                {
+                    info.sharingFamilies.assign(createInfo->pQueueFamilyIndices,
+                        createInfo->pQueueFamilyIndices + createInfo->queueFamilyIndexCount);
+                }
+                info.hookUsageSupported =
+                    (createInfo->imageUsage & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) ==
+                        (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) &&
+                    !(createInfo->flags & VK_SWAPCHAIN_CREATE_PROTECTED_BIT_KHR) &&
+                    createInfo->imageArrayLayers == 1 &&
+                    createInfo->presentMode != VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR &&
+                    createInfo->presentMode != VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR;
             }
 
             (void)EnsureSwapchainImagesLocked(rt, info, swapchain);
@@ -2305,7 +2341,16 @@ namespace ht::hook::vulkan
                 return true;
             }
 
-            // WHY: Recreate can invalidate slot storage and persistent mappings, so publish must be fully drained first.
+            std::uint32_t familyCount = 0;
+            vkGetPhysicalDeviceQueueFamilyProperties(deviceInfo.physicalDevice, &familyCount, nullptr);
+            std::vector<VkQueueFamilyProperties> families(familyCount);
+            vkGetPhysicalDeviceQueueFamilyProperties(deviceInfo.physicalDevice, &familyCount, families.data());
+            if (queueInfo.familyIndex >= familyCount || !(families[queueInfo.familyIndex].queueFlags & VK_QUEUE_GRAPHICS_BIT))
+            {
+                LogCaptureSkipLocked(rt, CaptureSkipReason::EnsureQueueGpuStateFailed, "present_queue_not_graphics_capable");
+                return false;
+            }
+            // WHY: Recreate invalidates slot storage and mappings, so retire both CPU and GPU owners.
             if (!DrainPublishQueueLocked(rt) || !WaitForQueueGpuWorkLocked(rt, state))
             {
                 return false;
@@ -2552,6 +2597,23 @@ namespace ht::hook::vulkan
                 return false;
             }
 
+            const auto imageCount = static_cast<std::uint32_t>(ovl.framebuffers.size());
+            if (imageCount == 0)
+            {
+                return false;
+            }
+            if (rt.imguiContext != nullptr && rt.imguiDevice != VK_NULL_HANDLE &&
+                (rt.imguiDevice != queueInfo.device || rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount))
+            {
+                // WHY: SetMinImageCount does not recreate the backend's render-pass pipeline or
+                // actual ImageCount. Rebinding must retire old draws before rebuilding either.
+                if (!WaitForDeviceHookWorkLocked(rt, rt.imguiDevice))
+                {
+                    return false;
+                }
+                ShutdownImGuiLocked(rt);
+            }
+
             if (rt.imguiContext == nullptr)
             {
                 rt.imguiContext = ImGui::CreateContext();
@@ -2609,12 +2671,6 @@ namespace ht::hook::vulkan
                 rt.imguiDevice = queueInfo.device;
             }
 
-            const auto imageCount = static_cast<std::uint32_t>(ovl.framebuffers.size());
-            if (imageCount == 0)
-            {
-                return false;
-            }
-
             if (!rt.imguiInitialized)
             {
                 ImGui_ImplVulkan_InitInfo initInfo{};
@@ -2638,17 +2694,6 @@ namespace ht::hook::vulkan
                 }
 
                 rt.imguiInitialized = true;
-                rt.imguiBoundSwapchain = swapchain;
-                rt.imguiImageCount = imageCount;
-            }
-            else if (rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount)
-            {
-                if (!WaitForDeviceHookWorkLocked(rt, rt.imguiDevice))
-                {
-                    return false;
-                }
-                // WHY: swapchain image count change requires backend queued-frame count refresh.
-                ImGui_ImplVulkan_SetMinImageCount(imageCount);
                 rt.imguiBoundSwapchain = swapchain;
                 rt.imguiImageCount = imageCount;
             }
@@ -2798,11 +2843,91 @@ namespace ht::hook::vulkan
 
             ImGui::Render();
         }
+        constexpr std::size_t kMaxPresentWaitSemaphores = 64;
+
+        bool CanSynchronizePresent(const QueueInfo& queue, const DeviceInfo& device,
+            const SwapchainInfo& swapchain, const VkPresentInfoKHR& present)
+        {
+            if (!swapchain.createInfoKnown || !swapchain.hookUsageSupported || queue.protectedQueue ||
+                present.waitSemaphoreCount == 0 || present.waitSemaphoreCount > kMaxPresentWaitSemaphores ||
+                present.pWaitSemaphores == nullptr)
+            {
+                return false;
+            }
+            // COMPAT: Exclusive images are supported only when all device queues use the present
+            // family. We cannot reconstruct an application's queue-family ownership transfer.
+            if (swapchain.sharingMode == VK_SHARING_MODE_EXCLUSIVE && device.singleQueueFamily != queue.familyIndex)
+            {
+                return false;
+            }
+            if (swapchain.sharingMode == VK_SHARING_MODE_CONCURRENT &&
+                std::find(swapchain.sharingFamilies.begin(), swapchain.sharingFamilies.end(), queue.familyIndex) == swapchain.sharingFamilies.end())
+            {
+                return false;
+            }
+            for (auto* next = static_cast<const VkBaseInStructure*>(present.pNext); next; next = next->pNext)
+            {
+                if (next->sType == VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR)
+                {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        VkResult SubmitSynchronizedPresentWork(VkQueue queue, VkCommandBuffer commandBuffer,
+            VkFence fence, const VkPresentInfoKHR& present)
+        {
+            std::array<VkPipelineStageFlags, kMaxPresentWaitSemaphores> stages{};
+            if (present.waitSemaphoreCount == 0 || present.waitSemaphoreCount > stages.size() || !present.pWaitSemaphores)
+            {
+                return VK_ERROR_INITIALIZATION_FAILED;
+            }
+            stages.fill(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+            VkSubmitInfo submit{};
+            submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+            submit.commandBufferCount = 1;
+            submit.pCommandBuffers = &commandBuffer;
+            submit.waitSemaphoreCount = present.waitSemaphoreCount;
+            submit.pWaitSemaphores = present.pWaitSemaphores;
+            submit.pWaitDstStageMask = stages.data();
+            // WHY: Wait consumes the game's binary signals; signal restores them only AFTER hook
+            // work completes. Present consumes the new signals. The game retains ownership and
+            // its existing present/acquire lifetime rules, so no hook-owned present semaphore can
+            // outlive resize/detach. ALL_COMMANDS also orders image layout transitions after wait.
+            submit.signalSemaphoreCount = present.waitSemaphoreCount;
+            submit.pSignalSemaphores = present.pWaitSemaphores;
+            return vkQueueSubmit(queue, 1, &submit, fence);
+        }
+
+        bool PollOverlaySubmissionLocked(VulkanRuntime& rt)
+        {
+            if (rt.imguiPendingFence == VK_NULL_HANDLE)
+            {
+                return true;
+            }
+            const auto status = vkGetFenceStatus(rt.imguiPendingDevice, rt.imguiPendingFence);
+            if (status == VK_SUCCESS)
+            {
+                rt.imguiPendingFence = VK_NULL_HANDLE;
+                rt.imguiPendingDevice = VK_NULL_HANDLE;
+                return true;
+            }
+            if (status != VK_NOT_READY)
+            {
+                LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, "overlay_fence_failed");
+            }
+            ++rt.overlayBusyCount;
+            return false;
+        }
+
         bool SubmitPresentWorkLocked(
             VulkanRuntime& rt,
             VkQueue queue,
             VkSwapchainKHR swapchain,
-            std::uint32_t imageIndex)
+            std::uint32_t imageIndex,
+            const VkPresentInfoKHR& presentInfo,
+            VkResult& hookSubmitResult)
         {
             const auto perfBeginQpc = NowQpc();
             std::uint64_t perfAfterPrepQpc = perfBeginQpc;
@@ -2876,7 +3001,7 @@ namespace ht::hook::vulkan
                     const auto recoveredDeviceIt = rt.devices.find(queueIt->second.device);
                     if (recoveredDeviceIt != rt.devices.end())
                     {
-                        return SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex);
+                        return SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex, presentInfo, hookSubmitResult);
                     }
                 }
 
@@ -2908,6 +3033,20 @@ namespace ht::hook::vulkan
             {
                 return false;
             }
+            if (gpu.submitPending)
+            {
+                const auto status = vkGetFenceStatus(gpu.device, gpu.fence);
+                if (status == VK_SUCCESS)
+                {
+                    gpu.submitPending = false;
+                }
+                else if (status != VK_NOT_READY)
+                {
+                    gpu.failed = true;
+                    LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, "submit_fence_failed");
+                    return false;
+                }
+            }
             const bool delayedReadbackEnabled = !IsDelayedReadbackDisabled();
             const bool shouldCapture = ShouldCaptureNowLocked(rt, gpu, rt.lastPresentQpc);
             bool useImmediateCapture = shouldCapture;
@@ -2918,11 +3057,22 @@ namespace ht::hook::vulkan
 
             const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
             const bool shouldDrawHookSuccessIndicator = rt.overlayEnabled && !rt.hookSuccessIndicatorDone;
-            const bool shouldRenderOverlay = hasOverlayBlocks || shouldDrawHookSuccessIndicator;
+            // WHY: One ImGui draw may be in flight globally. Skipping a busy draw protects the
+            // backend's rotating vertex/index buffers without waiting on the game's render thread.
+            const bool shouldRenderOverlay = (hasOverlayBlocks || shouldDrawHookSuccessIndicator) && PollOverlaySubmissionLocked(rt);
             LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
             if (!shouldCapture && !shouldRenderOverlay)
             {
                 return true;
+            }
+            if (!CanSynchronizePresent(queueIt->second, deviceIt->second, swapInfo, presentInfo))
+            {
+                if (ShouldEmitDiagLog(NowQpc(), rt.qpcFreq, rt.lastPresentSyncSkipQpc, kDiagSummaryIntervalMs))
+                {
+                    DebugLog("stage=hook_vulkan event=present_sync_skip reason=unsupported_wait_or_queue_ownership waitCount=%u createKnown=%d singleFamily=%u presentFamily=%u.",
+                        presentInfo.waitSemaphoreCount, swapInfo.createInfoKnown, deviceIt->second.singleQueueFamily, queueIt->second.familyIndex);
+                }
+                return false;
             }
             perfAfterPrepQpc = NowQpc();
 
@@ -3131,12 +3281,9 @@ namespace ht::hook::vulkan
                     }
                     perfAfterCommandRecordQpc = NowQpc();
 
-                    VkSubmitInfo captureSubmitInfo{};
-                    captureSubmitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-                    captureSubmitInfo.commandBufferCount = 1;
-                    captureSubmitInfo.pCommandBuffers = &captureSlot->commandBuffer;
                     const auto submitBeginQpc = NowQpc();
-                    const auto captureSubmitResult = vkQueueSubmit(queue, 1, &captureSubmitInfo, captureSlot->fence);
+                    const auto captureSubmitResult = SubmitSynchronizedPresentWork(queue, captureSlot->commandBuffer, captureSlot->fence, presentInfo);
+                    hookSubmitResult = captureSubmitResult;
                     perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
                     if (captureSubmitResult != VK_SUCCESS)
                     {
@@ -3150,6 +3297,11 @@ namespace ht::hook::vulkan
                     captureSlot->submitQpc = NowQpc();
                     captureSlot->frameSeq = ++gpu.captureFrameSeq;
                     captureSlot->state = CaptureSlotState::Pending;
+                    if (shouldRenderOverlay)
+                    {
+                        rt.imguiPendingFence = captureSlot->fence;
+                        rt.imguiPendingDevice = gpu.device;
+                    }
                     gpu.lastCaptureIssueQpc = captureSlot->submitQpc;
                     rt.captureIssueCount++;
                     rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
@@ -3169,6 +3321,12 @@ namespace ht::hook::vulkan
                 }
             }
 
+            if (gpu.submitPending)
+            {
+                ++rt.overlayBusyCount;
+                emitPresentPerfLog("overlay_submit_busy");
+                return true;
+            }
             const auto resetPoolResult = vkResetCommandPool(gpu.device, gpu.commandPool, 0);
             if (resetPoolResult != VK_SUCCESS)
             {
@@ -3308,12 +3466,9 @@ namespace ht::hook::vulkan
             }
             perfAfterCommandRecordQpc = NowQpc();
 
-            VkSubmitInfo submitInfo{};
-            submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-            submitInfo.commandBufferCount = 1;
-            submitInfo.pCommandBuffers = &gpu.commandBuffer;
             const auto submitBeginQpc = NowQpc();
-            const auto submitResult = vkQueueSubmit(queue, 1, &submitInfo, gpu.fence);
+            const auto submitResult = SubmitSynchronizedPresentWork(queue, gpu.commandBuffer, gpu.fence, presentInfo);
+            hookSubmitResult = submitResult;
             perfSubmitDurationQpc = NowQpc() - submitBeginQpc;
             if (submitResult != VK_SUCCESS)
             {
@@ -3325,6 +3480,18 @@ namespace ht::hook::vulkan
             }
 
             gpu.submitPending = true;
+            if (shouldRenderOverlay)
+            {
+                rt.imguiPendingFence = gpu.fence;
+                rt.imguiPendingDevice = gpu.device;
+            }
+            if (!useImmediateCapture)
+            {
+                // WHY: Overlay has no CPU readback. Present waits for the re-signaled game
+                // semaphores, while this command pool is retained until its fence signals.
+                emitPresentPerfLog("overlay_async");
+                return true;
+            }
             const auto waitBeginQpc = NowQpc();
             const auto waitResult = vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull);
             perfWaitDurationQpc = NowQpc() - waitBeginQpc;
@@ -3341,12 +3508,6 @@ namespace ht::hook::vulkan
             rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
             rt.lastWidth = gpu.width;
             rt.lastHeight = gpu.height;
-
-            if (!useImmediateCapture)
-            {
-                emitPresentPerfLog("overlay_only");
-                return true;
-            }
 
             bool rgbaNeedsSwap = false;
             if (!IsCaptureFormatSupported(gpu.format, rgbaNeedsSwap))
@@ -3757,6 +3918,25 @@ namespace ht::hook::vulkan
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 rt.devices[*device] = DeviceInfo{physicalDevice};
+                auto& info = rt.devices[*device];
+                if (createInfo != nullptr && createInfo->queueCreateInfoCount > 0)
+                {
+                    info.singleQueueFamily = createInfo->pQueueCreateInfos[0].queueFamilyIndex;
+                    for (std::uint32_t i = 1; i < createInfo->queueCreateInfoCount; ++i)
+                    {
+                        if (createInfo->pQueueCreateInfos[i].queueFamilyIndex != info.singleQueueFamily)
+                        {
+                            info.singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
+                        }
+                    }
+                    for (auto* next = static_cast<const VkBaseInStructure*>(createInfo->pNext); next; next = next->pNext)
+                    {
+                        if (next->sType == VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO)
+                        {
+                            info.singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
+                        }
+                    }
+                }
             }
             return result;
         }
@@ -3867,7 +4047,8 @@ namespace ht::hook::vulkan
                     }
                 }
 
-                rt.queues[*queue] = QueueInfo{device, queueInfo->queueFamilyIndex, true};
+                rt.queues[*queue] = QueueInfo{device, queueInfo->queueFamilyIndex, true,
+                    (queueInfo->flags & VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT) != 0};
             }
         }
 
@@ -3901,11 +4082,38 @@ namespace ht::hook::vulkan
                 return VK_ERROR_INITIALIZATION_FAILED;
             }
 
-            const auto result = original(device, createInfo, allocator, swapchain);
+            VkSwapchainCreateInfoKHR hookCreateInfo{};
+            const VkSwapchainCreateInfoKHR* effectiveCreateInfo = createInfo;
+            bool rgbaNeedsSwap = false;
+            if (createInfo != nullptr && IsCaptureFormatSupported(createInfo->imageFormat, rgbaNeedsSwap) &&
+                !(createInfo->flags & VK_SWAPCHAIN_CREATE_PROTECTED_BIT_KHR) && createInfo->imageArrayLayers == 1 &&
+                createInfo->presentMode != VK_PRESENT_MODE_SHARED_DEMAND_REFRESH_KHR &&
+                createInfo->presentMode != VK_PRESENT_MODE_SHARED_CONTINUOUS_REFRESH_KHR)
+            {
+                VkPhysicalDevice physical = VK_NULL_HANDLE;
+                {
+                    std::lock_guard<std::mutex> lock(rt.mutex);
+                    const auto it = rt.devices.find(device);
+                    if (it != rt.devices.end()) physical = it->second.physicalDevice;
+                }
+                VkSurfaceCapabilitiesKHR capabilities{};
+                constexpr VkImageUsageFlags requiredUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                if (physical != VK_NULL_HANDLE &&
+                    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical, createInfo->surface, &capabilities) == VK_SUCCESS &&
+                    (capabilities.supportedUsageFlags & requiredUsage) == requiredUsage)
+                {
+                    // COMPAT: Capture/overlay accesses must be declared when the swapchain is created.
+                    // Preserve the caller's pNext and all other fields; unsupported surfaces are explicit skips.
+                    hookCreateInfo = *createInfo;
+                    hookCreateInfo.imageUsage |= requiredUsage;
+                    effectiveCreateInfo = &hookCreateInfo;
+                }
+            }
+            const auto result = original(device, effectiveCreateInfo, allocator, swapchain);
             if (result == VK_SUCCESS && swapchain != nullptr && *swapchain != VK_NULL_HANDLE)
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
-                UpsertSwapchainFromCreateLocked(rt, device, *swapchain, createInfo);
+                UpsertSwapchainFromCreateLocked(rt, device, *swapchain, effectiveCreateInfo);
             }
             return result;
         }
@@ -3993,6 +4201,7 @@ namespace ht::hook::vulkan
             std::uint64_t frequency = 0;
             rt.queuePresentHitCount.fetch_add(1, std::memory_order_relaxed);
             PFN_vkQueuePresentKHR original = nullptr;
+            VkResult hookSubmitResult = VK_SUCCESS;
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
                 lockAcquired = measurePerf ? NowQpc() : 0;
@@ -4035,7 +4244,7 @@ namespace ht::hook::vulkan
                             ? presentInfo->pImageIndices[0]
                             : 0u;
                     const VkSwapchainKHR swapchain = presentInfo->pSwapchains[0];
-                    (void)SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex);
+                    (void)SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex, *presentInfo, hookSubmitResult);
                 }
 
                 DrainCompletedPublishesLocked(rt);
@@ -4056,11 +4265,12 @@ namespace ht::hook::vulkan
                         LeaveCriticalSection(&rt.publishQueueLock);
                     }
                     DebugLog(
-                        "stage=hook_vulkan event=pipeline_counts issueTotal=%llu publishTotal=%llu deferTotal=%llu busyTotal=%llu queueDepth=%zu queuePeak=%zu active=%ld fps=%u delayed=%d.",
+                        "stage=hook_vulkan event=pipeline_counts issueTotal=%llu publishTotal=%llu deferTotal=%llu busyTotal=%llu overlayBusyTotal=%llu queueDepth=%zu queuePeak=%zu active=%ld fps=%u delayed=%d.",
                         static_cast<unsigned long long>(rt.captureIssueCount),
                         static_cast<unsigned long long>(rt.capturePublishCount),
                         static_cast<unsigned long long>(rt.captureDeferCount),
                         static_cast<unsigned long long>(rt.captureBusyCount),
+                        static_cast<unsigned long long>(rt.overlayBusyCount),
                         depth, peak, active, rt.configuredFpsLimit, !IsDelayedReadbackDisabled());
                 }
             }
@@ -4071,7 +4281,17 @@ namespace ht::hook::vulkan
             }
 
             const auto beforeOriginal = measurePerf ? NowQpc() : 0;
-            const auto result = original(queue, presentInfo);
+            // NOTE: A failed hook submission is an explicit failure, never a retry of consumed
+            // semaphore waits. All non-submission skips preserve the caller's Present unchanged.
+            VkResult result = hookSubmitResult;
+            if (hookSubmitResult == VK_SUCCESS)
+            {
+                result = original(queue, presentInfo);
+            }
+            else if (presentInfo != nullptr && presentInfo->pResults != nullptr)
+            {
+                std::fill_n(presentInfo->pResults, presentInfo->swapchainCount, hookSubmitResult);
+            }
             if (measurePerf)
             {
                 const auto afterOriginal = NowQpc();

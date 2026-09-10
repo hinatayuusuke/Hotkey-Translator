@@ -1,5 +1,6 @@
 #include <windows.h>
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_win32.h>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -19,6 +20,13 @@ namespace
     HANDLE waitRelease = nullptr;
     bool realGpu = false;
     std::atomic_uint validationErrors{0};
+    VkResult forcedSubmitResult = VK_SUCCESS;
+
+    VKAPI_ATTR VkResult VKAPI_CALL TestQueueSubmit(VkQueue queue, std::uint32_t count, const VkSubmitInfo* submits, VkFence fence)
+    {
+        if (forcedSubmitResult != VK_SUCCESS) return forcedSubmitResult;
+        return vkQueueSubmit(queue, count, submits, fence);
+    }
 
     VKAPI_ATTR VkResult VKAPI_CALL TestGetFenceStatus(VkDevice device, VkFence fence)
     {
@@ -54,13 +62,15 @@ namespace
     }
 }
 
-// WHY: Only GPU completion is simulated. Queue ownership, Windows events, the publish thread,
-// pixel conversion and the V2 shared-memory writer below are the production implementation.
+// WHY: GPU completion and submission errors are controllable. Queue ownership, Windows events,
+// the publish thread, conversion and the V2 writer remain the production implementation.
 #define vkGetFenceStatus TestGetFenceStatus
 #define vkWaitForFences TestWaitForFences
+#define vkQueueSubmit TestQueueSubmit
 #include "../VulkanPresentHook.cpp"
 #undef vkGetFenceStatus
 #undef vkWaitForFences
+#undef vkQueueSubmit
 
 using namespace ht::hook::vulkan;
 
@@ -68,6 +78,81 @@ namespace
 {
     const auto testQueue = reinterpret_cast<VkQueue>(static_cast<std::uintptr_t>(1));
     const auto testDevice = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(2));
+
+    void RequirePublishedPixel(VulkanRuntime& rt, std::uint8_t blue, std::uint8_t green, std::uint8_t red, std::size_t bytes)
+    {
+        const auto mapping = OpenFileMappingW(FILE_MAP_READ, FALSE, rt.frameWriter.MappingName().c_str());
+        Require(mapping != nullptr, "open published V2 mapping");
+        const auto* data = static_cast<const std::uint8_t*>(MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0));
+        Require(data != nullptr, "read published V2 mapping");
+        const auto* pipe = reinterpret_cast<const ht::hook::ipc::FramePipeHeaderV2*>(data);
+        const auto* frame = reinterpret_cast<const ht::hook::ipc::FrameSlotHeaderV2*>(
+            data + sizeof(*pipe) + ht::hook::ipc::FrameSlotBytes(pipe->payloadCapacity) * pipe->publishedIndex);
+        const auto* payload = reinterpret_cast<const std::uint8_t*>(frame + 1);
+        Require(frame->slotSeq == pipe->publishedSeq && frame->frameId == rt.frameId && frame->payloadBytes == bytes,
+            "V2 frame identity and payload bounds");
+        if (payload[0] != blue || payload[1] != green || payload[2] != red || payload[3] != 255)
+        {
+            std::fprintf(stderr, "Pixel: actual=%u,%u,%u,%u expected=%u,%u,%u,255 bytes=%zu\n",
+                payload[0], payload[1], payload[2], payload[3], blue, green, red, bytes);
+            Require(false, "published BGRA pixel");
+        }
+        UnmapViewOfFile(data);
+        CloseHandle(mapping);
+    }
+
+    void PresentSynchronizationGuards()
+    {
+        QueueInfo queue{testDevice, 0, true};
+        DeviceInfo device{(VkPhysicalDevice)8, 0};
+        SwapchainInfo swapchain{};
+        swapchain.createInfoKnown = swapchain.hookUsageSupported = true;
+        const VkSemaphore semaphore = (VkSemaphore)9;
+        VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        present.waitSemaphoreCount = 1;
+        present.pWaitSemaphores = &semaphore;
+        Require(CanSynchronizePresent(queue, device, swapchain, present), "known single-family present is supported");
+        present.waitSemaphoreCount = 0;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "empty wait cannot order hook before present");
+        present.waitSemaphoreCount = 65;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "oversized wait list skips without array overflow");
+        present.waitSemaphoreCount = 1;
+        queue.protectedQueue = true;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "protected queue cannot use unprotected hook commands");
+        queue.protectedQueue = false;
+        swapchain.createInfoKnown = false;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "unknown swapchain usage is not inferred");
+        swapchain.createInfoKnown = true;
+        swapchain.hookUsageSupported = false;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "missing transfer or attachment usage skips hook");
+        swapchain.hookUsageSupported = true;
+        device.singleQueueFamily = UINT32_MAX;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "exclusive ownership transfers cannot be inferred");
+        swapchain.sharingMode = VK_SHARING_MODE_CONCURRENT;
+        swapchain.sharingFamilies = {0, 1};
+        Require(CanSynchronizePresent(queue, device, swapchain, present), "explicit concurrent sharing supports multiple families");
+        queue.familyIndex = 2;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "present family must participate in concurrent sharing");
+        queue.familyIndex = 0;
+        VkDeviceGroupPresentInfoKHR group{VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR};
+        present.pNext = &group;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "device-group present is explicitly unsupported");
+
+        auto runtime = std::make_unique<VulkanRuntime>();
+        runtime->imguiPendingDevice = testDevice;
+        runtime->imguiPendingFence = (VkFence)10;
+        const auto callsBefore = waitCalls.load();
+        fenceResult = VK_NOT_READY;
+        Require(!PollOverlaySubmissionLocked(*runtime) && runtime->imguiPendingFence != VK_NULL_HANDLE,
+            "busy ImGui buffers remain owned by GPU");
+        fenceResult = VK_ERROR_DEVICE_LOST;
+        Require(!PollOverlaySubmissionLocked(*runtime), "failed overlay fence is not reusable");
+        fenceResult = VK_SUCCESS;
+        Require(PollOverlaySubmissionLocked(*runtime) && runtime->imguiPendingFence == VK_NULL_HANDLE,
+            "completed overlay can be reused");
+        Require(waitCalls == callsBefore, "overlay polling never waits on CPU");
+        std::puts("PASS: present synchronization guards and nonblocking overlay ownership");
+    }
 
     void ReadbackAtLowFps()
     {
@@ -104,6 +189,8 @@ namespace
         slot.height = 1;
         const auto callsBefore = waitCalls.load();
         std::uint64_t expectedFrames = 0;
+        VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        VkResult hookResult = VK_SUCCESS;
         for (const auto fps : {1u, 5u, 15u})
         {
             rt.captureIntervalQpc = rt.qpcFreq / fps;
@@ -115,10 +202,10 @@ namespace
             rt.lastPresentQpc = issued + rt.qpcFreq / 60;
             Require(!ShouldCaptureNowLocked(rt, gpu, issued + rt.qpcFreq / 60), "60 FPS tick must not issue another capture");
             fenceResult = VK_NOT_READY;
-            Require(SubmitPresentWorkLocked(rt, testQueue, swapchain, 0), "pending GPU is deferred on no-capture present");
+            Require(SubmitPresentWorkLocked(rt, testQueue, swapchain, 0, present, hookResult), "pending GPU is deferred on no-capture present");
             Require(slot.state == CaptureSlotState::Pending && rt.frameId == expectedFrames, "unsignaled frame is not enqueued");
             fenceResult = VK_SUCCESS;
-            Require(SubmitPresentWorkLocked(rt, testQueue, swapchain, 0), "ready GPU is polled independently of capture gate");
+            Require(SubmitPresentWorkLocked(rt, testQueue, swapchain, 0, present, hookResult), "ready GPU is polled independently of capture gate");
             ++expectedFrames;
             Require(slot.state == CaptureSlotState::Publishing, "ready slot ownership transfers to worker");
             Require(DrainPublishQueueLocked(rt), "drain ready frame");
@@ -298,7 +385,9 @@ namespace
         return VK_FALSE;
     }
 
-    void RealGpuReadback()
+    #include "VulkanPresentSmoke.h"
+
+    void RealGpuReadback(bool testPresent = false)
     {
         realGpu = true;
         auto runtime = std::make_unique<VulkanRuntime>();
@@ -315,12 +404,12 @@ namespace
         validation.enabledValidationFeatureCount = 1;
         validation.pEnabledValidationFeatures = &sync;
         const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
-        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME};
+        const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
         VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
         info.pNext = &validation;
         info.enabledLayerCount = 1;
         info.ppEnabledLayerNames = layers;
-        info.enabledExtensionCount = 2;
+        info.enabledExtensionCount = testPresent ? 4 : 2;
         info.ppEnabledExtensionNames = extensions;
         VkInstance instance = VK_NULL_HANDLE;
         Require(vkCreateInstance(&info, nullptr, &instance) == VK_SUCCESS, "create validation-enabled instance");
@@ -347,6 +436,9 @@ namespace
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.queueCreateInfoCount = 1;
         deviceInfo.pQueueCreateInfos = &queueInfo;
+        const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
+        deviceInfo.enabledExtensionCount = testPresent ? 1 : 0;
+        deviceInfo.ppEnabledExtensionNames = deviceExtensions;
         VkDevice device = VK_NULL_HANDLE;
         Require(vkCreateDevice(physical, &deviceInfo, nullptr, &device) == VK_SUCCESS, "create real device");
         VkQueue queue = VK_NULL_HANDLE;
@@ -360,6 +452,15 @@ namespace
         Require(CreateCaptureSlotResources(device, physical, family, 8, 2, 1, VK_FORMAT_B8G8R8A8_UNORM, false, slot), "create real staging resources");
         Require(slot.stagingBytes == 8, "allocator padding is excluded from frame payload");
         Require(EnsurePublishWorkerLocked(rt), "start real GPU publisher");
+        VkSemaphore semaphore = VK_NULL_HANDLE;
+        VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+        Require(vkCreateSemaphore(device, &semInfo, nullptr, &semaphore) == VK_SUCCESS, "create game-owned semaphore");
+        VkFence consumed = VK_NULL_HANDLE;
+        VkFenceCreateInfo fenceInfo{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+        Require(vkCreateFence(device, &fenceInfo, nullptr, &consumed) == VK_SUCCESS, "create simulated present fence");
+        VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+        present.waitSemaphoreCount = 1;
+        present.pWaitSemaphores = &semaphore;
         for (unsigned iteration = 0; iteration < 12; ++iteration)
         {
             Require(vkResetCommandPool(device, slot.commandPool, 0) == VK_SUCCESS, "reset retired command pool");
@@ -369,10 +470,19 @@ namespace
             vkCmdFillBuffer(slot.commandBuffer, slot.stagingBuffer, 0, 8, 0xff332211);
             CmdMakeReadbackVisible(slot.commandBuffer);
             Require(vkEndCommandBuffer(slot.commandBuffer) == VK_SUCCESS, "end GPU fill");
-            VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};
-            submit.commandBufferCount = 1;
-            submit.pCommandBuffers = &slot.commandBuffer;
-            Require(vkQueueSubmit(queue, 1, &submit, slot.fence) == VK_SUCCESS, "submit real GPU write");
+            VkSubmitInfo signal{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            signal.signalSemaphoreCount = 1;
+            signal.pSignalSemaphores = &semaphore;
+            Require(vkQueueSubmit(queue, 1, &signal, VK_NULL_HANDLE) == VK_SUCCESS, "signal game's render completion");
+            Require(SubmitSynchronizedPresentWork(queue, slot.commandBuffer, slot.fence, present) == VK_SUCCESS, "wait and re-signal game semaphore around hook work");
+            VkPipelineStageFlags stage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+            VkSubmitInfo consume{VK_STRUCTURE_TYPE_SUBMIT_INFO};
+            consume.waitSemaphoreCount = 1;
+            consume.pWaitSemaphores = &semaphore;
+            consume.pWaitDstStageMask = &stage;
+            Require(vkQueueSubmit(queue, 1, &consume, consumed) == VK_SUCCESS, "consume hook completion like Present");
+            Require(vkWaitForFences(device, 1, &consumed, VK_TRUE, UINT64_MAX) == VK_SUCCESS, "test consumer finished");
+            Require(vkResetFences(device, 1, &consumed) == VK_SUCCESS, "reset test consumer");
             slot.submitQpc = NowQpc();
             slot.state = CaptureSlotState::Pending;
             const auto deadline = NowQpc() + rt.qpcFreq * 5;
@@ -383,11 +493,15 @@ namespace
             }
             Require(slot.state == CaptureSlotState::Publishing, "real GPU completion reached publisher");
             Require(DrainPublishQueueLocked(rt), "real GPU publish drain");
-            Require(rt.publishScratch.size() == 8 && rt.publishScratch[0] == 0x11 && rt.publishScratch[3] == 0xff, "real GPU pixels published without padding");
+            RequirePublishedPixel(rt, 0x11, 0x22, 0x33, 8);
+            Require(rt.publishScratch.empty(), "BGRA publish needs no intermediate copy");
         }
         Require(WaitForQueueGpuWorkLocked(rt, gpu), "retire real GPU work");
         Require(StopPublishWorkerLocked(rt), "stop real GPU publisher before unmap");
         DestroyQueueGpuState(gpu);
+        vkDestroySemaphore(device, semaphore, nullptr);
+        vkDestroyFence(device, consumed, nullptr);
+        if (testPresent) RealPresentSmoke(rt, instance, physical, device, queue, family);
         vkDestroyDevice(device, nullptr);
         destroyDebug(instance, messenger, nullptr);
         vkDestroyInstance(instance, nullptr);
@@ -400,12 +514,13 @@ int main(int argc, char** argv)
 {
     SetEnvironmentVariableW(L"HT_HOOK_VK_CAPTURE_RING_SIZE", L"3");
     SetEnvironmentVariableW(L"HT_HOOK_VK_DISABLE_DELAYED_READBACK", L"0");
-    if (argc == 2 && std::strcmp(argv[1], "--gpu") == 0)
+    if (argc == 2 && (std::strcmp(argv[1], "--gpu") == 0 || std::strcmp(argv[1], "--present") == 0))
     {
-        RealGpuReadback();
+        RealGpuReadback(std::strcmp(argv[1], "--present") == 0);
         return 0;
     }
     ReadbackAtLowFps();
+    PresentSynchronizationGuards();
     WorkerOwnershipAndIdle();
     GpuRetirement();
     PublishFailuresAndGeneration();

@@ -259,3 +259,59 @@ GPU 試験は SDK の validation layer が利用可能な環境で `Native/build
 - fence / submit error 後は、その queue の resource が再作成されるまで capture / hook overlay の新規処理を止める。worker / GPU retirement 失敗はログへ明示し、使用中 memory を解放したことにはしない。
 
 次に必要なのは、対象ゲームで上記ログと frame time を取得し、Step 4 の WSI 同期設計を検証すること。1% low 改善や全計画の完了は、現段階では未確認である。
+
+## 14. 続きの実装状況（2026-09-10）
+
+前回変更についてユーザーの実機確認で大きな問題がなかったことを受け、Step 4a / 4b と Step 5 の BGRA 中間コピー削減を実装した。x86 は引き続きユーザー指示によりビルド・テストとも実施していない。
+
+### Present 同期と overlay
+
+5.2節で検討した hook 専用 semaphore の追加ではなく、ゲームが Present に渡した binary semaphore 全件を hook submit で wait し、hook のコマンド完了後に同じ semaphore 全件を再 signal する方式を採用した。元の `VkPresentInfoKHR` はそのまま original Present に渡す。`pNext`、複数 swapchain、image index、`pResults` の配列を置換せず、描画・capture 対象は従来どおり先頭 swapchain とする。
+
+wait による binary signal の消費と、コマンド完了後の signal の順序により、ゲーム描画 → hook capture / overlay → Present の依存を作る。wait stage は layout transition も含めるため `ALL_COMMANDS`。semaphore 自体の所有者はゲームのままとし、hook 独自の present semaphore の破棄・再利用管理を増やさない。この方式は実 GPU / WSI で同期検証した。[Khronos: VkSubmitInfo](https://docs.vulkan.org/refpages/latest/refpages/source/VkSubmitInfo.html)、[Khronos: vkQueueSubmit](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueueSubmit.html)
+
+- capture と併用する overlay は capture slot の fence、overlay 単独は独立した既存 command pool / buffer / fence で完了を追跡する。
+- 通常の overlay 単独 submit 後の CPU fence wait を削除した。次回は fence status のみを調べ、未完了ならその回の overlay をスキップする。
+- ImGui の vertex / index buffer 再利用を守るため、全 queue を通じて同時に実行中の ImGui 描画は1つに制限する。capture は独立した空き slot があれば進める。
+- swapchain / device / image count の変更では、旧 GPU 使用を退役させて ImGui backend を再初期化する。`SetMinImageCount` だけでは pipeline と実際の ImageCount を更新できないため変更した。
+- 明示 immediate 設定、初期化、描画先切替、resource 再作成・破棄時の待機は残る。通常時の非ブロッキング処理と区別する。
+- hook submit が失敗した場合は戻り値と全 `pResults` にその `VkResult` を返し、original Present を呼ばない。失敗 queue の再利用も止める。送信前の skip は original Present へそのまま転送する。
+- `pipeline_counts` に `overlayBusyTotal` を追加。`present_perf outcome=overlay_async` は overlay 単独の非同期送信を表す。
+
+### 対応範囲と互換性上の注意
+
+安全な image access と queue-family ownership を確認できる構成に限定する。次の条件を満たさない場合は `present_sync_skip` 等の診断を出し、その回の hook capture / overlay をスキップする。ゲームの通常 Present は継続する。
+
+- Present の wait semaphore が1～64個あり、present queue が graphics 対応かつ非 protected。
+- swapchain 作成情報が取得済みで、通常の Present mode、image array layer 1、非 protected、対応 BGRA / RGBA format。
+- swapchain の image usage に `TRANSFER_SRC` と `COLOR_ATTACHMENT` がある。対象 swapchain の作成を捕捉した場合は、surface の対応を確認して両 usage を追加する。未対応の format / protected / shared-present には追加しない。
+- exclusive sharing は、device 作成情報から使用 queue family が present family の1種類だけと分かる場合に限る。concurrent sharing は作成時の family 一覧に present family が含まれることを確認する。
+- device-group Present は対象外。
+
+**途中 attach で swapchain 作成情報を取得できなかった場合や、exclusive sharing で device 作成情報を取得できなかった場合もスキップする。** 以前の推測に基づく capture が動作していた構成でも画像更新・overlay が止まる可能性がある。作成時から hook が有効な構成で利用する必要がある。queue ownership を推測する代替経路は追加していない。
+
+### BGRA publish
+
+worker が保持する `Publishing` slot の mapped pointer を既存の同期 `WriteFrame` に直接渡す。GPU fence の完了後に enqueue し、worker 完了まで slot の再利用・unmap を禁止する既存の所有権管理を使う。BGRA では `stagingMapped → publishScratch` の全画面 memcpy を省き、共有メモリへのコピー1回にする。RGBA は scratch で BGRA に変換してから書き込む。
+
+V2 layout、stride、payload bytes、frameId、timestamp の意味は変更していない。4K BGRA では1フレーム当たり33,177,600 bytesの中間コピーがなくなるが、これはコピー量の計算であり、実ゲームの処理時間・FPS改善を測定した値ではない。既存の `worker_copy` / `worker_write` / `capture_age` 等で対象ゲームの変更前後を比較する必要がある。
+
+### 今回の検証結果
+
+- `HookAgentVulkan` / `HookAgentVulkanTests` の x64 Release ビルド成功。DLL 出力先は `Native/HookHost/bin/HookAgentVulkan.dll`。
+- CTest `VulkanReadback`: 合格。既存の低 FPS、BGRA / RGBA の V2 payload、worker 所有権、idle競合、GPU retirement に加えて、同期の対応範囲と ImGui fence の未完了・失敗・完了時の非ブロッキング判定を確認。
+- `HookAgentVulkanTests --present`: GTX 1080 上で Validation Layers / synchronization validation の error 0。実 staging buffer の12回の publish と、Win32 surface 2個 / 複数 swapchain の72回の Presentを実行した。
+- WSI 試験では capture + overlay、overlay 単独、描画先切替、異なるサイズでの detach / 再初期化、`pResults`、V2 の画素と payload bounds を確認。通常の production hook 経路が CPU fence wait を呼ばないことを計数で確認した。テストゲーム自身の command buffer 再利用・終了時の待機は別扱い。
+- submit の out-of-host-memory を注入し、エラー伝播、queue の失敗状態、新規 capture を成功計数しないこと、その後の終了を確認。
+- GPU 試験は production の pipeline 関数を直接使う。ゲームへの DLL injection、実ゲームの Alt+Tab、device lost、WSI の OUT_OF_DATE 発生、全 queue 構成の動作を網羅した試験ではない。
+- x86 ビルド・テストとセキュリティ設定の変更は行っていない。
+
+```powershell
+cmake --build Native/build --config Release --target HookAgentVulkan HookAgentVulkanTests
+ctest --test-dir Native/build -C Release --output-on-failure
+# 試験プロセスから起動する Vulkan にだけ適用する。
+$env:VK_LOADER_LAYERS_DISABLE='~implicit~'
+& 'Native/build/HookAgentVulkan/Release/HookAgentVulkanTests.exe' --present
+```
+
+Step 5 の backlog 制御と Step 6 の consumer 鮮度制御は今回含めていない。FIFO は capture ring で上限があるため、まず実ゲームの queue depth / capture age を評価する。consumer は timestamp の意味・許容 age と合わせる別変更として残す。今回の変更後の実ゲームの1% low・frame time p99・hook p99は未測定で、計画全体の性能完了条件を満たしたとは扱わない。

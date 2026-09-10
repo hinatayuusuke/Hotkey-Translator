@@ -2671,3 +2671,54 @@
 ### Open Questions
 - Step 4のpresent semaphore再利用・破棄とmulti-swapchain/queue familyの検証が残る。
 - Step 5のcopy/backlog改善はworker計測後、Step 6のconsumer鮮度制御は許容ageとtimestamp契約の確定後に実施する。
+
+**2026-09-10 12:09 (Asia/Taipei) — Vulkan overlayの非同期化とBGRA中間コピー削減**
+
+### Summary
+- Vulkan改善計画のStep 4とStep 5のコピー削減を実装し、x64実GPU/WSIの同期検証に合格した。
+
+### Context / Goal
+- 前回のStep 1～3についてユーザーの実機確認で大きな問題がないとの報告を受け、実装を継続した。
+- 通常overlayのCPU fence待機を外し、ゲーム描画からPresentまでのGPU依存とworkerのmapped memory寿命を維持する。
+
+### Changes
+- 元のPresent wait semaphore全件をhook submitでwaitし、コマンド完了後に同じ全件を再signalする同期を追加した。元PresentのpNext、複数swapchain、pResultsは保持する。
+- overlay単独submitを非同期化し、ImGui描画の同時実行を1件に制限。未完了時はCPUを待たせずoverlayをスキップする。overlayBusyTotalを追加した。
+- 描画先/device/image count変更では旧GPU使用を退役させてImGui backendを再初期化する。
+- swapchain作成時に対応surfaceへ必要usageを追加し、queue family/usage/protected/shared-present等の対応範囲を明示した。submit失敗はVkResultへ伝播する。
+- BGRAはPublishing slotのmapped pointerを同期WriteFrameへ直接渡して中間memcpyを削除。RGBA変換とV2契約は維持した。
+- 実Win32 surfaceとswapchainを使う任意の--present試験、対応範囲・overlay所有権・submit失敗の回帰試験を追加した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Present同期、非同期overlay、ImGui再初期化、usage/ownershipガード、BGRA直接publishと診断。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 同期ガード、overlay fence、実GPU semaphore chain、V2画素、submit失敗注入。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — 実GPU/WSIの複数swapchain、描画先切替、サイズ変更を伴う再初期化、終了試験。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 第14節に方式、互換性上の制約、検証結果、残るStepを追記。
+- `.agent/changes.md` — 本タスクの結果を追記。
+
+### Behavioral Impact
+- 通常delayed/overlayはhookが追加するCPU fence待機を行わない。初期化、resource切替・破棄、明示immediate設定の待機は残る。
+- ImGuiがGPU使用中の場合はその回のoverlay描画をスキップする。
+- 途中attachでswapchain作成情報がない場合、exclusive sharingでdevice作成情報がない場合、複数queue familyのexclusive等はcapture/overlayをスキップする。以前動作していた構成にも影響するため計画書に明記した。
+- hook submit失敗時はoriginal Presentを呼ばず、戻り値と全pResultsへ失敗を返す。送信前skipは元Presentを継続する。
+- BGRAの共有メモリへのコピーは1回になり、RGBA変換、stride、frameId、timestamp、IPC形式は維持する。
+
+### Risk & Mitigation
+- Risk: binary semaphoreの順序・再利用やGPU使用中のImGui buffer再利用が不正になる可能性。
+- Mitigation: 元wait全件をwait/re-signalし、元Presentを保持。GPU fenceによる再利用判定、失敗時のqueue停止、実WSIの同期検証で確認した。
+- Risk: queue ownershipやimage usage不明の途中attachではcaptureが停止する。
+- Mitigation: 推測によるGPU accessを追加せず診断を出す。作成時からhookが有効な構成が必要であることを文書に明記した。
+- Risk: mapped pointer直接publish中のunmapやslot再利用。
+- Mitigation: GPU完了後にworkerへ渡し、同期WriteFrame完了までPublishing所有権を保持。writerを遅らせる既存の所有権テストにも合格した。
+
+### Tests / Verification
+- SDK: G:/Development-Cache/VulkanSdk。x64 ReleaseのHookAgentVulkan/HookAgentVulkanTestsビルド成功。
+- CTest VulkanReadback: 合格。低FPS、色変換、idle/enqueue 2,000回、worker所有権、retirement、同期ガード、overlay fenceを検証。
+- `HookAgentVulkanTests.exe --present`: GTX 1080で実stagingの12 publish、2 swapchainの72 Present、overlay描画先切替、サイズ変更を伴うdetach/再初期化、V2画素と範囲、submit失敗注入を確認。Validation Layers/synchronization validation error 0。
+- 通常production hook経路のCPU fence待機呼出し数が増えないことを確認。テストゲーム自身のcommand buffer再利用待機と描画先切替は別扱い。
+- x86ビルド・テストはユーザー指示どおりスキップ。セキュリティ設定は変更していない。
+- `git diff --check`で空白エラーなし。今回変更後の実ゲーム性能、DLL injection、Alt+Tab、device lost、OUT_OF_DATEは未検証。
+
+### Open Questions
+- 実ゲームの1% low、hook p99、capture ageとoverlayBusyTotalの変更前後比較は残る。
+- Step 5のbacklog制御はqueue depth/ageの測定後、Step 6のconsumer鮮度制御はtimestamp契約と許容ageを合わせる別変更として残る。
