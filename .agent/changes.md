@@ -2806,3 +2806,34 @@
 
 ### Open Questions
 - 対象x86ゲームで今回修正した条件が原因だったかは、別端末で再ビルドしたDLLによる実機確認が必要。
+
+**2026-09-11 13:06 (Asia/Taipei) — Vulkan診断ログ設定のUIバインディングを修正**
+
+### Summary
+- 性能診断ログと診断ファイル出力のチェック状態が保存設定へ反映されない問題を修正した。
+
+### Context / Goal
+- UIで有効化しても再起動時にチェックが外れるとの報告に対応する。
+- UIの参照名を既存ViewModelの保存・読み込み・自動保存処理へ正しく接続する。
+
+### Changes
+- Settings.GraphicsHookPerfDiagLogをSettings.EnableGraphicsHookPerfDiagLogへ修正。
+- Settings.GraphicsHookDiagFileSinkをSettings.EnableGraphicsHookDiagFileSinkへ修正。
+
+### Files Touched
+- `UI/HookFullscreenControl.xaml` — 診断チェックボックス2か所のBinding Pathを修正。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- UIの診断設定変更が既存の自動保存へ届き、保存された値が再起動後のチェック状態に反映される。
+- 設定ファイルの項目名や既定値は変更していない。これまで保存されなかったチェックは修正版で設定し直す必要がある。
+
+### Risk & Mitigation
+- Risk: 保存プロパティ名とUIの参照名の不一致。
+- Mitigation: ViewModelのプロパティ、保存・読み込み代入、自動保存通知、AppSettingsの名前が一致することを確認。
+
+### Tests / Verification
+- XAMLのXML構文確認に成功。
+- `dotnet build Hotkey-Translator.csproj --no-restore -c Debug -p:BuildProjectReferences=false -v:q` — 成功、警告0・エラー0。
+- `git diff --check` — 空白エラーなし。
+- アプリを操作して設定変更・再起動する実機確認は未実施。native/x86のビルドは行っていない。
