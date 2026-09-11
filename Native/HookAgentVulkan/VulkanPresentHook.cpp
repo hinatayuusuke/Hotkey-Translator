@@ -200,6 +200,14 @@ namespace ht::hook::vulkan
             bool failed = false;
         };
 
+        struct OverlayFrame
+        {
+            VkCommandPool commandPool = VK_NULL_HANDLE;
+            VkCommandBuffer commandBuffer = VK_NULL_HANDLE;
+            VkFence fence = VK_NULL_HANDLE;
+            bool pending = false;
+        };
+
         struct OverlaySwapchainState
         {
             VkRenderPass renderPass = VK_NULL_HANDLE;
@@ -230,7 +238,7 @@ namespace ht::hook::vulkan
         {
             HookPrepare, RuntimeLock, OriginalPresent, HookTotal,
             WorkerQueue, WorkerCopy, WriterLock, WorkerWrite, CaptureAge,
-            GpuObserved, WorkerDrain, GpuRetire, Count
+            GpuObserved, WorkerDrain, GpuRetire, OverlayWait, OverlayTotal, Count
         };
 
         struct VulkanRuntime
@@ -299,9 +307,12 @@ namespace ht::hook::vulkan
             VkSwapchainKHR imguiBoundSwapchain = VK_NULL_HANDLE;
             std::uint32_t imguiImageCount = 0;
             std::uint64_t lastImGuiQpc = 0;
-            VkFence imguiPendingFence = VK_NULL_HANDLE;
-            VkDevice imguiPendingDevice = VK_NULL_HANDLE;
-            std::uint64_t overlayBusyCount = 0;
+            VkQueue imguiQueue = VK_NULL_HANDLE;
+            // WHY: Each frame owns the command resources for one ImGui vertex/index buffer slot.
+            std::vector<OverlayFrame> overlayFrames;
+            std::uint32_t overlayFrameIndex = 0;
+            std::uint64_t overlayWaitCount = 0;
+            std::uint64_t overlaySubmitCount = 0;
             std::uint64_t lastPresentSyncSkipQpc = 0;
 
             std::uint64_t presentCount = 0;
@@ -844,7 +855,7 @@ namespace ht::hook::vulkan
             constexpr const char* names[] = {
                 "hook_prepare", "runtime_lock", "original_present", "hook_total",
                 "worker_queue", "worker_copy", "writer_lock", "worker_write", "capture_age",
-                "gpu_observed", "worker_drain", "gpu_retire"};
+                "gpu_observed", "worker_drain", "gpu_retire", "overlay_wait", "overlay_total"};
             for (std::size_t i = 0; i < rt.perfSamples.size(); ++i)
             {
                 auto& samples = rt.perfSamples[i];
@@ -992,13 +1003,6 @@ namespace ht::hook::vulkan
                     slot.submitQpc = 0;
                 }
             }
-            if (rt.imguiPendingDevice == state.device &&
-                (rt.imguiPendingFence == state.fence || std::any_of(state.captureSlots.begin(), state.captureSlots.end(),
-                    [&](const CaptureSlot& slot) { return slot.fence == rt.imguiPendingFence; })))
-            {
-                rt.imguiPendingFence = VK_NULL_HANDLE;
-                rt.imguiPendingDevice = VK_NULL_HANDLE;
-            }
             return true;
         }
 
@@ -1010,6 +1014,20 @@ namespace ht::hook::vulkan
                     !WaitForQueueGpuWorkLocked(rt, entry.second))
                 {
                     return false;
+                }
+            }
+            if (device == VK_NULL_HANDLE || device == rt.imguiDevice)
+            {
+                for (auto& frame : rt.overlayFrames)
+                {
+                    if (!frame.pending) continue;
+                    const auto result = vkWaitForFences(rt.imguiDevice, 1, &frame.fence, VK_TRUE, UINT64_MAX);
+                    if (result != VK_SUCCESS && result != VK_ERROR_DEVICE_LOST)
+                    {
+                        DebugLog("stage=hook_vulkan event=overlay_retire_failed vk=%d.", static_cast<int>(result));
+                        return false;
+                    }
+                    frame.pending = false;
                 }
             }
             return true;
@@ -1511,6 +1529,15 @@ namespace ht::hook::vulkan
         }
         void ShutdownImGuiLocked(VulkanRuntime& rt)
         {
+            // NOTE: Callers retire all overlay submissions before destroying their pools or ImGui buffers.
+            for (auto& frame : rt.overlayFrames)
+            {
+                if (frame.fence != VK_NULL_HANDLE) vkDestroyFence(rt.imguiDevice, frame.fence, nullptr);
+                if (frame.commandPool != VK_NULL_HANDLE) vkDestroyCommandPool(rt.imguiDevice, frame.commandPool, nullptr);
+            }
+            rt.overlayFrames.clear();
+            rt.overlayFrameIndex = 0;
+            rt.imguiQueue = VK_NULL_HANDLE;
             if (rt.imguiContext == nullptr)
             {
                 rt.imguiInitialized = false;
@@ -1531,8 +1558,6 @@ namespace ht::hook::vulkan
             rt.imguiBoundSwapchain = VK_NULL_HANDLE;
             rt.imguiImageCount = 0;
             rt.lastImGuiQpc = 0;
-            rt.imguiPendingFence = VK_NULL_HANDLE;
-            rt.imguiPendingDevice = VK_NULL_HANDLE;
 
             if (rt.imguiDescriptorPool != VK_NULL_HANDLE)
             {
@@ -1644,7 +1669,8 @@ namespace ht::hook::vulkan
             rt.configuredFpsLimit = kDefaultCaptureFps;
             rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
             rt.overlayEnabled = false;
-            rt.overlayBusyCount = 0;
+            rt.overlayWaitCount = 0;
+            rt.overlaySubmitCount = 0;
             rt.lastPresentSyncSkipQpc = 0;
             rt.perfDiagLogEnabled = false;
             {
@@ -2619,7 +2645,8 @@ namespace ht::hook::vulkan
                 return false;
             }
             if (rt.imguiContext != nullptr && rt.imguiDevice != VK_NULL_HANDLE &&
-                (rt.imguiDevice != queueInfo.device || rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount))
+                (rt.imguiDevice != queueInfo.device || rt.imguiQueue != queue ||
+                    rt.imguiBoundSwapchain != swapchain || rt.imguiImageCount != imageCount))
             {
                 // WHY: SetMinImageCount does not recreate the backend's render-pass pipeline or
                 // actual ImageCount. Rebinding must retire old draws before rebuilding either.
@@ -2712,6 +2739,17 @@ namespace ht::hook::vulkan
                 rt.imguiInitialized = true;
                 rt.imguiBoundSwapchain = swapchain;
                 rt.imguiImageCount = imageCount;
+                rt.imguiQueue = queue;
+                rt.overlayFrames.resize(imageCount);
+                for (auto& frame : rt.overlayFrames)
+                {
+                    if (!CreateQueueSubmitResources(queueInfo.device, queueInfo.familyIndex,
+                        frame.commandPool, frame.commandBuffer, frame.fence))
+                    {
+                        ShutdownImGuiLocked(rt);
+                        return false;
+                    }
+                }
             }
 
             return true;
@@ -2927,28 +2965,16 @@ namespace ht::hook::vulkan
             return vkQueueSubmit(queue, 1, &submit, fence);
         }
 
-        bool PollOverlaySubmissionLocked(VulkanRuntime& rt)
+        bool EnsureOverlayResourcesLocked(VulkanRuntime& rt, VkQueue queue, VkSwapchainKHR swapchain)
         {
-            if (rt.imguiPendingFence == VK_NULL_HANDLE)
-            {
-                return true;
-            }
-            const auto status = vkGetFenceStatus(rt.imguiPendingDevice, rt.imguiPendingFence);
-            if (status == VK_SUCCESS)
-            {
-                rt.imguiPendingFence = VK_NULL_HANDLE;
-                rt.imguiPendingDevice = VK_NULL_HANDLE;
-                return true;
-            }
-            if (status != VK_NOT_READY)
-            {
-                LogCaptureSkipLocked(rt, CaptureSkipReason::VkWaitForFencesFailed, "overlay_fence_failed");
-            }
-            ++rt.overlayBusyCount;
-            return false;
+            const auto& queueInfo = rt.queues.at(queue);
+            const auto& swapInfo = rt.swapchains.at(swapchain);
+            if (!EnsureOverlaySwapchainStateLocked(rt, swapchain, swapInfo)) return false;
+            return EnsureImGuiLocked(rt, queue, swapchain, queueInfo, rt.devices.at(queueInfo.device),
+                rt.overlaySwapchains.at(swapchain));
         }
 
-        bool SubmitPresentWorkLocked(
+        bool SubmitCaptureWorkLocked(
             VulkanRuntime& rt,
             VkQueue queue,
             VkSwapchainKHR swapchain,
@@ -2965,7 +2991,6 @@ namespace ht::hook::vulkan
             std::uint64_t perfCpuCopyDurationQpc = 0;
             std::uint64_t perfWriteDurationQpc = 0;
             std::uint64_t perfCopyCommandDurationQpc = 0;
-            std::uint64_t perfOverlayCommandDurationQpc = 0;
 
             const auto queueIt = rt.queues.find(queue);
             if (queueIt == rt.queues.end() || !queueIt->second.valid)
@@ -3028,7 +3053,7 @@ namespace ht::hook::vulkan
                     const auto recoveredDeviceIt = rt.devices.find(queueIt->second.device);
                     if (recoveredDeviceIt != rt.devices.end())
                     {
-                        return SubmitPresentWorkLocked(rt, queue, swapchain, imageIndex, presentInfo, hookSubmitResult);
+                        return SubmitCaptureWorkLocked(rt, queue, swapchain, imageIndex, presentInfo, hookSubmitResult);
                     }
                 }
 
@@ -3083,12 +3108,8 @@ namespace ht::hook::vulkan
             }
 
             const bool hasOverlayBlocks = rt.overlayEnabled && !rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0;
-            const bool shouldDrawHookSuccessIndicator = rt.overlayEnabled && !rt.hookSuccessIndicatorDone;
-            // WHY: One ImGui draw may be in flight globally. Skipping a busy draw protects the
-            // backend's rotating vertex/index buffers without waiting on the game's render thread.
-            const bool shouldRenderOverlay = (hasOverlayBlocks || shouldDrawHookSuccessIndicator) && PollOverlaySubmissionLocked(rt);
             LogPresentSummaryLocked(rt, shouldCapture, hasOverlayBlocks, rt.swapchains.size());
-            if (!shouldCapture && !shouldRenderOverlay)
+            if (!shouldCapture)
             {
                 return true;
             }
@@ -3105,6 +3126,17 @@ namespace ht::hook::vulkan
             }
             perfAfterPrepQpc = NowQpc();
 
+            // WHY: Rebinding retires old device work. Do it before issuing a new capture so
+            // teardown cannot discard the frame that this Present is about to publish.
+            if (rt.overlayEnabled && (hasOverlayBlocks || !rt.hookSuccessIndicatorDone) &&
+                !EnsureOverlayResourcesLocked(rt, queue, swapchain))
+            {
+                gpu.failed = true;
+                hookSubmitResult = VK_ERROR_INITIALIZATION_FAILED;
+                DebugLog("stage=hook_vulkan event=overlay_failed operation=resources_before_capture.");
+                return false;
+            }
+
             const auto emitPresentPerfLog = [&](const char* outcome)
             {
                 if (!rt.perfDiagLogEnabled)
@@ -3119,7 +3151,8 @@ namespace ht::hook::vulkan
                 }
 
                 DebugLog(
-                    "stage=hook_vulkan event=present_perf pid=%lu presentCount=%llu outcome=%s shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d size=%ux%u prepMs=%.2f cmdRecordMs=%.2f copyCmdMs=%.2f overlayCmdMs=%.2f submitMs=%.2f waitMs=%.2f mapMs=%.2f cpuCopyMs=%.2f writeMs=%.2f totalMs=%.2f.",
+                    // NOTE: Separate capture work from overlay_total, which includes overlay frame reuse waits.
+                    "stage=hook_vulkan event=capture_perf pid=%lu presentCount=%llu outcome=%s shouldCapture=%d overlayEnabled=%d hasOverlayBlocks=%d size=%ux%u prepMs=%.2f cmdRecordMs=%.2f copyCmdMs=%.2f submitMs=%.2f waitMs=%.2f mapMs=%.2f cpuCopyMs=%.2f writeMs=%.2f totalMs=%.2f.",
                     static_cast<unsigned long>(GetCurrentProcessId()),
                     static_cast<unsigned long long>(rt.presentCount),
                     outcome != nullptr ? outcome : "unknown",
@@ -3131,7 +3164,6 @@ namespace ht::hook::vulkan
                     QpcDeltaToMs(perfAfterPrepQpc - perfBeginQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfAfterCommandRecordQpc - perfAfterPrepQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfCopyCommandDurationQpc, rt.qpcFreq),
-                    QpcDeltaToMs(perfOverlayCommandDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfSubmitDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfWaitDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfMapDurationQpc, rt.qpcFreq),
@@ -3139,43 +3171,6 @@ namespace ht::hook::vulkan
                     QpcDeltaToMs(perfWriteDurationQpc, rt.qpcFreq),
                     QpcDeltaToMs(perfNowQpc - perfBeginQpc, rt.qpcFreq));
             };
-
-            OverlaySwapchainState* ovl = nullptr;
-            if (shouldRenderOverlay)
-            {
-                if (!EnsureOverlaySwapchainStateLocked(rt, swapchain, swapInfo))
-                {
-                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlaySwapchainStateFailed, "ensure_overlay_swapchain_state_failed");
-                    return false;
-                }
-
-                auto ovlIt = rt.overlaySwapchains.find(swapchain);
-                if (ovlIt == rt.overlaySwapchains.end())
-                {
-                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlayStateMissing, "overlay_swapchain_state_missing");
-                    return false;
-                }
-                ovl = &ovlIt->second;
-                if (ovl->framebuffers.empty() || imageIndex >= ovl->framebuffers.size())
-                {
-                    char detail[160]{};
-                    (void)_snprintf_s(
-                        detail,
-                        sizeof(detail),
-                        _TRUNCATE,
-                        "imageIndex=%u framebufferCount=%zu",
-                        imageIndex,
-                        ovl->framebuffers.size());
-                    LogCaptureSkipLocked(rt, CaptureSkipReason::OverlayFramebufferMissing, detail);
-                    return false;
-                }
-
-                if (!EnsureImGuiLocked(rt, queue, swapchain, queueIt->second, deviceIt->second, *ovl))
-                {
-                    LogCaptureSkipLocked(rt, CaptureSkipReason::EnsureImGuiFailed, "ensure_imgui_failed");
-                    return false;
-                }
-            }
 
             const VkImage targetImage = swapInfo.images[imageIndex];
             if (targetImage == VK_NULL_HANDLE)
@@ -3251,43 +3246,7 @@ namespace ht::hook::vulkan
                     CmdMakeReadbackVisible(captureSlot->commandBuffer);
                     perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
 
-                    if (shouldRenderOverlay && ovl != nullptr)
-                    {
-                        const auto overlayCmdBeginQpc = NowQpc();
-                        CmdTransitionImageLayout(
-                            captureSlot->commandBuffer,
-                            targetImage,
-                            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_ACCESS_TRANSFER_READ_BIT,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_PIPELINE_STAGE_TRANSFER_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-
-                        BuildImGuiOverlayDrawDataLocked(rt, gpu.width, gpu.height);
-
-                        VkRenderPassBeginInfo rpBegin{};
-                        rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                        rpBegin.renderPass = ovl->renderPass;
-                        rpBegin.framebuffer = ovl->framebuffers[imageIndex];
-                        rpBegin.renderArea.offset = {0, 0};
-                        rpBegin.renderArea.extent = {gpu.width, gpu.height};
-                        vkCmdBeginRenderPass(captureSlot->commandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
-                        ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), captureSlot->commandBuffer);
-                        vkCmdEndRenderPass(captureSlot->commandBuffer);
-
-                        CmdTransitionImageLayout(
-                            captureSlot->commandBuffer,
-                            targetImage,
-                            VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                            VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                            VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                            VK_ACCESS_MEMORY_READ_BIT,
-                            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-                        perfOverlayCommandDurationQpc += (NowQpc() - overlayCmdBeginQpc);
-                    }
-                    else if (inTransferLayout)
+                    if (inTransferLayout)
                     {
                         CmdTransitionImageLayout(
                             captureSlot->commandBuffer,
@@ -3326,11 +3285,7 @@ namespace ht::hook::vulkan
                     captureSlot->submitQpc = NowQpc();
                     captureSlot->frameSeq = ++gpu.captureFrameSeq;
                     captureSlot->state = CaptureSlotState::Pending;
-                    if (shouldRenderOverlay)
-                    {
-                        rt.imguiPendingFence = captureSlot->fence;
-                        rt.imguiPendingDevice = gpu.device;
-                    }
+
                     gpu.lastCaptureIssueQpc = captureSlot->submitQpc;
                     rt.captureIssueCount++;
                     rt.lastFormat = static_cast<std::uint32_t>(gpu.format);
@@ -3343,17 +3298,14 @@ namespace ht::hook::vulkan
 
                 rt.captureBusyCount++;
                 useImmediateCapture = false;
-                if (!shouldRenderOverlay)
-                {
-                    emitPresentPerfLog("capture_slot_busy");
-                    return true;
-                }
+                emitPresentPerfLog("capture_slot_busy");
+                return true;
             }
 
             if (gpu.submitPending)
             {
-                ++rt.overlayBusyCount;
-                emitPresentPerfLog("overlay_submit_busy");
+                ++rt.captureBusyCount;
+                emitPresentPerfLog("capture_submit_busy");
                 return true;
             }
             const auto resetPoolResult = vkResetCommandPool(gpu.device, gpu.commandPool, 0);
@@ -3421,58 +3373,7 @@ namespace ht::hook::vulkan
                 perfCopyCommandDurationQpc += (NowQpc() - copyCmdBeginQpc);
             }
 
-            if (shouldRenderOverlay && ovl != nullptr)
-            {
-                const auto overlayCmdBeginQpc = NowQpc();
-                if (inTransferLayout)
-                {
-                    CmdTransitionImageLayout(
-                        gpu.commandBuffer,
-                        targetImage,
-                        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_ACCESS_TRANSFER_READ_BIT,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_PIPELINE_STAGE_TRANSFER_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-                }
-                else
-                {
-                    CmdTransitionImageLayout(
-                        gpu.commandBuffer,
-                        targetImage,
-                        VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                        VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                        VK_ACCESS_MEMORY_READ_BIT,
-                        VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                        VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-                        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
-                }
-
-                BuildImGuiOverlayDrawDataLocked(rt, gpu.width, gpu.height);
-
-                VkRenderPassBeginInfo rpBegin{};
-                rpBegin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-                rpBegin.renderPass = ovl->renderPass;
-                rpBegin.framebuffer = ovl->framebuffers[imageIndex];
-                rpBegin.renderArea.offset = {0, 0};
-                rpBegin.renderArea.extent = {gpu.width, gpu.height};
-                vkCmdBeginRenderPass(gpu.commandBuffer, &rpBegin, VK_SUBPASS_CONTENTS_INLINE);
-                ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), gpu.commandBuffer);
-                vkCmdEndRenderPass(gpu.commandBuffer);
-
-                CmdTransitionImageLayout(
-                    gpu.commandBuffer,
-                    targetImage,
-                    VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-                    VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-                    VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-                    VK_ACCESS_MEMORY_READ_BIT,
-                    VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                    VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
-                perfOverlayCommandDurationQpc += (NowQpc() - overlayCmdBeginQpc);
-            }
-            else if (inTransferLayout)
+            if (inTransferLayout)
             {
                 CmdTransitionImageLayout(
                     gpu.commandBuffer,
@@ -3509,18 +3410,7 @@ namespace ht::hook::vulkan
             }
 
             gpu.submitPending = true;
-            if (shouldRenderOverlay)
-            {
-                rt.imguiPendingFence = gpu.fence;
-                rt.imguiPendingDevice = gpu.device;
-            }
-            if (!useImmediateCapture)
-            {
-                // WHY: Overlay has no CPU readback. Present waits for the re-signaled game
-                // semaphores, while this command pool is retained until its fence signals.
-                emitPresentPerfLog("overlay_async");
-                return true;
-            }
+
             const auto waitBeginQpc = NowQpc();
             const auto waitResult = vkWaitForFences(gpu.device, 1, &gpu.fence, VK_TRUE, 1'000'000'000ull);
             perfWaitDurationQpc = NowQpc() - waitBeginQpc;
@@ -3645,6 +3535,101 @@ namespace ht::hook::vulkan
             gpu.lastCaptureIssueQpc = ts;
             emitPresentPerfLog("capture_ok");
             return true;
+        }
+
+        VkResult WaitForOverlayFrameLocked(VulkanRuntime& rt, OverlayFrame& frame)
+        {
+            if (!frame.pending) return VK_SUCCESS;
+            auto result = vkGetFenceStatus(rt.imguiDevice, frame.fence);
+            if (result == VK_NOT_READY)
+            {
+                // WHY: Skipping this draw would present a frame without text. Only wait when
+                // the ring wraps to resources still read by the GPU; never reset them early.
+                ++rt.overlayWaitCount;
+                ScopedPerf timing(rt, PerfMetric::OverlayWait);
+                result = vkWaitForFences(rt.imguiDevice, 1, &frame.fence, VK_TRUE, UINT64_MAX);
+            }
+            if (result == VK_SUCCESS) frame.pending = false;
+            return result;
+        }
+
+        bool SubmitOverlayWorkLocked(VulkanRuntime& rt, VkQueue queue, VkSwapchainKHR swapchain,
+            std::uint32_t imageIndex, const VkPresentInfoKHR& presentInfo, VkResult& hookSubmitResult)
+        {
+            const bool drawOverlay = rt.overlayEnabled &&
+                ((!rt.overlayV2Blocks.empty() && rt.lastOverlayV2Seq != 0) || !rt.hookSuccessIndicatorDone);
+            if (!drawOverlay) return true;
+            ScopedPerf timing(rt, PerfMetric::OverlayTotal);
+
+            const auto& queueInfo = rt.queues.at(queue);
+            const auto& deviceInfo = rt.devices.at(queueInfo.device);
+            const auto& swapInfo = rt.swapchains.at(swapchain);
+            auto& gpu = rt.queueGpuStates.at(queue);
+            if (!CanSynchronizePresent(queueInfo, deviceInfo, swapInfo, presentInfo)) return false;
+
+            const auto fail = [&](VkResult result, const char* operation)
+            {
+                gpu.failed = true;
+                hookSubmitResult = result;
+                DebugLog("stage=hook_vulkan event=overlay_failed operation=%s vk=%d.", operation, static_cast<int>(result));
+                return false;
+            };
+            if (!EnsureOverlayResourcesLocked(rt, queue, swapchain))
+                return fail(VK_ERROR_INITIALIZATION_FAILED, "overlay_resources");
+            const auto& ovl = rt.overlaySwapchains.at(swapchain);
+
+            // COMPAT: The bundled ImGui Vulkan backend starts at index 0 and advances once per
+            // RenderDrawData call. Keep exactly the same ring size/order for its vertex/index buffers.
+            // Capture submissions must never advance this ring or lend it their reusable fences.
+            const auto next = (rt.overlayFrameIndex + 1u) % rt.overlayFrames.size();
+            auto& frame = rt.overlayFrames[next];
+            auto result = WaitForOverlayFrameLocked(rt, frame);
+            if (result != VK_SUCCESS) return fail(result, "frame_reuse");
+            result = vkResetCommandPool(queueInfo.device, frame.commandPool, 0);
+            if (result != VK_SUCCESS) return fail(result, "reset_pool");
+            result = vkResetFences(queueInfo.device, 1, &frame.fence);
+            if (result != VK_SUCCESS) return fail(result, "reset_fence");
+            VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+            begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+            result = vkBeginCommandBuffer(frame.commandBuffer, &begin);
+            if (result != VK_SUCCESS) return fail(result, "begin_commands");
+
+            const auto image = swapInfo.images[imageIndex];
+            CmdTransitionImageLayout(frame.commandBuffer, image,
+                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+                VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+                VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+            BuildImGuiOverlayDrawDataLocked(rt, gpu.width, gpu.height);
+            VkRenderPassBeginInfo renderPass{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
+            renderPass.renderPass = ovl.renderPass;
+            renderPass.framebuffer = ovl.framebuffers[imageIndex];
+            renderPass.renderArea.extent = {gpu.width, gpu.height};
+            vkCmdBeginRenderPass(frame.commandBuffer, &renderPass, VK_SUBPASS_CONTENTS_INLINE);
+            ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), frame.commandBuffer);
+            rt.overlayFrameIndex = static_cast<std::uint32_t>(next);
+            vkCmdEndRenderPass(frame.commandBuffer);
+            CmdTransitionImageLayout(frame.commandBuffer, image,
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT,
+                VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+            result = vkEndCommandBuffer(frame.commandBuffer);
+            if (result != VK_SUCCESS) return fail(result, "end_commands");
+
+            // WHY: Capture and overlay use separate submissions/fences. Waiting and re-signaling
+            // the game's semaphores chains capture -> overlay -> Present without holding a CPU slot.
+            result = SubmitSynchronizedPresentWork(queue, frame.commandBuffer, frame.fence, presentInfo);
+            if (result != VK_SUCCESS) return fail(result, "submit");
+            frame.pending = true;
+            ++rt.overlaySubmitCount;
+            return true;
+        }
+
+        bool SubmitPresentWorkLocked(VulkanRuntime& rt, VkQueue queue, VkSwapchainKHR swapchain,
+            std::uint32_t imageIndex, const VkPresentInfoKHR& presentInfo, VkResult& hookSubmitResult)
+        {
+            if (!SubmitCaptureWorkLocked(rt, queue, swapchain, imageIndex, presentInfo, hookSubmitResult))
+                return false;
+            return SubmitOverlayWorkLocked(rt, queue, swapchain, imageIndex, presentInfo, hookSubmitResult);
         }
 
         void PublishStatusLocked(VulkanRuntime& rt)
@@ -4308,13 +4293,16 @@ namespace ht::hook::vulkan
                         rt.publishQueuePeak = depth;
                         LeaveCriticalSection(&rt.publishQueueLock);
                     }
+                    // NOTE: Overlay waits count resource reuse, not dropped draws. Submit count
+                    // tracks actual overlays independently of the OCR capture rate.
                     DebugLog(
-                        "stage=hook_vulkan event=pipeline_counts issueTotal=%llu publishTotal=%llu deferTotal=%llu busyTotal=%llu overlayBusyTotal=%llu queueDepth=%zu queuePeak=%zu active=%ld fps=%u delayed=%d.",
+                        "stage=hook_vulkan event=pipeline_counts issueTotal=%llu publishTotal=%llu deferTotal=%llu busyTotal=%llu overlayWaitTotal=%llu overlaySubmitTotal=%llu queueDepth=%zu queuePeak=%zu active=%ld fps=%u delayed=%d.",
                         static_cast<unsigned long long>(rt.captureIssueCount),
                         static_cast<unsigned long long>(rt.capturePublishCount),
                         static_cast<unsigned long long>(rt.captureDeferCount),
                         static_cast<unsigned long long>(rt.captureBusyCount),
-                        static_cast<unsigned long long>(rt.overlayBusyCount),
+                        static_cast<unsigned long long>(rt.overlayWaitCount),
+                        static_cast<unsigned long long>(rt.overlaySubmitCount),
                         depth, peak, active, rt.configuredFpsLimit, !IsDelayedReadbackDisabled());
                 }
             }

@@ -1,4 +1,40 @@
 // Included in the integration test translation unit after the production hook implementation.
+CaptureSlot overlayVerificationSlot;
+unsigned overlayVerifiedFrames = 0;
+
+VKAPI_ATTR VkResult VKAPI_CALL VerifyOverlayBeforePresent(VkQueue queue, const VkPresentInfoKHR* present)
+{
+    auto& rt = g_rt;
+    const auto& swap = rt.swapchains.at(present->pSwapchains[0]);
+    auto& slot = overlayVerificationSlot;
+    if (slot.commandPool == VK_NULL_HANDLE)
+        Require(CreateCaptureSlotResources(swap.device, rt.devices.at(swap.device).physicalDevice,
+            rt.queues.at(queue).familyIndex, static_cast<VkDeviceSize>(swap.extent.width) * swap.extent.height * 4,
+            swap.extent.width, swap.extent.height, swap.format, false, slot), "create overlay pixel verifier");
+    Require(vkResetCommandPool(swap.device, slot.commandPool, 0) == VK_SUCCESS, "reset verification commands");
+    Require(vkResetFences(swap.device, 1, &slot.fence) == VK_SUCCESS, "reset verification fence");
+    VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    Require(vkBeginCommandBuffer(slot.commandBuffer, &begin) == VK_SUCCESS, "begin verification commands");
+    const auto image = swap.images[present->pImageIndices[0]];
+    CmdTransitionImageLayout(slot.commandBuffer, image, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+    VkBufferImageCopy region{};
+    region.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    region.imageExtent = {swap.extent.width, swap.extent.height, 1};
+    vkCmdCopyImageToBuffer(slot.commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, slot.stagingBuffer, 1, &region);
+    CmdMakeReadbackVisible(slot.commandBuffer);
+    CmdTransitionImageLayout(slot.commandBuffer, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT);
+    Require(vkEndCommandBuffer(slot.commandBuffer) == VK_SUCCESS, "end verification commands");
+    // WHY: Read exactly the image about to be presented, after the hook's semaphore signal.
+    Require(SubmitSynchronizedPresentWork(queue, slot.commandBuffer, slot.fence, *present) == VK_SUCCESS, "submit pixel verification");
+    Require(vkWaitForFences(swap.device, 1, &slot.fence, VK_TRUE, UINT64_MAX) == VK_SUCCESS, "wait for verification readback");
+    const auto* pixel = static_cast<const std::uint8_t*>(slot.stagingMapped) + (12 * swap.extent.width + 12) * 4;
+    Require(pixel[0] == 0 && pixel[1] == 255 && pixel[2] == 0, "every presented frame retains the green overlay");
+    ++overlayVerifiedFrames;
+    return vkQueuePresentKHR(queue, present);
+}
+
 void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice physical,
     VkDevice device, VkQueue queue, std::uint32_t family)
 {
@@ -92,6 +128,16 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
                 Require(vkCreateSemaphore(device, &semInfo, nullptr, &semaphore) == VK_SUCCESS, "create per-image game semaphore");
             Require(vkCreateSemaphore(device, &semInfo, nullptr, &target.acquired) == VK_SUCCESS, "create acquire semaphore");
         }
+        rt.originalQueuePresentKHR = VerifyOverlayBeforePresent;
+        rt.overlayV2Header.canvasW = rt.swapchains.at(surfaces[0].swapchain).extent.width;
+        rt.overlayV2Header.canvasH = rt.swapchains.at(surfaces[0].swapchain).extent.height;
+        ht::hook::ipc::OverlayTextBlockV2 block{};
+        block.x = block.y = 8;
+        block.w = 32;
+        block.h = 24;
+        block.bgArgb = 0xff00ff00;
+        rt.overlayV2Blocks = {block};
+        rt.lastOverlayV2Seq = 1;
         VkCommandPool gamePool = VK_NULL_HANDLE;
         VkCommandBuffer gameCommands = VK_NULL_HANDLE;
         VkFence gameFence = VK_NULL_HANDLE;
@@ -157,12 +203,40 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
             groupPresent.mode = VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR;
             if (frame & 1) present.pNext = &groupPresent;
             if (frame % 7 == 0 && rt.queueGpuStates.count(queue)) rt.queueGpuStates[queue].lastCaptureIssueQpc = 0;
+            const bool captureSlotsForcedBusy = frame == 10;
+            if (captureSlotsForcedBusy)
+            {
+                // WHY: Model a slow OCR publisher holding every capture slot, without holding any overlay resources.
+                auto& gpu = rt.queueGpuStates.at(queue);
+                Require(WaitForQueueGpuWorkLocked(rt, gpu) && DrainPublishQueueLocked(rt), "retire real owners before simulating full capture ring");
+                for (auto& slot : gpu.captureSlots) slot.state = CaptureSlotState::Publishing;
+                gpu.lastCaptureIssueQpc = 0;
+            }
             rt.lastPresentQpc = NowQpc();
             rt.hookSuccessIndicatorDone = false;
             const auto waitsBefore = waitCalls.load();
             const bool rebinding = rt.imguiInitialized && rt.imguiBoundSwapchain != swapchains[0];
+            const auto submitsBefore = rt.overlaySubmitCount;
+            const auto reuseWaitsBefore = rt.overlayWaitCount;
+            const auto captureBusyBefore = rt.captureBusyCount;
+            // WHY: Make the GPU-busy branch deterministic even on a fast test GPU. The real
+            // fence wait still executes, and the pixel verifier detects a skipped draw.
+            if (!rebinding && !rt.overlayFrames.empty())
+            {
+                const auto& next = rt.overlayFrames[(rt.overlayFrameIndex + 1) % rt.overlayFrames.size()];
+                if (next.pending) forceOverlayBusyFence = next.fence;
+            }
+            const bool forcedBusy = forceOverlayBusyFence != VK_NULL_HANDLE;
             const auto result = presentQueue(queue, &present);
-            Require(rebinding || waitCalls == waitsBefore, "steady capture/overlay never calls CPU fence wait");
+            forceOverlayBusyFence = VK_NULL_HANDLE;
+            if (captureSlotsForcedBusy)
+            {
+                Require(rt.captureBusyCount == captureBusyBefore + 1, "capture ring saturation was exercised");
+                for (auto& slot : rt.queueGpuStates.at(queue).captureSlots) slot.state = CaptureSlotState::Free;
+            }
+            Require(rt.overlaySubmitCount == submitsBefore + 1, "each frame draws even when capture is throttled or overlay was busy");
+            Require(rebinding || (forcedBusy ? rt.overlayWaitCount == reuseWaitsBefore + 1 : waitCalls == waitsBefore),
+                "only occupied overlay slots require a reuse wait");
             Require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "present after re-signaling game semaphores");
             for (auto perSwapchain : results) Require(perSwapchain == VK_SUCCESS || perSwapchain == VK_SUBOPTIMAL_KHR, "all batch pResults preserved");
             // NOTE: The test game uses this CPU wait to recycle its own command buffer, not the hook's.
@@ -173,11 +247,24 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
         Require(DrainPublishQueueLocked(rt) && rt.capturePublishCount > 0, "WSI frames were actually published");
         Require(rt.imguiInitialized && rt.imguiBoundSwapchain == surfaces[1].swapchain, "overlay was initialized and rebound");
         RequirePublishedPixel(rt, 0, 0, 255, rt.queueGpuStates[queue].stagingBytes);
+        Require(rt.overlayWaitCount > 0, "exercised busy ring reuse without missing overlay pixels");
+        DestroyCaptureSlot(device, overlayVerificationSlot);
         // WHY: A rejected submit must report failure without inventing pending GPU ownership.
         // This injection never touches the actual semaphores or the already-presented image.
         VkPresentInfoKHR failedPresent{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
         failedPresent.waitSemaphoreCount = 1;
         failedPresent.pWaitSemaphores = surfaces[1].rendered.data();
+        // WHY: A failed overlay submit must not mark an unsignaled fence as pending forever.
+        rt.queueGpuStates[queue].lastCaptureIssueQpc = NowQpc();
+        rt.lastPresentQpc = NowQpc();
+        const auto overlayIssuedBefore = rt.overlaySubmitCount;
+        forcedSubmitResult = VK_ERROR_OUT_OF_HOST_MEMORY;
+        VkResult overlayFailure = VK_SUCCESS;
+        Require(!SubmitPresentWorkLocked(rt, queue, surfaces[1].swapchain, 0, failedPresent, overlayFailure) &&
+            overlayFailure == forcedSubmitResult && rt.overlaySubmitCount == overlayIssuedBefore &&
+            !rt.overlayFrames[rt.overlayFrameIndex].pending, "failed overlay submit preserves accurate fence ownership");
+        // The injected failure never reached the GPU, whose real work was retired above.
+        rt.queueGpuStates[queue].failed = false;
         rt.queueGpuStates[queue].lastCaptureIssueQpc = 0;
         rt.lastPresentQpc = NowQpc();
         forcedSubmitResult = VK_ERROR_OUT_OF_HOST_MEMORY;
@@ -188,6 +275,7 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
             "submit error is propagated and stops queue reuse without counting a capture");
         forcedSubmitResult = VK_SUCCESS;
         Require(ResetRuntimeLocked(rt), "retire hook before resize/detach");
+        Require(rt.overlayFrames.empty(), "resize/detach releases all overlay frame resources");
         vkDestroyFence(device, gameFence, nullptr);
         vkDestroyCommandPool(device, gamePool, nullptr);
         for (auto& target : surfaces)
@@ -201,5 +289,6 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
         Require(validationErrors == 0, "WSI synchronization and resource lifetime validation");
     }
     UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
-    std::puts("PASS: 72 multi-swapchain presents, capture/overlay without CPU fence waits, resize and detach");
+    Require(overlayVerifiedFrames == 72, "verified overlay pixels on every test frame");
+    std::puts("PASS: 72 multi-swapchain presents with overlay pixels, busy ring reuse, resize and detach");
 }

@@ -23,6 +23,7 @@ namespace
     VkResult forcedSubmitResult = VK_SUCCESS;
     bool probeCapturePreparation = false;
     unsigned capturePreparationCalls = 0;
+    VkFence forceOverlayBusyFence = VK_NULL_HANDLE;
 
     VKAPI_ATTR VkResult VKAPI_CALL TestResetCommandPool(VkDevice device, VkCommandPool pool, VkCommandPoolResetFlags flags)
     {
@@ -43,6 +44,7 @@ namespace
 
     VKAPI_ATTR VkResult VKAPI_CALL TestGetFenceStatus(VkDevice device, VkFence fence)
     {
+        if (forceOverlayBusyFence != VK_NULL_HANDLE && fence == forceOverlayBusyFence) return VK_NOT_READY;
         if (realGpu)
         {
             return vkGetFenceStatus(device, fence);
@@ -224,19 +226,45 @@ namespace
         Require(!CanSynchronizePresent(queue, device, swapchain, present), "remote device-group present is unsupported");
 
         auto runtime = std::make_unique<VulkanRuntime>();
-        runtime->imguiPendingDevice = testDevice;
-        runtime->imguiPendingFence = (VkFence)10;
+        runtime->imguiDevice = testDevice;
+        runtime->overlayFrames.resize(3);
+        auto& busy = runtime->overlayFrames[0];
+        busy.fence = (VkFence)10;
+        busy.pending = true;
         const auto callsBefore = waitCalls.load();
         fenceResult = VK_NOT_READY;
-        Require(!PollOverlaySubmissionLocked(*runtime) && runtime->imguiPendingFence != VK_NULL_HANDLE,
-            "busy ImGui buffers remain owned by GPU");
+        Require(WaitForOverlayFrameLocked(*runtime, runtime->overlayFrames[1]) == VK_SUCCESS && busy.pending,
+            "another frame's busy fence does not block a free overlay slot");
+        Require(waitCalls == callsBefore, "free slot needs no wait");
+        waitEntered = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        waitRelease = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        blockWait = true;
+        auto reuse = std::async(std::launch::async, [&] { return WaitForOverlayFrameLocked(*runtime, busy); });
+        Require(WaitForSingleObject(waitEntered, 2000) == WAIT_OBJECT_0, "ring reuse waits for the busy slot");
+        Require(reuse.wait_for(std::chrono::milliseconds(20)) == std::future_status::timeout && busy.pending,
+            "busy buffers cannot be overwritten or silently skipped");
+        SetEvent(waitRelease);
+        Require(reuse.get() == VK_SUCCESS && !busy.pending, "completed slot is reusable for this frame's overlay");
+        blockWait = false;
+        CloseHandle(waitEntered);
+        CloseHandle(waitRelease);
+        Require(runtime->overlayWaitCount == 1 && waitCalls == callsBefore + 1, "only the reused slot was waited");
+        busy.pending = true;
         fenceResult = VK_ERROR_DEVICE_LOST;
-        Require(!PollOverlaySubmissionLocked(*runtime), "failed overlay fence is not reusable");
+        Require(WaitForOverlayFrameLocked(*runtime, busy) == VK_ERROR_DEVICE_LOST && busy.pending,
+            "failed overlay fence is not reusable");
         fenceResult = VK_SUCCESS;
-        Require(PollOverlaySubmissionLocked(*runtime) && runtime->imguiPendingFence == VK_NULL_HANDLE,
-            "completed overlay can be reused");
-        Require(waitCalls == callsBefore, "overlay polling never waits on CPU");
-        std::puts("PASS: present synchronization guards and nonblocking overlay ownership");
+        Require(WaitForOverlayFrameLocked(*runtime, busy) == VK_SUCCESS && !busy.pending,
+            "completed overlay can be reused without blocking");
+        for (auto& frame : runtime->overlayFrames) frame.pending = true;
+        waitResult = VK_ERROR_OUT_OF_HOST_MEMORY;
+        Require(!WaitForDeviceHookWorkLocked(*runtime, testDevice) && busy.pending,
+            "failed overlay retirement retains the ring");
+        waitResult = VK_SUCCESS;
+        Require(WaitForDeviceHookWorkLocked(*runtime, testDevice) &&
+            std::none_of(runtime->overlayFrames.begin(), runtime->overlayFrames.end(), [](const auto& f) { return f.pending; }),
+            "teardown retires every overlay slot");
+        std::puts("PASS: present guards, overlay ring reuse and teardown");
     }
 
     void ReadbackAtLowFps()

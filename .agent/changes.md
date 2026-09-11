@@ -2890,3 +2890,53 @@
 - アプリ実行フォルダーのNativeはリポジトリNativeへのjunction。x64 Host/DLLのSHA-256一致により修正版反映を確認した。
 - git diff --checkで空白エラーなし。x86ビルド・実行、アンチウイルス設定変更はしていない。
 - ユーザーのゲームでUI操作を伴う最終確認は未実施。
+
+**2026-09-11 14:29 (Asia/Taipei) — Vulkanオーバレイの描画省略によるチラツキを修正**
+
+### Summary
+- GPU処理中のオーバレイを省略する経路を廃止し、複数フレーム分の描画リソースと再利用時の待機で連続表示を維持する。
+
+### Context / Goal
+- 実ゲームでチラツキが報告され、ログにはoverlayBusyTotal=5025が記録されていた。
+- OCR取得頻度やキャプチャ枠の使用状況に関係なく、表示対象のオーバレイを各Presentで描画する。
+
+### Changes
+- ImGuiのImageCountと同数のオーバレイ専用command pool/buffer/fenceを確保し、バックエンドの頂点・インデックスバッファと同じ順序で回す。
+- 再利用する描画枠が未完了の場合だけ、そのフェンスの完了を待つ。待機失敗・送信失敗は明示的なエラーとし、未完了リソースをリセットしない。
+- キャプチャとオーバレイのGPU送信・フェンスを分離。既存のゲーム所有semaphoreのwait/re-signalでcapture→overlay→Presentを順序付ける。
+- キャプチャが間引き中・全枠使用中でも、オーバレイ用リソースで描画を続行する。
+- スワップチェーン・queueの切り替え、device破棄、終了時に全描画枠を完了させてからImGuiと描画リソースを解放する。
+- リソース再構築は新規キャプチャの投入前に済ませ、直後のフレームが再構築時に破棄されないようにした。
+- overlay_wait / overlay_totalの計測とoverlayWaitTotal / overlaySubmitTotalのカウンターを追加。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 描画枠管理、キャプチャと描画の分離、完了待ち・寿命管理、診断指標。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 空き枠・使用中枠の再利用、待機中の所有権、エラー時の保持、全枠の終了待ちを検証。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — Present直前の画像を読み戻して各フレームのオーバレイ画素を検証。使用中フェンス、キャプチャ枠飽和、送信失敗を注入。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- GPU処理中を理由としたオーバレイ描画省略がなくなる。通常は非同期に送信し、描画枠が再利用できない場合にはCPU待機が発生する。
+- キャプチャ取得フレームには引き続きオーバレイを混入させず、BGRA直接publishも維持する。
+- 共有メモリ形式やUI設定、x86/x64の外部ABIは変更しない。両アーキテクチャ共通のソースへ適用。
+- 診断ログのpresent_perfをcapture_perfへ変更し、キャプチャと独立した描画を区別する。overlayBusyTotalに代わりoverlayWaitTotalとoverlaySubmitTotalを出力する。
+
+### Risk & Mitigation
+- Risk: ImGui内部バッファの再利用順とフェンスの対応がずれると、処理中の頂点・インデックスを上書きする。
+- Mitigation: バンドル済みバックエンドと同じImageCount・巡回順を維持し、キャプチャによって描画枠の巡回を進めない。前提をCOMPATコメントへ明記。
+- Risk: GPU高負荷時に再利用待ちが増え、ゲームの描画時間へ影響する。
+- Mitigation: 待つ対象を再利用枠に限定し、overlay_waitとoverlay_totalで影響を測定可能にする。
+- Risk: resize/detachや失敗時にGPUが使用中のリソースを解放する。
+- Mitigation: 全オーバレイ枠をretireしてから解放し、送信に成功した場合のみpendingとする。待機失敗では所有権を保持する。
+
+### Tests / Verification
+- SDK G:/Development-Cache/VulkanSdk、x64 ReleaseのHookAgentVulkan / HookAgentVulkanTestsビルド成功。
+- CTest: HookHostDiagnostics / VulkanReadbackの2件に合格。
+- 実GPU --present: 72回の複数swapchain Presentすべてで、Present直前のオーバレイ画素を確認。元画像のキャプチャはオーバレイなしの色であることも確認。
+- 実GPU上で再利用フェンスのNOT_READYを意図的に返し、必要な待機を行っても描画が抜けないことを確認。
+- キャプチャ枠を全使用中にした条件でもオーバレイ画素を確認。overlay/capture双方の送信失敗時に未送信フェンスをpending扱いしないことを確認。
+- resize/rebind/detach、12回の実GPU publishと同期validationを確認。validationエラー0。
+- 最初のGPU検証で初期化時の余分な待機を検出し、描画リソースの準備を新規キャプチャ投入前へ移動後、再検証に合格。
+- Debug実行フォルダーのNative junctionとDLLのSHA-256一致を確認。実行先には修正版x64 DLLが反映済み。
+- git diff --checkで空白エラーなし。x86ビルド・実行なし。アンチウイルス設定変更なし。
+- チラツキが報告された実ゲームでの最終確認は未実施。
