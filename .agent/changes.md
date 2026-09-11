@@ -2837,3 +2837,56 @@
 - `dotnet build Hotkey-Translator.csproj --no-restore -c Debug -p:BuildProjectReferences=false -v:q` — 成功、警告0・エラー0。
 - `git diff --check` — 空白エラーなし。
 - アプリを操作して設定変更・再起動する実機確認は未実施。native/x86のビルドは行っていない。
+
+**2026-09-11 14:03 (Asia/Taipei) — Hook診断ファイル出力をUI設定へ統一**
+
+### Summary
+- Vulkan初期化ログとHookHostログを診断ファイル出力設定に接続し、OFF時のファイル作成・追記を停止した。
+
+### Context / Goal
+- 性能診断とファイル出力の両方をOFFにしても、Vulkan初期化ログとHostログが生成されていた。
+- 起動直後、実行中の切り替え、終了処理まで設定を適用し、既存ログは削除せず保持する。
+
+### Changes
+- Host起動引数で最初のログより前にファイル出力方針を指定。引数なしではOFFとする。
+- diagnosticsコマンドを追加し、ゲーム未接続・pipeline無効時も既存Hostへ設定を通知する。
+- 設定適用時はdetachや接続条件判定より先に、接続中ゲームの共有設定とHost診断設定を更新する。
+- Hostは共有設定の書き込み成功を確認してから注入する。Vulkanはinstall-threadの最初のログと再接続・終了時に設定を再読込する。
+- Vulkanの設定未取得時は初期化を明示的に失敗させる。初期化後も設定済みFPS・overlayを保持する。
+- ファイル出力の最終段で設定を検査し、OFFへの切り替えと書き込みを同じmutexで排他する。
+- 性能診断の有効化とファイル出力の有効化は独立。性能ログのファイル保存には両方が必要。
+
+### Files Touched
+- `Services/Hook/GraphicsHookClientService.cs` — 起動引数、共有設定の先行更新、接続状態に依存しないHost診断通知。
+- `Services/Hook/Contracts/GraphicsHookMessages.cs` — diagnosticsコマンドのpayload。
+- `Native/HookHost/main.cpp` — 起動時・実行中のファイル出力制御、共有設定の注入前公開。
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 全ファイル出力の設定検査、初期化前読込、OFF時の排他付きclose。
+- `Native/HookAgentVulkan/VulkanPresentHook.h` — 初期化前に共有設定が必要である契約を明記。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 設定4通り、初期化ログ、OFF時の保持・並行書き込みの回帰試験。
+- `Native/HookHost/tests/HookHostDiagnosticTests.cpp` — Host設定4通り、実行中切り替え、終了時の回帰試験。
+- `Native/HookCommon/tests/DiagnosticTestFiles.h` — ゲームのログと混在しない試験出力先。
+- `Native/HookHost/CMakeLists.txt` — Host診断試験を既存のテストオプションとCTestへ登録。
+- `.agent/changes.md` — 本タスクの記録。
+
+### Behavioral Impact
+- ファイル出力OFFではHost/Vulkanの初期化ログも新規ファイルを作らず、既存ファイルにも追記しない。
+- ONへの変更後から追記し、OFFではファイルを閉じる。既存ログを削除しない。
+- OutputDebugStringのデバッガ向け出力は引き続き利用できる。
+- アプリ、Host、Vulkan DLLを対応する修正版で使用する。設定ファイルの項目・共有設定の形式は変更なし。
+
+### Risk & Mitigation
+- Risk: 初期ログが共有設定の公開より先に出る、またはOFFと並行する書き込みがファイルを再度開く可能性。
+- Mitigation: 注入前の設定公開、初期化入口での強制読込、最終出力段のmutex内検査で防止する。
+- Risk: 診断通知が接続状態の表示を変更する可能性。
+- Mitigation: diagnosticsは一方向通知とし、接続状態の応答を発行しない。
+
+### Tests / Verification
+- x64 ReleaseのHookHost、HookAgentVulkan、両テストターゲットをビルド成功。SDKはG:/Development-Cache/VulkanSdk。
+- CTest: HookHostDiagnostics / VulkanReadbackの2件に合格。設定4通り、初期化前設定、実行中OFF、既存ファイル保持、並行書き込みを確認。
+- 実Hostプロセスで起動時ON/OFF、pipe経由ON→OFF、OFFでのshutdown後に追記がないことを確認。
+- ビルド済みVulkan DLLをx64の隔離した検証プロセスへロードし、実exportのInstallVulkanHookThreadでflags 0/1/2/3とOFF再適用を確認。OFFでのUninstall後も追記なし。
+- 実GPU --present試験成功。72回の複数swapchain Present、capture/overlay、resize/detach、12回publish、同期validationエラーなし。
+- WPF Debugビルド成功、警告0・エラー0。初回は既存の生成ファイル欠落で失敗したが、Rebuildで解消した。
+- アプリ実行フォルダーのNativeはリポジトリNativeへのjunction。x64 Host/DLLのSHA-256一致により修正版反映を確認した。
+- git diff --checkで空白エラーなし。x86ビルド・実行、アンチウイルス設定変更はしていない。
+- ユーザーのゲームでUI操作を伴う最終確認は未実施。

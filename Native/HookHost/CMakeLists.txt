@@ -18,3 +18,10 @@ set_target_properties(HookHost PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${HT_HOOKHOST_BIN_DIR}"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${HT_HOOKHOST_BIN_DIR}"
 )
+
+if (HT_VULKAN_BUILD_TESTS)
+    add_executable(HookHostDiagnosticTests tests/HookHostDiagnosticTests.cpp ../HookCommon/SharedHookConfig.cpp)
+    target_compile_definitions(HookHostDiagnosticTests PRIVATE _UNICODE UNICODE NOMINMAX)
+    add_test(NAME HookHostDiagnostics COMMAND HookHostDiagnosticTests)
+    set_tests_properties(HookHostDiagnostics PROPERTIES TIMEOUT 15)
+endif()

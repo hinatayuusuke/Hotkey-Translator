@@ -89,10 +89,68 @@ namespace
 
 using namespace ht::hook::vulkan;
 
+#include "../../HookCommon/tests/DiagnosticTestFiles.h"
+
 namespace
 {
     const auto testQueue = reinterpret_cast<VkQueue>(static_cast<std::uintptr_t>(1));
     const auto testDevice = reinterpret_cast<VkDevice>(static_cast<std::uintptr_t>(2));
+
+    void DiagnosticFilePolicy()
+    {
+        DiagnosticTestFiles files;
+        const auto path = files.LogPath(L"hook_vulkan_");
+        ht::hook::ipc::SharedHookConfigWriter writer;
+        auto& rt = g_rt;
+        Require(!InstallPresentHook(), "install fails explicitly when the Host config is missing");
+        DebugLogInstall("event=missing_config.");
+        Require(!std::filesystem::exists(path), "missing startup config defaults to OFF");
+        for (unsigned flags = 0; flags < 4; ++flags)
+        {
+            const bool fileEnabled = (flags & ht::hook::ipc::kConfigFlagEnableDiagFileSink) != 0;
+            const bool perfEnabled = (flags & ht::hook::ipc::kConfigFlagEnablePerfDiagLog) != 0;
+            Require(writer.Write(GetCurrentProcessId(), ht::hook::ipc::GraphicsApi::Vulkan, 3, true, flags), "publish config before install entry");
+            // WHY: Exercise the first remote-thread log with no Present, then a sub-200ms re-attach.
+            LogInstallThreadEvent("event=install_entry flags=%u.", flags);
+            Require(rt.perfDiagLogEnabled == perfEnabled, "perf setting is independent of file output");
+            DebugLog("event=normal_log.");
+            rt.perfWindowQpc = 1;
+            { ScopedPerf sample(rt, PerfMetric::HookTotal); }
+            EmitPerfWindow(rt, rt.qpcFreq * 10, rt.qpcFreq);
+            SetDiagFileSinkEnabled(false);
+            const auto contents = DiagnosticTestFiles::Read(path);
+            Require(std::filesystem::exists(path) == fileEnabled, "initial logs obey file flag for all four combinations");
+            Require((contents.find("event=perf_window") != std::string::npos) == (fileEnabled && perfEnabled),
+                "perf files require both settings");
+            Require(writer.Write(GetCurrentProcessId(), ht::hook::ipc::GraphicsApi::Vulkan, 3, true, 0), "publish OFF");
+            LogInstallThreadEvent("event=disabled_install_entry.");
+            DebugLogInstall("event=disabled_first_hit.");
+            DebugLog("event=disabled_normal.");
+            Require(g_diagFileHandle == INVALID_HANDLE_VALUE, "OFF never reopens for install logs");
+            Require(DiagnosticTestFiles::Read(path) == contents, "OFF preserves file contents");
+        }
+        // WHY: A worker may already be attempting a write when the UI disables file output.
+        SetDiagFileSinkEnabled(true);
+        std::promise<void> started;
+        std::promise<void> disabledWriteDone;
+        std::thread logger([&] {
+            DebugLogInstall("event=concurrent_write.");
+            started.set_value();
+            while (g_diagFileSinkEnabled.load()) DebugLogInstall("event=concurrent_write.");
+            DebugLogInstall("event=write_after_off.");
+            disabledWriteDone.set_value();
+        });
+        started.get_future().wait();
+        SetDiagFileSinkEnabled(false);
+        const auto stoppedContents = DiagnosticTestFiles::Read(path);
+        disabledWriteDone.get_future().wait();
+        logger.join();
+        Require(g_diagFileHandle == INVALID_HANDLE_VALUE && DiagnosticTestFiles::Read(path) == stoppedContents,
+            "concurrent writer cannot reopen or append after OFF");
+        rt.configReader.Reset();
+        rt.lastConfigQpc = 0;
+        std::puts("PASS: Vulkan diagnostic matrix, install entry and concurrent OFF");
+    }
 
     void RequirePublishedPixel(VulkanRuntime& rt, std::uint8_t blue, std::uint8_t green, std::uint8_t red, std::size_t bytes)
     {
@@ -573,6 +631,7 @@ int main(int argc, char** argv)
         RealGpuReadback(std::strcmp(argv[1], "--present") == 0);
         return 0;
     }
+    DiagnosticFilePolicy();
     ReadbackAtLowFps();
     PresentSynchronizationGuards();
     DispatchAndMetadataRegression();

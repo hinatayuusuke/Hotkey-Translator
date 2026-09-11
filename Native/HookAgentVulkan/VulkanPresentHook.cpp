@@ -569,6 +569,11 @@ namespace ht::hook::vulkan
             }
 
             std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            // WHY: Recheck under the file lock; an in-flight log must not reopen the file after OFF.
+            if (!g_diagFileSinkEnabled.load(std::memory_order_relaxed))
+            {
+                return;
+            }
             if (!EnsureDiagFileUnlocked())
             {
                 return;
@@ -604,6 +609,19 @@ namespace ht::hook::vulkan
             }
             g_diagFilePid = 0;
             g_diagFilePath.clear();
+        }
+
+        void SetDiagFileSinkEnabled(bool enabled)
+        {
+            std::lock_guard<std::mutex> lock(g_diagFileMutex);
+            g_diagFileSinkEnabled.store(enabled, std::memory_order_relaxed);
+            if (!enabled && g_diagFileHandle != INVALID_HANDLE_VALUE)
+            {
+                CloseHandle(g_diagFileHandle);
+                g_diagFileHandle = INVALID_HANDLE_VALUE;
+                g_diagFilePid = 0;
+                g_diagFilePath.clear();
+            }
         }
 
         void DebugLog(const char* fmt, ...)
@@ -1638,7 +1656,7 @@ namespace ht::hook::vulkan
                 }
                 rt.perfWindowQpc = 0;
             }
-            g_diagFileSinkEnabled.store(false, std::memory_order_relaxed);
+            SetDiagFileSinkEnabled(false);
 
             rt.lastOverlayV2Seq = 0;
             rt.lastOverlayV2Qpc = 0;
@@ -1980,7 +1998,7 @@ namespace ht::hook::vulkan
             return physicalDevice != VK_NULL_HANDLE;
         }
 
-        bool EnsureConfigRefreshedLocked(VulkanRuntime& rt)
+        bool EnsureConfigRefreshedLocked(VulkanRuntime& rt, bool force = false)
         {
             if (rt.qpcFreq == 0)
             {
@@ -1988,7 +2006,7 @@ namespace ht::hook::vulkan
             }
 
             const auto now = NowQpc();
-            if (rt.lastConfigQpc != 0 && now - rt.lastConfigQpc < (rt.qpcFreq / 5u))
+            if (!force && rt.lastConfigQpc != 0 && now - rt.lastConfigQpc < (rt.qpcFreq / 5u))
             {
                 return true;
             }
@@ -2018,12 +2036,7 @@ namespace ht::hook::vulkan
             rt.overlayEnabled = cfg.overlayEnabled != 0;
             rt.perfDiagLogEnabled = (cfg.reserved0 & ipc::kConfigFlagEnablePerfDiagLog) != 0;
             const bool diagFileSinkEnabled = (cfg.reserved0 & ipc::kConfigFlagEnableDiagFileSink) != 0;
-            const bool previousDiagFileSinkEnabled =
-                g_diagFileSinkEnabled.exchange(diagFileSinkEnabled, std::memory_order_relaxed);
-            if (previousDiagFileSinkEnabled && !diagFileSinkEnabled)
-            {
-                CloseDiagFile();
-            }
+            SetDiagFileSinkEnabled(diagFileSinkEnabled);
             return true;
         }
 
@@ -4340,6 +4353,13 @@ namespace ht::hook::vulkan
     {
         auto& rt = g_rt;
         std::lock_guard<std::mutex> lock(rt.mutex);
+        // NOTE: Direct install and re-attach must apply diagnostics even before any Present occurs.
+        if (!EnsureConfigRefreshedLocked(rt, true))
+        {
+            SetDiagFileSinkEnabled(false);
+            DebugLog("stage=hook_vulkan event=install_hook_result result=fail reason=config_unavailable.");
+            return false;
+        }
         DebugLogInstall(
             "stage=hook_vulkan event=agent_loaded pid=%lu.",
             static_cast<unsigned long>(GetCurrentProcessId()));
@@ -4484,10 +4504,8 @@ namespace ht::hook::vulkan
             return false;
         }
 
-        rt.qpcFreq = QueryQpcFreq();
-        rt.captureIntervalQpc = (rt.qpcFreq > 0) ? (rt.qpcFreq / kDefaultCaptureFps) : 0;
-        rt.configuredFpsLimit = kDefaultCaptureFps;
-        rt.overlayEnabled = false;
+        // WHY: Keep the config read before installation; resetting defaults here would suppress
+        // the configured overlay/FPS until the first periodic config refresh.
         rt.hookSuccessIndicatorArmed = true;
         rt.hookSuccessIndicatorDone = false;
         rt.hookSuccessIndicatorStartQpc = 0;
@@ -4507,6 +4525,11 @@ namespace ht::hook::vulkan
             return;
         }
 
+        // WHY: The remote entry point emits this log before InstallPresentHook is called.
+        // The Host publishes config before injection, including when file output is disabled.
+        auto& rt = g_rt;
+        std::lock_guard<std::mutex> lock(rt.mutex);
+        if (!EnsureConfigRefreshedLocked(rt, true)) SetDiagFileSinkEnabled(false);
         char buffer[768]{};
         va_list args;
         va_start(args, fmt);
@@ -4530,6 +4553,7 @@ namespace ht::hook::vulkan
     {
         auto& rt = g_rt;
         std::lock_guard<std::mutex> lock(rt.mutex);
+        (void)EnsureConfigRefreshedLocked(rt, true);
         if (!rt.installed.load())
         {
             return;
