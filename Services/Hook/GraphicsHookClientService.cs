@@ -92,6 +92,22 @@ internal sealed class GraphicsHookClientService : IDisposable
                 return;
             }
 
+            var configFlags = BuildConfigFlags(settings);
+            _runtimeConfigFlags = configFlags;
+            // WHY: Apply diagnostics before detach/eligibility checks so OFF also stops shutdown logs.
+            if (_attachedPid > 0)
+            {
+                _configWriter.TryWrite(_attachedPid, _attachedApi, settings.GraphicsHookCaptureFpsLimit,
+                    IsHookOverlaySupportedApi(_attachedApi) && settings.GraphicsHookOverlayEnabled, configFlags);
+            }
+            if (_hostProcess is { HasExited: false } &&
+                await EnsurePipeConnectedAsync(settings, cancellationToken).ConfigureAwait(false))
+            {
+                EnsureReceiveLoop();
+                await SendCommandAsync(new GraphicsHookCommandEnvelope("diagnostics",
+                    new GraphicsHookDiagnosticsRequest(configFlags)), cancellationToken).ConfigureAwait(false);
+            }
+
             if (!settings.EnableGraphicsHookPipeline)
             {
                 await DetachInternalAsync("disabled", cancellationToken).ConfigureAwait(false);
@@ -140,7 +156,8 @@ internal sealed class GraphicsHookClientService : IDisposable
                 return;
             }
 
-            if (!EnsureHostProcess(hostSelection))
+            if (!EnsureHostProcess(hostSelection,
+                (configFlags & GraphicsHookConfigWriter.ConfigFlagEnableDiagFileSink) != 0))
             {
                 _loggerAccessor()?.Error("stage=graphics_hook event=host_start_failed.");
                 if (settings.GraphicsHookFallbackOnError)
@@ -167,7 +184,6 @@ internal sealed class GraphicsHookClientService : IDisposable
             var effectiveOverlayEnabled =
                 IsHookOverlaySupportedApi(settings.GraphicsHookApi) &&
                 settings.GraphicsHookOverlayEnabled;
-            var configFlags = BuildConfigFlags(settings);
 
             var attachRequest = new GraphicsHookAttachRequest(
                 targetPid,
@@ -344,7 +360,7 @@ internal sealed class GraphicsHookClientService : IDisposable
         return _launcherSessionTargetState.ResolveEffectiveProcessId(settings);
     }
 
-    private bool EnsureHostProcess(HostSelection hostSelection)
+    private bool EnsureHostProcess(HostSelection hostSelection, bool enableDiagFileSink)
     {
         if (_hostProcess is { HasExited: false })
         {
@@ -375,6 +391,8 @@ internal sealed class GraphicsHookClientService : IDisposable
                 WorkingDirectory = Path.GetDirectoryName(hostPath) ?? Environment.CurrentDirectory
             };
 
+            // WHY: The first Host log precedes pipe commands, so its policy must be supplied at startup.
+            startInfo.ArgumentList.Add(enableDiagFileSink ? "--diag-file-sink=1" : "--diag-file-sink=0");
             _hostProcess = Process.Start(startInfo);
             if (_hostProcess == null)
             {

@@ -14,6 +14,9 @@ internal sealed record GraphicsHookDetachRequest(
 
 internal sealed record GraphicsHookShutdownRequest();
 
+// NOTE: Host-wide diagnostics can change even when no game is attached.
+internal sealed record GraphicsHookDiagnosticsRequest(uint ConfigFlags);
+
 internal sealed record GraphicsHookCommandEnvelope(
     string Type,
     object Payload);

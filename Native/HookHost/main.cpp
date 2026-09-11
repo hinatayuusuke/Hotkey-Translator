@@ -42,6 +42,7 @@ namespace
     std::unordered_map<DWORD, ProcessHookState> g_states;
     bool g_shutdownRequested = false;
     std::mutex g_diagFileMutex;
+    bool g_diagFileSinkEnabled = false;
     HANDLE g_diagFileHandle = INVALID_HANDLE_VALUE;
     DWORD g_diagFilePid = 0;
     std::wstring g_diagFilePath;
@@ -144,6 +145,10 @@ namespace
         }
 
         std::lock_guard<std::mutex> lock(g_diagFileMutex);
+        if (!g_diagFileSinkEnabled)
+        {
+            return;
+        }
         if (!EnsureDiagFileUnlocked())
         {
             return;
@@ -180,6 +185,20 @@ namespace
 
         g_diagFilePid = 0;
         g_diagFilePath.clear();
+    }
+
+    void SetDiagFileSinkEnabled(bool enabled)
+    {
+        // WHY: Serialize OFF with writes so a pending log cannot reopen the file after it closes.
+        std::lock_guard<std::mutex> lock(g_diagFileMutex);
+        g_diagFileSinkEnabled = enabled;
+        if (!enabled && g_diagFileHandle != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(g_diagFileHandle);
+            g_diagFileHandle = INVALID_HANDLE_VALUE;
+            g_diagFilePid = 0;
+            g_diagFilePath.clear();
+        }
     }
 
     const char* ApiToLogString(ht::hook::ipc::GraphicsApi api)
@@ -804,6 +823,19 @@ namespace
 
     void HandleMessage(HANDLE pipe, const std::string& message)
     {
+        if (message.find("\"type\":\"diagnostics\"") != std::string::npos)
+        {
+            std::uint32_t flags = 0;
+            if (!ExtractU32(message, "configFlags", flags))
+            {
+                LogHost("event=diagnostics_parse_failed.");
+                return;
+            }
+            SetDiagFileSinkEnabled((flags & ht::hook::ipc::kConfigFlagEnableDiagFileSink) != 0);
+            LogHost("event=diagnostics_updated flags=0x%08X.", static_cast<unsigned int>(flags));
+            // NOTE: One-way configuration; it must not replace the client's attachment state.
+            return;
+        }
         if (message.find("\"type\":\"attach\"") != std::string::npos)
         {
             AttachRequest req{};
@@ -814,6 +846,7 @@ namespace
                 return;
             }
 
+            SetDiagFileSinkEnabled((req.configFlags & ht::hook::ipc::kConfigFlagEnableDiagFileSink) != 0);
             LogHost(
                 "event=attach_received pid=%lu api=%s fps=%u overlay=%u flags=0x%08X.",
                 static_cast<unsigned long>(req.pid),
@@ -836,12 +869,16 @@ namespace
                     return;
                 }
 
-                (void)existing->second.configWriter.Write(
+                if (!existing->second.configWriter.Write(
                     req.pid,
                     existing->second.api,
                     req.captureFpsLimit,
                     req.enableOverlay,
-                    req.configFlags);
+                    req.configFlags))
+                {
+                    WriteResponse(pipe, BuildState("Failed", "attach_failed:config_write_failed", req.api, req.pid));
+                    return;
+                }
                 // WHY: vtable patching cannot safely unload in v1. Re-attach re-enables by calling Install again.
                 HANDLE process = OpenProcess(
                     PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ,
@@ -896,6 +933,18 @@ namespace
             const auto exeDir = GetExeDir();
             const auto dllPath = JoinPath(exeDir, dllLeaf);
 
+            // WHY: Vulkan's install-thread entry logs before its first Present. Keep the config
+            // mapping alive from before injection so even that first log observes the UI policy.
+            ProcessHookState st{};
+            st.pid = req.pid;
+            st.dllPath = dllPath;
+            st.api = req.api;
+            if (!st.configWriter.Write(req.pid, st.api, req.captureFpsLimit, req.enableOverlay, req.configFlags))
+            {
+                WriteResponse(pipe, BuildState("Failed", "attach_failed:config_write_failed", req.api, req.pid));
+                return;
+            }
+
             std::string reason;
             HMODULE remoteModule = nullptr;
             const bool ok = InjectAgent(req.pid, req.api, dllPath, remoteModule, reason);
@@ -911,17 +960,7 @@ namespace
                 return;
             }
 
-            ProcessHookState st{};
-            st.pid = req.pid;
             st.remoteModule = remoteModule;
-            st.dllPath = dllPath;
-            st.api = req.api;
-            (void)st.configWriter.Write(
-                req.pid,
-                st.api,
-                req.captureFpsLimit,
-                req.enableOverlay,
-                req.configFlags);
             g_states[req.pid] = std::move(st);
 
             LogHost(
@@ -977,8 +1016,15 @@ namespace
     }
 }
 
-int wmain()
+int wmain(int argc, wchar_t** argv)
 {
+    // NOTE: No argument means no diagnostic files, including logs emitted before the first attach.
+    for (int index = 1; index < argc; ++index)
+    {
+        if (std::wcscmp(argv[index], L"--diag-file-sink=1") == 0) SetDiagFileSinkEnabled(true);
+        else if (std::wcscmp(argv[index], L"--diag-file-sink=0") == 0) SetDiagFileSinkEnabled(false);
+        else return 2;
+    }
     std::wcout << L"[HookHost] starting pipe server: " << kPipeName << std::endl;
     LogHost("event=host_start pid=%lu pipe=\"%ls\".", static_cast<unsigned long>(GetCurrentProcessId()), kPipeName);
     const DWORD parentPid = GetParentProcessId(GetCurrentProcessId());

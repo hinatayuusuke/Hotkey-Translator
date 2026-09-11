@@ -2620,3 +2620,323 @@
 ### Tests / Verification
 - 既存の `Doc/` 内ファイルを参照せず、現行UIソースとの項目照合を実施した。
 - アプリコードは変更していないためビルドは未実施。
+
+**2026-09-09 13:34 (Asia/Taipei) — Vulkan readbackの完了回収・寿命管理・計測を改善**
+
+### Summary
+- Vulkan改善計画のStep 1～3に対応するnative変更と回帰テストを実装し、x64ビルド・実GPUのstaging同期検証を実施した。
+
+### Context / Goal
+- publish idle通知とenqueueの競合、capture FPS gateによる完了回収遅延、GPU未完了resourceの破棄リスクを解消する。
+- workerとPresentの負荷を分けて測定し、後続のoverlay非同期化を判断できるようにする。
+
+### Changes
+- queue lock内でidle eventのReset/Setを行い、drainの述語再確認・worker終了/待機失敗検出を追加した。
+- pending GPU回収をcapture発行判定より前へ移し、低capture FPSでも完了済みslotを回収するようにした。
+- GPU submitの未完了状態と失敗状態を追跡し、再作成・破棄・reset/detach前のGPU retirementとworker drainを分離した。
+- worker/Presentの期間集計、capture age、queue/発行/publish/defer/busy診断を追加した。
+- staging payload bytesを画像サイズに修正し、allocation paddingの読み出しと不要な再作成を防止した。copy後のHOST_READ memory dependencyも追加した。
+- 実コードのworker、Windows event、V2 writerを使う回帰テストと、実GPU/同期検証を使う任意実行モードを追加した。
+- ユーザーの追加指示に従い、x86ビルド・テストを以後スキップした。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 完了回収、idle通知、GPU/worker寿命、失敗時の再利用防止、診断とpayloadサイズを修正。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — FPS gate、所有権、画素、世代、失敗、実GPU同期の回帰テストを追加。
+- `Native/HookAgentVulkan/CMakeLists.txt` — 任意のHookAgentVulkanTests targetとCTest登録を追加。
+- `Native/CMakeLists.txt` — HT_VULKAN_BUILD_TESTSオプションを追加（既定OFF）。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 調査時点を保持して実装状況、未実装の後続Step、x64検証手順とログの意味を追記。
+- `.agent/changes.md` — 本タスクの結果を追記。
+
+### Behavioral Impact
+- capture 1/5/15 FPSでもGPU完了回収が次のcapture発行周期を待たない。captureの発行間隔は維持する。
+- FramePipe V2/BGRA8契約は維持する。画像外のallocator paddingはpublishしない。
+- fence/submit失敗時はqueueのresource再作成まで新規capture/hook overlay処理を停止する。GPU未完了のcommand poolを再利用しない。
+- overlay-only/immediateのCPU wait、present semaphore chain、BGRA中間copy、consumer鮮度制御は今回変更していない。
+
+### Risk & Mitigation
+- Risk: teardownでのGPU完了待ちや診断有効時の集計が停止時間に影響し得る。
+- Mitigation: 通常のGPU完了回収は非ブロッキングとし、blocking waitはresource再作成/破棄時に限定。追加計測は既存診断フラグで制御し、サンプル保存数を固定した。
+- Risk: swapchain/ImGuiを含む実ゲーム構成はstaging単体試験で保証できない。
+- Mitigation: 計画書でstaging検証とWSI/ゲーム性能を区別し、未検証のsemaphore再利用・破棄を前提にoverlay waitを削除しない。
+
+### Tests / Verification
+- SDK: G:/Development-Cache/VulkanSdk（Vulkan headers 1.4.341）。
+- x64 Release: HookAgentVulkan、HookAgentVulkanTestsのビルド成功。
+- `ctest --test-dir Native/build -C Release --output-on-failure` — 成功（VulkanReadback）。低FPS、2,000回のidle/enqueue遷移、active writer保持、画素/世代/失敗、GPU retirement、worker終了、計測時刻の順序を検証。
+- `HookAgentVulkanTests.exe --gpu` — GTX 1080で12回の実GPU staging→fence→worker publishと破棄に成功。Validation Layers/synchronization validationのerrorは0。試験プロセスのみimplicit layerを無効化。
+- x86は指示前に公式Khronos Vulkan-Loader v1.4.341のimport libraryでコンパイル・リンク成功。ただし実行はアンチウイルスに阻まれ、ユーザー指示後はビルド/テストをスキップ。セキュリティ設定は未変更。
+- `git diff --check` — 成功（GitのLF/CRLF変換に関する注意のみ）。
+- 実ゲームの1% low、overlay/WSI、Alt+Tab/detachの実動作検証は未実施。性能改善率は未確定。
+
+### Open Questions
+- Step 4のpresent semaphore再利用・破棄とmulti-swapchain/queue familyの検証が残る。
+- Step 5のcopy/backlog改善はworker計測後、Step 6のconsumer鮮度制御は許容ageとtimestamp契約の確定後に実施する。
+
+**2026-09-10 12:09 (Asia/Taipei) — Vulkan overlayの非同期化とBGRA中間コピー削減**
+
+### Summary
+- Vulkan改善計画のStep 4とStep 5のコピー削減を実装し、x64実GPU/WSIの同期検証に合格した。
+
+### Context / Goal
+- 前回のStep 1～3についてユーザーの実機確認で大きな問題がないとの報告を受け、実装を継続した。
+- 通常overlayのCPU fence待機を外し、ゲーム描画からPresentまでのGPU依存とworkerのmapped memory寿命を維持する。
+
+### Changes
+- 元のPresent wait semaphore全件をhook submitでwaitし、コマンド完了後に同じ全件を再signalする同期を追加した。元PresentのpNext、複数swapchain、pResultsは保持する。
+- overlay単独submitを非同期化し、ImGui描画の同時実行を1件に制限。未完了時はCPUを待たせずoverlayをスキップする。overlayBusyTotalを追加した。
+- 描画先/device/image count変更では旧GPU使用を退役させてImGui backendを再初期化する。
+- swapchain作成時に対応surfaceへ必要usageを追加し、queue family/usage/protected/shared-present等の対応範囲を明示した。submit失敗はVkResultへ伝播する。
+- BGRAはPublishing slotのmapped pointerを同期WriteFrameへ直接渡して中間memcpyを削除。RGBA変換とV2契約は維持した。
+- 実Win32 surfaceとswapchainを使う任意の--present試験、対応範囲・overlay所有権・submit失敗の回帰試験を追加した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — Present同期、非同期overlay、ImGui再初期化、usage/ownershipガード、BGRA直接publishと診断。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 同期ガード、overlay fence、実GPU semaphore chain、V2画素、submit失敗注入。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — 実GPU/WSIの複数swapchain、描画先切替、サイズ変更を伴う再初期化、終了試験。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 第14節に方式、互換性上の制約、検証結果、残るStepを追記。
+- `.agent/changes.md` — 本タスクの結果を追記。
+
+### Behavioral Impact
+- 通常delayed/overlayはhookが追加するCPU fence待機を行わない。初期化、resource切替・破棄、明示immediate設定の待機は残る。
+- ImGuiがGPU使用中の場合はその回のoverlay描画をスキップする。
+- 途中attachでswapchain作成情報がない場合、exclusive sharingでdevice作成情報がない場合、複数queue familyのexclusive等はcapture/overlayをスキップする。以前動作していた構成にも影響するため計画書に明記した。
+- hook submit失敗時はoriginal Presentを呼ばず、戻り値と全pResultsへ失敗を返す。送信前skipは元Presentを継続する。
+- BGRAの共有メモリへのコピーは1回になり、RGBA変換、stride、frameId、timestamp、IPC形式は維持する。
+
+### Risk & Mitigation
+- Risk: binary semaphoreの順序・再利用やGPU使用中のImGui buffer再利用が不正になる可能性。
+- Mitigation: 元wait全件をwait/re-signalし、元Presentを保持。GPU fenceによる再利用判定、失敗時のqueue停止、実WSIの同期検証で確認した。
+- Risk: queue ownershipやimage usage不明の途中attachではcaptureが停止する。
+- Mitigation: 推測によるGPU accessを追加せず診断を出す。作成時からhookが有効な構成が必要であることを文書に明記した。
+- Risk: mapped pointer直接publish中のunmapやslot再利用。
+- Mitigation: GPU完了後にworkerへ渡し、同期WriteFrame完了までPublishing所有権を保持。writerを遅らせる既存の所有権テストにも合格した。
+
+### Tests / Verification
+- SDK: G:/Development-Cache/VulkanSdk。x64 ReleaseのHookAgentVulkan/HookAgentVulkanTestsビルド成功。
+- CTest VulkanReadback: 合格。低FPS、色変換、idle/enqueue 2,000回、worker所有権、retirement、同期ガード、overlay fenceを検証。
+- `HookAgentVulkanTests.exe --present`: GTX 1080で実stagingの12 publish、2 swapchainの72 Present、overlay描画先切替、サイズ変更を伴うdetach/再初期化、V2画素と範囲、submit失敗注入を確認。Validation Layers/synchronization validation error 0。
+- 通常production hook経路のCPU fence待機呼出し数が増えないことを確認。テストゲーム自身のcommand buffer再利用待機と描画先切替は別扱い。
+- x86ビルド・テストはユーザー指示どおりスキップ。セキュリティ設定は変更していない。
+- `git diff --check`で空白エラーなし。今回変更後の実ゲーム性能、DLL injection、Alt+Tab、device lost、OUT_OF_DATEは未検証。
+
+### Open Questions
+- 実ゲームの1% low、hook p99、capture ageとoverlayBusyTotalの変更前後比較は残る。
+- Step 5のbacklog制御はqueue depth/ageの測定後、Step 6のconsumer鮮度制御はtimestamp契約と許容ageを合わせる別変更として残る。
+
+**2026-09-11 11:17 (Asia/Taipei) — x86 Vulkan回帰の原因を変更前後比較で絞り込み**
+
+### Summary
+- 旧版では通過しStep 4追加後だけcapture/overlayの準備前に停止する4条件を、実装コードのx64比較プローブで再現した。
+
+### Context / Goal
+- ユーザー報告: 現行x64は正常、Step 4/5以前のx86も正常、現行x86ではOCR画像取得とoverlayが失敗。対象端末ログの取得は困難。
+- x86をビルド・実行せず、変更差分と既存の情報補完経路の整合性を検証する。
+
+### Changes
+- 無視対象のNative/build/regression_analysis配下に調査用CMake/probeと旧コードスナップショットを作成した。製品コード・製品DLLは変更していない。
+- 旧9bb7a95と現行af28a14の実際のHook_vkCreateDevice、Hook_vkGetDeviceQueue、SubmitPresentWorkLockedを使って比較した。
+- Vulkan外部呼出しをstubにし、GPUコマンド記録/overlay render pass作成へ到達する境界で停止。ダミーハンドルをGPUへ渡さない。
+
+### Files Touched
+- `Native/build/regression_analysis/probe.cpp` — device作成/後補完からcapture・overlay入口までを比較する一時調査コード（Git無視対象）。
+- `Native/build/regression_analysis/CMakeLists.txt` — x64専用の旧版/現行比較用ビルド（Git無視対象）。
+- `Native/build/regression_analysis/old.cpp` — 9bb7a95のVulkanPresentHook.cppスナップショット（Git無視対象）。
+- `.agent/changes.md` — 調査結果を追記。
+
+### Behavioral Impact
+- 製品動作の変更なし。既存のx86向けdevice後補完はsingleQueueFamilyを設定せず、Step 4で追加したexclusive sharingチェックに拒否されることを確認。
+- 全device queue familyが単一という条件、単一physical deviceを含むdevice-group情報の一律拒否、wait semaphore数0の拒否も旧版との差分として再現した。
+
+### Risk & Mitigation
+- Risk: 再現した条件が対象ゲームで実際に発生したと誤認すること。
+- Mitigation: x64の制御された比較試験であり、x86実機での原因確定や同期の安全性検証ではないと明示。安全チェックを単純削除する修正は行っていない。
+
+### Tests / Verification
+- x64プローブold/currentをReleaseビルドして実行、全比較条件で期待どおりの結果。
+- 単一family・作成情報あり・waitあり: 旧版/現行ともcapture記録入口とoverlay準備入口へ到達。
+- device後補完 / 別transfer family追加 / physical device 1個のdevice-group情報 / waitなし: 旧版は両入口へ到達、現行は両入口の前で停止。
+- Step 5のworkerコピー処理に到達する前の停止であることを確認。
+- x86ビルド・実行なし。製品DLL再ビルドなし。アンチウイルス設定変更なし。
+
+### Open Questions
+- 対象ゲームが後補完・複数family・device-group・waitなしのどの条件に該当するかは未確定。
+- 情報補完経路と新しい必須条件の不整合が最有力。旧版で既に正常だったhook入口の未捕捉や一般的なビルド不備は優先度を下げる。
+
+**2026-09-11 11:32 (Asia/Taipei) — Vulkanのdevice後補完とx86関数取得経路の回帰を修正**
+
+### Summary
+- Step 4の過剰なfamily制約と情報補完の不整合を修正し、instance経由のdevice関数取得をhookで捕捉するようにした。
+
+### Context / Goal
+- 旧x86は正常でStep 4/5後のx86だけ画像取得・overlayが失敗する報告に対し、再現した停止条件を修正する。
+- 正常なPresentのVulkan所有権契約に基づいて対応範囲を戻し、未確認のGPU情報は推測しない。
+
+### Changes
+- device全体のsingleQueueFamily条件を廃止。Presentのqueue familyは既に画像の所有権を持つという仕様と、同じqueue/全wait semaphoreによる同期に基づく判定へ修正した。
+- device作成情報の捕捉有無とphysical device数を分離。補完はinstanceにphysical deviceが1個の場合に限定し、swapchain作成時の補完も追加した。
+- 単一GPUのdevice-groupとLOCAL/mask=1のPresentを許可。実際の複数GPU groupは拒否を維持した。
+- GIPA/GDPA両経路でdevice関数を共通のhookへ振り分け、resolver自身の取得を捕捉。未対応関数のnullを保持し、登録をmutexで保護した。
+- skip診断を詳細化。回帰試験と実GPUでのproc-address/WSI試験を拡張した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — device情報、所有権条件、単一GPU group、instance/device lookup、補完と診断を修正。
+- `Native/HookAgentVulkan/tests/VulkanDispatchTests.h` — lookup、作成情報、補完からcapture準備までの回帰試験を追加。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 判定テストを更新し、実GPUのinstance/device/queueをhook経由で作成。複数family・単一GPU groupを追加。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — 実hook経由のswapchain/Present、usage追加、device後補完、LOCAL group Presentを検証。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 第15節に修正根拠、対応範囲、検証を追記。
+- `.agent/changes.md` — 本タスクの記録を追記。既存の調査エントリは保持。
+
+### Behavioral Impact
+- 単一GPUの後補完・複数queue family・単一GPU groupで不要にcapture/overlayを拒否しなくなる。
+- 作成情報未捕捉かつ複数adapterがある場合は、先頭adapterを推測して利用せずスキップする。
+- waitなし、複数GPU group、protected、swapchain作成情報不明は引き続き対象外。BGRA直接publishとV2契約は維持。
+
+### Risk & Mitigation
+- Risk: 所有権制約の変更でGPU同期が崩れる可能性。
+- Mitigation: Vulkanの有効なPresentの所有権契約を根拠としてコメント/Docへ明記。同じqueue、全元wait、再signalの同期は維持し、複数familyの実GPU同期検証に合格した。
+- Risk: 関数取得経由のhookが未対応APIを有効と見せたり、x86で未捕捉となる可能性。
+- Mitigation: 両resolverで共通の振り分けとnull保持を試験。x86で無効化している直接export hookを増やしていない。
+
+### Tests / Verification
+- SDK G:/Development-Cache/VulkanSdk。x64 ReleaseのHookAgentVulkan/HookAgentVulkanTestsビルド成功。
+- CTest VulkanReadback合格。既存のworker/色/寿命試験に加え、GIPA/GDPA両経路、後補完、複数family、単一GPU group、曖昧なadapterの拒否を確認。
+- `HookAgentVulkanTests --present`合格。GTX 1080、device queue family数2、単一GPU group、72回の複数swapchain Present、実proc-address hook、device後補完、画素/usage/終了を確認。Validation Layers/synchronization validation error 0。
+- x86ビルド・実行なし。アンチウイルス設定変更なし。対象端末のx86ゲームでの修正確認は未実施。
+- `git diff --check`で空白エラーなし。
+
+### Open Questions
+- 対象x86ゲームで今回修正した条件が原因だったかは、別端末で再ビルドしたDLLによる実機確認が必要。
+
+**2026-09-11 13:06 (Asia/Taipei) — Vulkan診断ログ設定のUIバインディングを修正**
+
+### Summary
+- 性能診断ログと診断ファイル出力のチェック状態が保存設定へ反映されない問題を修正した。
+
+### Context / Goal
+- UIで有効化しても再起動時にチェックが外れるとの報告に対応する。
+- UIの参照名を既存ViewModelの保存・読み込み・自動保存処理へ正しく接続する。
+
+### Changes
+- Settings.GraphicsHookPerfDiagLogをSettings.EnableGraphicsHookPerfDiagLogへ修正。
+- Settings.GraphicsHookDiagFileSinkをSettings.EnableGraphicsHookDiagFileSinkへ修正。
+
+### Files Touched
+- `UI/HookFullscreenControl.xaml` — 診断チェックボックス2か所のBinding Pathを修正。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- UIの診断設定変更が既存の自動保存へ届き、保存された値が再起動後のチェック状態に反映される。
+- 設定ファイルの項目名や既定値は変更していない。これまで保存されなかったチェックは修正版で設定し直す必要がある。
+
+### Risk & Mitigation
+- Risk: 保存プロパティ名とUIの参照名の不一致。
+- Mitigation: ViewModelのプロパティ、保存・読み込み代入、自動保存通知、AppSettingsの名前が一致することを確認。
+
+### Tests / Verification
+- XAMLのXML構文確認に成功。
+- `dotnet build Hotkey-Translator.csproj --no-restore -c Debug -p:BuildProjectReferences=false -v:q` — 成功、警告0・エラー0。
+- `git diff --check` — 空白エラーなし。
+- アプリを操作して設定変更・再起動する実機確認は未実施。native/x86のビルドは行っていない。
+
+**2026-09-11 14:03 (Asia/Taipei) — Hook診断ファイル出力をUI設定へ統一**
+
+### Summary
+- Vulkan初期化ログとHookHostログを診断ファイル出力設定に接続し、OFF時のファイル作成・追記を停止した。
+
+### Context / Goal
+- 性能診断とファイル出力の両方をOFFにしても、Vulkan初期化ログとHostログが生成されていた。
+- 起動直後、実行中の切り替え、終了処理まで設定を適用し、既存ログは削除せず保持する。
+
+### Changes
+- Host起動引数で最初のログより前にファイル出力方針を指定。引数なしではOFFとする。
+- diagnosticsコマンドを追加し、ゲーム未接続・pipeline無効時も既存Hostへ設定を通知する。
+- 設定適用時はdetachや接続条件判定より先に、接続中ゲームの共有設定とHost診断設定を更新する。
+- Hostは共有設定の書き込み成功を確認してから注入する。Vulkanはinstall-threadの最初のログと再接続・終了時に設定を再読込する。
+- Vulkanの設定未取得時は初期化を明示的に失敗させる。初期化後も設定済みFPS・overlayを保持する。
+- ファイル出力の最終段で設定を検査し、OFFへの切り替えと書き込みを同じmutexで排他する。
+- 性能診断の有効化とファイル出力の有効化は独立。性能ログのファイル保存には両方が必要。
+
+### Files Touched
+- `Services/Hook/GraphicsHookClientService.cs` — 起動引数、共有設定の先行更新、接続状態に依存しないHost診断通知。
+- `Services/Hook/Contracts/GraphicsHookMessages.cs` — diagnosticsコマンドのpayload。
+- `Native/HookHost/main.cpp` — 起動時・実行中のファイル出力制御、共有設定の注入前公開。
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 全ファイル出力の設定検査、初期化前読込、OFF時の排他付きclose。
+- `Native/HookAgentVulkan/VulkanPresentHook.h` — 初期化前に共有設定が必要である契約を明記。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 設定4通り、初期化ログ、OFF時の保持・並行書き込みの回帰試験。
+- `Native/HookHost/tests/HookHostDiagnosticTests.cpp` — Host設定4通り、実行中切り替え、終了時の回帰試験。
+- `Native/HookCommon/tests/DiagnosticTestFiles.h` — ゲームのログと混在しない試験出力先。
+- `Native/HookHost/CMakeLists.txt` — Host診断試験を既存のテストオプションとCTestへ登録。
+- `.agent/changes.md` — 本タスクの記録。
+
+### Behavioral Impact
+- ファイル出力OFFではHost/Vulkanの初期化ログも新規ファイルを作らず、既存ファイルにも追記しない。
+- ONへの変更後から追記し、OFFではファイルを閉じる。既存ログを削除しない。
+- OutputDebugStringのデバッガ向け出力は引き続き利用できる。
+- アプリ、Host、Vulkan DLLを対応する修正版で使用する。設定ファイルの項目・共有設定の形式は変更なし。
+
+### Risk & Mitigation
+- Risk: 初期ログが共有設定の公開より先に出る、またはOFFと並行する書き込みがファイルを再度開く可能性。
+- Mitigation: 注入前の設定公開、初期化入口での強制読込、最終出力段のmutex内検査で防止する。
+- Risk: 診断通知が接続状態の表示を変更する可能性。
+- Mitigation: diagnosticsは一方向通知とし、接続状態の応答を発行しない。
+
+### Tests / Verification
+- x64 ReleaseのHookHost、HookAgentVulkan、両テストターゲットをビルド成功。SDKはG:/Development-Cache/VulkanSdk。
+- CTest: HookHostDiagnostics / VulkanReadbackの2件に合格。設定4通り、初期化前設定、実行中OFF、既存ファイル保持、並行書き込みを確認。
+- 実Hostプロセスで起動時ON/OFF、pipe経由ON→OFF、OFFでのshutdown後に追記がないことを確認。
+- ビルド済みVulkan DLLをx64の隔離した検証プロセスへロードし、実exportのInstallVulkanHookThreadでflags 0/1/2/3とOFF再適用を確認。OFFでのUninstall後も追記なし。
+- 実GPU --present試験成功。72回の複数swapchain Present、capture/overlay、resize/detach、12回publish、同期validationエラーなし。
+- WPF Debugビルド成功、警告0・エラー0。初回は既存の生成ファイル欠落で失敗したが、Rebuildで解消した。
+- アプリ実行フォルダーのNativeはリポジトリNativeへのjunction。x64 Host/DLLのSHA-256一致により修正版反映を確認した。
+- git diff --checkで空白エラーなし。x86ビルド・実行、アンチウイルス設定変更はしていない。
+- ユーザーのゲームでUI操作を伴う最終確認は未実施。
+
+**2026-09-11 14:29 (Asia/Taipei) — Vulkanオーバレイの描画省略によるチラツキを修正**
+
+### Summary
+- GPU処理中のオーバレイを省略する経路を廃止し、複数フレーム分の描画リソースと再利用時の待機で連続表示を維持する。
+
+### Context / Goal
+- 実ゲームでチラツキが報告され、ログにはoverlayBusyTotal=5025が記録されていた。
+- OCR取得頻度やキャプチャ枠の使用状況に関係なく、表示対象のオーバレイを各Presentで描画する。
+
+### Changes
+- ImGuiのImageCountと同数のオーバレイ専用command pool/buffer/fenceを確保し、バックエンドの頂点・インデックスバッファと同じ順序で回す。
+- 再利用する描画枠が未完了の場合だけ、そのフェンスの完了を待つ。待機失敗・送信失敗は明示的なエラーとし、未完了リソースをリセットしない。
+- キャプチャとオーバレイのGPU送信・フェンスを分離。既存のゲーム所有semaphoreのwait/re-signalでcapture→overlay→Presentを順序付ける。
+- キャプチャが間引き中・全枠使用中でも、オーバレイ用リソースで描画を続行する。
+- スワップチェーン・queueの切り替え、device破棄、終了時に全描画枠を完了させてからImGuiと描画リソースを解放する。
+- リソース再構築は新規キャプチャの投入前に済ませ、直後のフレームが再構築時に破棄されないようにした。
+- overlay_wait / overlay_totalの計測とoverlayWaitTotal / overlaySubmitTotalのカウンターを追加。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — 描画枠管理、キャプチャと描画の分離、完了待ち・寿命管理、診断指標。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 空き枠・使用中枠の再利用、待機中の所有権、エラー時の保持、全枠の終了待ちを検証。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — Present直前の画像を読み戻して各フレームのオーバレイ画素を検証。使用中フェンス、キャプチャ枠飽和、送信失敗を注入。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- GPU処理中を理由としたオーバレイ描画省略がなくなる。通常は非同期に送信し、描画枠が再利用できない場合にはCPU待機が発生する。
+- キャプチャ取得フレームには引き続きオーバレイを混入させず、BGRA直接publishも維持する。
+- 共有メモリ形式やUI設定、x86/x64の外部ABIは変更しない。両アーキテクチャ共通のソースへ適用。
+- 診断ログのpresent_perfをcapture_perfへ変更し、キャプチャと独立した描画を区別する。overlayBusyTotalに代わりoverlayWaitTotalとoverlaySubmitTotalを出力する。
+
+### Risk & Mitigation
+- Risk: ImGui内部バッファの再利用順とフェンスの対応がずれると、処理中の頂点・インデックスを上書きする。
+- Mitigation: バンドル済みバックエンドと同じImageCount・巡回順を維持し、キャプチャによって描画枠の巡回を進めない。前提をCOMPATコメントへ明記。
+- Risk: GPU高負荷時に再利用待ちが増え、ゲームの描画時間へ影響する。
+- Mitigation: 待つ対象を再利用枠に限定し、overlay_waitとoverlay_totalで影響を測定可能にする。
+- Risk: resize/detachや失敗時にGPUが使用中のリソースを解放する。
+- Mitigation: 全オーバレイ枠をretireしてから解放し、送信に成功した場合のみpendingとする。待機失敗では所有権を保持する。
+
+### Tests / Verification
+- SDK G:/Development-Cache/VulkanSdk、x64 ReleaseのHookAgentVulkan / HookAgentVulkanTestsビルド成功。
+- CTest: HookHostDiagnostics / VulkanReadbackの2件に合格。
+- 実GPU --present: 72回の複数swapchain Presentすべてで、Present直前のオーバレイ画素を確認。元画像のキャプチャはオーバレイなしの色であることも確認。
+- 実GPU上で再利用フェンスのNOT_READYを意図的に返し、必要な待機を行っても描画が抜けないことを確認。
+- キャプチャ枠を全使用中にした条件でもオーバレイ画素を確認。overlay/capture双方の送信失敗時に未送信フェンスをpending扱いしないことを確認。
+- resize/rebind/detach、12回の実GPU publishと同期validationを確認。validationエラー0。
+- 最初のGPU検証で初期化時の余分な待機を検出し、描画リソースの準備を新規キャプチャ投入前へ移動後、再検証に合格。
+- Debug実行フォルダーのNative junctionとDLLのSHA-256一致を確認。実行先には修正版x64 DLLが反映済み。
+- git diff --checkで空白エラーなし。x86ビルド・実行なし。アンチウイルス設定変更なし。
+- チラツキが報告された実ゲームでの最終確認は未実施。

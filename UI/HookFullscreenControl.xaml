@@ -68,9 +68,9 @@
             <StackPanel Margin="0,8,0,0">
                 <CheckBox Content="{uiLoc:Loc Key=Hook_EnablePerfDiagnosticLog}"
                           Margin="0,0,0,6"
-                          IsChecked="{Binding Settings.GraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                          IsChecked="{Binding Settings.EnableGraphicsHookPerfDiagLog, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                 <CheckBox Content="{uiLoc:Loc Key=Hook_EnableDiagnosticFileSink}"
-                          IsChecked="{Binding Settings.GraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                          IsChecked="{Binding Settings.EnableGraphicsHookDiagFileSink, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
             </StackPanel>
         </Expander>
 
