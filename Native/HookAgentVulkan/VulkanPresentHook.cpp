@@ -148,7 +148,8 @@ namespace ht::hook::vulkan
         struct DeviceInfo
         {
             VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-            std::uint32_t singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
+            bool createInfoKnown = false;
+            std::uint32_t physicalDeviceCount = 0;
         };
 
         struct QueueInfo
@@ -1946,7 +1947,7 @@ namespace ht::hook::vulkan
             return true;
         }
 
-        bool TryGuessPhysicalDeviceLocked(VulkanRuntime& rt, VkPhysicalDevice& physicalDevice)
+        bool TryResolveSinglePhysicalDeviceLocked(VulkanRuntime& rt, VkPhysicalDevice& physicalDevice)
         {
             physicalDevice = VK_NULL_HANDLE;
             if (rt.instance == VK_NULL_HANDLE || rt.originalGetInstanceProcAddr == nullptr)
@@ -1962,13 +1963,15 @@ namespace ht::hook::vulkan
             }
 
             std::uint32_t count = 0;
-            if (enumeratePhysicalDevices(rt.instance, &count, nullptr) != VK_SUCCESS || count == 0)
+            // COMPAT: Late device discovery cannot identify an adapter on a multi-GPU instance.
+            // A unique physical device is evidence; selecting the first of several would be a guess.
+            if (enumeratePhysicalDevices(rt.instance, &count, nullptr) != VK_SUCCESS || count != 1)
             {
                 return false;
             }
 
             std::vector<VkPhysicalDevice> devices(count, VK_NULL_HANDLE);
-            if (enumeratePhysicalDevices(rt.instance, &count, devices.data()) != VK_SUCCESS || count == 0)
+            if (enumeratePhysicalDevices(rt.instance, &count, devices.data()) != VK_SUCCESS || count != 1)
             {
                 return false;
             }
@@ -2848,18 +2851,18 @@ namespace ht::hook::vulkan
         bool CanSynchronizePresent(const QueueInfo& queue, const DeviceInfo& device,
             const SwapchainInfo& swapchain, const VkPresentInfoKHR& present)
         {
-            if (!swapchain.createInfoKnown || !swapchain.hookUsageSupported || queue.protectedQueue ||
+            if (!queue.valid || queue.familyIndex == std::numeric_limits<std::uint32_t>::max() ||
+                queue.device != swapchain.device || device.physicalDevice == VK_NULL_HANDLE || device.physicalDeviceCount != 1 ||
+                !swapchain.createInfoKnown || !swapchain.hookUsageSupported || queue.protectedQueue ||
                 present.waitSemaphoreCount == 0 || present.waitSemaphoreCount > kMaxPresentWaitSemaphores ||
                 present.pWaitSemaphores == nullptr)
             {
                 return false;
             }
-            // COMPAT: Exclusive images are supported only when all device queues use the present
-            // family. We cannot reconstruct an application's queue-family ownership transfer.
-            if (swapchain.sharingMode == VK_SHARING_MODE_EXCLUSIVE && device.singleQueueFamily != queue.familyIndex)
-            {
-                return false;
-            }
+            // WHY: Valid vkQueuePresentKHR requires its queue family to own each presented image;
+            // Present does not acquire ownership. Hook work uses that SAME queue and waits on ALL
+            // original semaphores before touching the image. Other device families are irrelevant.
+            // https://docs.vulkan.org/refpages/latest/refpages/source/vkQueuePresentKHR.html
             if (swapchain.sharingMode == VK_SHARING_MODE_CONCURRENT &&
                 std::find(swapchain.sharingFamilies.begin(), swapchain.sharingFamilies.end(), queue.familyIndex) == swapchain.sharingFamilies.end())
             {
@@ -2869,7 +2872,18 @@ namespace ht::hook::vulkan
             {
                 if (next->sType == VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR)
                 {
-                    return false;
+                    const auto& group = *reinterpret_cast<const VkDeviceGroupPresentInfoKHR*>(next);
+                    // COMPAT: One physical device with local presentation needs no device masks
+                    // on the hook submit. Multi-device/remote/summed presentation remains unsupported.
+                    if (group.mode != VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR ||
+                        group.swapchainCount != present.swapchainCount || group.pDeviceMasks == nullptr)
+                    {
+                        return false;
+                    }
+                    for (std::uint32_t i = 0; i < group.swapchainCount; ++i)
+                    {
+                        if (group.pDeviceMasks[i] != 1) return false;
+                    }
                 }
             }
             return true;
@@ -2988,11 +3002,11 @@ namespace ht::hook::vulkan
             if (deviceIt == rt.devices.end())
             {
                 VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-                if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                if (TryResolveSinglePhysicalDeviceLocked(rt, physicalDevice))
                 {
                     // COMPAT: Queue-hit backfill can lose the race when queue callbacks arrive before
                     // instance/procaddr state is ready. Retry at present time once the instance is live.
-                    rt.devices.emplace(queueIt->second.device, DeviceInfo{physicalDevice});
+                    rt.devices.emplace(queueIt->second.device, DeviceInfo{physicalDevice, false, 1});
                     DebugLogInstall(
                         "stage=hook_vulkan event=device_backfill source=device_not_found_retry device=%p physicalDevice=%p.",
                         queueIt->second.device,
@@ -3069,8 +3083,10 @@ namespace ht::hook::vulkan
             {
                 if (ShouldEmitDiagLog(NowQpc(), rt.qpcFreq, rt.lastPresentSyncSkipQpc, kDiagSummaryIntervalMs))
                 {
-                    DebugLog("stage=hook_vulkan event=present_sync_skip reason=unsupported_wait_or_queue_ownership waitCount=%u createKnown=%d singleFamily=%u presentFamily=%u.",
-                        presentInfo.waitSemaphoreCount, swapInfo.createInfoKnown, deviceIt->second.singleQueueFamily, queueIt->second.familyIndex);
+                    DebugLog("stage=hook_vulkan event=present_sync_skip reason=unsupported_present_configuration waitCount=%u swapchainKnown=%d usageSupported=%d deviceCreateKnown=%d physicalCount=%u presentFamily=%u protected=%d sharing=%u.",
+                        presentInfo.waitSemaphoreCount, swapInfo.createInfoKnown, swapInfo.hookUsageSupported,
+                        deviceIt->second.createInfoKnown, deviceIt->second.physicalDeviceCount, queueIt->second.familyIndex,
+                        queueIt->second.protectedQueue, static_cast<unsigned>(swapInfo.sharingMode));
                 }
                 return false;
             }
@@ -3722,30 +3738,21 @@ namespace ht::hook::vulkan
             const VkAcquireNextImageInfoKHR* acquireInfo,
             std::uint32_t* imageIndex);
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkQueuePresentKHR(VkQueue queue, const VkPresentInfoKHR* presentInfo);
-        VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetDeviceProcAddr(VkDevice device, const char* functionName)
+        VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetDeviceProcAddr(VkDevice device, const char* functionName);
+
+        PFN_vkVoidFunction WrapDeviceProcLocked(VulkanRuntime& rt, const char* functionName, PFN_vkVoidFunction resolved)
         {
-            auto& rt = g_rt;
-            rt.deviceProcAddrHitCount.fetch_add(1, std::memory_order_relaxed);
-            PFN_vkVoidFunction resolved = nullptr;
-            if (rt.originalGetDeviceProcAddr != nullptr)
-            {
-                resolved = rt.originalGetDeviceProcAddr(device, functionName);
-            }
-
-            if (!g_loggedFirstDeviceProcAddrHit.exchange(true))
-            {
-                DebugLogInstall(
-                    "stage=hook_vulkan event=first_hit_vkGetDeviceProcAddr device=%p name=%s resolved=%p.",
-                    device,
-                    functionName != nullptr ? functionName : "(null)",
-                    reinterpret_cast<void*>(resolved));
-            }
-
-            if (functionName == nullptr)
+            // COMPAT: x86 relies on proc-address interception. Instance lookup is also a valid
+            // way to obtain device commands, but an unavailable command must still return null.
+            if (functionName == nullptr || resolved == nullptr)
             {
                 return resolved;
             }
-
+            if (std::strcmp(functionName, "vkGetDeviceProcAddr") == 0)
+            {
+                StoreOriginalIfUnset(rt.originalGetDeviceProcAddr, resolved);
+                return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkGetDeviceProcAddr);
+            }
             if (std::strcmp(functionName, "vkGetDeviceQueue") == 0)
             {
                 StoreOriginalIfUnset(rt.originalGetDeviceQueue, resolved);
@@ -3795,6 +3802,25 @@ namespace ht::hook::vulkan
             return resolved;
         }
 
+        VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetDeviceProcAddr(VkDevice device, const char* functionName)
+        {
+            auto& rt = g_rt;
+            rt.deviceProcAddrHitCount.fetch_add(1, std::memory_order_relaxed);
+            PFN_vkVoidFunction resolved = nullptr;
+            if (rt.originalGetDeviceProcAddr != nullptr)
+            {
+                resolved = rt.originalGetDeviceProcAddr(device, functionName);
+            }
+            std::lock_guard<std::mutex> lock(rt.mutex);
+            if (!g_loggedFirstDeviceProcAddrHit.exchange(true))
+            {
+                DebugLogInstall(
+                    "stage=hook_vulkan event=first_hit_vkGetDeviceProcAddr device=%p name=%s resolved=%p.",
+                    device, functionName != nullptr ? functionName : "(null)", reinterpret_cast<void*>(resolved));
+            }
+            return WrapDeviceProcLocked(rt, functionName, resolved);
+        }
+
         VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL Hook_vkGetInstanceProcAddr(VkInstance instance, const char* functionName)
         {
             auto& rt = g_rt;
@@ -3805,6 +3831,7 @@ namespace ht::hook::vulkan
                 resolved = rt.originalGetInstanceProcAddr(instance, functionName);
             }
 
+            std::lock_guard<std::mutex> lock(rt.mutex);
             if (!g_loggedFirstInstanceProcAddrHit.exchange(true))
             {
                 DebugLogInstall(
@@ -3819,11 +3846,15 @@ namespace ht::hook::vulkan
                 rt.instance = instance;
             }
 
-            if (functionName == nullptr)
+            if (functionName == nullptr || resolved == nullptr)
             {
                 return resolved;
             }
 
+            if (std::strcmp(functionName, "vkGetInstanceProcAddr") == 0)
+            {
+                return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkGetInstanceProcAddr);
+            }
             if (std::strcmp(functionName, "vkCreateInstance") == 0)
             {
                 StoreOriginalIfUnset(rt.originalCreateInstance, resolved);
@@ -3840,7 +3871,7 @@ namespace ht::hook::vulkan
                 return reinterpret_cast<PFN_vkVoidFunction>(&Hook_vkCreateDevice);
             }
 
-            return resolved;
+            return WrapDeviceProcLocked(rt, functionName, resolved);
         }
 
         VKAPI_ATTR VkResult VKAPI_CALL Hook_vkCreateInstance(
@@ -3917,23 +3948,15 @@ namespace ht::hook::vulkan
             if (result == VK_SUCCESS && device != nullptr && *device != VK_NULL_HANDLE)
             {
                 std::lock_guard<std::mutex> lock(rt.mutex);
-                rt.devices[*device] = DeviceInfo{physicalDevice};
+                rt.devices[*device] = DeviceInfo{physicalDevice, true, 1};
                 auto& info = rt.devices[*device];
-                if (createInfo != nullptr && createInfo->queueCreateInfoCount > 0)
+                if (createInfo != nullptr)
                 {
-                    info.singleQueueFamily = createInfo->pQueueCreateInfos[0].queueFamilyIndex;
-                    for (std::uint32_t i = 1; i < createInfo->queueCreateInfoCount; ++i)
-                    {
-                        if (createInfo->pQueueCreateInfos[i].queueFamilyIndex != info.singleQueueFamily)
-                        {
-                            info.singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
-                        }
-                    }
                     for (auto* next = static_cast<const VkBaseInStructure*>(createInfo->pNext); next; next = next->pNext)
                     {
                         if (next->sType == VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO)
                         {
-                            info.singleQueueFamily = std::numeric_limits<std::uint32_t>::max();
+                            info.physicalDeviceCount = reinterpret_cast<const VkDeviceGroupDeviceCreateInfo*>(next)->physicalDeviceCount;
                         }
                     }
                 }
@@ -3990,11 +4013,11 @@ namespace ht::hook::vulkan
                 if (rt.devices.find(device) == rt.devices.end())
                 {
                     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-                    if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                    if (TryResolveSinglePhysicalDeviceLocked(rt, physicalDevice))
                     {
                         // COMPAT: x86 late-attach can miss vkCreateDevice entirely under procaddr-only mode.
                         // Recover the device table from the live instance so capture can proceed.
-                        rt.devices.emplace(device, DeviceInfo{physicalDevice});
+                        rt.devices.emplace(device, DeviceInfo{physicalDevice, false, 1});
                         DebugLogInstall(
                             "stage=hook_vulkan event=device_backfill source=get_device_queue device=%p physicalDevice=%p.",
                             device,
@@ -4035,11 +4058,11 @@ namespace ht::hook::vulkan
                 if (rt.devices.find(device) == rt.devices.end())
                 {
                     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-                    if (TryGuessPhysicalDeviceLocked(rt, physicalDevice))
+                    if (TryResolveSinglePhysicalDeviceLocked(rt, physicalDevice))
                     {
                         // COMPAT: x86 late-attach can miss vkCreateDevice entirely under procaddr-only mode.
                         // Recover the device table from the live instance so capture can proceed.
-                        rt.devices.emplace(device, DeviceInfo{physicalDevice});
+                        rt.devices.emplace(device, DeviceInfo{physicalDevice, false, 1});
                         DebugLogInstall(
                             "stage=hook_vulkan event=device_backfill source=get_device_queue2 device=%p physicalDevice=%p.",
                             device,
@@ -4095,6 +4118,14 @@ namespace ht::hook::vulkan
                     std::lock_guard<std::mutex> lock(rt.mutex);
                     const auto it = rt.devices.find(device);
                     if (it != rt.devices.end()) physical = it->second.physicalDevice;
+                    else if (TryResolveSinglePhysicalDeviceLocked(rt, physical))
+                    {
+                        // COMPAT: Some applications fetch their queue after creating the swapchain.
+                        // Resolve the unique adapter here so required usage is added before creation.
+                        rt.devices.emplace(device, DeviceInfo{physical, false, 1});
+                        DebugLogInstall("stage=hook_vulkan event=device_backfill source=create_swapchain device=%p physicalDevice=%p.",
+                            device, physical);
+                    }
                 }
                 VkSurfaceCapabilitiesKHR capabilities{};
                 constexpr VkImageUsageFlags requiredUsage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

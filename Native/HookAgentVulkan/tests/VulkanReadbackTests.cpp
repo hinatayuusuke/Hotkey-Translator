@@ -21,6 +21,19 @@ namespace
     bool realGpu = false;
     std::atomic_uint validationErrors{0};
     VkResult forcedSubmitResult = VK_SUCCESS;
+    bool probeCapturePreparation = false;
+    unsigned capturePreparationCalls = 0;
+
+    VKAPI_ATTR VkResult VKAPI_CALL TestResetCommandPool(VkDevice device, VkCommandPool pool, VkCommandPoolResetFlags flags)
+    {
+        if (probeCapturePreparation)
+        {
+            ++capturePreparationCalls;
+            // WHY: Stop at the first GPU recording operation so fake handles never reach a driver.
+            return VK_ERROR_INITIALIZATION_FAILED;
+        }
+        return vkResetCommandPool(device, pool, flags);
+    }
 
     VKAPI_ATTR VkResult VKAPI_CALL TestQueueSubmit(VkQueue queue, std::uint32_t count, const VkSubmitInfo* submits, VkFence fence)
     {
@@ -67,10 +80,12 @@ namespace
 #define vkGetFenceStatus TestGetFenceStatus
 #define vkWaitForFences TestWaitForFences
 #define vkQueueSubmit TestQueueSubmit
+#define vkResetCommandPool TestResetCommandPool
 #include "../VulkanPresentHook.cpp"
 #undef vkGetFenceStatus
 #undef vkWaitForFences
 #undef vkQueueSubmit
+#undef vkResetCommandPool
 
 using namespace ht::hook::vulkan;
 
@@ -104,8 +119,9 @@ namespace
     void PresentSynchronizationGuards()
     {
         QueueInfo queue{testDevice, 0, true};
-        DeviceInfo device{(VkPhysicalDevice)8, 0};
+        DeviceInfo device{(VkPhysicalDevice)8, true, 1};
         SwapchainInfo swapchain{};
+        swapchain.device = testDevice;
         swapchain.createInfoKnown = swapchain.hookUsageSupported = true;
         const VkSemaphore semaphore = (VkSemaphore)9;
         VkPresentInfoKHR present{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -126,8 +142,13 @@ namespace
         swapchain.hookUsageSupported = false;
         Require(!CanSynchronizePresent(queue, device, swapchain, present), "missing transfer or attachment usage skips hook");
         swapchain.hookUsageSupported = true;
-        device.singleQueueFamily = UINT32_MAX;
-        Require(!CanSynchronizePresent(queue, device, swapchain, present), "exclusive ownership transfers cannot be inferred");
+        device.createInfoKnown = false;
+        Require(CanSynchronizePresent(queue, device, swapchain, present), "known adapter and valid Present do not need a device-wide family count");
+        device.physicalDeviceCount = 0;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "unknown physical device configuration is not inferred");
+        device.physicalDeviceCount = 2;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "multi-GPU device remains unsupported");
+        device.physicalDeviceCount = 1;
         swapchain.sharingMode = VK_SHARING_MODE_CONCURRENT;
         swapchain.sharingFamilies = {0, 1};
         Require(CanSynchronizePresent(queue, device, swapchain, present), "explicit concurrent sharing supports multiple families");
@@ -136,7 +157,13 @@ namespace
         queue.familyIndex = 0;
         VkDeviceGroupPresentInfoKHR group{VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR};
         present.pNext = &group;
-        Require(!CanSynchronizePresent(queue, device, swapchain, present), "device-group present is explicitly unsupported");
+        const std::uint32_t mask = 1;
+        group.mode = VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR;
+        group.swapchainCount = present.swapchainCount = 1;
+        group.pDeviceMasks = &mask;
+        Require(CanSynchronizePresent(queue, device, swapchain, present), "single-device local present is supported");
+        group.mode = VK_DEVICE_GROUP_PRESENT_MODE_REMOTE_BIT_KHR;
+        Require(!CanSynchronizePresent(queue, device, swapchain, present), "remote device-group present is unsupported");
 
         auto runtime = std::make_unique<VulkanRuntime>();
         runtime->imguiPendingDevice = testDevice;
@@ -385,13 +412,15 @@ namespace
         return VK_FALSE;
     }
 
+    #include "VulkanDispatchTests.h"
     #include "VulkanPresentSmoke.h"
 
     void RealGpuReadback(bool testPresent = false)
     {
         realGpu = true;
-        auto runtime = std::make_unique<VulkanRuntime>();
-        auto& rt = *runtime;
+        auto& rt = g_rt;
+        Require(ResetRuntimeLocked(rt), "reset real dispatch runtime");
+        rt.originalGetInstanceProcAddr = vkGetInstanceProcAddr;
         rt.qpcFreq = QueryQpcFreq();
         rt.perfDiagLogEnabled = true;
         VkDebugUtilsMessengerCreateInfoEXT debug{VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
@@ -406,13 +435,17 @@ namespace
         const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
         const char* extensions[] = {VK_EXT_DEBUG_UTILS_EXTENSION_NAME, VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME, VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_WIN32_SURFACE_EXTENSION_NAME};
         VkInstanceCreateInfo info{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+        VkApplicationInfo application{VK_STRUCTURE_TYPE_APPLICATION_INFO};
+        application.apiVersion = VK_API_VERSION_1_1;
+        info.pApplicationInfo = &application;
         info.pNext = &validation;
         info.enabledLayerCount = 1;
         info.ppEnabledLayerNames = layers;
         info.enabledExtensionCount = testPresent ? 4 : 2;
         info.ppEnabledExtensionNames = extensions;
         VkInstance instance = VK_NULL_HANDLE;
-        Require(vkCreateInstance(&info, nullptr, &instance) == VK_SUCCESS, "create validation-enabled instance");
+        const auto createInstance = reinterpret_cast<PFN_vkCreateInstance>(Hook_vkGetInstanceProcAddr(nullptr, "vkCreateInstance"));
+        Require(createInstance(&info, nullptr, &instance) == VK_SUCCESS, "create validation-enabled instance through hook");
         const auto createDebug = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
         const auto destroyDebug = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
         VkDebugUtilsMessengerEXT messenger = VK_NULL_HANDLE;
@@ -429,20 +462,40 @@ namespace
         while (family < count && !(families[family].queueFlags & VK_QUEUE_GRAPHICS_BIT)) ++family;
         Require(family < count, "graphics queue available");
         float priority = 1;
-        VkDeviceQueueCreateInfo queueInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
-        queueInfo.queueFamilyIndex = family;
-        queueInfo.queueCount = 1;
-        queueInfo.pQueuePriorities = &priority;
+        std::array<VkDeviceQueueCreateInfo, 2> queueInfos{};
+        queueInfos[0] = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+        queueInfos[0].queueFamilyIndex = family;
+        queueInfos[0].queueCount = 1;
+        queueInfos[0].pQueuePriorities = &priority;
         VkDeviceCreateInfo deviceInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
         deviceInfo.queueCreateInfoCount = 1;
-        deviceInfo.pQueueCreateInfos = &queueInfo;
+        deviceInfo.pQueueCreateInfos = queueInfos.data();
+        for (std::uint32_t i = 0; i < families.size(); ++i)
+        {
+            if (i != family && families[i].queueCount > 0)
+            {
+                queueInfos[1] = queueInfos[0];
+                queueInfos[1].queueFamilyIndex = i;
+                deviceInfo.queueCreateInfoCount = 2;
+                break;
+            }
+        }
+        VkDeviceGroupDeviceCreateInfo deviceGroup{VK_STRUCTURE_TYPE_DEVICE_GROUP_DEVICE_CREATE_INFO};
+        deviceGroup.physicalDeviceCount = 1;
+        deviceGroup.pPhysicalDevices = &physical;
+        deviceInfo.pNext = &deviceGroup;
         const char* deviceExtensions[] = {VK_KHR_SWAPCHAIN_EXTENSION_NAME};
         deviceInfo.enabledExtensionCount = testPresent ? 1 : 0;
         deviceInfo.ppEnabledExtensionNames = deviceExtensions;
         VkDevice device = VK_NULL_HANDLE;
-        Require(vkCreateDevice(physical, &deviceInfo, nullptr, &device) == VK_SUCCESS, "create real device");
+        const auto createDevice = reinterpret_cast<PFN_vkCreateDevice>(Hook_vkGetInstanceProcAddr(instance, "vkCreateDevice"));
+        Require(createDevice(physical, &deviceInfo, nullptr, &device) == VK_SUCCESS, "create real device through hook");
+        Require(rt.devices[device].createInfoKnown && rt.devices[device].physicalDeviceCount == 1, "capture real single-device group metadata");
+        std::printf("GPU test device queue families: %u\n", deviceInfo.queueCreateInfoCount);
         VkQueue queue = VK_NULL_HANDLE;
-        vkGetDeviceQueue(device, family, 0, &queue);
+        const auto getQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(Hook_vkGetInstanceProcAddr(instance, "vkGetDeviceQueue"));
+        getQueue(device, family, 0, &queue);
+        Require(rt.queues[queue].valid, "real queue captured through instance lookup");
         auto& gpu = rt.queueGpuStates[queue];
         gpu.device = device;
         gpu.publishGeneration = 1;
@@ -502,6 +555,7 @@ namespace
         vkDestroySemaphore(device, semaphore, nullptr);
         vkDestroyFence(device, consumed, nullptr);
         if (testPresent) RealPresentSmoke(rt, instance, physical, device, queue, family);
+        Require(ResetRuntimeLocked(rt), "retire real runtime before device destruction");
         vkDestroyDevice(device, nullptr);
         destroyDebug(instance, messenger, nullptr);
         vkDestroyInstance(instance, nullptr);
@@ -521,6 +575,7 @@ int main(int argc, char** argv)
     }
     ReadbackAtLowFps();
     PresentSynchronizationGuards();
+    DispatchAndMetadataRegression();
     WorkerOwnershipAndIdle();
     GpuRetirement();
     PublishFailuresAndGeneration();

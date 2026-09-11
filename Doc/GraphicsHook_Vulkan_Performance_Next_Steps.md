@@ -315,3 +315,36 @@ $env:VK_LOADER_LAYERS_DISABLE='~implicit~'
 ```
 
 Step 5 の backlog 制御と Step 6 の consumer 鮮度制御は今回含めていない。FIFO は capture ring で上限があるため、まず実ゲームの queue depth / capture age を評価する。consumer は timestamp の意味・許容 age と合わせる別変更として残す。今回の変更後の実ゲームの1% low・frame time p99・hook p99は未測定で、計画全体の性能完了条件を満たしたとは扱わない。
+
+## 15. x86回帰への修正（2026-09-11）
+
+ユーザーから「現行x64とStep 4以前のx86は正常、現行x86は画像取得・overlayとも失敗」と報告を受け、Step 4の情報取得と判定を修正した。対象端末のログがないため、実機で発生した条件の特定とは区別する。
+
+### 判定の修正根拠
+
+14節で必要条件としていた「exclusive sharingではdevice全体のqueue familyが1種類」は過剰だった。Vulkanの有効な`vkQueuePresentKHR`では、呼出し先queue familyが表示画像の所有権を持つ必要があり、Present自体は所有権を変更しない。hookは同じqueue上で元のwait semaphore全件を待ってから画像へアクセスするため、別の転送用familyがdeviceに存在することを理由に拒否する必要はない。この契約に基づき`singleQueueFamily`判定を廃止した。画像の所有権を推測したり、アプリの不正なVulkan呼出しを補正したりする実装ではない。[Khronos: vkQueuePresentKHR](https://docs.vulkan.org/refpages/latest/refpages/source/vkQueuePresentKHR.html)
+
+### 実装した変更
+
+- `DeviceInfo`では作成情報を捕捉したかどうかと、確認済みのphysical device数を分離する。既存の後補完で未設定familyが拒否条件になる問題を解消した。
+- 作成を取り逃がしたdeviceの補完は、そのinstanceにphysical deviceが1個しかないことを確認できる場合だけ許可する。複数adapterの先頭を選ぶ推測は廃止した。queue取得前にswapchainを作るアプリでも必要usageを追加できるよう、swapchain作成時にもこの補完を行う。
+- physical deviceが1個のdevice-group作成を許可する。Presentのgroup情報はLOCAL mode・各mask=1の場合を許可し、複数GPUやREMOTE/SUM等は引き続きスキップする。
+- `vkGetInstanceProcAddr`から取得したdevice関数も`vkGetDeviceProcAddr`と同じhookへ振り分ける。resolver自体の取得も捕捉し、x86のproc-address経路でhookを抜けないようにする。元resolverがnullを返した関数はnullを維持する。
+- `present_sync_skip`へswapchain作成情報、usage、device作成情報、physical device数、present family、protected、sharing modeを出す。
+- Step 5のBGRA直接publish、RGBA変換、V2契約は維持する。
+
+| 構成 | 修正後 |
+| --- | --- |
+| 複数queue family・有効な同一queue上のPresent | capture / overlayを許可 |
+| device作成未捕捉・instanceにphysical deviceが1個 | 後補完で許可。作成情報取得済みとは扱わない |
+| device作成未捕捉・physical deviceが複数 | adapterを特定できないためスキップ |
+| 単一GPUのdevice-group、LOCAL Present、mask=1 | 許可 |
+| Present wait semaphoreが0個、複数GPU group、protected、未取得のswapchain作成情報 | 引き続きスキップ |
+
+### 検証
+
+- x64 ReleaseのHookAgentVulkan / HookAgentVulkanTestsビルド、CTest VulkanReadbackに合格。
+- 新しい`VulkanDispatchTests.h`は実際のhook関数を呼び、instance/deviceの両lookup、null保持、device作成、後補完、複数family、単一GPU groupのcapture準備への到達を確認。複数GPU・adapter不明・waitなしの拒否も確認する。
+- `HookAgentVulkanTests --present`をGTX 1080で実施し、Validation Layers / synchronization validation error 0。2種類のqueue familyと単一GPU groupを持つdeviceで、72回の複数swapchain Present、単一GPU groupのPresent、画素、描画先切替、サイズを変えた再初期化、BGRAの12回のstaging publishに合格した。
+- GPU試験を拡張し、作成・queue・swapchain・Presentを実際のproc-address hook経由で実行した。swapchain usageの追加と、単一adapterのdevice後補完も実GPUで確認した。MinHookによるDLL injection自体の試験ではない。
+- この端末ではx86のビルド・実行を行っていない。修正は共通ソースに反映済みで、別端末でx86 DLLを再ビルド・配置した後の実機確認が必要。

@@ -17,14 +17,27 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
     windowClass.lpszClassName = L"HTVulkanPresentRegression";
     Require(RegisterClassW(&windowClass) != 0, "register hidden test window");
     VkSemaphoreCreateInfo semInfo{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    const auto capturedDeviceInfo = rt.devices.at(device);
 
     for (unsigned generation = 0; generation < 2; ++generation)
     {
         rt.instance = instance;
         rt.originalGetInstanceProcAddr = vkGetInstanceProcAddr;
         rt.originalGetSwapchainImagesKHR = vkGetSwapchainImagesKHR;
-        rt.devices[device] = DeviceInfo{physical, family};
-        rt.queues[queue] = QueueInfo{device, family, true};
+        rt.apiVersion = VK_API_VERSION_1_1;
+        rt.devices[device] = capturedDeviceInfo;
+        const auto getQueue = reinterpret_cast<PFN_vkGetDeviceQueue>(Hook_vkGetInstanceProcAddr(instance, "vkGetDeviceQueue"));
+        VkQueue observedQueue = VK_NULL_HANDLE;
+        getQueue(device, family, 0, &observedQueue);
+        Require(observedQueue == queue, "observe real present queue through hook");
+        const auto createSwapchain = reinterpret_cast<PFN_vkCreateSwapchainKHR>(Hook_vkGetInstanceProcAddr(instance, "vkCreateSwapchainKHR"));
+        const auto presentQueue = reinterpret_cast<PFN_vkQueuePresentKHR>(Hook_vkGetInstanceProcAddr(instance, "vkQueuePresentKHR"));
+        Require(createSwapchain == Hook_vkCreateSwapchainKHR && presentQueue == Hook_vkQueuePresentKHR,
+            "instance lookup preserves swapchain and present hooks without direct export patching");
+        std::uint32_t physicalCount = 0;
+        Require(vkEnumeratePhysicalDevices(instance, &physicalCount, nullptr) == VK_SUCCESS, "count available physical devices");
+        const bool exerciseBackfill = generation == 1 && physicalCount == 1;
+        if (exerciseBackfill) rt.devices.erase(device);
         rt.captureIntervalQpc = rt.qpcFreq;
         rt.overlayEnabled = true;
         rt.hookSuccessIndicatorArmed = true;
@@ -58,15 +71,20 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
             create.imageColorSpace = format->colorSpace;
             create.imageExtent = caps.currentExtent;
             create.imageArrayLayers = 1;
-            create.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+            create.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             create.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
             create.preTransform = caps.currentTransform;
             create.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
             create.presentMode = VK_PRESENT_MODE_FIFO_KHR;
             create.clipped = VK_TRUE;
-            Require((caps.supportedUsageFlags & create.imageUsage) == create.imageUsage, "surface supports tested capture/overlay usage");
-            Require(vkCreateSwapchainKHR(device, &create, nullptr, &target.swapchain) == VK_SUCCESS, "create test swapchain");
-            UpsertSwapchainFromCreateLocked(rt, device, target.swapchain, &create);
+            Require((caps.supportedUsageFlags & (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) ==
+                (VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT), "surface supports capture/overlay usage");
+            Require(createSwapchain(device, &create, nullptr, &target.swapchain) == VK_SUCCESS, "create test swapchain through hook");
+            Require(rt.swapchains[target.swapchain].hookUsageSupported && create.imageUsage == VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+                "hook augments usage without mutating caller's create info");
+            if (exerciseBackfill)
+                Require(!rt.devices[device].createInfoKnown && rt.devices[device].physicalDeviceCount == 1,
+                    "swapchain creation resolves a unique adapter without fabricating device creation metadata");
             target.images = rt.swapchains[target.swapchain].images;
             Require(!target.images.empty(), "query swapchain images");
             target.rendered.resize(target.images.size());
@@ -132,16 +150,19 @@ void RealPresentSmoke(VulkanRuntime& rt, VkInstance instance, VkPhysicalDevice p
             present.pSwapchains = swapchains.data();
             present.pImageIndices = imageIndices.data();
             present.pResults = results.data();
+            const std::array<std::uint32_t, 2> masks{1, 1};
+            VkDeviceGroupPresentInfoKHR groupPresent{VK_STRUCTURE_TYPE_DEVICE_GROUP_PRESENT_INFO_KHR};
+            groupPresent.swapchainCount = 2;
+            groupPresent.pDeviceMasks = masks.data();
+            groupPresent.mode = VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR;
+            if (frame & 1) present.pNext = &groupPresent;
             if (frame % 7 == 0 && rt.queueGpuStates.count(queue)) rt.queueGpuStates[queue].lastCaptureIssueQpc = 0;
             rt.lastPresentQpc = NowQpc();
             rt.hookSuccessIndicatorDone = false;
             const auto waitsBefore = waitCalls.load();
             const bool rebinding = rt.imguiInitialized && rt.imguiBoundSwapchain != swapchains[0];
-            VkResult hookResult = VK_SUCCESS;
-            Require(SubmitPresentWorkLocked(rt, queue, swapchains[0], imageIndices[0], present, hookResult) && hookResult == VK_SUCCESS,
-                "capture/overlay with original batch waits");
+            const auto result = presentQueue(queue, &present);
             Require(rebinding || waitCalls == waitsBefore, "steady capture/overlay never calls CPU fence wait");
-            const auto result = vkQueuePresentKHR(queue, &present);
             Require(result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR, "present after re-signaling game semaphores");
             for (auto perSwapchain : results) Require(perSwapchain == VK_SUCCESS || perSwapchain == VK_SUBOPTIMAL_KHR, "all batch pResults preserved");
             // NOTE: The test game uses this CPU wait to recycle its own command buffer, not the hook's.

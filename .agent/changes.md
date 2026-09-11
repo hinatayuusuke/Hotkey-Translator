@@ -2722,3 +2722,87 @@
 ### Open Questions
 - 実ゲームの1% low、hook p99、capture ageとoverlayBusyTotalの変更前後比較は残る。
 - Step 5のbacklog制御はqueue depth/ageの測定後、Step 6のconsumer鮮度制御はtimestamp契約と許容ageを合わせる別変更として残る。
+
+**2026-09-11 11:17 (Asia/Taipei) — x86 Vulkan回帰の原因を変更前後比較で絞り込み**
+
+### Summary
+- 旧版では通過しStep 4追加後だけcapture/overlayの準備前に停止する4条件を、実装コードのx64比較プローブで再現した。
+
+### Context / Goal
+- ユーザー報告: 現行x64は正常、Step 4/5以前のx86も正常、現行x86ではOCR画像取得とoverlayが失敗。対象端末ログの取得は困難。
+- x86をビルド・実行せず、変更差分と既存の情報補完経路の整合性を検証する。
+
+### Changes
+- 無視対象のNative/build/regression_analysis配下に調査用CMake/probeと旧コードスナップショットを作成した。製品コード・製品DLLは変更していない。
+- 旧9bb7a95と現行af28a14の実際のHook_vkCreateDevice、Hook_vkGetDeviceQueue、SubmitPresentWorkLockedを使って比較した。
+- Vulkan外部呼出しをstubにし、GPUコマンド記録/overlay render pass作成へ到達する境界で停止。ダミーハンドルをGPUへ渡さない。
+
+### Files Touched
+- `Native/build/regression_analysis/probe.cpp` — device作成/後補完からcapture・overlay入口までを比較する一時調査コード（Git無視対象）。
+- `Native/build/regression_analysis/CMakeLists.txt` — x64専用の旧版/現行比較用ビルド（Git無視対象）。
+- `Native/build/regression_analysis/old.cpp` — 9bb7a95のVulkanPresentHook.cppスナップショット（Git無視対象）。
+- `.agent/changes.md` — 調査結果を追記。
+
+### Behavioral Impact
+- 製品動作の変更なし。既存のx86向けdevice後補完はsingleQueueFamilyを設定せず、Step 4で追加したexclusive sharingチェックに拒否されることを確認。
+- 全device queue familyが単一という条件、単一physical deviceを含むdevice-group情報の一律拒否、wait semaphore数0の拒否も旧版との差分として再現した。
+
+### Risk & Mitigation
+- Risk: 再現した条件が対象ゲームで実際に発生したと誤認すること。
+- Mitigation: x64の制御された比較試験であり、x86実機での原因確定や同期の安全性検証ではないと明示。安全チェックを単純削除する修正は行っていない。
+
+### Tests / Verification
+- x64プローブold/currentをReleaseビルドして実行、全比較条件で期待どおりの結果。
+- 単一family・作成情報あり・waitあり: 旧版/現行ともcapture記録入口とoverlay準備入口へ到達。
+- device後補完 / 別transfer family追加 / physical device 1個のdevice-group情報 / waitなし: 旧版は両入口へ到達、現行は両入口の前で停止。
+- Step 5のworkerコピー処理に到達する前の停止であることを確認。
+- x86ビルド・実行なし。製品DLL再ビルドなし。アンチウイルス設定変更なし。
+
+### Open Questions
+- 対象ゲームが後補完・複数family・device-group・waitなしのどの条件に該当するかは未確定。
+- 情報補完経路と新しい必須条件の不整合が最有力。旧版で既に正常だったhook入口の未捕捉や一般的なビルド不備は優先度を下げる。
+
+**2026-09-11 11:32 (Asia/Taipei) — Vulkanのdevice後補完とx86関数取得経路の回帰を修正**
+
+### Summary
+- Step 4の過剰なfamily制約と情報補完の不整合を修正し、instance経由のdevice関数取得をhookで捕捉するようにした。
+
+### Context / Goal
+- 旧x86は正常でStep 4/5後のx86だけ画像取得・overlayが失敗する報告に対し、再現した停止条件を修正する。
+- 正常なPresentのVulkan所有権契約に基づいて対応範囲を戻し、未確認のGPU情報は推測しない。
+
+### Changes
+- device全体のsingleQueueFamily条件を廃止。Presentのqueue familyは既に画像の所有権を持つという仕様と、同じqueue/全wait semaphoreによる同期に基づく判定へ修正した。
+- device作成情報の捕捉有無とphysical device数を分離。補完はinstanceにphysical deviceが1個の場合に限定し、swapchain作成時の補完も追加した。
+- 単一GPUのdevice-groupとLOCAL/mask=1のPresentを許可。実際の複数GPU groupは拒否を維持した。
+- GIPA/GDPA両経路でdevice関数を共通のhookへ振り分け、resolver自身の取得を捕捉。未対応関数のnullを保持し、登録をmutexで保護した。
+- skip診断を詳細化。回帰試験と実GPUでのproc-address/WSI試験を拡張した。
+
+### Files Touched
+- `Native/HookAgentVulkan/VulkanPresentHook.cpp` — device情報、所有権条件、単一GPU group、instance/device lookup、補完と診断を修正。
+- `Native/HookAgentVulkan/tests/VulkanDispatchTests.h` — lookup、作成情報、補完からcapture準備までの回帰試験を追加。
+- `Native/HookAgentVulkan/tests/VulkanReadbackTests.cpp` — 判定テストを更新し、実GPUのinstance/device/queueをhook経由で作成。複数family・単一GPU groupを追加。
+- `Native/HookAgentVulkan/tests/VulkanPresentSmoke.h` — 実hook経由のswapchain/Present、usage追加、device後補完、LOCAL group Presentを検証。
+- `Doc/GraphicsHook_Vulkan_Performance_Next_Steps.md` — 第15節に修正根拠、対応範囲、検証を追記。
+- `.agent/changes.md` — 本タスクの記録を追記。既存の調査エントリは保持。
+
+### Behavioral Impact
+- 単一GPUの後補完・複数queue family・単一GPU groupで不要にcapture/overlayを拒否しなくなる。
+- 作成情報未捕捉かつ複数adapterがある場合は、先頭adapterを推測して利用せずスキップする。
+- waitなし、複数GPU group、protected、swapchain作成情報不明は引き続き対象外。BGRA直接publishとV2契約は維持。
+
+### Risk & Mitigation
+- Risk: 所有権制約の変更でGPU同期が崩れる可能性。
+- Mitigation: Vulkanの有効なPresentの所有権契約を根拠としてコメント/Docへ明記。同じqueue、全元wait、再signalの同期は維持し、複数familyの実GPU同期検証に合格した。
+- Risk: 関数取得経由のhookが未対応APIを有効と見せたり、x86で未捕捉となる可能性。
+- Mitigation: 両resolverで共通の振り分けとnull保持を試験。x86で無効化している直接export hookを増やしていない。
+
+### Tests / Verification
+- SDK G:/Development-Cache/VulkanSdk。x64 ReleaseのHookAgentVulkan/HookAgentVulkanTestsビルド成功。
+- CTest VulkanReadback合格。既存のworker/色/寿命試験に加え、GIPA/GDPA両経路、後補完、複数family、単一GPU group、曖昧なadapterの拒否を確認。
+- `HookAgentVulkanTests --present`合格。GTX 1080、device queue family数2、単一GPU group、72回の複数swapchain Present、実proc-address hook、device後補完、画素/usage/終了を確認。Validation Layers/synchronization validation error 0。
+- x86ビルド・実行なし。アンチウイルス設定変更なし。対象端末のx86ゲームでの修正確認は未実施。
+- `git diff --check`で空白エラーなし。
+
+### Open Questions
+- 対象x86ゲームで今回修正した条件が原因だったかは、別端末で再ビルドしたDLLによる実機確認が必要。
