@@ -22,6 +22,28 @@
         </Style>
         <Style x:Key="OverviewMutedTextStyle" TargetType="TextBlock" BasedOn="{StaticResource MutedTextStyle}">
         </Style>
+        <!-- WHY: Bind to the TextBox itself so the hint updates while typing, before LostFocus saves the value. -->
+        <Style x:Key="LanguageCodePlaceholderStyle" TargetType="TextBlock">
+            <Setter Property="Visibility" Value="Collapsed" />
+            <Setter Property="IsHitTestVisible" Value="False" />
+            <!-- WHY: The native TextBox can stay white in dark mode; match its foreground so the hint stays readable. -->
+            <Setter Property="Foreground" Value="{Binding Foreground}" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="Margin" Value="9,1,1,1" />
+            <Setter Property="Padding" Value="{Binding Padding}" />
+            <Setter Property="FontFamily" Value="{Binding FontFamily}" />
+            <Setter Property="FontSize" Value="{Binding FontSize}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <MultiDataTrigger>
+                    <MultiDataTrigger.Conditions>
+                        <Condition Binding="{Binding Text}" Value="" />
+                        <Condition Binding="{Binding Visibility}" Value="Visible" />
+                    </MultiDataTrigger.Conditions>
+                    <Setter Property="Visibility" Value="Visible" />
+                </MultiDataTrigger>
+            </Style.Triggers>
+        </Style>
         <Style x:Key="OverviewLabelStyle" TargetType="TextBlock">
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
@@ -232,7 +254,7 @@
                                     </Canvas>
                                 </Viewbox>
                             </Button>
-                            <TextBox Grid.Column="2"
+                            <TextBox x:Name="SourceLanguageCustomInput" Grid.Column="2"
                                      Margin="8,0,0,0"
                                      Text="{Binding Settings.SourceLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                 <TextBox.Style>
@@ -247,6 +269,10 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
+                            <TextBlock Grid.Column="2"
+                                       DataContext="{Binding ElementName=SourceLanguageCustomInput}"
+                                       Text="{uiLoc:Loc Key=Language_CodePlaceholder}"
+                                       Style="{StaticResource LanguageCodePlaceholderStyle}" />
                         </Grid>
 
                         <TextBlock Text="{uiLoc:Loc Key=Overview_Label_TargetLanguage}" Style="{StaticResource OverviewLabelStyle}" />
@@ -267,7 +293,7 @@
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Custom}" Tag="custom" />
                             </ComboBox>
-                            <TextBox Grid.Column="2"
+                            <TextBox x:Name="TargetLanguageCustomInput" Grid.Column="2"
                                      Margin="8,0,0,0"
                                      Text="{Binding Settings.TargetLanguageCustom, Mode=TwoWay, UpdateSourceTrigger=LostFocus}">
                                 <TextBox.Style>
@@ -282,6 +308,10 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
+                            <TextBlock Grid.Column="2"
+                                       DataContext="{Binding ElementName=TargetLanguageCustomInput}"
+                                       Text="{uiLoc:Loc Key=Language_CodePlaceholder}"
+                                       Style="{StaticResource LanguageCodePlaceholderStyle}" />
                         </Grid>
 
                         <TextBlock Text="{uiLoc:Loc Key=Overview_Label_OcrEngine}" Style="{StaticResource OverviewLabelStyle}" />

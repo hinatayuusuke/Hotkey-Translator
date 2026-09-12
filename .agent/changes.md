@@ -2978,3 +2978,70 @@
 - 保存・復元処理をコード上で確認。koは既存の保存処理を通り、標準タグとして復元される。
 - git diff --check成功。
 - 実画面の操作・再起動による確認は未実施（今回はビルドと静的確認まで）。
+
+**2026-09-13 00:44 (Asia/Taipei) — カスタム言語入力欄に案内文を追加**
+
+### Summary
+- OCR対象言語と翻訳先言語のカスタム入力欄に、空欄時だけ薄い「言語コード」を表示する。
+
+### Context / Goal
+- 狭い入力欄でも入力内容の種類が伝わる短い案内が必要。
+- 日本語UIでは「言語コード」、英語UIでは「Language code」と表示する。
+
+### Changes
+- 両入力欄にクリックを妨げないTextBlockを重ね、共通スタイルで表示を制御。
+- 入力欄が表示中かつ空欄の場合だけ案内を表示。LostFocusでの保存前にも反映するため、TextBox.Textへ直接バインド。
+- テーマの副テキスト色を動的参照し、Opacity 0.7で薄く表示。
+- 日英の言語リソースにLanguage_CodePlaceholderを追加。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — 案内表示、共通スタイル、入力中の更新理由コメントを追加。
+- `Resources/Strings.resx` — Language codeを追加。
+- `Resources/Strings.ja.resx` — 言語コードを追加。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- カスタム選択時、空欄に案内が表示され、入力すると消え、全削除すると再表示される。
+- 案内文はTextBox.Textに含まれないため保存対象にならない。既存の入力・保存処理は維持。
+
+### Risk & Mitigation
+- Risk: フォーカス移動まで案内が残る、非表示欄に案内だけ残る、クリックを妨げる。
+- Mitigation: TextBox.TextとVisibilityを直接参照し、案内のIsHitTestVisibleをFalseに設定。
+
+### Tests / Verification
+- 通常ビルドは起動中Hotkey-Translatorによるexeロックでコピー失敗。一時OutputPathを指定したビルドは警告0・エラー0で成功。起動中アプリは停止していない。
+- 実際のXAML共通スタイルをWPFで読み込み、空欄・入力中・全削除・入力欄非表示の表示条件、クリック非干渉、動的ブラシ変更への追従を確認。
+- 日英リソースをXMLとして読み込み、案内キーが各1件で正しい文言であることを確認。
+- git diff --check成功。
+- アプリ実画面での目視確認は未実施。
+
+**2026-09-13 00:51 (Asia/Taipei) — ダークテーマの言語コード案内を修正**
+
+### Summary
+- カスタム言語入力欄の案内文字を入力欄のForegroundへ連動させ、ダークテーマで白背景に溶け込む問題を修正。
+
+### Context / Goal
+- 標準TextBoxの背景はダークテーマでも白だが、案内にはテーマの白い文字色を適用していた。
+- 両テーマで「言語コード」を読めるようにし、薄い表示を維持する。
+
+### Changes
+- 共通スタイルのForegroundをTextBox.Foregroundへのバインディングへ変更。
+- Opacity 0.7を維持し、配色の理由をWHYコメントに明記。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — OCR対象・翻訳先の共通案内スタイルの文字色を修正。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- 両カスタム入力欄の案内文字が入力欄に合わせた色になり、ダークテーマでも視認できる。
+- 入力中の表示切替、クリック非干渉、設定保存の挙動は維持。
+
+### Risk & Mitigation
+- Risk: テーマ色と標準入力欄の配色が一致せず案内が見えなくなる。
+- Mitigation: テーマ全体の文字色ではなく、対象TextBox自身の文字色へ直接追従。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal成功（警告0、エラー0）。通常のDebug出力先へ反映。
+- 修正後XAMLから入力欄と案内を読み込み、実際のWPF-UIのDark・Lightテーマで個別に描画。両方で案内がVisible、Foregroundが黒、Opacityが0.7であることを確認。
+- 両テーマの描画画像を目視し、白い入力欄に案内文字が見えることを確認。
+- git diff --check成功。

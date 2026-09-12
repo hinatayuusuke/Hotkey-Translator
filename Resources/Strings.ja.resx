@@ -33,6 +33,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Language_ChineseSimplified" xml:space="preserve"><value>中国語（簡体字）</value></data>
   <data name="Language_ChineseTraditional" xml:space="preserve"><value>中国語（繁体字）</value></data>
   <data name="Language_Custom" xml:space="preserve"><value>カスタム</value></data>
+  <data name="Language_CodePlaceholder" xml:space="preserve"><value>言語コード</value></data>
   <data name="Language_Custom_WithValue" xml:space="preserve"><value>カスタム ({0})</value></data>
   <data name="Language_English" xml:space="preserve"><value>英語</value></data>
   <data name="Language_Japanese" xml:space="preserve"><value>日本語</value></data>
