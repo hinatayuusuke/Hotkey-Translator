@@ -185,6 +185,7 @@
                                       SelectedValue="{Binding Settings.SourceLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_English}" Tag="en" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Japanese}" Tag="ja" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Korean}" Tag="ko" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseTraditional}" Tag="zh-Hant" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseSimplified}" Tag="zh-Hans" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />
@@ -260,6 +261,7 @@
                                       SelectedValue="{Binding Settings.TargetLanguageTag, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}">
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_English}" Tag="en" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Japanese}" Tag="ja" />
+                                <ComboBoxItem Content="{uiLoc:Loc Key=Language_Korean}" Tag="ko" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseTraditional}" Tag="zh-Hant" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_ChineseSimplified}" Tag="zh-Hans" />
                                 <ComboBoxItem Content="{uiLoc:Loc Key=Language_Russian}" Tag="ru" />

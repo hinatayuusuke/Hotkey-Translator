@@ -555,6 +555,7 @@ internal sealed partial class MainWindowViewModel : ObservableObject
         {
             "en" => LocalizationService.Instance.GetString("Language_English"),
             "ja" => LocalizationService.Instance.GetString("Language_Japanese"),
+            "ko" => LocalizationService.Instance.GetString("Language_Korean"),
             "zh-Hant" => LocalizationService.Instance.GetString("Language_ChineseTraditional"),
             "zh-Hans" => LocalizationService.Instance.GetString("Language_ChineseSimplified"),
             "ru" => LocalizationService.Instance.GetString("Language_Russian"),

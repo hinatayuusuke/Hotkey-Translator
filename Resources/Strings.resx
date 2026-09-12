@@ -44,6 +44,7 @@ This clears saved OCR, translation, overlay, ROI, hotkey, and system settings.</
   <data name="Language_Custom_WithValue" xml:space="preserve"><value>Custom ({0})</value></data>
   <data name="Language_English" xml:space="preserve"><value>English</value></data>
   <data name="Language_Japanese" xml:space="preserve"><value>Japanese</value></data>
+  <data name="Language_Korean" xml:space="preserve"><value>Korean</value></data>
   <data name="Language_Russian" xml:space="preserve"><value>Russian</value></data>
   <data name="Overview_Actions" xml:space="preserve"><value>Actions</value></data>
   <data name="Overview_CurrentSetupTitle" xml:space="preserve"><value>Current Setup</value></data>

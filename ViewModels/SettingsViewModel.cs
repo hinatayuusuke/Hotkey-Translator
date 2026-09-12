@@ -35,6 +35,8 @@ internal sealed partial class SettingsViewModel : ObservableObject
     {
         "en",
         "ja",
+        // COMPAT: Saved custom "ko" values now restore as the built-in Korean option.
+        "ko",
         "zh-Hant",
         "zh-Hans",
         "ru"

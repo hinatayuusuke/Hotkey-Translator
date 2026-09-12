@@ -36,6 +36,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="Language_Custom_WithValue" xml:space="preserve"><value>カスタム ({0})</value></data>
   <data name="Language_English" xml:space="preserve"><value>英語</value></data>
   <data name="Language_Japanese" xml:space="preserve"><value>日本語</value></data>
+  <data name="Language_Korean" xml:space="preserve"><value>韓国語</value></data>
   <data name="Language_Russian" xml:space="preserve"><value>ロシア語</value></data>
   <data name="Overview_Actions" xml:space="preserve"><value>操作</value></data>
   <data name="Overview_CurrentSetupTitle" xml:space="preserve"><value>現在の構成</value></data>

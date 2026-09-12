@@ -2940,3 +2940,41 @@
 - Debug実行フォルダーのNative junctionとDLLのSHA-256一致を確認。実行先には修正版x64 DLLが反映済み。
 - git diff --checkで空白エラーなし。x86ビルド・実行なし。アンチウイルス設定変更なし。
 - チラツキが報告された実ゲームでの最終確認は未実施。
+
+**2026-09-13 00:28 (Asia/Taipei) — OCR対象・翻訳先の標準選択肢に韓国語を追加**
+
+### Summary
+- OCR対象言語と翻訳先言語で韓国語（ko）を標準選択できるようにした。
+
+### Context / Goal
+- 韓国語をカスタム入力せずに選択したい。
+- 既存の言語設定・保存処理を利用して選択肢と表示名を追加する。
+
+### Changes
+- 両方の言語選択欄に韓国語を追加。
+- 標準言語タグにkoを追加し、保存済みkoを標準選択として復元。
+- 構成表示と日英リソースに韓国語の表示名を追加。
+- 既存カスタムkoの表示変更をCOMPATコメントに明記。
+
+### Files Touched
+- `UI/OverviewControl.xaml` — OCR対象・翻訳先の選択肢を追加。
+- `ViewModels/SettingsViewModel.cs` — 標準タグkoを追加。
+- `ViewModels/MainWindowViewModel.cs` — koの表示名解決を追加。
+- `Resources/Strings.resx` — Language_KoreanにKoreanを追加。
+- `Resources/Strings.ja.resx` — Language_Koreanに韓国語を追加。
+- `.agent/changes.md` — 本タスクの記録を追記。
+
+### Behavioral Impact
+- 両欄で韓国語を選択でき、既存のカスタムkoも標準選択として復元される。
+- 設定形式、初期言語、アプリUI言語、OCR・翻訳エンジンは変更しない。移行操作は不要。
+
+### Risk & Mitigation
+- Risk: 選択値・保存値・表示名の不一致。
+- Mitigation: koとLanguage_Koreanを各箇所で統一し、XAML・リソースのXML検証と保存・復元経路のコード確認を実施。
+
+### Tests / Verification
+- dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal成功（警告0、エラー0）。以後のコード差分はコメント追加のみ。
+- XML検証で両選択欄にkoがあり、Language_Koreanを参照することを確認。日英リソースのキーが各1件であることを確認。
+- 保存・復元処理をコード上で確認。koは既存の保存処理を通り、標準タグとして復元される。
+- git diff --check成功。
+- 実画面の操作・再起動による確認は未実施（今回はビルドと静的確認まで）。
