@@ -234,14 +234,17 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             Dispatcher,
             _busyOverlayController,
             () => _logger,
-            AppendLog);
+            AppendLog,
+            () => _ocrEngine?.OneOcrHost);
         SceneChangeController? sceneChangeController = null;
         _runCoordinator = new MainWindowRunCoordinator(
             _settingsService,
             this,
             () => _pipeline,
             _winRtLanguagePackCoordinator,
-            () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false);
+            () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false,
+            _oneOcrVendorUiController.RepairAfterFailureAsync,
+            () => sceneChangeController?.ClearPendingAutoTranslate("OneOCR recovery requires a manual run"));
         _sceneChangeController = new SceneChangeController(
             Dispatcher,
             _settingsService,
@@ -254,7 +257,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             RunOnceAsync,
             () => _runCoordinator.IsRunning,
             AppendLog,
-            enabled => _overlayEnabled = enabled);
+            enabled => _overlayEnabled = enabled,
+            _runCoordinator.ReportOneOcrFailureAsync,
+            () => _runCoordinator.IsOneOcrAutoRunSuspended);
         _resourceHostCommandController = new ResourceHostCommandController(
             _resourceHostFacade,
             () => IsLoaded,
@@ -303,6 +308,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
+        // NOTE: Do not terminate the process between file replacement and rollback/validation.
+        if (_oneOcrVendorUiController.IsRepairing) e.Cancel = true;
     }
 
     protected override void OnSourceInitialized(EventArgs e)

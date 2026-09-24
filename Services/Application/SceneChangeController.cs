@@ -44,6 +44,8 @@ internal sealed class SceneChangeController : IDisposable
     private readonly Func<AppSettings, Rect, Rect> _resolveRoiBounds;
     private readonly Func<ForceRunOptions, Task> _runOnceAsync;
     private readonly Func<bool> _isRunInProgress;
+    private readonly Func<Task> _reportOneOcrFailure;
+    private readonly Func<bool> _isOneOcrRecoveryPaused;
     private readonly Action<string> _appendLog;
     private readonly Action<bool> _setOverlayEnabledState;
     private readonly FeatureSettingsProvider _featureSettingsProvider = new();
@@ -79,7 +81,9 @@ internal sealed class SceneChangeController : IDisposable
         Func<ForceRunOptions, Task> runOnceAsync,
         Func<bool> isRunInProgress,
         Action<string> appendLog,
-        Action<bool> setOverlayEnabledState)
+        Action<bool> setOverlayEnabledState,
+        Func<Task> reportOneOcrFailure,
+        Func<bool> isOneOcrRecoveryPaused)
     {
         _dispatcher = dispatcher;
         _settingsService = settingsService;
@@ -91,6 +95,8 @@ internal sealed class SceneChangeController : IDisposable
         _resolveRoiBounds = resolveRoiBounds;
         _runOnceAsync = runOnceAsync;
         _isRunInProgress = isRunInProgress;
+        _reportOneOcrFailure = reportOneOcrFailure;
+        _isOneOcrRecoveryPaused = isOneOcrRecoveryPaused;
         _appendLog = appendLog;
         _setOverlayEnabledState = setOverlayEnabledState;
     }
@@ -335,7 +341,7 @@ internal sealed class SceneChangeController : IDisposable
     {
         var captureManager = _captureManagerAccessor();
         var phashService = _phashServiceAccessor();
-        if (_autoHideTickInProgress || captureManager == null || phashService == null)
+        if (_autoHideTickInProgress || _isOneOcrRecoveryPaused() || captureManager == null || phashService == null)
         {
             return;
         }
@@ -521,6 +527,11 @@ internal sealed class SceneChangeController : IDisposable
             catch (OperationCanceledException)
             {
                 _loggerAccessor()?.Info("stage=scene_change event=stage_b_canceled.");
+            }
+            catch (OneOcrUnavailableException ex)
+            {
+                _loggerAccessor()?.Error(ex, "Scene change OneOCR failed; requesting repair.");
+                await _reportOneOcrFailure().ConfigureAwait(true);
             }
             catch (Exception ex)
             {

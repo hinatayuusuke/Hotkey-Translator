@@ -13,6 +13,9 @@ internal sealed class MainWindowRunCoordinator : IDisposable
     private readonly Func<PipelineOrchestrator?> _pipelineAccessor;
     private readonly WinRtOcrLanguagePackCoordinator _winRtLanguagePackCoordinator;
     private readonly Func<bool> _tryDrainPendingSceneAutoTranslate;
+    private readonly Func<AppSettings, CancellationToken, Task> _repairOneOcr;
+    private readonly Action _clearPendingSceneAutoTranslate;
+    private bool _suspendOneOcrAutoRuns;
 
     private CancellationTokenSource? _runCts;
     private int _runInProgress;
@@ -24,18 +27,55 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         IMainWindowViewBridge viewBridge,
         Func<PipelineOrchestrator?> pipelineAccessor,
         WinRtOcrLanguagePackCoordinator winRtLanguagePackCoordinator,
-        Func<bool> tryDrainPendingSceneAutoTranslate)
+        Func<bool> tryDrainPendingSceneAutoTranslate,
+        Func<AppSettings, CancellationToken, Task> repairOneOcr,
+        Action clearPendingSceneAutoTranslate)
     {
         _settingsService = settingsService;
         _viewBridge = viewBridge;
         _pipelineAccessor = pipelineAccessor;
         _winRtLanguagePackCoordinator = winRtLanguagePackCoordinator;
         _tryDrainPendingSceneAutoTranslate = tryDrainPendingSceneAutoTranslate;
+        _repairOneOcr = repairOneOcr;
+        _clearPendingSceneAutoTranslate = clearPendingSceneAutoTranslate;
     }
 
     public bool HasRunOnce => _hasRunOnce;
 
     public bool IsRunning => Interlocked.CompareExchange(ref _runInProgress, 1, 1) == 1;
+
+    public bool IsOneOcrAutoRunSuspended => _suspendOneOcrAutoRuns &&
+        OneOcrVendorUiController.IsOneOcrRequired(_settingsService.Settings);
+
+    public async Task ReportOneOcrFailureAsync()
+    {
+        // WHY: Semantic scene OCR can fail outside a translation run; share the same prompt/run gate.
+        if (IsOneOcrAutoRunSuspended || Interlocked.Exchange(ref _runInProgress, 1) == 1) return;
+        _runCts?.Dispose();
+        _runCts = new CancellationTokenSource();
+        var runToken = _runCts.Token;
+        try
+        {
+            await HandleOneOcrFailureAsync(_settingsService.Settings, runToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            _clearPendingSceneAutoTranslate();
+            Interlocked.Exchange(ref _runInProgress, 0);
+        }
+    }
+
+    private async Task HandleOneOcrFailureAsync(AppSettings settings, CancellationToken cancellationToken)
+    {
+        _suspendOneOcrAutoRuns = true;
+        _clearPendingSceneAutoTranslate();
+        _viewBridge.HideLoadingSpinnerForRun();
+        _viewBridge.CancelTranslationOverlay();
+        _viewBridge.SetBusyOverlayCancelable(false);
+        _viewBridge.SetBusyOverlay(false, null);
+        // WHY: Keep the run gate held throughout the modal prompt and repair to prevent duplicate requests.
+        await _repairOneOcr(settings, cancellationToken).ConfigureAwait(true);
+    }
 
     public bool ShouldShowCenterBusyForCurrentRun =>
         Interlocked.CompareExchange(ref _showCenterBusyForCurrentRun, 0, 0) == 1;
@@ -53,6 +93,11 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
     public async Task RunOnceAsync(ForceRunOptions options)
     {
+        // NOTE: Background scene changes must not reopen the repair prompt or replay a failed capture.
+        // A deliberate manual run resumes automatic translation after recovery.
+        if (_suspendOneOcrAutoRuns && options.Trigger == RunTrigger.AutoSceneChange &&
+            OneOcrVendorUiController.IsOneOcrRequired(_settingsService.Settings)) return;
+
         var pipeline = _pipelineAccessor();
         if (pipeline == null)
         {
@@ -73,6 +118,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         _runCts?.Cancel();
         _runCts?.Dispose();
         _runCts = new CancellationTokenSource();
+        var runToken = _runCts.Token;
         Interlocked.Exchange(ref _showCenterBusyForCurrentRun, showCenterBusyForCurrentRun ? 1 : 0);
         if (showCenterBusyForCurrentRun)
         {
@@ -87,7 +133,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         try
         {
             var languagePackResult = await _winRtLanguagePackCoordinator
-                .EnsureLanguagePackAsync(settings, _runCts.Token)
+                .EnsureLanguagePackAsync(settings, runToken)
                 .ConfigureAwait(true);
             if (languagePackResult.Status == WinRtLanguagePackStatus.UserCanceled)
             {
@@ -103,7 +149,15 @@ internal sealed class MainWindowRunCoordinator : IDisposable
                 return;
             }
 
-            await pipeline.RunOnceAsync(_runCts.Token, options).ConfigureAwait(true);
+            await pipeline.RunOnceAsync(runToken, options).ConfigureAwait(true);
+            if (!runToken.IsCancellationRequested && options.Trigger == RunTrigger.Manual)
+            {
+                _suspendOneOcrAutoRuns = false;
+            }
+        }
+        catch (OneOcrUnavailableException)
+        {
+            await HandleOneOcrFailureAsync(settings, runToken).ConfigureAwait(true);
         }
         finally
         {
@@ -121,7 +175,8 @@ internal sealed class MainWindowRunCoordinator : IDisposable
             Interlocked.Exchange(ref _showCenterBusyForCurrentRun, 0);
             Interlocked.Exchange(ref _runInProgress, 0);
             _viewBridge.CancelTranslationOverlay();
-            _tryDrainPendingSceneAutoTranslate();
+            if (_suspendOneOcrAutoRuns) _clearPendingSceneAutoTranslate();
+            else _tryDrainPendingSceneAutoTranslate();
         }
     }
 

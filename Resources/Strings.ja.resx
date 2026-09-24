@@ -350,4 +350,12 @@ OK を選ぶと、インストール済み Snipping Tool パッケージから�
   <data name="Hotkey_Note_WinKeyUnsupported" xml:space="preserve"><value>Note: Win キーは未対応です。</value></data>
   <data name="SystemSettings_ClipboardTitle" xml:space="preserve"><value>クリップボード</value></data>
   <data name="SystemSettings_CopyOcrTranslationToClipboard" xml:space="preserve"><value>オーバーレイ更新後にOCR原文と翻訳文をクリップボードへコピー</value></data>
+  <data name="OneOcr_RepairTitle" xml:space="preserve"><value>OneOCR の修復</value></data>
+  <data name="OneOcr_RepairPrompt" xml:space="preserve"><value>OneOCR が正常に動作しません。Snipping Tool から必要なファイルをコピーし直して、修復を試みます。
+
+自動翻訳は一時停止しています。この画面を閉じた後、もう一度手動で翻訳を実行してください。</value></data>
+  <data name="OneOcr_RepairButton" xml:space="preserve"><value>修復する</value></data>
+  <data name="OneOcr_RepairBusy" xml:space="preserve"><value>OneOCR の修復と文字認識の確認中...</value></data>
+  <data name="OneOcr_RepairSucceeded" xml:space="preserve"><value>修復しました。もう一度手動で翻訳を実行してください。</value></data>
+  <data name="OneOcr_RepairFailed" xml:space="preserve"><value>OneOCR を修復できませんでした。詳細：</value></data>
 </root>

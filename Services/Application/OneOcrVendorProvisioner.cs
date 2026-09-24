@@ -24,7 +24,7 @@ internal sealed class OneOcrVendorProvisioner
 {
     private const string SnippingToolPackageFamilyName = "Microsoft.ScreenSketch_8wekyb3d8bbwe";
     private const string SnippingToolVendorDirectoryName = "SnippingTool";
-    private static readonly string[] RequiredVendorFileNames =
+    internal static readonly string[] RequiredVendorFileNames =
     [
         "oneocr.dll",
         "oneocr.onemodel",
@@ -144,7 +144,7 @@ internal sealed class OneOcrVendorProvisioner
         return new OneOcrVendorCopyResult(true, true, refreshedStatus.VendorDirectory, sourceDirectory, null);
     }
 
-    private static string? TryFindInstalledSnippingToolVendorDirectory()
+    internal static string? TryFindInstalledSnippingToolVendorDirectory()
     {
         var packageManager = new PackageManager();
         foreach (var package in packageManager.FindPackagesForUser(string.Empty, SnippingToolPackageFamilyName))
@@ -155,10 +155,14 @@ internal sealed class OneOcrVendorProvisioner
                 continue;
             }
 
-            var candidate = Path.Combine(installLocation, SnippingToolVendorDirectoryName);
-            if (Directory.Exists(candidate))
+            // COMPAT: Registered ScreenSketch packages use either layout (including 11.2607's sandbox).
+            foreach (var folder in new[] { SnippingToolVendorDirectoryName, "SnippingToolSandbox" })
             {
-                return candidate;
+                var candidate = Path.Combine(installLocation, folder);
+                if (RequiredVendorFileNames.All(name => File.Exists(Path.Combine(candidate, name))))
+                {
+                    return candidate;
+                }
             }
         }
 

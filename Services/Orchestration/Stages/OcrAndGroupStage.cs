@@ -87,7 +87,7 @@ internal sealed class OcrAndGroupStage
                     {
                         throw;
                     }
-                    catch (Exception geometryEx)
+                    catch (Exception geometryEx) when (geometryEx is not OneOcrUnavailableException)
                     {
                         _logger?.Error(geometryEx, "Geometry fallback after VisionLLM failure also failed.");
                     }
@@ -178,7 +178,7 @@ internal sealed class OcrAndGroupStage
                 {
                     throw;
                 }
-                catch (Exception geometryEx)
+                catch (Exception geometryEx) when (geometryEx is not OneOcrUnavailableException)
                 {
                     _logger?.Error(geometryEx, "Vision geometry helper failed; using VisionLLM synthetic lines.");
                     groupedLocalLines = filteredLines;

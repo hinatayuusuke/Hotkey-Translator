@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -418,6 +418,14 @@ public sealed class PipelineOrchestrator
             {
                 _overlayPresenter.ShowLast();
             }
+        }
+        catch (OneOcrUnavailableException ex)
+        {
+            // WHY: The failed capture must not make the user's next attempt skip OCR as an unchanged frame.
+            _lastHash = null;
+            _logger.Error(ex, "OneOCR failed; stopping pipeline for repair.");
+            // NOTE: Let the run coordinator display repair only after the pipeline gate is released.
+            throw;
         }
         catch (Exception ex)
         {

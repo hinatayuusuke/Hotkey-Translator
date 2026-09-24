@@ -16,6 +16,8 @@ public sealed class OneOcrProcessOcrProvider : IOcrProvider, IDisposable
     private readonly OneOcrProcessHost _host;
     private readonly AppLogger? _logger;
 
+    internal OneOcrProcessHost Host => _host;
+
     public OneOcrProcessOcrProvider(AppLogger? logger = null)
     {
         _host = new OneOcrProcessHost(logger);

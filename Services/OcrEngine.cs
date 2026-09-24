@@ -14,8 +14,10 @@ public sealed class OcrEngine : IDisposable
     private readonly IOcrProvider _paddleVlProvider;
     private readonly IOcrProvider _ndlProvider;
     private readonly IOcrProvider _visionLlmProvider;
-    private readonly IOcrProvider _oneOcrProvider;
+    private readonly OneOcrProcessOcrProvider _oneOcrProvider;
     private readonly AppLogger? _logger;
+
+    internal OneOcrProcessHost OneOcrHost => _oneOcrProvider.Host;
 
     public OcrEngine(HttpClient httpClient, AppLogger? logger = null)
     {
@@ -97,19 +99,9 @@ public sealed class OcrEngine : IDisposable
         }
         else if (settings.OcrEngine == OcrEngineKind.OneOcr)
         {
-            try
-            {
-                _logger?.Info("OCR engine: OneOCR.");
-                return await _oneOcrProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                _logger?.Error(ex, "OneOCR failed; falling back to WinRT.");
-            }
+            // COMPAT: Stop on OneOCR failure so users can repair it instead of silently switching engines.
+            _logger?.Info("OCR engine: OneOCR.");
+            return await _oneOcrProvider.RecognizeAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);
         }
 
         return await RecognizeWinRtAsync(bitmap, settings, cancellationToken).ConfigureAwait(false);

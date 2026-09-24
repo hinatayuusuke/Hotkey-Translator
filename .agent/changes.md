@@ -3045,3 +3045,92 @@
 - 修正後XAMLから入力欄と案内を読み込み、実際のWPF-UIのDark・Lightテーマで個別に描画。両方で案内がVisible、Foregroundが黒、Opacityが0.7であることを確認。
 - 両テーマの描画画像を目視し、白い入力欄に案内文字が見えることを確認。
 - git diff --check成功。
+
+**2026-09-24 23:19 (Asia/Taipei) — OneOCR 障害時の修復ダイアログと検証付き復旧**
+
+### Summary
+- OneOCR の初期化・通信・認識処理の障害時に修復を案内し、Snipping Tool の3ファイルを検証してから交換する復旧処理を追加。
+
+### Context / Goal
+- 旧 ONNX Runtime やモデルとの混在で OneOCR が起動できず、従来は再試行や WinRT 切り替えで問題が隠れることがあった。
+- 最新版への自動更新や設定画面の追加操作を行わず、障害時の「修復する」操作で復旧できるようにする。
+
+### Changes
+- OneOCR 専用の障害例外を追加。起動終了を検出し、接続と ready 応答を起動期限内に制限、認識要求に30秒の応答期限を追加。ユーザーキャンセルと空の認識結果は修復対象外。
+- OneOCR の自動再試行と WinRT 切り替えを停止。VisionLLM の OneOCR geometry 経路でも障害を通知。
+- 修復ダイアログを日英で追加。修復する／キャンセルを提示し、修復結果と失敗理由を表示。修復中は進捗表示とウィンドウ終了抑止を行う。
+- パイプラインの終了後に通知し、通知・修復中の実行ゲートを保持。シーン判定 OCR の障害も同じ経路で処理し、自動実行を手動再開まで抑止。
+- 現在のユーザーに登録された Snipping Tool の SnippingTool／SnippingToolSandbox 配置から、同じフォルダの3ファイルを一時配置へコピー。
+- 一時配置で初期化と固定テスト画像の認識を確認してから交換し、最終配置でも再検証。元の翻訳処理は再実行しない。
+- コピー／検証／交換失敗・キャンセル時は元のファイル状態へ戻す。復元自体が妨げられた場合は退避ファイルを保持し、場所をエラーに明記。
+- 修復は対象3ファイルだけを操作し、vendor フォルダのその他のファイルは保持。失敗画像の pHash を無効化し、次の手動実行が OCR を省略しないようにする。
+
+### Files Touched
+- `Services/OneOcrUnavailableException.cs` — 修復対象の障害例外を追加。
+- `Services/OneOcrProcessHost.cs` — 起動監視・認識期限・キャンセル区別・保守排他を追加。
+- `Services/OneOcrProcessOcrProvider.cs` — 復旧用ホスト参照を追加。
+- `Services/OcrEngine.cs` — OneOCR 障害時の切り替えを停止し、復旧用ホストを接続。
+- `Services/Orchestration/Stages/OcrAndGroupStage.cs` — geometry OCR の OneOCR 障害を上位へ伝播。
+- `Services/PipelineOrchestrator.cs` — OneOCR 障害を上位へ通知し、失敗した画像のキャッシュ判定を無効化。
+- `Services/Application/OneOcrRepairService.cs` — 一時配置、実OCR検証、交換、ロールバックを実装。
+- `Services/Application/OneOcrVendorProvisioner.cs` — 取得元検索を共有し、登録パッケージの2種類の配置に対応。
+- `Services/Application/OneOcrVendorUiController.cs` — 修復ダイアログ・非同期復旧・結果表示を追加。
+- `Services/Application/MainWindowRunCoordinator.cs` — 障害通知の排他、シーン自動実行の抑止、手動再開を追加。
+- `Services/Application/SceneChangeController.cs` — シーン OCR 障害を修復経路へ接続。
+- `MainWindow.xaml.cs` — UI と復旧処理を接続し、修復中の通常終了を抑止。
+- `Resources/Strings.resx` / `Resources/Strings.ja.resx` — 修復案内・操作・結果の日英文言を追加。
+- `AssemblyInfo.cs` — 復旧テスト用アセンブリへの内部API公開を追加。
+- `Tools/OneOcrRepairTests/OneOcrRepairTests.csproj` / `Program.cs` / `README.md` — 回帰・実OCR検証ランナーと実行手順を追加。
+- `.agent/changes.md` — 本タスクの変更記録を追記。
+
+### Behavioral Impact
+- OneOCR 障害時は翻訳を停止して修復を案内する。従来の自動再試行・WinRT 切り替えは OneOCR 経路では行わない。
+- 障害後のシーン自動実行は抑止し、手動実行後に再開する。設定値や設定画面は追加しない。
+- 通常起動や正常動作時のファイル自動更新は行わない。既存 vendor ファイルの実体は今回の検証では変更していない。
+
+### Risk & Mitigation
+- Risk: ファイル交換途中や交換後の検証で失敗し、一式が混在する。
+- Mitigation: 一時配置の事前認識検証、ホスト排他、変更済みファイルだけの巻き戻し、復元失敗時の退避保持、修復中の通常終了抑止。
+- Risk: 自動翻訳による通知ループや、キャンセルの故障扱い。
+- Mitigation: 実行ゲート・背景実行抑止・専用例外で区別。空結果とキャンセルは正常に扱う。
+- Risk: 外部からのプロセス強制終了などでは通常のロールバックを完走できない。
+- Mitigation: 元ファイルは生成済みの .oneocr-repair-* 配下に退避してから交換し、修復完了までは保持する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal` 成功（警告0、エラー0）。
+- `dotnet run --project Tools/OneOcrRepairTests/OneOcrRepairTests.csproj -- --native` 成功（20項目）。
+- 取得元不足、コピー元ロック、一時検証失敗、交換途中のロック、交換後検証失敗、キャンセル、元ファイル一部欠落、復元不能時の退避保持を確認。
+- 模擬ヘルパーで起動終了、接続／ready／認識タイムアウト、エラー応答、切断、ユーザーキャンセル、空結果、障害後の再接続、保守排他を確認。
+- 同時障害通知の重複抑止、自動再試行停止、手動再実行の受付を確認。
+- 登録済み Snipping Tool から一時フォルダの破損ファイル一式を修復し、実ヘルパーの文字認識とコピー元・先3ファイルのSHA-256一致を確認。
+- 日英リソースのXML解析、キー存在・重複なし、`git diff --check` 成功。
+- 修復ダイアログの実画面での目視確認は未実施。
+
+**2026-09-24 23:23 (Asia/Taipei) — OneOCR 修復案内の日本語文字化けを修正**
+
+### Summary
+- OneOCR 修復用の日本語リソース6項目を、疑問符に置換された状態から正しい文言へ復元。
+
+### Context / Goal
+- 前回の PowerShell から Python へのパイプ入力で日本語が失われ、UTF-8 ファイル内にも疑問符として保存されていた。
+- 修復ダイアログのタイトル、案内、ボタン、進捗、成功・失敗メッセージを日本語で表示する。
+
+### Changes
+- パイプ経由の文字変換を避け、直接パッチで日本語文言を復元。
+- キーの存在だけでなく、6項目の実際の文言が期待値に一致することを検証。
+
+### Files Touched
+- `Resources/Strings.ja.resx` — OneOcr_Repair 系6項目の日本語を復元。
+- `.agent/changes.md` — 本修正の記録を追記。
+
+### Behavioral Impact
+- 修復ダイアログの日本語表示が正しくなる。修復処理や英語文言の変更はない。
+
+### Risk & Mitigation
+- Risk: 書き込み時の文字変換や文言の欠落。
+- Mitigation: 厳密な UTF-8 デコード、XML解析、6項目の全文一致、連続疑問符・置換文字がないことを確認。
+
+### Tests / Verification
+- UTF-8・XML・全6項目の全文一致検証に成功。
+- `dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal` 成功（警告0、エラー0）。
+- `git diff --check` 成功。

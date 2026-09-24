@@ -27,7 +27,23 @@ internal sealed class OneOcrProcessHost : IDisposable
         try
         {
             ThrowIfDisposed();
-            return await RecognizeCoreAsync(imageBytes, settings, allowRestart: true, cancellationToken).ConfigureAwait(false);
+            return await RecognizeCoreAsync(imageBytes, settings, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _sync.Release();
+        }
+    }
+
+    internal async Task RunMaintenanceAsync(Func<Task> action, CancellationToken cancellationToken)
+    {
+        // WHY: Scene-change OCR shares this host. Hold its gate until validation/replacement finishes.
+        await _sync.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            ThrowIfDisposed();
+            StopProcess();
+            await action().ConfigureAwait(false);
         }
         finally
         {
@@ -44,19 +60,21 @@ internal sealed class OneOcrProcessHost : IDisposable
 
         _disposed = true;
         StopProcess();
-        _sync.Dispose();
+        // NOTE: In-flight cancellation/repair still releases this gate during application shutdown.
         GC.SuppressFinalize(this);
     }
 
     private async Task<OneOcrRecognizeResponse> RecognizeCoreAsync(
         byte[] imageBytes,
         AppSettings settings,
-        bool allowRestart,
         CancellationToken cancellationToken)
     {
         try
         {
             var client = await EnsureStartedAsync(settings, cancellationToken).ConfigureAwait(false);
+            using var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // NOTE: Bound hung native inference independently of startup; never classify user cancellation as damage.
+            requestTimeout.CancelAfter(TimeSpan.FromSeconds(30));
             var response = await client.SendAsync<OneOcrRecognizeResponse>(
                 new OneOcrRequestMessage
                 {
@@ -66,7 +84,7 @@ internal sealed class OneOcrProcessHost : IDisposable
                     ImageBytesBase64 = Convert.ToBase64String(imageBytes),
                     MaxLineCount = settings.OneOcrMaxLineCount
                 },
-                cancellationToken).ConfigureAwait(false);
+                requestTimeout.Token).ConfigureAwait(false);
 
             if (!response.Ok)
             {
@@ -75,15 +93,18 @@ internal sealed class OneOcrProcessHost : IDisposable
 
             return response;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // WHY: An interrupted pipe response cannot be reused for the next request.
+            StopProcess();
             throw;
         }
-        catch (Exception ex) when (allowRestart)
+        catch (Exception ex)
         {
-            _logger?.Error(ex, "OneOCR helper request failed; restarting helper once.");
-            RestartProcess();
-            return await RecognizeCoreAsync(imageBytes, settings, allowRestart: false, cancellationToken).ConfigureAwait(false);
+            StopProcess();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new OneOcrUnavailableException(
+                ex is OperationCanceledException ? "OneOCR helper timed out." : $"OneOCR helper failed: {ex.Message}", ex);
         }
     }
 
@@ -103,7 +124,7 @@ internal sealed class OneOcrProcessHost : IDisposable
 
         var helperPath = ResolveExistingPath(settings.OneOcrHelperRelativePath);
         var vendorPath = ResolveExistingPath(settings.OneOcrVendorRelativePath);
-        var pipeName = $"{settings.OneOcrPipeName}_{Environment.ProcessId}_{Interlocked.Increment(ref _startSequence)}";
+        var pipeName = $"{settings.OneOcrPipeName}_{Environment.ProcessId}_{Interlocked.Increment(ref _startSequence)}_{Guid.NewGuid():N}";
         var readyTimeout = TimeSpan.FromMilliseconds(Math.Max(1000, settings.OneOcrReadyTimeoutMs));
 
         var startInfo = new ProcessStartInfo
@@ -131,8 +152,24 @@ internal sealed class OneOcrProcessHost : IDisposable
         var client = new OneOcrProtocolClient();
         try
         {
-            await client.ConnectAsync(pipeName, readyTimeout, cancellationToken).ConfigureAwait(false);
-            var ready = await client.ReadAsync<OneOcrReadyResponse>(cancellationToken).ConfigureAwait(false);
+            using var startupTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            startupTimeout.CancelAfter(readyTimeout);
+            var process = _process;
+            var readyTask = ConnectAndReadReadyAsync(client, pipeName, readyTimeout, startupTimeout.Token);
+            var exitTask = process.WaitForExitAsync(startupTimeout.Token);
+            var completed = await Task.WhenAny(readyTask, exitTask).ConfigureAwait(false);
+            if (completed == exitTask && process.HasExited)
+            {
+                startupTimeout.Cancel();
+                try { await readyTask.ConfigureAwait(false); }
+                catch (Exception) { /* NOTE: Observe the canceled connection before disposing its pipe. */ }
+                throw new InvalidOperationException($"OneOCR helper exited during startup (code {process.ExitCode}).");
+            }
+
+            var ready = await readyTask.ConfigureAwait(false);
+            startupTimeout.Cancel();
+            try { await exitTask.ConfigureAwait(false); }
+            catch (OperationCanceledException) { }
             if (!ready.Ok || !string.Equals(ready.Type, "ready", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidOperationException($"OneOCR helper did not become ready: {ready.Error ?? ready.Message ?? "unknown state"}");
@@ -148,6 +185,13 @@ internal sealed class OneOcrProcessHost : IDisposable
         _client = client;
         _logger?.Info($"stage=oneocr event=helper_started pid={_process.Id} path=\"{helperPath}\" pipe={pipeName}.");
         return client;
+    }
+
+    private static async Task<OneOcrReadyResponse> ConnectAndReadReadyAsync(
+        OneOcrProtocolClient client, string pipeName, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        await client.ConnectAsync(pipeName, timeout, cancellationToken).ConfigureAwait(false);
+        return await client.ReadAsync<OneOcrReadyResponse>(cancellationToken).ConfigureAwait(false);
     }
 
     private void RestartProcess()
