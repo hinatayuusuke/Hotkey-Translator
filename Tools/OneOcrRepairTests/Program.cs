@@ -183,7 +183,7 @@ internal static class Program
         using var coordinator = new MainWindowRunCoordinator(settings, new View(),
             () => { pipelineLookups++; return null; }, null!,
             () => { drains++; return false; },
-            (_, _) => { prompts++; return release.Task; }, () => cleared++);
+            (_, _) => { prompts++; return release.Task; }, () => cleared++, () => null);
         var first = coordinator.ReportOneOcrFailureAsync();
         Check(coordinator.IsRunning, "run gate held while repair prompt is open");
         await coordinator.ReportOneOcrFailureAsync();

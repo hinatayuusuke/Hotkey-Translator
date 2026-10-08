@@ -246,7 +246,8 @@ internal sealed partial class MainWindowViewModel : ObservableObject
     }
 
     public string OverlayStatusSummary =>
-        RuntimeStatus.IsBusy ? RuntimeStatus.BusyMessage : RuntimeStatus.TranslationStatusMessage;
+        RuntimeStatus.IsBusy ? RuntimeStatus.BusyMessage : !string.IsNullOrWhiteSpace(RuntimeStatus.ResourceLoadStatus)
+            ? RuntimeStatus.ResourceLoadStatus : RuntimeStatus.TranslationStatusMessage;
 
     public string RunOnceHotkeySummary => $"Run OCR / Translate: {FormatHotkey(Settings.HotkeyRunOnceKey, Settings.HotkeyRunOnceCtrl, Settings.HotkeyRunOnceAlt, Settings.HotkeyRunOnceShift)}";
 

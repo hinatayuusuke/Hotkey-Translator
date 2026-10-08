@@ -43,6 +43,24 @@ internal sealed class ResourceHostFacade : IDisposable
     private readonly LlamaGrpcHost _llamaGrpcHost;
     private readonly GrpcHostRegistry _hostRegistry;
     private readonly HashSet<string> _plannedHostIds = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _cancelledSelections = new(StringComparer.Ordinal);
+    private readonly CancellationTokenSource _shutdown = new();
+    private CancellationTokenSource? _loadCts;
+    private long _operationId;
+    private bool _loadOwnsBusy;
+    private HostLoadProgress? _bootstrapProgress;
+    private readonly Action<bool> _setCancelable;
+    private readonly Action<HostLoadProgress> _updateProgress;
+    private readonly Action<string?> _updateLoadStatus;
+
+    public bool IsLoading => _loadCts != null;
+    public bool OwnsBusyOverlay => IsLoading && _loadOwnsBusy;
+    public bool IsCurrentLoad(long operationId)
+    {
+        var source = _loadCts;
+        return source != null && !source.IsCancellationRequested && operationId == Interlocked.Read(ref _operationId);
+    }
+    public ResourceHostLoadResult LastLoadResult { get; private set; } = ResourceHostLoadResult.Success;
 
     private LlamaHostConfig? _llamaHostConfig;
 
@@ -50,14 +68,25 @@ internal sealed class ResourceHostFacade : IDisposable
         Func<AppLogger?> loggerAccessor,
         Action<bool, string?> setBusyOverlay,
         Action<AppSettings, bool> syncSettingsToView,
-        Action<string> showLoadFailure)
+        Action<string> showLoadFailure,
+        Action<bool> setCancelable,
+        Action<HostLoadProgress> updateProgress,
+        Action<string?> updateLoadStatus)
     {
         _loggerAccessor = loggerAccessor;
         _setBusyOverlay = setBusyOverlay;
         _syncSettingsToView = syncSettingsToView;
         _showLoadFailure = showLoadFailure;
+        _setCancelable = setCancelable;
+        _updateProgress = updateProgress;
+        _updateLoadStatus = updateLoadStatus;
 
-        _hostOrchestrator = new GrpcHostOrchestrator(_loggerAccessor, _setBusyOverlay, _showLoadFailure);
+        _hostOrchestrator = new GrpcHostOrchestrator(_loggerAccessor, message =>
+        {
+            _loadOwnsBusy = true;
+            _setBusyOverlay(true, message);
+            _setCancelable(true);
+        });
         // WHY: Host instances can be created before OnLoaded assigns AppLogger; use accessor to avoid capturing null.
         _paddleGrpcHost = new PaddleGrpcHost(_loggerAccessor);
         _paddleVlGrpcHost = new PaddleVlGrpcHost(_loggerAccessor);
@@ -69,7 +98,16 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public bool IsPaddleVlRunning => _paddleVlGrpcHost.IsRunning;
 
+    internal ResourceHostFacade(Func<AppLogger?> loggerAccessor, Action<bool, string?> setBusyOverlay,
+        Action<AppSettings, bool> syncSettingsToView, Action<string> showLoadFailure, Action<bool> setCancelable,
+        Action<HostLoadProgress> updateProgress, Action<string?> updateLoadStatus, GrpcHostRegistry registry)
+        : this(loggerAccessor, setBusyOverlay, syncSettingsToView, showLoadFailure, setCancelable, updateProgress, updateLoadStatus)
+    {
+        _hostRegistry = registry;
+    }
+
     public bool IsVisionLlmRunning => _visionLlmGrpcHost.IsRunning;
+    public bool IsLlamaRunning => _llamaGrpcHost.IsRunning;
 
     public bool TryValidateBudget(AppSettings settings, out string? message)
     {
@@ -90,32 +128,134 @@ internal sealed class ResourceHostFacade : IDisposable
         return false;
     }
 
-    public async Task<bool> EnsureResourceHostsAsync(AppSettings settings)
+    public async Task<ResourceHostLoadResult> EnsureResourceHostsAsync(AppSettings settings,
+        CancellationToken cancellationToken = default)
     {
-        await _resourceLoadGate.WaitAsync().ConfigureAwait(true);
+        if (_shutdown.IsCancellationRequested) return ResourceHostLoadResult.Cancelled;
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _shutdown.Token);
+        try { await _resourceLoadGate.WaitAsync(operation.Token).ConfigureAwait(true); }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested) { return ResourceHostLoadResult.Cancelled; }
+        var id = ++_operationId;
+        _loadCts = operation;
+        _loadOwnsBusy = false;
+        var result = ResourceHostLoadResult.Success;
+        void Progress(HostLoadProgress value)
+        {
+            if (IsCurrentLoad(id)) _updateProgress(value with { OperationId = id });
+        }
+        _llamaGrpcHost.LoadProgress += Progress;
+        _visionLlmGrpcHost.LoadProgress += Progress;
         try
         {
             var requiredHosts = BuildRequiredHosts(settings);
             if (!EnsureBudgetForHosts(settings, requiredHosts, out var rejectMessage))
             {
-                _showLoadFailure(rejectMessage ?? "Resource host VRAM budget exceeded.");
-                return false;
+                result = new(ResourceHostLoadStatus.Failed, false, new[]
+                {
+                    new HostLoadFailure("resource_budget", "", null, HostLoadPhase.Environment,
+                        rejectMessage ?? "Resource host VRAM budget exceeded.", "")
+                });
             }
-
-            StopHostsNoLongerNeeded();
-            if (_plannedHostIds.Count == 0)
+            else
             {
-                return false;
+                // NOTE: Cancellation belongs to this selection, not to unrelated settings saves.
+                RefreshCancelledSelections(settings);
+                await Task.Run(StopHostsNoLongerNeeded).ConfigureAwait(true);
+                result = await _hostOrchestrator.EnsureHostsAsync(settings, _hostRegistry, operation.Token,
+                    _cancelledSelections.Keys.ToHashSet(StringComparer.Ordinal)).ConfigureAwait(true);
+                if (result.Status == ResourceHostLoadStatus.Cancelled)
+                {
+                    foreach (var descriptor in _hostRegistry.All)
+                        if (_plannedHostIds.Contains(descriptor.HostId) && !descriptor.IsRunning())
+                            _cancelledSelections[descriptor.HostId] = GetSelection(settings, descriptor.HostId);
+                }
+                else if (result.Status == ResourceHostLoadStatus.Succeeded && GetUnavailableMessage(settings) != null)
+                    result = result with { Status = ResourceHostLoadStatus.Cancelled };
             }
-
-            return await _hostOrchestrator
-                .EnsureHostsAsync(settings, _hostRegistry, CancellationToken.None)
-                .ConfigureAwait(true);
         }
         finally
         {
+            // WHY: Invalidate pending dispatcher progress before hiding busy UI and showing any modal error.
+            _loadCts = null;
+            _llamaGrpcHost.LoadProgress -= Progress;
+            _visionLlmGrpcHost.LoadProgress -= Progress;
+            if (_loadOwnsBusy)
+            {
+                _setCancelable(false);
+                _setBusyOverlay(false, null);
+                _loadOwnsBusy = false;
+            }
+            _updateLoadStatus(GetUnavailableMessage(settings));
             _resourceLoadGate.Release();
         }
+        LastLoadResult = result;
+        if (!_shutdown.IsCancellationRequested && result.Failures.Count > 0)
+            _showLoadFailure(string.Join(Environment.NewLine + Environment.NewLine, result.Failures.Select(failure => FormatFailure(failure, settings))));
+        _loggerAccessor()?.Info($"stage=grpc_host_load operation_id={id} event=completed result={result.Status}.");
+        return result;
+    }
+
+    public bool CancelLoading()
+    {
+        if (_loadCts == null || !_loadOwnsBusy) return false;
+        _setCancelable(false);
+        _setBusyOverlay(true, LocalizationService.Instance["ResourceHost_Cancelling"]);
+        _loadCts.Cancel();
+        return true;
+    }
+
+    public void AllowExplicitReload(bool translationOnly)
+    {
+        foreach (var id in _cancelledSelections.Keys.ToArray())
+            if ((id == HostIdLlama) == translationOnly) _cancelledSelections.Remove(id);
+    }
+
+    public void RefreshCancelledSelections(AppSettings settings)
+    {
+        var required = BuildRequiredHosts(settings);
+        foreach (var hostId in _cancelledSelections.Keys.ToArray())
+            if (!required.Any(host => host.HostId == hostId) || _cancelledSelections[hostId] != GetSelection(settings, hostId))
+                _cancelledSelections.Remove(hostId);
+        _updateLoadStatus(GetUnavailableMessage(settings));
+    }
+
+    public string? GetUnavailableMessage(AppSettings settings)
+    {
+        var unavailable = BuildRequiredHosts(settings).Where(host => _cancelledSelections.TryGetValue(host.HostId, out var selection)
+                && selection == GetSelection(settings, host.HostId))
+            .Where(host => !_hostRegistry.All.First(descriptor => descriptor.HostId == host.HostId).IsRunning())
+            .Select(host => host.DisplayName).ToArray();
+        return unavailable.Length == 0 ? null : LocalizationService.Instance.GetString("ResourceHost_NotLoaded", string.Join(", ", unavailable));
+    }
+
+    private static string GetSelection(AppSettings settings, string hostId) => hostId switch
+    {
+        HostIdLlama => settings.LlamaSelectedModelFileName,
+        HostIdVisionLlm => settings.VisionLlmSelectedModelFileName + "|" + settings.VisionLlmSelectedMmprojFileName,
+        _ => settings.OcrEngine.ToString()
+    };
+
+    private string FormatFailure(HostLoadFailure failure, AppSettings settings)
+    {
+        var strings = LocalizationService.Instance;
+        var descriptor = _hostRegistry.All.FirstOrDefault(item => item.HostId == failure.HostId);
+        var title = descriptor?.FailureUserMessage(settings) ?? failure.Reason;
+        if (descriptor == null) return title;
+        if (string.IsNullOrWhiteSpace(failure.Model)) return title + Environment.NewLine + failure.Reason;
+        var details = strings.GetString("ResourceHost_FailureDetails", failure.Model,
+            strings["ResourceHost_Phase_" + failure.Phase], failure.Reason);
+        if (!string.IsNullOrWhiteSpace(failure.Mmproj)) details += Environment.NewLine + strings.GetString("ResourceHost_Mmproj", failure.Mmproj);
+        if (!string.IsNullOrWhiteSpace(failure.Details)) details += Environment.NewLine + failure.Details;
+        return title + Environment.NewLine + details;
+    }
+
+    public async Task ShutdownAsync()
+    {
+        _shutdown.Cancel();
+        _loadCts?.Cancel();
+        await _resourceLoadGate.WaitAsync().ConfigureAwait(false);
+        try { await Task.Run(StopAll).ConfigureAwait(false); }
+        finally { _resourceLoadGate.Release(); }
     }
 
     public void StopPaddle()
@@ -146,17 +286,19 @@ internal sealed class ResourceHostFacade : IDisposable
 
     public void StopAll()
     {
-        StopPaddle();
-        StopPaddleVl();
-        StopNdl();
-        StopVisionLlm();
-        StopLlama();
+        foreach (var descriptor in _hostRegistry.All)
+        {
+            descriptor.Stop();
+            descriptor.OnStopped?.Invoke();
+        }
     }
 
     public void Dispose()
     {
+        _shutdown.Cancel();
         StopAll();
         _resourceLoadGate.Dispose();
+        _shutdown.Dispose();
     }
 
     private IReadOnlyList<GrpcHostDescriptor> BuildHostDescriptors()
@@ -209,6 +351,8 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_VisionLlm"),
                 DisableOnFailure = DisableVisionLlmOcr,
                 FailureLogMessage = "VisionLLM gRPC host failed to start.",
+                DescribeFailure = (settings, ex) => _visionLlmGrpcHost.DescribeLoadFailure(
+                    settings.VisionLlmSelectedModelFileName, settings.VisionLlmSelectedMmprojFileName, ex),
                 FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_VisionLlm")
             },
             new()
@@ -221,6 +365,7 @@ internal sealed class ResourceHostFacade : IDisposable
                 BusyMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Loading_Llama"),
                 DisableOnFailure = DisableLlamaTranslation,
                 FailureLogMessage = "Llama gRPC host failed to start.",
+                DescribeFailure = (settings, ex) => _llamaGrpcHost.DescribeLoadFailure(settings.LlamaSelectedModelFileName, null, ex),
                 FailureUserMessage = _ => LocalizationService.Instance.GetString("ResourceHost_Failed_Llama"),
                 HasDeferredConfigChange = settings =>
                     _llamaHostConfig.HasValue && !_llamaHostConfig.Value.Equals(BuildLlamaHostConfig(settings)),
@@ -327,22 +472,98 @@ internal sealed class ResourceHostFacade : IDisposable
         return true;
     }
 
-    public ResourceBootstrapPlan BuildBootstrapPlan(AppSettings settings, ResourceBootstrapIntent intent)
+    public async Task<ResourceBootstrapPlan?> BuildBootstrapPlanAsync(AppSettings settings, ResourceBootstrapIntent intent)
+    {
+        if (_shutdown.IsCancellationRequested) return null;
+        if (BuildRequiredHosts(settings).All(host =>
+            (_hostRegistry.TryGet(host.HostId, out var descriptor) && descriptor.IsRunning()) ||
+            (_cancelledSelections.TryGetValue(host.HostId, out var selection) && selection == GetSelection(settings, host.HostId))))
+            return new ResourceBootstrapPlan(Array.Empty<ResourceBootstrapItem>());
+        using var operation = CancellationTokenSource.CreateLinkedTokenSource(_shutdown.Token);
+        try { await _resourceLoadGate.WaitAsync(operation.Token).ConfigureAwait(true); }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested) { return null; }
+        var id = Interlocked.Increment(ref _operationId);
+        _loadCts = operation;
+        _loadOwnsBusy = true;
+        _bootstrapProgress = null;
+        HostLoadFailure? failure = null;
+        _setBusyOverlay(true, LocalizationService.Instance["ResourceHost_Phase_Validation"]);
+        _setCancelable(true);
+        try
+        {
+            // WHY: Confirmation used to hash multi-GB models synchronously before the cancellable loading UI existed.
+            return await Task.Run(() => BuildBootstrapPlan(settings, intent, operation.Token, id), operation.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (operation.IsCancellationRequested)
+        {
+            MarkSelectionCancelled(settings);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            var hostId = _bootstrapProgress?.HostId ?? "resource_bootstrap";
+            var model = hostId == HostIdVisionLlm ? settings.VisionLlmSelectedModelFileName : settings.LlamaSelectedModelFileName;
+            failure = new(hostId, model, hostId == HostIdVisionLlm ? settings.VisionLlmSelectedMmprojFileName : null,
+                HostLoadPhase.Validation, HostLoadDiagnostics.Sanitize(ex.Message), "");
+            // NOTE: Before confirmation, keep the selection but block runs against an unverified/unloaded host.
+            MarkSelectionCancelled(settings);
+            LastLoadResult = new(ResourceHostLoadStatus.Failed, false, new[] { failure });
+            _loggerAccessor()?.Error(ex, "Resource bootstrap validation failed.");
+        }
+        finally
+        {
+            _loadCts = null;
+            _loadOwnsBusy = false;
+            _setCancelable(false);
+            _setBusyOverlay(false, null);
+            _updateLoadStatus(GetUnavailableMessage(settings));
+            _resourceLoadGate.Release();
+        }
+        if (!_shutdown.IsCancellationRequested && failure != null)
+            _showLoadFailure(LocalizationService.Instance["ResourceHost_PreflightFailed"] + Environment.NewLine +
+                LocalizationService.Instance.GetString("ResourceHost_FailureDetails", failure.Model,
+                    LocalizationService.Instance["ResourceHost_Phase_Validation"], failure.Reason));
+        return null;
+    }
+
+    public void MarkSelectionCancelled(AppSettings settings)
+    {
+        foreach (var host in BuildRequiredHosts(settings))
+            if (!_hostRegistry.All.First(descriptor => descriptor.HostId == host.HostId).IsRunning())
+                _cancelledSelections[host.HostId] = GetSelection(settings, host.HostId);
+        LastLoadResult = ResourceHostLoadResult.Cancelled;
+        _updateLoadStatus(GetUnavailableMessage(settings));
+    }
+
+    private bool ValidateBootstrapAsset(string path, ModelAssetDescriptor asset, string hostId,
+        CancellationToken token, long operationId)
+    {
+        _bootstrapProgress = new(hostId, HostLoadPhase.Validation, asset.LocalFileName, OperationId: operationId);
+        _updateProgress(_bootstrapProgress);
+        return ModelAssetProvisioner.ValidateAssetAsync(path, asset, token).GetAwaiter().GetResult().Valid;
+    }
+
+    private ResourceBootstrapPlan BuildBootstrapPlan(AppSettings settings, ResourceBootstrapIntent intent,
+        CancellationToken cancellationToken, long operationId)
     {
         var items = new List<ResourceBootstrapItem>();
         foreach (var requiredHost in BuildRequiredHosts(settings))
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (_hostRegistry.TryGet(requiredHost.HostId, out var descriptor) && descriptor.IsRunning()) continue;
+            if (_cancelledSelections.TryGetValue(requiredHost.HostId, out var selection) &&
+                selection == GetSelection(settings, requiredHost.HostId)) continue;
             switch (requiredHost.HostId)
             {
                 case HostIdLlama:
-                    TryAddLlamaBootstrapItem(items, settings);
+                    TryAddLlamaBootstrapItem(items, settings, cancellationToken, operationId);
                     break;
                 case HostIdVisionLlm:
                     // WHY: Settings save should stay cheap. VisionLLM asset existence/integrity is enforced
                     // by the actual startup/download path, so only app-load confirmation keeps this preview.
                     if (intent == ResourceBootstrapIntent.AppLoad)
                     {
-                        TryAddVisionBootstrapItem(items, settings);
+                        TryAddVisionBootstrapItem(items, settings, cancellationToken, operationId);
                     }
 
                     break;
@@ -527,7 +748,8 @@ internal sealed class ResourceHostFacade : IDisposable
             settings.LlamaGrpcPort);
     }
 
-    private void TryAddLlamaBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    private void TryAddLlamaBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings,
+        CancellationToken cancellationToken, long operationId)
     {
         var projectDir = ResolveAppRelativePath(LlamaProjectRelativePath);
         var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
@@ -547,14 +769,14 @@ internal sealed class ResourceHostFacade : IDisposable
         var isDefaultSelection = string.Equals(selectedModelFileName, manifest.Filename, StringComparison.OrdinalIgnoreCase);
         var modelPath = Path.Combine(ResolveAppRelativePath(SharedModelsRelativePath), selectedModelFileName);
         var needsModelDownload = isDefaultSelection &&
-            !ModelAssetProvisioner.TryValidateAsset(
+            !ValidateBootstrapAsset(
                 modelPath,
                 new ModelAssetDescriptor(
                     manifest.Filename,
                     manifest.DownloadUrl,
                     manifest.Sha256,
                     manifest.SizeBytes),
-                out _);
+                HostIdLlama, cancellationToken, operationId);
         if (!needsRuntimeSetup && !needsModelDownload)
         {
             return;
@@ -579,7 +801,8 @@ internal sealed class ResourceHostFacade : IDisposable
             ApprovalKey: null));
     }
 
-    private void TryAddVisionBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings)
+    private void TryAddVisionBootstrapItem(ICollection<ResourceBootstrapItem> items, AppSettings settings,
+        CancellationToken cancellationToken, long operationId)
     {
         var projectDir = ResolveAppRelativePath(VisionProjectRelativePath);
         var needsRuntimeSetup = !Directory.Exists(Path.Combine(projectDir, ".venv"));
@@ -605,14 +828,14 @@ internal sealed class ResourceHostFacade : IDisposable
         var needsMmprojDownload = false;
         if (usesManifestAssets)
         {
-            needsModelDownload = !ModelAssetProvisioner.TryValidateAsset(
+            needsModelDownload = !ValidateBootstrapAsset(
                 Path.Combine(sharedModelsDir, selectedModelFileName),
                 manifest.Model.ToDescriptor(),
-                out _);
-            needsMmprojDownload = !ModelAssetProvisioner.TryValidateAsset(
+                HostIdVisionLlm, cancellationToken, operationId);
+            needsMmprojDownload = !ValidateBootstrapAsset(
                 Path.Combine(sharedModelsDir, selectedMmprojFileName),
                 manifest.Mmproj.ToDescriptor(),
-                out _);
+                HostIdVisionLlm, cancellationToken, operationId);
         }
 
         if (!needsRuntimeSetup && !needsModelDownload && !needsMmprojDownload)

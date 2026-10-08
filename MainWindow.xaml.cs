@@ -16,6 +16,7 @@ using Microsoft.Win32;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Application;
+using Hotkey_Translator.Services.GrpcHost;
 using Hotkey_Translator.Services.Hook;
 using Hotkey_Translator.Services.Settings;
 using Hotkey_Translator.UI;
@@ -82,6 +83,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     private HwndSource? _mainHwndSource;
     private uint _wmMagpieScalingChanged;
     private bool _isClosing;
+    private bool _resourceShutdownComplete;
     private bool _startupHookLaunchHandled;
     private bool _isApplyingRoiPresetSlotSelection;
     private IReadOnlyList<string> _registeredTranslationProviderNames = Array.Empty<string>();
@@ -150,7 +152,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             new SettingsViewModel(_settingsChangeScheduler),
             new RuntimeStatusViewModel(),
             RunOnceAsync,
-            () => _runCoordinator?.CancelCurrentRun(),
+            CancelCurrentOperation,
             SelectRoiAsync,
             SwapLanguages,
             RequestSettingsSave,
@@ -166,9 +168,12 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             SaveSettingsImmediatelyAsync);
         _resourceHostFacade = new ResourceHostFacade(
             () => _logger,
-            SetBusyOverlay,
+            SetResourceLoadBusyOverlay,
             SyncSettingsAfterHostFailure,
-            ShowLoadFailure);
+            ShowLoadFailure,
+            visible => _mainWindowViewModel.RuntimeStatus.CanCancelCurrentRun = visible,
+            UpdateResourceLoadProgress,
+            message => _mainWindowViewModel.RuntimeStatus.ResourceLoadStatus = message ?? string.Empty);
         DataContext = _mainWindowViewModel;
         _drawerLayoutController = new DrawerLayoutController(
             this,
@@ -244,7 +249,9 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             _winRtLanguagePackCoordinator,
             () => sceneChangeController?.TryDrainPendingAutoTranslate() ?? false,
             _oneOcrVendorUiController.RepairAfterFailureAsync,
-            () => sceneChangeController?.ClearPendingAutoTranslate("OneOCR recovery requires a manual run"));
+            () => sceneChangeController?.ClearPendingAutoTranslate("OneOCR recovery requires a manual run"),
+            () => _isClosing ? "Application is closing." : _resourceHostFacade.IsLoading
+                ? Localizer["ResourceHost_LoadInProgress"] : _resourceHostFacade.GetUnavailableMessage(_settingsService.Settings));
         _sceneChangeController = new SceneChangeController(
             Dispatcher,
             _settingsService,
@@ -259,7 +266,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             AppendLog,
             enabled => _overlayEnabled = enabled,
             _runCoordinator.ReportOneOcrFailureAsync,
-            () => _runCoordinator.IsOneOcrAutoRunSuspended);
+            () => _isClosing || _resourceHostFacade.IsLoading ||
+                _resourceHostFacade.GetUnavailableMessage(_settingsService.Settings) != null || _runCoordinator.IsOneOcrAutoRunSuspended);
         _resourceHostCommandController = new ResourceHostCommandController(
             _resourceHostFacade,
             () => IsLoaded,
@@ -267,7 +275,6 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             () => _settingsService.Settings,
             SyncSettingsAfterHostFailure,
             SaveSettingsImmediatelyAsync,
-            SetBusyOverlay,
             AppendLog,
             ShowLoadFailure,
             () => _logger);
@@ -306,10 +313,22 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         Closed += OnClosed;
     }
 
-    private void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
+    private async void OnClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
         // NOTE: Do not terminate the process between file replacement and rollback/validation.
-        if (_oneOcrVendorUiController.IsRepairing) e.Cancel = true;
+        if (_oneOcrVendorUiController.IsRepairing) { e.Cancel = true; return; }
+        if (_resourceShutdownComplete) return;
+        e.Cancel = true;
+        if (_isClosing) return;
+        _isClosing = true;
+        _settingsChangeScheduler.CancelPending();
+        try
+        {
+            // WHY: Await startup cancellation before disposing its gate or continuing initial window setup.
+            await _resourceHostFacade.ShutdownAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex) { _logger?.Error(ex, "Resource host shutdown failed."); }
+        finally { _resourceShutdownComplete = true; Close(); }
     }
 
     protected override void OnSourceInitialized(EventArgs e)
@@ -329,6 +348,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         {
             await _settingsService.LoadAsync().ConfigureAwait(true);
         }
+        if (_isClosing) return;
         var settings = _settingsService.Settings;
         var settingsChanged = _settingsUiController.NormalizeOnLoad(settings);
         var geminiClient = new GeminiClient(_httpClient, _logger);
@@ -346,16 +366,20 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         settingsChanged |= bootstrapConfirmation.SettingsChanged;
         if (bootstrapConfirmation.Approved)
         {
-            settingsChanged |= await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            var loadResult = await _resourceHostFacade.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            settingsChanged |= loadResult.SettingsChanged;
         }
         else
         {
-            AppendLog("Resource host startup skipped because setup/download was canceled.");
+            AppendLog(bootstrapConfirmation.Failed ? Localizer["ResourceHost_SetupFailed"]
+                : "Resource host startup skipped because setup/download was canceled.");
         }
+        if (_isClosing) return;
         if (settingsChanged)
         {
             await _settingsService.SaveAsync().ConfigureAwait(true);
         }
+        if (_isClosing) return;
 
         _overlayWindow = new OverlayWindow();
         _overlayWindow.ApplyStyle(settings);
@@ -566,6 +590,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void ShowLoadFailure(string message)
     {
+        if (_isClosing) return;
         if (!Dispatcher.CheckAccess())
         {
             Dispatcher.Invoke(() => ShowLoadFailure(message));
@@ -1258,6 +1283,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void SyncSettingsAfterHostFailure(AppSettings settings, bool updateTranslationStatus)
     {
+        _resourceHostFacade.RefreshCancelledSelections(settings);
         _mainWindowViewModel.Settings.LoadFrom(settings);
         if (updateTranslationStatus)
         {
@@ -1710,12 +1736,40 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void SetBusyOverlay(bool visible, string? message)
     {
+        // WHY: A previously running OCR task may finish while a new model is loading; it must not hide that UI.
+        if (_resourceHostFacade.OwnsBusyOverlay) return;
         _busyOverlayController.SetBusyOverlay(visible, message);
     }
 
+    private void SetResourceLoadBusyOverlay(bool visible, string? message) =>
+        _busyOverlayController.SetBusyOverlay(visible, message);
+
     private void SetBusyOverlayCancelable(bool visible)
     {
+        if (_resourceHostFacade.OwnsBusyOverlay) return;
         _mainWindowViewModel.RuntimeStatus.CanCancelCurrentRun = visible;
+    }
+
+    private void CancelCurrentOperation()
+    {
+        if (!_resourceHostFacade.CancelLoading()) _runCoordinator?.CancelCurrentRun();
+    }
+
+    private void UpdateResourceLoadProgress(HostLoadProgress progress)
+    {
+        // WHY: Output and transfer callbacks run off-thread; queued updates must not revive a completed dialog.
+        _ = Dispatcher.InvokeAsync(() =>
+        {
+            if (_isClosing || !_resourceHostFacade.IsCurrentLoad(progress.OperationId)) return;
+            var runtime = _mainWindowViewModel.RuntimeStatus;
+            var name = progress.HostId == "llama_grpc" ? "Llama.cpp" : "VisionLLM";
+            runtime.BusyMessage = Localizer.GetString("ResourceHost_Progress", name,
+                Localizer["ResourceHost_Phase_" + progress.Phase], progress.Asset ?? string.Empty);
+            runtime.IsBusy = true;
+            runtime.CanCancelCurrentRun = true;
+            runtime.BusyProgressIsIndeterminate = progress.TotalBytes is not > 0 || progress.Phase != HostLoadPhase.Download;
+            runtime.BusyProgressPercent = progress.TotalBytes is > 0 ? Math.Clamp(100.0 * progress.Bytes / progress.TotalBytes.Value, 0, 100) : 0;
+        }, DispatcherPriority.Background);
     }
 
     private void ShowLoadingSpinnerForRun(AppSettings settings)
@@ -1768,6 +1822,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void IMainWindowViewBridge.CancelTranslationOverlay() => CancelTranslationOverlay();
 
     bool ISettingsUiBridge.IsLoaded => IsLoaded;
+    bool ISettingsUiBridge.IsClosing => _isClosing;
 
     bool ISettingsUiBridge.IsApplyingSettings
     {
@@ -1780,8 +1835,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         ConfirmResourceBootstrapAsync(settings, intent);
     bool ISettingsUiBridge.EnsureOneOcrVendorAvailable(AppSettings settings) =>
         _oneOcrVendorUiController.EnsureVendorAvailable(settings);
-    Task<bool> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
-    Task ISettingsUiBridge.PersistSettingsAsync() => _settingsService.SaveAsync();
+    Task<ResourceHostLoadResult> ISettingsUiBridge.EnsureResourceHostsAsync(AppSettings settings) => _resourceHostFacade.EnsureResourceHostsAsync(settings);
+    Task ISettingsUiBridge.PersistSettingsAsync() => _isClosing ? Task.CompletedTask : _settingsService.SaveAsync();
     bool ISettingsUiBridge.HasHotkeyConflicts => _mainWindowViewModel.Settings.HasHotkeyConflicts;
     bool ISettingsUiBridge.TryValidateResourceHostBudget(AppSettings settings, out string? message) =>
         _resourceHostFacade.TryValidateBudget(settings, out message);
@@ -1795,19 +1850,21 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
     void ISettingsUiBridge.ClearSceneChangeAutoTranslatePending(string reason) =>
         ClearSceneChangeAutoTranslatePending(reason);
 
-    private Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(
+    private async Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(
         AppSettings settings,
         ResourceBootstrapIntent intent)
     {
         if (!Dispatcher.CheckAccess())
         {
-            return Dispatcher.InvokeAsync(() => ConfirmResourceBootstrapAsync(settings, intent)).Task.Unwrap();
+            return await Dispatcher.InvokeAsync(() => ConfirmResourceBootstrapAsync(settings, intent)).Task.Unwrap();
         }
 
-        var plan = _resourceHostFacade.BuildBootstrapPlan(settings, intent);
+        var plan = await _resourceHostFacade.BuildBootstrapPlanAsync(settings, intent).ConfigureAwait(true);
+        if (plan == null || _isClosing) return new(Approved: false, SettingsChanged: false,
+            Failed: !_isClosing && _resourceHostFacade.LastLoadResult.Status == ResourceHostLoadStatus.Failed);
         if (!plan.RequiresConfirmation)
         {
-            return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: false));
+            return new(Approved: true, SettingsChanged: false);
         }
 
         var message = BuildResourceBootstrapConfirmationMessage(plan, intent);
@@ -1820,7 +1877,8 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
         if (result != MessageBoxResult.OK)
         {
             AppendLog("Resource setup/download canceled by user.");
-            return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: false, SettingsChanged: false));
+            _resourceHostFacade.MarkSelectionCancelled(settings);
+            return new(Approved: false, SettingsChanged: false);
         }
 
         var settingsChanged = false;
@@ -1838,7 +1896,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
             settingsChanged = true;
         }
 
-        return Task.FromResult(new ResourceBootstrapConfirmationResult(Approved: true, SettingsChanged: settingsChanged));
+        return new(Approved: true, SettingsChanged: settingsChanged);
     }
 
     private string BuildResourceBootstrapConfirmationMessage(
@@ -2200,6 +2258,7 @@ public partial class MainWindow : Window, IMainWindowViewBridge, ISettingsUiBrid
 
     private void OnLocalizationLanguageChanged(object? sender, EventArgs e)
     {
+        _mainWindowViewModel.RuntimeStatus.ResourceLoadStatus = _resourceHostFacade.GetUnavailableMessage(_settingsService.Settings) ?? string.Empty;
         UpdateWindowTitle();
         UpdateTranslationStatus(_settingsService.Settings);
         UpdateRoiStatus(_settingsService.Settings);

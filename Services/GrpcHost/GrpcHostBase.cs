@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
@@ -16,6 +18,55 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
     private CancellationTokenSource? _monitorCts;
     private Task? _monitorTask;
     private bool _stopping;
+    private readonly Queue<string> _startupErrors = new();
+    private int _startupErrorBytes;
+    public HostLoadPhase LoadPhase { get; private set; } = HostLoadPhase.Environment;
+    public event Action<HostLoadProgress>? LoadProgress;
+
+    protected void ReportLoadProgress(HostLoadPhase phase, string? asset = null, long bytes = 0, long? totalBytes = null)
+    {
+        lock (_sync) LoadPhase = phase;
+        LoadProgress?.Invoke(new(HostId, phase, asset, bytes, totalBytes));
+    }
+
+    protected void RecordStartupError(string line)
+    {
+        line = HostLoadDiagnostics.Sanitize(line);
+        lock (_sync)
+        {
+            _startupErrors.Enqueue(line);
+            _startupErrorBytes += Encoding.UTF8.GetByteCount(line);
+            // PERF: Models can emit thousands of diagnostics; retain only a bounded tail for the failure dialog.
+            while (_startupErrors.Count > 50 || _startupErrorBytes > 16 * 1024)
+                _startupErrorBytes -= Encoding.UTF8.GetByteCount(_startupErrors.Dequeue());
+        }
+    }
+
+    public HostLoadFailure DescribeLoadFailure(string model, string? mmproj, Exception exception)
+    {
+        lock (_sync)
+            return new(HostId, model, mmproj, LoadPhase, HostLoadDiagnostics.Sanitize(exception.Message),
+                HostLoadDiagnostics.Sanitize(string.Join(Environment.NewLine, _startupErrors)));
+    }
+
+    protected static async Task WaitForPreparationAsync(Process process, CancellationToken cancellationToken,
+        TimeSpan? timeout = null)
+    {
+        using var preparation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        preparation.CancelAfter(timeout ?? TimeSpan.FromMinutes(15));
+        try
+        {
+            await process.WaitForExitAsync(preparation.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // NOTE: Kill the preparation tree before returning, including cancellation during initial app startup.
+            if (!process.HasExited) process.Kill(entireProcessTree: true);
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException("Environment preparation timed out.");
+        }
+    }
 
     protected GrpcHostBase(Func<AppLogger?>? loggerAccessor = null)
     {
@@ -71,14 +122,29 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
         }
 
         Logger?.Info($"stage=grpc_host host={HostId} event=start.");
+        lock (_sync)
+        {
+            _startupErrors.Clear();
+            _startupErrorBytes = 0;
+            LoadPhase = HostLoadPhase.Environment;
+        }
         try
         {
             await StartProcessAndProbeReadyAsync(settings, cancellationToken).ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
             EnsureMonitor(settings);
             Logger?.Info($"stage=grpc_host host={HostId} event=ready.");
         }
         catch
         {
+            Process? failed;
+            lock (_sync) failed = _process;
+            if (failed is { HasExited: true })
+            {
+                // WHY: Exit can be observed before stderr callbacks drain; keep the final model error for the dialog.
+                try { await failed.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(1)).ConfigureAwait(false); }
+                catch (TimeoutException) { }
+            }
             Stop();
             throw;
         }
@@ -113,6 +179,8 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
                 if (_process is { HasExited: false })
                 {
                     _process.Kill(true);
+                    // NOTE: Finish tree teardown before releasing the startup UI or disposing the process handle.
+                    _process.WaitForExit(5000);
                 }
             }
             catch
@@ -143,6 +211,7 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
             }
 
             OnProcessOutputLine(args.Data, isError: false);
+            if (args.Data == "HOTKEY_TRANSLATOR_PHASE:connection") ReportLoadProgress(HostLoadPhase.Connection);
             Logger?.Info($"[{outputTag}] {args.Data}");
         };
         process.ErrorDataReceived += (_, args) =>
@@ -152,6 +221,7 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
                 return;
             }
 
+            RecordStartupError(args.Data);
             OnProcessOutputLine(args.Data, isError: true);
             Logger?.Info($"[{outputTag}] {args.Data}");
         };
@@ -210,7 +280,9 @@ internal abstract class GrpcHostBase : IGrpcHostLifecycle, IDisposable
         }
 
         _monitorCts = new CancellationTokenSource();
-        _monitorTask = Task.Run(() => MonitorLoopAsync(settings, _monitorCts.Token));
+        // WHY: Shutdown can dispose the source before the queued monitor starts.
+        var token = _monitorCts.Token;
+        _monitorTask = Task.Run(() => MonitorLoopAsync(settings, token));
     }
 
     private async Task MonitorLoopAsync(AppSettings settings, CancellationToken cancellationToken)

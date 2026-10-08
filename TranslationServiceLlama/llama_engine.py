@@ -80,8 +80,13 @@ class LlamaServerHost:
                 return
             self._stopping = False
 
-        self._start_process()
-        self._wait_ready()
+        try:
+            self._start_process()
+            self._wait_ready()
+        except Exception:
+            # NOTE: Startup failure must not leave a live HTTP server behind after the gRPC host exits.
+            self.stop()
+            raise
         self._ensure_monitor()
 
     def stop(self) -> None:
@@ -94,6 +99,7 @@ class LlamaServerHost:
 
         try:
             proc.kill()
+            proc.wait(timeout=5.0)
         except Exception:
             pass
 
@@ -163,17 +169,18 @@ class LlamaServerHost:
         threading.Thread(target=pump, args=(proc.stderr, "stderr"), daemon=True).start()
 
     def _wait_ready(self) -> None:
-        deadline = time.time() + max(1.0, self._config.ready_timeout_ms / 1000.0)
+        deadline = time.monotonic() + max(1.0, self._config.ready_timeout_ms / 1000.0)
         url = f"{self.base_url}/v1/models"
-        while time.time() < deadline:
+        while time.monotonic() < deadline:
             if not self.is_running:
-                raise LlamaServerError("llama-server exited during startup.")
+                code = self._process.returncode if self._process is not None else None
+                raise LlamaServerError(f"llama-server exited during startup (exit code: {code}).")
             try:
-                resp = httpx.get(url, timeout=2.0)
+                resp = httpx.get(url, timeout=min(2.0, max(0.01, deadline - time.monotonic())))
                 if resp.status_code == 200:
                     logging.info("llama-server ready.")
                     return
-            except Exception:
+            except httpx.HTTPError:
                 pass
             time.sleep(0.2)
 

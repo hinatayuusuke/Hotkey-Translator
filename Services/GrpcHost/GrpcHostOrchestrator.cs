@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Hotkey_Translator.Models;
@@ -8,28 +9,29 @@ namespace Hotkey_Translator.Services.GrpcHost;
 internal sealed class GrpcHostOrchestrator
 {
     private readonly Func<AppLogger?> _loggerAccessor;
-    private readonly Action<bool, string?> _setBusyOverlay;
-    private readonly Action<string> _showLoadFailure;
+    private readonly Action<string> _onStarting;
 
     public GrpcHostOrchestrator(
         Func<AppLogger?> loggerAccessor,
-        Action<bool, string?> setBusyOverlay,
-        Action<string> showLoadFailure)
+        Action<string> onStarting)
     {
         _loggerAccessor = loggerAccessor;
-        _setBusyOverlay = setBusyOverlay;
-        _showLoadFailure = showLoadFailure;
+        _onStarting = onStarting;
     }
 
-    public async Task<bool> EnsureHostsAsync(
+    public async Task<ResourceHostLoadResult> EnsureHostsAsync(
         AppSettings settings,
         GrpcHostRegistry registry,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlySet<string> suppressedHosts)
     {
         var settingsChanged = false;
+        var failures = new List<HostLoadFailure>();
         foreach (var descriptor in registry.All)
         {
-            if (!descriptor.ShouldLoad(settings))
+            if (cancellationToken.IsCancellationRequested)
+                return new(ResourceHostLoadStatus.Cancelled, settingsChanged, failures);
+            if (!descriptor.ShouldLoad(settings) || suppressedHosts.Contains(descriptor.HostId))
             {
                 continue;
             }
@@ -62,27 +64,35 @@ internal sealed class GrpcHostOrchestrator
                 continue;
             }
 
-            _setBusyOverlay(true, descriptor.BusyMessage(settings));
+            _onStarting(descriptor.BusyMessage(settings));
             try
             {
                 await descriptor.StartAsync(settings, cancellationToken).ConfigureAwait(true);
+                cancellationToken.ThrowIfCancellationRequested();
                 descriptor.OnStartSucceeded?.Invoke(settings);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // NOTE: User cancellation must not disable the selected engine or masquerade as a load failure.
+                descriptor.Stop();
+                descriptor.OnStopped?.Invoke();
+                return new(ResourceHostLoadStatus.Cancelled, settingsChanged, failures);
             }
             catch (Exception ex)
             {
                 _loggerAccessor()?.Error(ex, descriptor.FailureLogMessage);
+                var failure = descriptor.DescribeFailure?.Invoke(settings, ex)
+                    ?? new HostLoadFailure(descriptor.HostId, "", null, HostLoadPhase.Environment,
+                        HostLoadDiagnostics.Sanitize(ex.Message), "");
                 descriptor.Stop();
                 descriptor.OnStopped?.Invoke();
                 descriptor.DisableOnFailure(settings);
-                _showLoadFailure(descriptor.FailureUserMessage(settings));
+                failures.Add(failure);
                 settingsChanged = true;
-            }
-            finally
-            {
-                _setBusyOverlay(false, null);
             }
         }
 
-        return settingsChanged;
+        return new(failures.Count == 0 ? ResourceHostLoadStatus.Succeeded : ResourceHostLoadStatus.Failed,
+            settingsChanged, failures);
     }
 }

@@ -185,6 +185,8 @@ def main() -> int:
         raise
 
     engine = LlamaTranslator(host, request_config)
+    # NOTE: A fixed marker reports the phase only; C# still requires a successful gRPC Health reply.
+    print("HOTKEY_TRANSLATOR_PHASE:connection", flush=True)
     logging.info("llama-server ready: %s", host.base_url)
 
     grpc_server = grpc.server(futures.ThreadPoolExecutor(max_workers=4))

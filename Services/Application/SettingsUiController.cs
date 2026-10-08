@@ -4,18 +4,20 @@ using System.Threading.Tasks;
 using Hotkey_Translator.Models;
 using Hotkey_Translator.Services;
 using Hotkey_Translator.Services.Settings;
+using Hotkey_Translator.Services.GrpcHost;
 
 namespace Hotkey_Translator.Services.Application;
 
 internal interface ISettingsUiBridge
 {
     bool IsLoaded { get; }
+    bool IsClosing { get; }
     bool IsApplyingSettings { get; set; }
     bool HasHotkeyConflicts { get; }
     void ApplyRuntimeStateAfterSave(AppSettings settings);
     Task<ResourceBootstrapConfirmationResult> ConfirmResourceBootstrapAsync(AppSettings settings, ResourceBootstrapIntent intent);
     bool EnsureOneOcrVendorAvailable(AppSettings settings);
-    Task<bool> EnsureResourceHostsAsync(AppSettings settings);
+    Task<ResourceHostLoadResult> EnsureResourceHostsAsync(AppSettings settings);
     Task PersistSettingsAsync();
     bool TryValidateResourceHostBudget(AppSettings settings, out string? message);
     void SyncSettingsToView(AppSettings settings, bool updateTranslationStatus);
@@ -53,7 +55,7 @@ internal sealed class SettingsUiController
 
     public async Task<bool> SaveFromUiAsync()
     {
-        if (_bridge.IsApplyingSettings || !_bridge.IsLoaded)
+        if (_bridge.IsClosing || _bridge.IsApplyingSettings || !_bridge.IsLoaded)
         {
             return false;
         }
@@ -97,18 +99,23 @@ internal sealed class SettingsUiController
             var bootstrapConfirmation = await _bridge
                 .ConfirmResourceBootstrapAsync(settings, ResourceBootstrapIntent.SettingsSave)
                 .ConfigureAwait(true);
+            if (_bridge.IsClosing) return false;
             if (!bootstrapConfirmation.Approved)
             {
                 _settingsService.ReplaceSettings(previousSettings);
                 _bridge.SyncSettingsToView(previousSettings, true);
-                _bridge.AppendLog("Settings change canceled before resource setup/download.");
+                _bridge.AppendLog(bootstrapConfirmation.Failed ? LocalizationService.Instance["ResourceHost_SetupFailed"]
+                    : "Settings change canceled before resource setup/download.");
                 return false;
             }
 
             _bridge.ApplyRuntimeStateAfterSave(settings);
-            await _bridge.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            var loadResult = await _bridge.EnsureResourceHostsAsync(settings).ConfigureAwait(true);
+            if (_bridge.IsClosing) return false;
             await _bridge.PersistSettingsAsync().ConfigureAwait(true);
-            _bridge.AppendLog("Settings saved.");
+            if (_bridge.IsClosing) return false;
+            _bridge.AppendLog(loadResult.Status == ResourceHostLoadStatus.Cancelled
+                ? LocalizationService.Instance["ResourceHost_SettingsSavedCancelled"] : "Settings saved.");
             _bridge.TryUpdateHotkeys(settings);
             _bridge.UpdateAutoHideWatcher(settings);
             return true;

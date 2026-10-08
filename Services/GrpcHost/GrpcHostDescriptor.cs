@@ -26,6 +26,8 @@ internal sealed class GrpcHostDescriptor
 
     public required Func<AppSettings, string> FailureUserMessage { get; init; }
 
+    public Func<AppSettings, Exception, HostLoadFailure>? DescribeFailure { get; init; }
+
     public IReadOnlyList<string> StopBeforeStartHostIds { get; init; } = Array.Empty<string>();
 
     public Func<AppSettings, bool>? HasDeferredConfigChange { get; init; }

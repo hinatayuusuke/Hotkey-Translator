@@ -6,7 +6,7 @@ internal enum ResourceBootstrapIntent
     SettingsSave
 }
 
-internal readonly record struct ResourceBootstrapConfirmationResult(bool Approved, bool SettingsChanged);
+internal readonly record struct ResourceBootstrapConfirmationResult(bool Approved, bool SettingsChanged, bool Failed = false);
 
 internal sealed record ResourceBootstrapItem(
     string DisplayName,

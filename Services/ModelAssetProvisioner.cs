@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using Hotkey_Translator.Services.GrpcHost;
 
 namespace Hotkey_Translator.Services;
 
@@ -13,72 +14,86 @@ internal sealed record ModelAssetDescriptor(
     string Sha256,
     long? SizeBytes);
 
+internal sealed record ModelAssetTimeouts(TimeSpan Headers, TimeSpan Idle, TimeSpan Total, TimeSpan Lock)
+{
+    // WHY: Large models need a long transfer budget, but an idle connection must not hold the UI indefinitely.
+    public static ModelAssetTimeouts Default { get; } = new(TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60),
+        TimeSpan.FromHours(1), TimeSpan.FromMinutes(10));
+}
+
 internal static class ModelAssetProvisioner
 {
     private static readonly HttpClient DownloadClient = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     public static async Task EnsureAssetAsync(
-        ModelAssetDescriptor asset,
-        string assetPath,
-        string assetTag,
-        Action<string>? log,
-        CancellationToken cancellationToken)
+        ModelAssetDescriptor asset, string assetPath, string assetTag, Action<string>? log,
+        CancellationToken cancellationToken, Action<HostLoadProgress>? progress = null,
+        HttpClient? client = null, ModelAssetTimeouts? timeouts = null)
     {
         var safeLocalFileName = ValidateAssetDescriptor(asset, assetPath);
-        if (TryValidateAsset(assetPath, asset, out _))
-        {
-            log?.Invoke(
-                $"stage=model_asset_download event=skip asset={assetTag} local_filename={safeLocalFileName} reason=already_ready.");
-            return;
-        }
+        timeouts ??= ModelAssetTimeouts.Default;
+        progress?.Invoke(new(assetTag, HostLoadPhase.Validation, safeLocalFileName));
+        if ((await ValidateAssetAsync(assetPath, asset, cancellationToken).ConfigureAwait(false)).Valid) return;
 
-        var assetDirectory = Path.GetDirectoryName(assetPath) ?? throw new InvalidOperationException("Asset directory is invalid.");
-        Directory.CreateDirectory(assetDirectory);
-        var lockPath = $"{assetPath}.lock";
-        await using var lockHandle = await AcquireExclusiveLockAsync(lockPath, cancellationToken).ConfigureAwait(false);
+        Directory.CreateDirectory(Path.GetDirectoryName(assetPath) ?? throw new InvalidOperationException("Asset directory is invalid."));
+        progress?.Invoke(new(assetTag, HostLoadPhase.Lock, safeLocalFileName));
+        await using var lockHandle = await AcquireExclusiveLockAsync(assetPath + ".lock", cancellationToken, timeouts.Lock).ConfigureAwait(false);
+        progress?.Invoke(new(assetTag, HostLoadPhase.Validation, safeLocalFileName));
+        if ((await ValidateAssetAsync(assetPath, asset, cancellationToken).ConfigureAwait(false)).Valid) return;
 
-        // WHY: Another process may complete the download while we waited on the lock.
-        if (TryValidateAsset(assetPath, asset, out _))
-        {
-            log?.Invoke(
-                $"stage=model_asset_download event=skip asset={assetTag} local_filename={safeLocalFileName} reason=became_ready_while_waiting_lock.");
-            return;
-        }
-
-        var tempPath = $"{assetPath}.tmp";
-        if (File.Exists(tempPath))
-        {
-            File.Delete(tempPath);
-        }
-
-        var stopwatch = Stopwatch.StartNew();
-        log?.Invoke(
-            $"stage=model_asset_download event=start asset={assetTag} local_filename={safeLocalFileName} size_bytes={asset.SizeBytes?.ToString() ?? "unknown"} url={asset.DownloadUrl}.");
-
+        var tempPath = assetPath + ".tmp";
+        // SECURITY: Only the lock owner may remove the unfinished asset; never delete the final model on cancellation.
+        TryDeleteFile(tempPath);
+        using var total = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        total.CancelAfter(timeouts.Total);
+        var phase = "download response";
+        var elapsed = Stopwatch.StartNew();
+        progress?.Invoke(new(assetTag, HostLoadPhase.Download, safeLocalFileName));
+        log?.Invoke($"stage=model_asset_download event=start asset={assetTag} local_filename={safeLocalFileName}.");
         try
         {
-            using var response = await DownloadClient.GetAsync(
-                asset.DownloadUrl,
-                HttpCompletionOption.ResponseHeadersRead,
-                cancellationToken).ConfigureAwait(false);
+            using var headers = CancellationTokenSource.CreateLinkedTokenSource(total.Token);
+            headers.CancelAfter(timeouts.Headers);
+            using var response = await (client ?? DownloadClient).GetAsync(asset.DownloadUrl,
+                HttpCompletionOption.ResponseHeadersRead, headers.Token).ConfigureAwait(false);
+            headers.CancelAfter(Timeout.InfiniteTimeSpan);
             response.EnsureSuccessStatusCode();
-            await using (var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            await using (var input = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false))
+            phase = "download reception";
+            var size = response.Content.Headers.ContentLength ?? asset.SizeBytes;
+            long received = 0;
+            var report = Stopwatch.StartNew();
+            await using (var output = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None,
+                81920, FileOptions.Asynchronous))
+            await using (var input = await response.Content.ReadAsStreamAsync(total.Token).ConfigureAwait(false))
             {
-                await input.CopyToAsync(output, cancellationToken).ConfigureAwait(false);
+                var buffer = new byte[81920];
+                while (true)
+                {
+                    using var idle = CancellationTokenSource.CreateLinkedTokenSource(total.Token);
+                    idle.CancelAfter(timeouts.Idle);
+                    var count = await input.ReadAsync(buffer, idle.Token).ConfigureAwait(false);
+                    if (count == 0) break;
+                    await output.WriteAsync(buffer.AsMemory(0, count), total.Token).ConfigureAwait(false);
+                    received += count;
+                    if (report.ElapsedMilliseconds >= 250)
+                    {
+                        progress?.Invoke(new(assetTag, HostLoadPhase.Download, safeLocalFileName, received, size));
+                        report.Restart();
+                    }
+                }
             }
-
-            if (!TryValidateAsset(tempPath, asset, out var reason))
-            {
-                File.Delete(tempPath);
-                throw new InvalidDataException(
-                    $"Downloaded asset validation failed for '{safeLocalFileName}': {reason}");
-            }
-
+            phase = "download validation";
+            progress?.Invoke(new(assetTag, HostLoadPhase.Validation, safeLocalFileName));
+            var validation = await ValidateAssetAsync(tempPath, asset, total.Token).ConfigureAwait(false);
+            if (!validation.Valid) throw new InvalidDataException($"Asset validation failed for '{safeLocalFileName}': {validation.Reason}");
+            total.Token.ThrowIfCancellationRequested();
             File.Move(tempPath, assetPath, true);
-            stopwatch.Stop();
-            log?.Invoke(
-                $"stage=model_asset_download event=complete asset={assetTag} local_filename={safeLocalFileName} elapsed_ms={stopwatch.ElapsedMilliseconds}.");
+            log?.Invoke($"stage=model_asset_download event=complete asset={assetTag} elapsed_ms={elapsed.ElapsedMilliseconds}.");
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            TryDeleteFile(tempPath);
+            throw new TimeoutException($"Timed out during {phase}: {safeLocalFileName}.");
         }
         catch
         {
@@ -99,38 +114,6 @@ internal static class ModelAssetProvisioner
         {
             throw new InvalidDataException($"{assetLabel} is empty: {assetPath}");
         }
-    }
-
-    public static bool TryValidateAsset(string assetPath, ModelAssetDescriptor asset, out string reason)
-    {
-        reason = string.Empty;
-        if (!File.Exists(assetPath))
-        {
-            reason = "missing file";
-            return false;
-        }
-
-        var info = new FileInfo(assetPath);
-        if (info.Length <= 0)
-        {
-            reason = "empty file";
-            return false;
-        }
-
-        if (asset.SizeBytes is > 0 && info.Length != asset.SizeBytes.Value)
-        {
-            reason = $"size mismatch (expected {asset.SizeBytes.Value}, actual {info.Length})";
-            return false;
-        }
-
-        var actualSha = ComputeFileSha256(assetPath);
-        if (!string.Equals(actualSha, asset.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            reason = $"sha256 mismatch (expected {asset.Sha256}, actual {actualSha})";
-            return false;
-        }
-
-        return true;
     }
 
     public static string ComputeFileSha256(string path)
@@ -164,9 +147,29 @@ internal static class ModelAssetProvisioner
         return safeLocalFileName;
     }
 
-    private static async Task<FileStream> AcquireExclusiveLockAsync(string lockPath, CancellationToken cancellationToken)
+    internal static Task<(bool Valid, string Reason)> ValidateAssetAsync(string path, ModelAssetDescriptor asset,
+        CancellationToken cancellationToken)
     {
-        var deadline = DateTimeOffset.UtcNow.AddMinutes(10);
+        // WHY: Cached file reads can complete synchronously; hashing large models must still stay off the UI thread.
+        return Task.Run(async () =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var info = new FileInfo(path);
+            if (!info.Exists) return (false, "missing file");
+            if (info.Length <= 0) return (false, "empty file");
+            if (asset.SizeBytes is > 0 && asset.SizeBytes != info.Length) return (false, "size mismatch");
+            await using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read,
+                81920, FileOptions.Asynchronous | FileOptions.SequentialScan);
+            var hash = await SHA256.HashDataAsync(input, cancellationToken).ConfigureAwait(false);
+            return string.Equals(Convert.ToHexString(hash), asset.Sha256, StringComparison.OrdinalIgnoreCase)
+                ? (true, "") : (false, "sha256 mismatch");
+        }, cancellationToken);
+    }
+
+    private static async Task<FileStream> AcquireExclusiveLockAsync(string lockPath, CancellationToken cancellationToken,
+        TimeSpan timeout)
+    {
+        var elapsed = Stopwatch.StartNew();
         while (true)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -176,7 +179,7 @@ internal static class ModelAssetProvisioner
             }
             catch (IOException)
             {
-                if (DateTimeOffset.UtcNow >= deadline)
+                if (elapsed.Elapsed >= timeout)
                 {
                     throw new TimeoutException($"Timed out waiting for lock: {lockPath}");
                 }

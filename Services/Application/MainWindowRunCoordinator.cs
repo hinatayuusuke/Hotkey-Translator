@@ -15,6 +15,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
     private readonly Func<bool> _tryDrainPendingSceneAutoTranslate;
     private readonly Func<AppSettings, CancellationToken, Task> _repairOneOcr;
     private readonly Action _clearPendingSceneAutoTranslate;
+    private readonly Func<string?> _getResourceBlockReason;
     private bool _suspendOneOcrAutoRuns;
 
     private CancellationTokenSource? _runCts;
@@ -29,7 +30,8 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         WinRtOcrLanguagePackCoordinator winRtLanguagePackCoordinator,
         Func<bool> tryDrainPendingSceneAutoTranslate,
         Func<AppSettings, CancellationToken, Task> repairOneOcr,
-        Action clearPendingSceneAutoTranslate)
+        Action clearPendingSceneAutoTranslate,
+        Func<string?> getResourceBlockReason)
     {
         _settingsService = settingsService;
         _viewBridge = viewBridge;
@@ -38,6 +40,7 @@ internal sealed class MainWindowRunCoordinator : IDisposable
         _tryDrainPendingSceneAutoTranslate = tryDrainPendingSceneAutoTranslate;
         _repairOneOcr = repairOneOcr;
         _clearPendingSceneAutoTranslate = clearPendingSceneAutoTranslate;
+        _getResourceBlockReason = getResourceBlockReason;
     }
 
     public bool HasRunOnce => _hasRunOnce;
@@ -93,6 +96,12 @@ internal sealed class MainWindowRunCoordinator : IDisposable
 
     public async Task RunOnceAsync(ForceRunOptions options)
     {
+        var resourceBlock = _getResourceBlockReason();
+        if (resourceBlock != null)
+        {
+            if (options.Trigger == RunTrigger.Manual) _viewBridge.AppendLog(resourceBlock);
+            return;
+        }
         // NOTE: Background scene changes must not reopen the repair prompt or replay a failed capture.
         // A deliberate manual run resumes automatic translation after recovery.
         if (_suspendOneOcrAutoRuns && options.Trigger == RunTrigger.AutoSceneChange &&

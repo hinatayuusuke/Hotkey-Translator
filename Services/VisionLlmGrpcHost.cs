@@ -49,12 +49,15 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
     {
         var projectDir = ResolveProjectDirectory();
         var uvPath = ResolveUvExecutablePath();
+        ReportLoadProgress(HostLoadPhase.Environment);
         await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
+        ReportLoadProgress(HostLoadPhase.Validation, settings.VisionLlmSelectedModelFileName);
         await EnsureVisionLlmAssetsAsync(settings, cancellationToken).ConfigureAwait(false);
     }
 
     protected override Task<Process> StartProcessCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
+        ReportLoadProgress(HostLoadPhase.Environment);
         var projectDir = ResolveProjectDirectory();
         var scriptPath = Path.Combine(projectDir, FixedServerScriptName);
         if (!File.Exists(scriptPath))
@@ -160,6 +163,9 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
             startInfo.ArgumentList.Add(ResolveDiagLogPath(settings));
         }
 
+        startInfo.ArgumentList.Add("--ready-timeout-ms");
+        startInfo.ArgumentList.Add(Math.Max(1000, settings.VisionLlmGrpcReadyTimeoutMs).ToString());
+        ReportLoadProgress(HostLoadPhase.Model, settings.VisionLlmSelectedModelFileName);
         var process = StartProcessWithLogging(startInfo, "VisionLlmGrpc");
         return Task.FromResult(process);
     }
@@ -206,13 +212,10 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         startInfo.ArgumentList.Add(projectDir);
 
         using var process = new Process { StartInfo = startInfo };
-        var output = new StringBuilder();
-        var errors = new StringBuilder();
         process.OutputDataReceived += (_, args) =>
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                output.AppendLine(args.Data);
                 _logger?.Info($"[VisionLlm uv] {args.Data}");
             }
         };
@@ -220,7 +223,7 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                errors.AppendLine(args.Data);
+                RecordStartupError(args.Data);
                 _logger?.Info($"[VisionLlm uv] {args.Data}");
             }
         };
@@ -233,20 +236,12 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            TryKill(process);
-            throw;
-        }
+        await WaitForPreparationAsync(process, cancellationToken).ConfigureAwait(false);
 
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"VisionLLM uv sync failed with exit code {process.ExitCode}.{Environment.NewLine}{errors}{output}");
+                $"VisionLLM uv sync failed with exit code {process.ExitCode}.");
         }
 
         await File.WriteAllTextAsync(statePath, fingerprint, cancellationToken).ConfigureAwait(false);
@@ -300,63 +295,27 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
             modelPath,
             assetTag: "vision_model",
             log: message => _logger?.Info(message),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            progress: value => ReportLoadProgress(value.Phase, value.Asset, value.Bytes, value.TotalBytes)).ConfigureAwait(false);
         await ModelAssetProvisioner.EnsureAssetAsync(
             manifest.Mmproj.ToDescriptor(),
             mmprojPath,
             assetTag: "vision_mmproj",
             log: message => _logger?.Info(message),
-            cancellationToken).ConfigureAwait(false);
+            cancellationToken,
+            progress: value => ReportLoadProgress(value.Phase, value.Asset, value.Bytes, value.TotalBytes)).ConfigureAwait(false);
     }
 
     protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var endpoint = ResolveEndpoint(settings);
-        var projectDir = ResolveProjectDirectory();
-        var configuredTimeoutMs = Math.Max(1000, settings.VisionLlmGrpcReadyTimeoutMs);
-        var timeoutMs = GrpcStartupTimeoutPolicy.ResolveReadyTimeoutMs(
-            settings.VisionLlmGrpcReadyTimeoutMs,
-            projectDir,
-            out var bootstrapMode);
-        if (bootstrapMode)
-        {
-            Logger?.Info(
-                $"stage=grpc_host host={HostId} event=ready_timeout policy=bootstrap_missing_venv configured_ms={configuredTimeoutMs} effective_ms={timeoutMs}.");
-        }
-
-        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (TryGetProcessExitCode(out var exitCode))
-            {
-                // WHY: Model/mmproj mismatches can terminate the Python host quickly while the gRPC
-                // endpoint never becomes healthy. Failing fast here prevents the busy overlay from
-                // hanging until the generic ready-timeout elapses.
-                throw new InvalidOperationException(
-                    $"VisionLLM gRPC server exited during startup with exit code {exitCode}.");
-            }
-
-            try
-            {
-                using var channel = GrpcChannel.ForAddress(endpoint);
-                var client = new OcrService.OcrServiceClient(channel);
-                var reply = await client.HealthAsync(new HealthRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
-                if (reply.Ready)
-                {
-                    Logger?.Info($"VisionLLM gRPC ready: {reply.Message}");
-                    return;
-                }
-            }
-            catch
-            {
-                // NOTE: Keep retrying until timeout; server may still be warming up.
-            }
-
-            await Task.Delay(200, cancellationToken).ConfigureAwait(false);
-        }
-
-        throw new TimeoutException("VisionLLM gRPC server did not become ready in time.");
+        using var channel = GrpcChannel.ForAddress(ResolveEndpoint(settings));
+        var client = new OcrService.OcrServiceClient(channel);
+        await GrpcReadyProbe.WaitAsync(settings.VisionLlmGrpcReadyTimeoutMs,
+            () => TryGetProcessExitCode(out var code) ? code : null,
+            async (deadline, token) => (await client.HealthAsync(new HealthRequest(),
+                deadline: deadline, cancellationToken: token).ConfigureAwait(false)).Ready,
+            cancellationToken).ConfigureAwait(false);
+        Logger?.Info("VisionLLM gRPC ready.");
     }
 
     protected override GrpcHostRestartPolicy GetRestartPolicy(AppSettings settings)
@@ -419,21 +378,6 @@ internal sealed class VisionLlmGrpcHost : GrpcHostBase
         }
 
         return resolved;
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-            }
-        }
-        catch
-        {
-            // Ignore kill failures on cancellation.
-        }
     }
 
     private static string ResolveDiagLogPath(AppSettings settings)

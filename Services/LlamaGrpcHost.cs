@@ -70,14 +70,17 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         var selectedModelFileName = SettingsHostNormalizer.NormalizeLlamaModelFileName(settings.LlamaSelectedModelFileName);
         var paths = ResolveFixedLlamaPaths(projectDir, selectedModelFileName);
 
+        ReportLoadProgress(HostLoadPhase.Environment);
         await EnsurePythonRuntimeAsync(projectDir, uvPath, cancellationToken).ConfigureAwait(false);
         LlamaCppRuntimeLayout.ValidateRequiredRuntimeFiles(paths.LlamaCppDirectory, "Llama translation");
+        ReportLoadProgress(HostLoadPhase.Validation, selectedModelFileName);
         await EnsureLlamaModelAsync(
             paths.ManifestPath,
             paths.ModelPath,
             selectedModelFileName,
             cancellationToken).ConfigureAwait(false);
 
+        ReportLoadProgress(HostLoadPhase.Environment);
         var pythonPath = ResolvePythonExecutable(projectDir);
         var nvidiaBinPaths = CollectNvidiaDllBinPaths(projectDir);
         ValidateCudaRuntime(nvidiaBinPaths);
@@ -144,50 +147,23 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
             startInfo.ArgumentList.Add("--mtp-draft-tokens");
             startInfo.ArgumentList.Add(Math.Clamp(settings.LlamaMtpDraftTokens, 1, 16).ToString());
         }
+        startInfo.ArgumentList.Add("--ready-timeout-ms");
+        startInfo.ArgumentList.Add(Math.Max(1000, settings.LlamaGrpcReadyTimeoutMs).ToString());
+        ReportLoadProgress(HostLoadPhase.Model, selectedModelFileName);
         var process = StartProcessWithLogging(startInfo, "LlamaGrpc");
         return process;
     }
 
     protected override async Task WaitForReadyCoreAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        var endpoint = ResolveEndpoint(settings);
-        var projectDir = ResolveProjectDirectory();
-        var configuredTimeoutMs = Math.Max(1000, settings.LlamaGrpcReadyTimeoutMs);
-        var timeoutMs = GrpcStartupTimeoutPolicy.ResolveReadyTimeoutMs(
-            settings.LlamaGrpcReadyTimeoutMs,
-            projectDir,
-            out var bootstrapMode);
-        if (bootstrapMode)
-        {
-            _logger?.Info(
-                $"stage=grpc_host host={HostId} event=ready_timeout policy=bootstrap_missing_venv configured_ms={configuredTimeoutMs} effective_ms={timeoutMs}.");
-        }
-
-        var deadline = DateTimeOffset.UtcNow.AddMilliseconds(timeoutMs);
-
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            try
-            {
-                using var channel = GrpcChannel.ForAddress(endpoint);
-                var client = new TranslationService.TranslationServiceClient(channel);
-                var reply = await client.HealthAsync(new HealthRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
-                if (reply.Ready)
-                {
-                    _logger?.Info($"Llama gRPC ready: {reply.Message}");
-                    return;
-                }
-            }
-            catch
-            {
-                // NOTE: Keep retrying until timeout; server may still be warming up.
-            }
-
-            await Task.Delay(200, cancellationToken).ConfigureAwait(false);
-        }
-
-        throw new TimeoutException("Llama gRPC server did not become ready in time.");
+        using var channel = GrpcChannel.ForAddress(ResolveEndpoint(settings));
+        var client = new TranslationService.TranslationServiceClient(channel);
+        await GrpcReadyProbe.WaitAsync(settings.LlamaGrpcReadyTimeoutMs,
+            () => TryGetProcessExitCode(out var code) ? code : null,
+            async (deadline, token) => (await client.HealthAsync(new HealthRequest(),
+                deadline: deadline, cancellationToken: token).ConfigureAwait(false)).Ready,
+            cancellationToken).ConfigureAwait(false);
+        Logger?.Info("Llama gRPC ready.");
     }
 
     protected override GrpcHostRestartPolicy GetRestartPolicy(AppSettings settings)
@@ -378,13 +354,10 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         startInfo.ArgumentList.Add(projectDir);
 
         using var process = new Process { StartInfo = startInfo };
-        var output = new StringBuilder();
-        var errors = new StringBuilder();
         process.OutputDataReceived += (_, args) =>
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                output.AppendLine(args.Data);
                 _logger?.Info($"[Llama uv] {args.Data}");
             }
         };
@@ -392,7 +365,7 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         {
             if (!string.IsNullOrWhiteSpace(args.Data))
             {
-                errors.AppendLine(args.Data);
+                RecordStartupError(args.Data);
                 _logger?.Info($"[Llama uv] {args.Data}");
             }
         };
@@ -405,20 +378,12 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            TryKill(process);
-            throw;
-        }
+        await WaitForPreparationAsync(process, cancellationToken).ConfigureAwait(false);
 
         if (process.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"uv sync failed with exit code {process.ExitCode}.{Environment.NewLine}{errors}{output}");
+                $"uv sync failed with exit code {process.ExitCode}.");
         }
 
         await File.WriteAllTextAsync(statePath, fingerprint, cancellationToken).ConfigureAwait(false);
@@ -478,22 +443,8 @@ internal sealed class LlamaGrpcHost : GrpcHostBase
             modelPath,
             assetTag: "llama_model",
             log: message => _logger?.Info(message),
-            cancellationToken).ConfigureAwait(false);
-    }
-
-    private static void TryKill(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(true);
-            }
-        }
-        catch
-        {
-            // Ignore kill failures on cancellation.
-        }
+            cancellationToken,
+            progress: value => ReportLoadProgress(value.Phase, value.Asset, value.Bytes, value.TotalBytes)).ConfigureAwait(false);
     }
 
     private void TryTrackLlamaServerPid(string line)

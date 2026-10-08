@@ -101,7 +101,7 @@ Place the file at this path or disable {0}.</value></data>
   <data name="ResourceHost_Failed_Ndl" xml:space="preserve"><value>Failed to load NDLOCR-Lite. The setting has been turned OFF. See the logs for details.</value></data>
   <data name="ResourceHost_Failed_Paddle" xml:space="preserve"><value>Failed to load PaddleOCR. The setting has been turned OFF. See the logs for details.</value></data>
   <data name="ResourceHost_Failed_PaddleVl" xml:space="preserve"><value>Failed to load PaddleOCR-VL. The setting has been turned OFF. See the logs for details.</value></data>
-  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>Failed to load VisionLLM OCR. The setting has been turned OFF. See the logs for details.</value></data>
+  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>Failed to load VisionLLM OCR. The OCR engine has been reset to WinRT.</value></data>
   <data name="ResourceHost_Loading_Llama" xml:space="preserve"><value>Loading Llama.cpp...</value></data>
   <data name="ResourceHost_Loading_Ndl" xml:space="preserve"><value>Loading NDLOCR-Lite...</value></data>
   <data name="ResourceHost_Loading_Paddle" xml:space="preserve"><value>Loading PaddleOCR...</value></data>
@@ -366,4 +366,21 @@ Automatic translation is paused. After closing this message, run translation man
   <data name="OneOcr_RepairBusy" xml:space="preserve"><value>Repairing OneOCR and checking recognition...</value></data>
   <data name="OneOcr_RepairSucceeded" xml:space="preserve"><value>OneOCR was repaired. Run translation again manually.</value></data>
   <data name="OneOcr_RepairFailed" xml:space="preserve"><value>OneOCR could not be repaired. Details:</value></data>
+  <data name="ResourceHost_Phase_Environment" xml:space="preserve"><value>Preparing runtime</value></data>
+  <data name="ResourceHost_Phase_Lock" xml:space="preserve"><value>Waiting for model access</value></data>
+  <data name="ResourceHost_Phase_Download" xml:space="preserve"><value>Downloading model</value></data>
+  <data name="ResourceHost_Phase_Validation" xml:space="preserve"><value>Validating model files</value></data>
+  <data name="ResourceHost_Phase_Model" xml:space="preserve"><value>Loading model</value></data>
+  <data name="ResourceHost_Phase_Connection" xml:space="preserve"><value>Checking connection</value></data>
+  <data name="ResourceHost_Progress" xml:space="preserve"><value>{0}: {1}… {2}</value></data>
+  <data name="ResourceHost_Cancelling" xml:space="preserve"><value>Cancelling model load…</value></data>
+  <data name="ResourceHost_LoadInProgress" xml:space="preserve"><value>The model is loading. Run again after it finishes.</value></data>
+  <data name="ResourceHost_NotLoaded" xml:space="preserve"><value>{0} is not loaded. Use Restart in settings to resume loading.</value></data>
+  <data name="ResourceHost_SettingsSavedCancelled" xml:space="preserve"><value>Settings saved. Model loading is cancelled.</value></data>
+  <data name="ResourceHost_FailureDetails" xml:space="preserve"><value>Model: {0}
+Stage: {1}
+Cause: {2}</value></data>
+  <data name="ResourceHost_Mmproj" xml:space="preserve"><value>Projection model: {0}</value></data>
+  <data name="ResourceHost_PreflightFailed" xml:space="preserve"><value>Model file validation failed before startup. Check the files and use Restart to try loading again.</value></data>
+  <data name="ResourceHost_SetupFailed" xml:space="preserve"><value>Resource startup stopped because model file validation failed.</value></data>
 </root>

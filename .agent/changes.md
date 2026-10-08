@@ -3134,3 +3134,78 @@
 - UTF-8・XML・全6項目の全文一致検証に成功。
 - `dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal` 成功（警告0、エラー0）。
 - `git diff --check` 成功。
+
+**2026-10-08 20:46 (Asia/Taipei) — LLM 読み込みの失敗検知・期限・工程表示とキャンセル**
+
+### Summary
+- Llama.cpp / VisionLLM の起動失敗・時間切れを検知して読み込み表示を終了し、対象モデル・工程・原因を通知する。長時間処理の工程表示とキャンセルを接続した。
+
+### Context / Goal
+- 起動失敗が UI に届くまで待機が続き、Health RPC や環境準備・ダウンロードを中断できない経路があった。
+- 承認済みの Doc/LLM_LoadFailure_Timeout_Cancellation_Implementation_Plan.md に沿い、失敗・キャンセル・時間切れを区別し、安全に操作可能な状態へ戻す。
+
+### Changes
+- 共通 ready probe に RPC deadline、全体期限、プロセス終了監視を追加。Python 側の終了コード通知と初回起動失敗時の子プロセス停止を追加した。
+- 環境準備を最大 15 分、取得を応答待ち 15 秒・受信停滞 60 秒・asset 全体 60 分に制限。SHA-256 検証をバックグラウンド実行し、確認前の検証にもキャンセルを接続した。
+- facade で gate・CTS・busy 表示・失敗結果を管理し、表示終了後にエラーを集約して通知する。診断情報は容量を制限し、URL・認証情報を表示前に除外する。
+- 操作識別子で終了後の進捗を破棄し、既存 OCR 実行の完了処理が読み込み表示やキャンセルボタンを上書きすることを防いだ。
+- 中断後は未読み込み状態を表示し、無関係な設定保存による再開を抑止する。明示的な再起動・モデル変更・再有効化で再開できる。
+- アプリ終了は読み込みの停止を待ってから gate を破棄する。再起動時の重複 busy 表示・失敗時の成功ログを修正し、日英文言とガイドを更新した。
+
+### Files Touched
+- `AssemblyInfo.cs` — LlmStartupTests の内部 API 検証を許可。
+- `MainWindow.xaml.cs` — 工程表示、キャンセルの振り分け、通知順序、読み込み UI の所有権、終了処理を接続。
+- `Services/Application/MainWindowRunCoordinator.cs` — 未読み込み・読み込み中のホストを使用する実行を抑止。
+- `Services/Application/ResourceBootstrapConfirmation.cs` — 事前検証失敗とユーザー中断を区別。
+- `Services/Application/ResourceHostCommandController.cs` — 再起動時の表示重複と成功ログの判定を修正。
+- `Services/Application/ResourceHostFacade.cs` — 操作結果・CTS・gate・失敗通知・キャンセル後の状態管理と確認前の非同期検証を実装。
+- `Services/Application/SettingsUiController.cs` — 読み込み結果、中断後の保存ログ、アプリ終了を扱う。
+- `Services/GrpcHost/GrpcHostBase.cs` — 工程通知、診断情報の保持、準備期限、停止完了、監視開始時の終了レースを修正。
+- `Services/GrpcHost/GrpcHostDescriptor.cs` — 詳細な失敗情報の取得口を追加。
+- `Services/GrpcHost/GrpcHostOrchestrator.cs` — 失敗の集約とユーザー中断の分類を実装。
+- `Services/GrpcHost/GrpcReadyProbe.cs` — 準備完了待機の期限とプロセス終了監視を共通化。
+- `Services/GrpcHost/HostLoadProgress.cs` — 工程・操作結果・失敗情報と診断表示の秘匿処理を追加。
+- `Services/LlamaGrpcHost.cs` — 終了検知、ready deadline、工程通知、環境準備の中断を接続。
+- `Services/ModelAssetProvisioner.cs` — 取得期限、進捗、非同期検証、lock 所有者だけの後始末を実装。
+- `Services/VisionLlmGrpcHost.cs` — ready deadline、工程通知、環境準備の中断を接続。
+- `TranslationServiceLlama/llama_engine.py` — 起動失敗時の子プロセス停止、終了コード、単調時間による期限を追加。
+- `TranslationServiceLlama/server.py` — gRPC 接続確認への工程通知を追加。
+- `OcrServiceVisionLlm/vision_llama_engine.py` — 起動失敗時の子プロセス停止、終了コード、単調時間による期限を追加。
+- `OcrServiceVisionLlm/server.py` — gRPC 接続確認への工程通知を追加。
+- `Resources/Strings.resx` — 工程・中断・詳細エラーの英語文言を追加し、VisionLLM の設定変更説明を修正。
+- `Resources/Strings.ja.resx` — 同じキーの日本語文言を追加・修正。
+- `ViewModels/MainWindowViewModel.cs` — 未読み込み状態を概要の状態表示へ反映。
+- `ViewModels/RuntimeStatusViewModel.cs` — 実行時の未読み込み表示を追加。
+- `Tools/OneOcrRepairTests/Program.cs` — coordinator の実行前確認 I/F に対応。
+- `Tools/LlmStartupTests/LlmStartupTests.csproj` — 起動経路の検証用プロジェクトを追加。
+- `Tools/LlmStartupTests/Program.cs` — 模擬通信・プロセス・ファイル処理と実モデル起動の 49 項目を追加。
+- `Tools/LlmStartupTests/test_python_startup.py` — 両 Python エンジン共通の起動回帰テストを追加。
+- `Tools/LlmStartupTests/README.md` — 検証方法と実モデル検証の条件・範囲を記録。
+- `Doc/UserGuide.md` — 工程表示、中断、失敗後の再読み込み操作を追記。
+- `Doc/LLM_LoadFailure_Timeout_Cancellation_Implementation_Plan.md` — 実装結果・検証結果・未実施範囲を追記。
+- `.agent/changes.md` — 本エントリを追記。
+
+### Behavioral Impact
+- 起動失敗では待機表示を終了してから原因を表示する。従来の Llama OFF / VisionLLM の WinRT 選択への変更は維持し、新しいフォールバックや自動リトライは追加しない。
+- 読み込み開始後のキャンセルはモデル選択を保存したまま未読み込みとして扱う。確認前の中断は従来どおり設定変更を取り消す。
+- 中断・失敗時に検証済みモデルを削除しない。保存設定や gRPC proto の移行は不要。既存の Hotkey-Translator.csproj のバージョン変更は本タスクでは変更していない。
+
+### Risk & Mitigation
+- Risk: 正常な大容量モデルや低速回線を時間切れと扱う。
+- Mitigation: 準備・取得・読み込みの期限を分離し、読み込みは既存の設定値を使用する。個別 RPC の期限到達後も全体期限内で準備確認を続ける。
+- Risk: 中断、アプリ終了、遅延進捗が競合して表示やプロセスが残る。
+- Mitigation: gate・CTS・操作識別子で終了を統一し、停止完了後に UI を解除してから通知する。終了中は追加起動や通知を抑止する。
+- Risk: 未完成ファイルの後始末が別処理や完成済みファイルへ影響する。
+- Mitigation: lock 保持中だけ当該 asset の .tmp を扱い、検証後に最終ファイルへ配置する。
+
+### Tests / Verification
+- `dotnet build Hotkey-Translator.csproj --no-restore --nologo -v minimal -t:Rebuild` 成功、警告 0・エラー 0。通常ビルドの WPF 生成コード不整合は Rebuild で解消。
+- `dotnet run --project Tools/LlmStartupTests/LlmStartupTests.csproj -- --native` 成功、49 項目。
+- 実モデル Hy-MT2-1.8B と Qwen3.5-4B/対応 mmproj の CPU 起動・Health・工程通知を確認。生成した破損 GGUF では通常の 60 秒期限を待たずに両ホストの失敗を検知。
+- Python エンジンの起動・終了コード・後始末・HTTP 待機上限について、各環境で 6 件、合計 12 件成功。
+- `dotnet run --project Tools/OneOcrRepairTests/OneOcrRepairTests.csproj -- --native` 成功、既存 20 項目。
+- 日英 resx の XML・キー重複・新規キー一致、UTF-8、`git diff --check` 成功。
+- WPF ダイアログの目視、実 GPU の起動失敗、Paddle/PaddleVL/NDL の実モデル起動は未実施。該当 OCR の共通 orchestration は模擬テストで確認した。
+
+### Migration
+- 設定形式やモデルファイルの移行は不要。中断したモデルは設定画面の再起動操作で読み込みを再開する。

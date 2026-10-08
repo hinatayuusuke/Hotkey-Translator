@@ -225,6 +225,8 @@ def main() -> int:
         raise
 
     engine = VisionLlamaEngine(host, request_config, args.max_image_side)
+    # NOTE: A fixed marker reports the phase only; C# still requires a successful gRPC Health reply.
+    print("HOTKEY_TRANSLATOR_PHASE:connection", flush=True)
     if args.diag_log_file:
         engine.set_diag_log_file(args.diag_log_file)
 

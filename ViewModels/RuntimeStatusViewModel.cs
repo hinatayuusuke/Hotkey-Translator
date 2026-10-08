@@ -31,4 +31,7 @@ internal sealed partial class RuntimeStatusViewModel : ObservableObject
 
     [ObservableProperty]
     private string _translationStatusMessage = string.Empty;
+
+    [ObservableProperty]
+    private string _resourceLoadStatus = string.Empty;
 }

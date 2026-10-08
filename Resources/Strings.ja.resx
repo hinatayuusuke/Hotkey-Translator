@@ -93,7 +93,7 @@ OCR、翻訳、オーバーレイ、ROI、ホットキー、システム設定�
   <data name="ResourceHost_Failed_Ndl" xml:space="preserve"><value>NDLOCR-Lite の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
   <data name="ResourceHost_Failed_Paddle" xml:space="preserve"><value>PaddleOCR の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
   <data name="ResourceHost_Failed_PaddleVl" xml:space="preserve"><value>PaddleOCR-VL の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
-  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>VisionLLM OCR の読み込みに失敗しました。設定は OFF に戻されました。詳細はログを確認してください。</value></data>
+  <data name="ResourceHost_Failed_VisionLlm" xml:space="preserve"><value>VisionLLM OCR の読み込みに失敗しました。OCR エンジンを WinRT に戻しました。</value></data>
   <data name="ResourceHost_Loading_Llama" xml:space="preserve"><value>Llama.cpp を読み込み中...</value></data>
   <data name="ResourceHost_Loading_Ndl" xml:space="preserve"><value>NDLOCR-Lite を読み込み中...</value></data>
   <data name="ResourceHost_Loading_Paddle" xml:space="preserve"><value>PaddleOCR を読み込み中...</value></data>
@@ -358,4 +358,21 @@ OK を選ぶと、インストール済み Snipping Tool パッケージから�
   <data name="OneOcr_RepairBusy" xml:space="preserve"><value>OneOCR の修復と文字認識の確認中...</value></data>
   <data name="OneOcr_RepairSucceeded" xml:space="preserve"><value>修復しました。もう一度手動で翻訳を実行してください。</value></data>
   <data name="OneOcr_RepairFailed" xml:space="preserve"><value>OneOCR を修復できませんでした。詳細：</value></data>
+  <data name="ResourceHost_Phase_Environment" xml:space="preserve"><value>実行環境を準備中</value></data>
+  <data name="ResourceHost_Phase_Lock" xml:space="preserve"><value>モデルを使用中の処理を待機中</value></data>
+  <data name="ResourceHost_Phase_Download" xml:space="preserve"><value>モデルをダウンロード中</value></data>
+  <data name="ResourceHost_Phase_Validation" xml:space="preserve"><value>モデルファイルを検証中</value></data>
+  <data name="ResourceHost_Phase_Model" xml:space="preserve"><value>モデルを読み込み中</value></data>
+  <data name="ResourceHost_Phase_Connection" xml:space="preserve"><value>接続を確認中</value></data>
+  <data name="ResourceHost_Progress" xml:space="preserve"><value>{0}: {1}… {2}</value></data>
+  <data name="ResourceHost_Cancelling" xml:space="preserve"><value>読み込みを中止しています…</value></data>
+  <data name="ResourceHost_LoadInProgress" xml:space="preserve"><value>モデルを読み込み中です。完了後に実行してください。</value></data>
+  <data name="ResourceHost_NotLoaded" xml:space="preserve"><value>{0} は未読み込みです。設定画面の「再起動」で読み込みを再開してください。</value></data>
+  <data name="ResourceHost_SettingsSavedCancelled" xml:space="preserve"><value>設定を保存しました。モデルの読み込みは中断しています。</value></data>
+  <data name="ResourceHost_FailureDetails" xml:space="preserve"><value>モデル: {0}
+工程: {1}
+原因: {2}</value></data>
+  <data name="ResourceHost_Mmproj" xml:space="preserve"><value>補助モデル: {0}</value></data>
+  <data name="ResourceHost_PreflightFailed" xml:space="preserve"><value>起動前のモデルファイル検証に失敗しました。ファイルの状態を確認し、再起動操作で読み込みをやり直してください。</value></data>
+  <data name="ResourceHost_SetupFailed" xml:space="preserve"><value>モデルファイルの検証に失敗したため、リソースの起動を停止しました。</value></data>
 </root>

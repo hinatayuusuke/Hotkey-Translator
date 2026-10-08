@@ -2,6 +2,7 @@ using System.Windows;
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("OneOcrRepairTests")]
+[assembly: InternalsVisibleTo("LlmStartupTests")]
 
 [assembly:ThemeInfo(
     ResourceDictionaryLocation.None,            //where theme specific resource dictionaries are located
